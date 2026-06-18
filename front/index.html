@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Feature Atlas — map who an artist makes songs with</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <style>
+    :root {
+      --ink:    #0B0E14;
+      --ink-2:  #0E1320;
+      --panel:  #141A28;
+      --panel-2:#1B2236;
+      --line:   #283044;
+      --mist:   #8A94A6;
+      --paper:  #EDEFF4;
+      --signal: #5EE6C5; /* teal  — the searched artist */
+      --pulse:  #B98AFF; /* violet — collaborators       */
+      --warn:   #FF8FA3;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      color: var(--paper);
+      background:
+        radial-gradient(1100px 760px at 50% -12%, #14203A 0%, var(--ink) 58%),
+        var(--ink);
+      overflow: hidden;
+    }
+
+    /* ------------------------------------------------------------------ HERO */
+    .hero {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      padding: 28px;
+      text-align: center;
+      transition: opacity .5s ease, transform .5s ease;
+    }
+    .hero.is-hidden {
+      opacity: 0;
+      transform: translateY(-14px) scale(.985);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      font-family: "Space Mono", monospace;
+      font-size: 13px;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--signal);
+    }
+
+    .hero h1 {
+      font-family: "Syne", sans-serif;
+      font-weight: 800;
+      font-size: clamp(2rem, 6vw, 3.9rem);
+      line-height: 1.04;
+      letter-spacing: -.02em;
+      margin: 0;
+      max-width: 14ch;
+    }
+    .hero h1 .grad {
+      background: linear-gradient(100deg, var(--signal), var(--pulse));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 52ch;
+      color: var(--mist);
+      font-size: clamp(.95rem, 1.8vw, 1.12rem);
+      line-height: 1.55;
+    }
+
+    /* --------------------------------------------------------------- SEARCH */
+    .search {
+      display: flex;
+      gap: 10px;
+      width: min(620px, 92vw);
+      margin-top: 6px;
+    }
+    .search input {
+      flex: 1;
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--paper);
+      font: inherit;
+      font-size: 1.05rem;
+      padding: 16px 18px;
+      outline: none;
+      transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    .search input::placeholder { color: #5C677C; }
+    .search input:focus {
+      background: var(--panel-2);
+      border-color: var(--signal);
+      box-shadow: 0 0 0 4px rgba(94, 230, 197, .14);
+    }
+    .search button {
+      border: 0;
+      border-radius: 14px;
+      padding: 0 22px;
+      font: inherit;
+      font-weight: 700;
+      color: #07120F;
+      cursor: pointer;
+      background: linear-gradient(100deg, var(--signal), var(--pulse));
+      transition: transform .12s ease, filter .18s ease;
+      white-space: nowrap;
+    }
+    .search button:hover { filter: brightness(1.06); }
+    .search button:active { transform: translateY(1px); }
+    .search button:disabled { opacity: .55; cursor: progress; }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+    }
+    .chip {
+      font-family: "Space Mono", monospace;
+      font-size: 12.5px;
+      color: var(--mist);
+      background: transparent;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 13px;
+      cursor: pointer;
+      transition: color .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .chip:hover {
+      color: var(--paper);
+      border-color: var(--pulse);
+      background: rgba(185, 138, 255, .10);
+    }
+
+    /* ----------------------------------------------------------- GRAPH VIEW */
+    .graph-view {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity .55s ease;
+    }
+    .graph-view.is-visible { opacity: 1; }
+
+    #network { position: absolute; inset: 0; }
+
+    /* slim docked search bar on top of the graph */
+    .dock {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 20px;
+      background: linear-gradient(180deg, rgba(11,14,20,.92), rgba(11,14,20,0));
+      pointer-events: none; /* let canvas drag through empty areas */
+    }
+    .dock > * { pointer-events: auto; }
+
+    .brand {
+      font-family: "Syne", sans-serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      letter-spacing: -.01em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      white-space: nowrap;
+    }
+    .brand .dotmark {
+      width: 11px; height: 11px; border-radius: 50%;
+      background: linear-gradient(120deg, var(--signal), var(--pulse));
+      box-shadow: 0 0 14px rgba(94,230,197,.55);
+    }
+
+    .dock-search {
+      display: flex;
+      gap: 8px;
+      width: min(440px, 60vw);
+      margin-left: auto;
+    }
+    .dock-search input {
+      flex: 1; min-width: 0;
+      background: rgba(20, 26, 40, .85);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      color: var(--paper);
+      font: inherit;
+      padding: 11px 14px;
+      outline: none;
+    }
+    .dock-search input:focus { border-color: var(--signal); }
+    .dock-search button {
+      border: 0; border-radius: 11px;
+      padding: 0 16px;
+      font: inherit; font-weight: 700; color: #07120F; cursor: pointer;
+      background: linear-gradient(100deg, var(--signal), var(--pulse));
+    }
+
+    /* status panel bottom-left */
+    .status {
+      position: absolute;
+      left: 20px; bottom: 18px;
+      z-index: 5;
+      font-family: "Space Mono", monospace;
+      font-size: 12.5px;
+      color: var(--mist);
+      background: rgba(14, 19, 32, .72);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 14px;
+      max-width: min(360px, 80vw);
+      backdrop-filter: blur(6px);
+    }
+    .status .seed { color: var(--paper); }
+    .status .seed::before {
+      content: "";
+      display: inline-block;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--signal);
+      margin-right: 7px;
+      vertical-align: middle;
+    }
+    .status .hint { color: #6B7589; margin-top: 4px; }
+
+    /* loading + error overlays */
+    .overlay {
+      position: absolute;
+      z-index: 6;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      align-items: center;
+      gap: 12px;
+      font-family: "Space Mono", monospace;
+      font-size: 14px;
+      color: var(--paper);
+      background: rgba(14, 19, 32, .9);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px 20px;
+      box-shadow: var(--shadow);
+    }
+    .overlay.show { display: flex; }
+    .spinner {
+      width: 17px; height: 17px;
+      border: 2px solid rgba(255,255,255,.18);
+      border-top-color: var(--signal);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: absolute;
+      z-index: 7;
+      left: 50%; top: 22px;
+      transform: translateX(-50%);
+      display: none;
+      max-width: min(520px, 92vw);
+      font-size: 14px;
+      color: #2A0E16;
+      background: var(--warn);
+      border-radius: 12px;
+      padding: 12px 16px;
+      box-shadow: var(--shadow);
+    }
+    .toast.show { display: block; }
+
+    /* ----------------------------------------------- VIS-NETWORK TOOLTIPS */
+    /* vis-network injects its own .vis-tooltip styles, so we override with
+       higher specificity (div.vis-tooltip) + !important where needed.       */
+    div.vis-tooltip {
+      position: absolute;
+      background: var(--panel) !important;
+      color: var(--paper) !important;
+      border: 1px solid var(--line) !important;
+      border-radius: 12px !important;
+      padding: 0 !important;
+      font-family: "Inter", system-ui, sans-serif !important;
+      font-size: 13px !important;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, .55) !important;
+      white-space: normal !important;
+      max-width: 320px !important;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .vis-tooltip .tt { padding: 12px 14px; min-width: 170px; }
+
+    /* node tooltip: just the artist name */
+    .vis-tooltip .tt-name { font-weight: 600; color: var(--paper); }
+    .vis-tooltip .tt > .tt-name:only-child { font-size: 14px; }
+    .vis-tooltip .tt-seed {
+      font-family: "Space Mono", monospace;
+      font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--signal);
+      border: 1px solid rgba(94, 230, 197, .5);
+      border-radius: 999px; padding: 1px 6px; margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* edge tooltip: seed × collaborator, weight, and the track list */
+    .vis-tooltip .tt-head {
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 600; font-size: 14px;
+      padding-bottom: 8px; margin-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .vis-tooltip .tt-x { color: var(--mist); font-weight: 400; }
+    .vis-tooltip .tt-meta {
+      font-family: "Space Mono", monospace;
+      font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--mist); margin-bottom: 9px;
+    }
+    .vis-tooltip .tt-list {
+      list-style: none; margin: 0; padding: 0;
+      display: grid; gap: 8px;
+    }
+    .vis-tooltip .tt-row {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    }
+    .vis-tooltip .tt-song { color: var(--paper); line-height: 1.3; }
+    .vis-tooltip .tt-roles {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      justify-content: flex-end; flex-shrink: 0;
+    }
+    .vis-tooltip .tt-role {
+      font-family: "Space Mono", monospace;
+      font-size: 10px; line-height: 1;
+      padding: 3px 6px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--mist);
+      white-space: nowrap;
+    }
+    .vis-tooltip .tt-role--featured {
+      color: var(--signal); border-color: rgba(94, 230, 197, .42);
+      background: rgba(94, 230, 197, .08);
+    }
+    .vis-tooltip .tt-role--producer {
+      color: var(--pulse); border-color: rgba(185, 138, 255, .42);
+      background: rgba(185, 138, 255, .08);
+    }
+    .vis-tooltip .tt-role--writer {
+      color: #FFD27A; border-color: rgba(255, 210, 122, .35);
+      background: rgba(255, 210, 122, .08);
+    }
+    .vis-tooltip .tt-role--primary {
+      color: var(--paper); border-color: var(--line);
+      background: rgba(255, 255, 255, .05);
+    }
+    .vis-tooltip .tt-empty { color: var(--mist); }
+
+    @media (max-width: 620px) {
+      .dock { flex-wrap: wrap; }
+      .dock-search { width: 100%; margin-left: 0; }
+      .status { font-size: 11.5px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hero, .graph-view { transition: none; }
+      .spinner { animation: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ============================ HERO (initial state) ===================== -->
+  <main class="hero" id="hero">
+    <span class="eyebrow">// genius collaboration atlas</span>
+    <h1>Trace the people behind the <span class="grad">features</span>.</h1>
+    <p>
+      Search an artist to map who they’ve made songs with. Drag the network
+      around, zoom in, and tap any node to dive into theirs.
+    </p>
+
+    <form class="search" id="hero-form">
+      <input
+        id="hero-input"
+        type="text"
+        autocomplete="off"
+        placeholder='Try “Kendrick Lamar”, “Gorillaz”, “Rosalía”…'
+        aria-label="Artist name"
+      />
+      <button type="submit">Map it</button>
+    </form>
+
+    <div class="chips" id="chips">
+      <button class="chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
+      <button class="chip" data-artist="Gorillaz">Gorillaz</button>
+      <button class="chip" data-artist="Rosalía">Rosalía</button>
+      <button class="chip" data-artist="Calvin Harris">Calvin Harris</button>
+      <button class="chip" data-artist="Tyler, the Creator">Tyler, the Creator</button>
+    </div>
+  </main>
+
+  <!-- ============================ GRAPH (after search) ==================== -->
+  <section class="graph-view" id="graph-view" hidden>
+    <div class="dock">
+      <div class="brand" id="brand" title="Back to start">
+        <span class="dotmark"></span> Feature Atlas
+      </div>
+      <form class="dock-search" id="dock-form">
+        <input
+          id="dock-input"
+          type="text"
+          autocomplete="off"
+          placeholder="Search another artist…"
+          aria-label="Artist name"
+        />
+        <button type="submit">Go</button>
+      </form>
+    </div>
+
+    <div id="network"></div>
+
+    <div class="status" id="status" hidden>
+      <div class="seed" id="status-seed"></div>
+      <div class="hint">tap a node to expand it · drag to rearrange · scroll to zoom</div>
+    </div>
+
+    <div class="overlay" id="loading">
+      <span class="spinner"></span> Tracing collaborations…
+    </div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- vis-network (standalone bundle includes vis-data) -->
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <script src="/script.js"></script>
+</body>
+</html>

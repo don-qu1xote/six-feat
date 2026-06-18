@@ -1,0 +1,7 @@
+# Secrets / per-environment values referenced as $name in static_config.yaml.
+# Add this file to .gitignore — do NOT commit your token.
+#
+# Get a token at https://genius.com/api-clients  ->  "Generate Access Token"
+# (the "Client Access Token" is enough for read-only search/song endpoints).
+
+genius_token: PASTE_YOUR_GENIUS_CLIENT_ACCESS_TOKEN_HERE

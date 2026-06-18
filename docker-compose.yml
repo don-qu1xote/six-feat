@@ -1,0 +1,19 @@
+services:
+  six-feat:
+    build: .
+    image: six-feat:latest
+    container_name: six-feat
+    ports:
+      - "8080:8080"
+    environment:
+      # Read from your shell or from a .env file next to this compose file:
+      #   echo "GENIUS_TOKEN=your_token_here" > .env
+      # Compose refuses to start if it's missing (the :? guard below).
+      GENIUS_TOKEN: ${GENIUS_TOKEN:?set GENIUS_TOKEN in your shell or in a .env file}
+    restart: unless-stopped
+
+    # --- Alternative: mount config_vars.yaml instead of using the env var ----
+    # Comment out the `environment:` block above, drop the entrypoint's token
+    # check, and uncomment the volume below to inject the token via a file:
+    # volumes:
+    #   - ./config_vars.yaml:/app/config_vars.yaml:ro

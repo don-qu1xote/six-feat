@@ -1,0 +1,22 @@
+# Keep the Docker build context lean and secrets out of image layers.
+
+# Local build artifacts
+build/
+cmake-build-*/
+*.o
+*.obj
+
+# Secrets / local env
+config_vars.yaml
+.env
+
+# VCS & docs
+.git/
+.gitignore
+*.md
+
+# Docker files not needed inside the build context
+# (entrypoint is intentionally NOT ignored — the Dockerfile COPYs it)
+Dockerfile
+docker-compose.yml
+.dockerignore
