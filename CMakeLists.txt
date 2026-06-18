@@ -4,14 +4,7 @@ project(six-feat CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# --- Getting userver -------------------------------------------------------
-# Easiest: add userver as a git submodule and uncomment the next line.
-#   git submodule add https://github.com/userver-framework/userver third_party/userver
-# add_subdirectory(third_party/userver)
-#
-# Or, if userver is already installed on the system:
 find_package(userver COMPONENTS core REQUIRED)
-# ---------------------------------------------------------------------------
 
 add_executable(${PROJECT_NAME}
     src/main.cpp

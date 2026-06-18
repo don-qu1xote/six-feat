@@ -1,33 +1,14 @@
-/* ------------------------------------------------------------------ *
- *  Feature Atlas — frontend logic
- *
- *  GET /api/v1/graph?artist=<name> returns:
- *    { "seed": "<name>", "seed_id": <genius id>,
- *      "nodes": [ { "id": <genius id>, "label": "...", "image": "<url?>" } ],
- *      "edges": [ { "from": <id>, "to": <id>, "weight": N,
- *                   "collaborations": [ { "song": "...", "roles": [...] } ] } ] }
- *
- *  Node ids are REAL Genius ids (globally unique), so clicking a node expands
- *  the graph IN PLACE — new artists/links are merged into what's already on
- *  screen, and shared nodes/edges dedup by id instead of colliding.
- *
- *  Nodes render as round photos ('circularImage'); missing photos get an
- *  on-theme initial-letter placeholder. Tooltips use vis-network's HTML title.
- * ------------------------------------------------------------------ */
-
 "use strict";
 
-/* ---- palette (mirrors the CSS :root tokens) ------------------------ */
 const COLOR = {
   paper:  "#EDEFF4",
   mist:   "#8A94A6",
   line:   "#283044",
   panel:  "#141A28",
-  signal: "#5EE6C5", // teal   — the focused (current) artist
-  pulse:  "#B98AFF"  // violet — everyone else
+  signal: "#5EE6C5",
+  pulse:  "#B98AFF"
 };
 
-/* ---- element references ------------------------------------------- */
 const els = {
   hero:       document.getElementById("hero"),
   heroForm:   document.getElementById("hero-form"),
@@ -47,18 +28,15 @@ const els = {
   toast:      document.getElementById("toast")
 };
 
-/* ---- runtime state ------------------------------------------------- */
-let network = null;          // the vis.Network instance (created lazily)
-let nodesDS = null;          // vis.DataSet for nodes (keyed by Genius id)
-let edgesDS = null;          // vis.DataSet for edges (keyed by canonical id)
-let currentSeedId = null;    // id of the currently focused artist
-let hasRendered = false;     // have we shown the graph at least once?
-let inFlight = false;        // guard against overlapping requests
+let network = null;
+let nodesDS = null;
+let edgesDS = null;
+let currentSeedId = null;
+let hasRendered = false;
+let inFlight = false;
 let toastTimer = null;
-
-/* ================================================================== *
- *  Small helpers (escaping, placeholders, tooltip DOM)
- * ================================================================== */
+let physicsTimer = null;
+let pinnedActive = false;
 
 function escapeHtml(s) {
   return String(s == null ? "" : s)
@@ -74,9 +52,14 @@ function initialOf(name) {
   return (m ? m[0] : "?").toUpperCase();
 }
 
+const _phCache = new Map();
 function placeholderFor(name, isSeed) {
   const accent = isSeed ? COLOR.signal : COLOR.pulse;
-  const letter = escapeHtml(initialOf(name));
+  const letter = initialOf(name);
+  const key = letter + (isSeed ? "|s" : "|p");
+  const cached = _phCache.get(key);
+  if (cached) return cached;
+
   const svg =
     "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'>" +
       "<defs><radialGradient id='g' cx='50%' cy='36%' r='75%'>" +
@@ -88,9 +71,11 @@ function placeholderFor(name, isSeed) {
         "' stroke-opacity='0.30' stroke-width='2'/>" +
       "<text x='60' y='60' dy='.35em' text-anchor='middle' " +
         "font-family='Inter, Segoe UI, Arial, sans-serif' font-size='52' " +
-        "font-weight='700' fill='" + accent + "'>" + letter + "</text>" +
+        "font-weight='700' fill='" + accent + "'>" + escapeHtml(letter) + "</text>" +
     "</svg>";
-  return "data:image/svg+xml," + encodeURIComponent(svg);
+  const uri = "data:image/svg+xml," + encodeURIComponent(svg);
+  _phCache.set(key, uri);
+  return uri;
 }
 
 function makeTooltip(innerHtml) {
@@ -100,13 +85,36 @@ function makeTooltip(innerHtml) {
   return el;
 }
 
-/* ================================================================== *
- *  Networking
- * ================================================================== */
+function scheduleFreeze(ms) {
+  clearTimeout(physicsTimer);
+  physicsTimer = setTimeout(freeze, ms);
+}
 
-async function searchArtist(name) {
+function freeze() {
+  clearTimeout(physicsTimer);
+  physicsTimer = null;
+  if (!network) return;
+  network.setOptions({ physics: { enabled: false } });
+  if (pinnedActive) {
+    const unpin = [];
+    nodesDS.forEach(function (nd) { if (nd.fixed) unpin.push({ id: nd.id, fixed: false }); });
+    if (unpin.length) nodesDS.update(unpin);
+    pinnedActive = false;
+  }
+}
+
+async function searchArtist(name, isExpansion = false) {
   const artist = (name || "").trim();
   if (!artist || inFlight) return;
+
+  if (!isExpansion && network) {
+    network.destroy();
+    network = null;
+    nodesDS = null;
+    edgesDS = null;
+    currentSeedId = null;
+    els.status.hidden = true;
+  }
 
   inFlight = true;
   showLoading(true);
@@ -132,7 +140,7 @@ async function searchArtist(name) {
       return;
     }
 
-    applyGraph(graph);
+    applyGraph(graph, isExpansion);
   } catch (err) {
     showToast(err.message || "Something went wrong. Please try again.");
   } finally {
@@ -141,21 +149,19 @@ async function searchArtist(name) {
   }
 }
 
-/* ================================================================== *
- *  Node / edge visuals
- * ================================================================== */
-
-// Full visual spec for a node. The focused artist (isSeed) is larger, with a
-// thicker --signal border and a soft signal glow; everyone else uses --pulse.
-// Custom fields `name` / `imageUrl` are kept on the item for drill-in, edge
-// tooltips, and seamless promote/demote restyling.
 function nodeVisual(id, name, imageUrl, isSeed) {
   const accent = isSeed ? COLOR.signal : COLOR.pulse;
+  const dimBorder = isSeed
+    ? "rgba(94, 230, 197, 0.30)"
+    : "rgba(185, 138, 255, 0.25)";
   const image = imageUrl || placeholderFor(name, isSeed);
   return {
     id: id,
     name: name,
     imageUrl: imageUrl || "",
+    isSeed: isSeed,
+    accent: accent,
+    dimBorder: dimBorder,
     shape: "circularImage",
     image: image,
     brokenImage: placeholderFor(name, isSeed),
@@ -163,7 +169,7 @@ function nodeVisual(id, name, imageUrl, isSeed) {
     borderWidth: isSeed ? 5 : 2,
     borderWidthSelected: isSeed ? 7 : 3,
     color: {
-      border: accent,
+      border: dimBorder,
       background: COLOR.panel,
       highlight: { border: COLOR.paper, background: COLOR.panel },
       hover:     { border: accent,      background: COLOR.panel }
@@ -173,23 +179,37 @@ function nodeVisual(id, name, imageUrl, isSeed) {
       (isSeed ? ' <span class="tt-seed">focus</span>' : "") + "</div>"
     ),
     shadow: isSeed
-      ? { enabled: true, color: "rgba(94,230,197,0.45)", size: 26, x: 0, y: 0 }
-      : { enabled: true, color: "rgba(0,0,0,0.5)",       size: 16, x: 0, y: 8 }
+      ? { enabled: true, color: "rgba(94,230,197,0.45)", size: 24, x: 0, y: 0 }
+      : { enabled: false }
   };
 }
 
-function styleEdge(e, nameById) {
-  // Canonical, direction-independent id so the same pair never doubles up,
-  // no matter which endpoint was the seed when it was discovered.
+function styleEdge(e, nameById, seedId, isExpansion) {
   const lo = Math.min(e.from, e.to);
   const hi = Math.max(e.from, e.to);
   const weight = Number(e.weight) > 0 ? Number(e.weight) : 1;
+  
+  let customLength = undefined;
+  
+  if (isExpansion && nodesDS) {
+    const neighborId = e.from === seedId ? e.to : (e.to === seedId ? e.from : null);
+    if (neighborId !== null && nodesDS.get(neighborId)) {
+      customLength = 340;
+    }
+  }
+
   return {
     id: lo + "_" + hi,
     from: e.from,
     to: e.to,
-    width: Math.min(1 + weight, 12),  // base thickness + weight, lightly capped
-    title: buildEdgeTooltip(e, nameById)
+    width: Math.min(1 + weight, 12),
+    length: customLength, 
+    title: buildEdgeTooltip(e, nameById),
+    color: {
+      color: "rgba(40, 48, 68, 0.25)",
+      inherit: false,
+      opacity: 0.25
+    }
   };
 }
 
@@ -225,38 +245,22 @@ function buildEdgeTooltip(e, nameById) {
   );
 }
 
-/* ================================================================== *
- *  Merge a payload into the live graph (incremental expansion)
- * ================================================================== */
-
-function applyGraph(graph) {
+function applyGraph(graph, isExpansion) {
   const seedId = (graph.seed_id != null)
     ? graph.seed_id
     : (graph.nodes[0] && graph.nodes[0].id);
 
-  // id -> name lookup for edge tooltips.
   const nameById = {};
   graph.nodes.forEach(function (n) { nameById[n.id] = n.label || n.name || ""; });
 
   const firstRender = (network === null);
-  const prevCount = firstRender ? 0 : nodesDS.length;
 
-  // Anchor new nodes to the position of the artist being expanded, so the
-  // cluster grows OUT of the clicked node instead of flying in from (0,0).
   let anchor = null;
   if (!firstRender && nodesDS.get(seedId)) {
     const p = network.getPositions([seedId]);
     if (p && p[seedId]) anchor = p[seedId];
   }
 
-  // Demote the previously focused artist back to a normal collaborator.
-  if (!firstRender && currentSeedId != null && currentSeedId !== seedId) {
-    const prev = nodesDS.get(currentSeedId);
-    if (prev) nodesDS.update(nodeVisual(prev.id, prev.name, prev.imageUrl, false));
-  }
-
-  // Build node upserts. Only the incoming seed is focus-styled; everyone else
-  // is normal. Never downgrade a known real photo to a placeholder.
   const nodeUpserts = graph.nodes.map(function (n) {
     const isSeed = n.id === seedId;
     let imageUrl = n.image || "";
@@ -271,9 +275,10 @@ function applyGraph(graph) {
     return v;
   });
 
-  const edgeUpserts = graph.edges.map(function (e) { return styleEdge(e, nameById); });
+  const edgeUpserts = graph.edges.map(function (e) { 
+    return styleEdge(e, nameById, seedId, isExpansion); 
+  });
 
-  // Reveal the graph surface on the first successful search.
   if (!hasRendered) {
     els.hero.classList.add("is-hidden");
     els.graphView.hidden = false;
@@ -294,22 +299,116 @@ function applyGraph(graph) {
     network.on("click", function (params) {
       if (!params.nodes || params.nodes.length === 0) return;
       const node = nodesDS.get(params.nodes[0]);
-      if (node && node.name) searchArtist(node.name);  // expand this artist
+      if (node && node.name) searchArtist(node.name, true); 
     });
-    network.on("hoverNode", function () { els.network.style.cursor = "pointer"; });
-    network.on("blurNode", function () { els.network.style.cursor = "default"; });
+
+    network.on("hoverNode", function (params) {
+      els.network.style.cursor = "pointer";
+      const hoveredId = params.node;
+      
+      const connectedNodes = network.getConnectedNodes(hoveredId);
+      const connectedEdges = network.getConnectedEdges(hoveredId);
+
+      const nUpdates = [];
+      nodesDS.forEach(function (nd) {
+        const isTarget = (nd.id === hoveredId || connectedNodes.includes(nd.id));
+        nUpdates.push({
+          id: nd.id,
+          color: {
+            border: isTarget ? nd.accent : "rgba(40, 48, 68, 0.12)",
+            background: isTarget ? COLOR.panel : "rgba(20, 26, 40, 0.15)"
+          }
+        });
+      });
+
+      const eUpdates = [];
+      edgesDS.forEach(function (ed) {
+        const isTarget = connectedEdges.includes(ed.id);
+        eUpdates.push({
+          id: ed.id,
+          color: {
+            color: isTarget ? COLOR.pulse : "rgba(40, 48, 68, 0.03)",
+            opacity: isTarget ? 0.95 : 0.03
+          }
+        });
+      });
+
+      nodesDS.update(nUpdates);
+      edgesDS.update(eUpdates);
+    });
+
+    network.on("hoverEdge", function (params) {
+      els.network.style.cursor = "pointer";
+      const hoveredEdgeId = params.edge;
+
+      const eUpdates = [];
+      edgesDS.forEach(function (ed) {
+        const isTarget = (ed.id === hoveredEdgeId);
+        eUpdates.push({
+          id: ed.id,
+          color: {
+            color: isTarget ? COLOR.pulse : "rgba(40, 48, 68, 0.05)",
+            opacity: isTarget ? 1.0 : 0.05
+          }
+        });
+      });
+      edgesDS.update(eUpdates);
+    });
+
+    network.on("blurEdge", function () {
+      els.network.style.cursor = "default";
+      const eUpdates = [];
+      edgesDS.forEach(function (ed) {
+        eUpdates.push({
+          id: ed.id,
+          color: { color: "rgba(40, 48, 68, 0.25)", opacity: 0.25 }
+        });
+      });
+      edgesDS.update(eUpdates);
+    });
+
+    network.on("blurNode", function () {
+      els.network.style.cursor = "default";
+      
+      const nUpdates = [];
+      nodesDS.forEach(function (nd) {
+        nUpdates.push({
+          id: nd.id,
+          color: {
+            border: nd.dimBorder,
+            background: COLOR.panel
+          }
+        });
+      });
+
+      const eUpdates = [];
+      edgesDS.forEach(function (ed) {
+        eUpdates.push({
+          id: ed.id,
+          color: { color: "rgba(40, 48, 68, 0.25)", opacity: 0.25 }
+        });
+      });
+
+      nodesDS.update(nUpdates);
+      edgesDS.update(eUpdates);
+    });
+
+    scheduleFreeze(1800);
   } else {
-    // Incremental: update() inserts new items and overwrites existing ones by
-    // id, so nothing duplicates.
+    const pins = [];
+    nodesDS.forEach(function (nd) { pins.push({ id: nd.id, fixed: true }); });
+    if (pins.length) { nodesDS.update(pins); pinnedActive = true; }
+
+    if (currentSeedId != null && currentSeedId !== seedId) {
+      const prev = nodesDS.get(currentSeedId);
+      if (prev) nodesDS.update(nodeVisual(prev.id, prev.name, prev.imageUrl, false));
+    }
+
     nodesDS.update(nodeUpserts);
     edgesDS.update(edgeUpserts);
 
-    // Keep the expansion calm: a short, bounded settle instead of letting the
-    // newly injected nodes blow the layout apart.
-    network.stabilize(90);
-
-    // Coming back from a reset (graph was empty) — recenter on the fresh graph.
-    if (prevCount === 0) network.fit({ animation: { duration: 500 } });
+    network.setOptions({ physics: { enabled: true, stabilization: false } });
+    scheduleFreeze(1500);
   }
 
   currentSeedId = seedId;
@@ -319,11 +418,13 @@ function applyGraph(graph) {
 
 function networkOptions() {
   return {
+    autoResize: true,
+    layout: { improvedLayout: false },
     nodes: {
       shapeProperties: { interpolation: true, useBorderWithImage: true }
     },
     edges: {
-      color: { inherit: "both", opacity: 0.55 },
+      color: { color: "rgba(40, 48, 68, 0.25)", inherit: false, opacity: 0.25 },
       hoverWidth: 0.8,
       selectionWidth: 1,
       smooth: { enabled: true, type: "continuous", roundness: 0.5 }
@@ -336,7 +437,7 @@ function networkOptions() {
         centralGravity: 0.012,
         springLength: 140,
         springConstant: 0.08,
-        damping: 0.6,        // higher damping => gentler settle when nodes arrive
+        damping: 0.6,
         avoidOverlap: 0.7
       },
       stabilization: { enabled: true, iterations: 200, fit: true },
@@ -348,17 +449,15 @@ function networkOptions() {
       dragNodes: true,
       dragView: true,
       zoomView: true,
-      tooltipDelay: 120,
-      hoverConnectedEdges: true,
+      tooltipDelay: 40,
+      hoverConnectedEdges: false,
+      hideEdgesOnDrag: true,
+      hideEdgesOnZoom: true,
       navigationButtons: false,
       keyboard: false
     }
   };
 }
-
-/* ================================================================== *
- *  Status panel — totals currently ON SCREEN, not just last request
- * ================================================================== */
 
 function updateStatus(graph) {
   const total = nodesDS ? nodesDS.length : graph.nodes.length;
@@ -369,10 +468,6 @@ function updateStatus(graph) {
     focus + " · " + total + " artist" + (total === 1 ? "" : "s") +
     " · " + links + " link" + (links === 1 ? "" : "s");
 }
-
-/* ================================================================== *
- *  Loading + toast helpers
- * ================================================================== */
 
 function showLoading(on) {
   els.loading.classList.toggle("show", !!on);
@@ -390,9 +485,6 @@ function hideToast() {
   if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
 }
 
-/* ================================================================== *
- *  Reset back to the hero landing state (clears the live graph)
- * ================================================================== */
 
 function resetToHero() {
   els.graphView.classList.remove("is-visible");
@@ -406,25 +498,24 @@ function resetToHero() {
   els.heroInput.focus();
   hideToast();
 
-  // Wipe the canvas so the next search starts a brand-new exploration.
-  if (nodesDS) nodesDS.clear();
-  if (edgesDS) edgesDS.clear();
+  clearTimeout(physicsTimer);
+  physicsTimer = null;
+  pinnedActive = false;
+  if (network) { network.destroy(); network = null; }
+  nodesDS = null;
+  edgesDS = null;
   currentSeedId = null;
   hasRendered = false;
 }
 
-/* ================================================================== *
- *  Wire up events
- * ================================================================== */
-
 els.heroForm.addEventListener("submit", function (e) {
   e.preventDefault();
-  searchArtist(els.heroInput.value);
+  searchArtist(els.heroInput.value, false);
 });
 
 els.dockForm.addEventListener("submit", function (e) {
   e.preventDefault();
-  searchArtist(els.dockInput.value);
+  searchArtist(els.dockInput.value, false);
 });
 
 els.chips.addEventListener("click", function (e) {
@@ -432,7 +523,7 @@ els.chips.addEventListener("click", function (e) {
   if (!chip) return;
   const name = chip.getAttribute("data-artist");
   els.heroInput.value = name;
-  searchArtist(name);
+  searchArtist(name, false);
 });
 
 els.brand.addEventListener("click", resetToHero);

@@ -11,18 +11,18 @@ namespace six_feat {
 using namespace userver;
 
 StaticFileHandler::StaticFileHandler(
-    const components::ComponentConfig& config,
-    const components::ComponentContext& context)
+    const components::ComponentConfig &config,
+    const components::ComponentContext &context)
     : HttpHandlerBase(config, context),
-      // Read once at startup; subsequent requests are served from memory.
       content_(fs::blocking::ReadFileContents(
           config["file-path"].As<std::string>())),
-      content_type_(config["content-type"].As<std::string>(
-          "text/plain; charset=utf-8")) {}
+      content_type_(
+          config["content-type"].As<std::string>("text/plain; charset=utf-8")) {
+}
 
 std::string StaticFileHandler::HandleRequestThrow(
-    const server::http::HttpRequest& request,
-    server::request::RequestContext& /*context*/) const {
+    const server::http::HttpRequest &request,
+    server::request::RequestContext & /*context*/) const {
   request.GetHttpResponse().SetContentType(http::ContentType{content_type_});
   return content_;
 }
@@ -43,4 +43,4 @@ properties:
 )");
 }
 
-}  // namespace six_feat
+} // namespace six_feat

@@ -31,7 +31,6 @@ using namespace userver;
 
 namespace {
 
-// Minimal, dependency-free RFC 3986 percent-encoding for the query string.
 std::string UrlEncode(std::string_view value) {
   static constexpr char kHex[] = "0123456789ABCDEF";
   std::string out;
@@ -54,65 +53,44 @@ std::string ToLower(std::string value) {
   return value;
 }
 
-std::string EmptyGraph() { return R"({"seed":"","nodes":[],"edges":[]})"; }
+std::string EmptyGraph() {
+  return R"({"seed":"","seed_id":0,"nodes":[],"edges":[]})";
+}
 
-// ---- value objects shared between the parallel fetch and the aggregation ----
-
-struct ArtistRef {
-  std::int64_t id{0};
-  std::string name;
-  std::string image;  // Genius image_url (square artist photo); may be empty
-};
-
-// Everything we care about from a single /songs/{id} response.
-struct SongDetail {
-  std::string title;
-  ArtistRef primary;
-  std::vector<ArtistRef> producers;
-  std::vector<ArtistRef> writers;
-  std::vector<ArtistRef> featured;
-};
-
-// One collaboration record attached to an edge: which track and in what roles.
 struct Collab {
   std::string song;
   std::vector<std::string> roles;
 };
 
-// Aggregated edge seed -> collaborator.
 struct EdgeAgg {
   int weight{0};
   std::vector<Collab> collaborations;
 };
 
-// Parse a Genius "*_artists" array into a flat list, skipping malformed items.
-std::vector<ArtistRef> ParseArtistArray(const formats::json::Value& arr) {
+std::vector<ArtistRef> ParseArtistArray(const formats::json::Value &arr) {
+  if (!arr.IsArray())
+    return {};
   std::vector<ArtistRef> out;
-  if (!arr.IsArray()) return out;
   out.reserve(arr.GetSize());
-  for (const auto& a : arr) {
+  for (const auto &a : arr) {
     const auto id = a["id"].As<std::int64_t>(0);
-    if (id == 0) continue;
-    out.push_back(ArtistRef{id, a["name"].As<std::string>(""),
-                            a["image_url"].As<std::string>("")});
+    if (id == 0)
+      continue;
+    out.push_back({id, a["name"].As<std::string>(""),
+                   a["image_url"].As<std::string>("")});
   }
   return out;
 }
 
-// Worker body run on a separate task per song. PURE with respect to the
-// handler's shared state: it only reads its inputs + the thread-safe HTTP
-// client and returns a parsed value. Any failure (timeout, non-2xx, bad JSON)
-// is swallowed and reported as std::nullopt so one bad track can't sink the
-// whole request.
-std::optional<SongDetail> FetchSongDetail(clients::http::Client& client,
-                                          const std::string& url,
-                                          const std::string& auth) {
+std::optional<SongDetail> FetchSongDetail(clients::http::Client &client,
+                                          const std::string &url,
+                                          const std::string &auth) {
   try {
     const auto resp = client.CreateRequest()
                           .get(url)
                           .headers({{"Authorization", auth}})
-                          .timeout(std::chrono::seconds{5})
-                          .retry(2)
+                          .timeout(std::chrono::milliseconds{3000})
+                          .retry(1)
                           .perform();
     if (!resp->IsOk()) {
       LOG_WARNING() << "song detail HTTP " << resp->status_code() << " for "
@@ -121,34 +99,35 @@ std::optional<SongDetail> FetchSongDetail(clients::http::Client& client,
     }
 
     const auto json = formats::json::FromString(resp->body());
-    const auto& song = json["response"]["song"];
-    if (!song.IsObject()) return std::nullopt;
+    const auto &song = json["response"]["song"];
+    if (!song.IsObject())
+      return std::nullopt;
 
     SongDetail d;
     d.title = song["title"].As<std::string>("");
-    if (d.title.empty()) d.title = song["full_title"].As<std::string>("");
+    if (d.title.empty())
+      d.title = song["full_title"].As<std::string>("");
 
     if (song.HasMember("primary_artist")) {
-      const auto& p = song["primary_artist"];
-      d.primary = ArtistRef{p["id"].As<std::int64_t>(0),
-                            p["name"].As<std::string>(""),
-                            p["image_url"].As<std::string>("")};
+      const auto &p = song["primary_artist"];
+      d.primary = {p["id"].As<std::int64_t>(0), p["name"].As<std::string>(""),
+                   p["image_url"].As<std::string>("")};
     }
     d.producers = ParseArtistArray(song["producer_artists"]);
     d.writers = ParseArtistArray(song["writer_artists"]);
     d.featured = ParseArtistArray(song["featured_artists"]);
     return d;
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     LOG_WARNING() << "song detail fetch/parse failed for " << url << ": "
                   << e.what();
     return std::nullopt;
   }
 }
 
-}  // namespace
+} // namespace
 
-GraphHandler::GraphHandler(const components::ComponentConfig& config,
-                           const components::ComponentContext& context)
+GraphHandler::GraphHandler(const components::ComponentConfig &config,
+                           const components::ComponentContext &context)
     : HttpHandlerBase(config, context),
       http_client_(
           context.FindComponent<components::HttpClient>().GetHttpClient()),
@@ -158,12 +137,12 @@ GraphHandler::GraphHandler(const components::ComponentConfig& config,
       songs_limit_(config["songs-limit"].As<int>(15)) {}
 
 std::string GraphHandler::HandleRequestThrow(
-    const server::http::HttpRequest& request,
-    server::request::RequestContext& /*context*/) const {
-  auto& response = request.GetHttpResponse();
+    const server::http::HttpRequest &request,
+    server::request::RequestContext & /*context*/) const {
+  auto &response = request.GetHttpResponse();
   response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
 
-  const std::string& artist = request.GetArg("artist");
+  const std::string &artist = request.GetArg("artist");
   if (artist.empty()) {
     response.SetStatus(server::http::HttpStatus::kBadRequest);
     return R"({"error":"query parameter 'artist' is required","nodes":[],"edges":[]})";
@@ -171,33 +150,36 @@ std::string GraphHandler::HandleRequestThrow(
 
   const std::string cache_key = ToLower(artist);
   {
-    std::lock_guard<engine::Mutex> lock(cache_mutex_);
-    const auto it = cache_.find(cache_key);
-    if (it != cache_.end()) return it->second;
+    std::shared_lock lock(artist_cache_mutex_);
+    const auto it = artist_cache_.find(cache_key);
+    if (it != artist_cache_.end())
+      return it->second;
   }
 
   std::string result;
   try {
     result = BuildGraphJson(artist);
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     LOG_ERROR() << "graph build failed for '" << artist << "': " << e.what();
     response.SetStatus(server::http::HttpStatus::kBadGateway);
     return R"({"error":"could not reach Genius, try again","nodes":[],"edges":[]})";
   }
 
   {
-    std::lock_guard<engine::Mutex> lock(cache_mutex_);
-    cache_[cache_key] = result;
+    std::unique_lock lock(artist_cache_mutex_);
+    artist_cache_.emplace(cache_key, result);
   }
   return result;
 }
 
-std::string GraphHandler::BuildGraphJson(const std::string& artist_name) const {
+std::string GraphHandler::BuildGraphJson(const std::string &artist_name) const {
   const std::string auth = "Bearer " + genius_token_;
 
-  // --- Step 1: find the artist via /search --------------------------------
-  const std::string search_url =
-      genius_base_url_ + "/search?q=" + UrlEncode(artist_name);
+  std::string search_url;
+  search_url.reserve(genius_base_url_.size() + 10 + artist_name.size() * 3);
+  search_url = genius_base_url_;
+  search_url += "/search?q=";
+  search_url += UrlEncode(artist_name);
 
   const auto search_resp = http_client_.CreateRequest()
                                .get(search_url)
@@ -212,33 +194,37 @@ std::string GraphHandler::BuildGraphJson(const std::string& artist_name) const {
 
   const auto search_json = formats::json::FromString(search_resp->body());
   const auto hits = search_json["response"]["hits"];
-  if (!hits.IsArray() || hits.IsEmpty()) return EmptyGraph();
+  if (!hits.IsArray() || hits.IsEmpty())
+    return EmptyGraph();
 
-  // Prefer an exact (case-insensitive) name match; fall back to the first hit.
   std::int64_t seed_id = 0;
   std::string seed_name;
   std::string seed_image;
-  for (const auto& hit : hits) {
-    const auto& primary = hit["result"]["primary_artist"];
-    auto current_name = primary["name"].As<std::string>("");
-    if (ToLower(current_name) == ToLower(artist_name)) {
-      seed_id = primary["id"].As<std::int64_t>(0);
-      seed_name = std::move(current_name);
-      seed_image = primary["image_url"].As<std::string>("");
+
+  for (const auto &hit : hits) {
+    const auto &p = hit["result"]["primary_artist"];
+    auto name = p["name"].As<std::string>("");
+    if (ToLower(name) == ToLower(artist_name)) {
+      seed_id = p["id"].As<std::int64_t>(0);
+      seed_name = std::move(name);
+      seed_image = p["image_url"].As<std::string>("");
       break;
     }
   }
   if (seed_id == 0) {
-    const auto& seed = hits[0]["result"]["primary_artist"];
-    seed_id = seed["id"].As<std::int64_t>(0);
-    seed_name = seed["name"].As<std::string>("");
-    seed_image = seed["image_url"].As<std::string>("");
+    const auto &p = hits[0]["result"]["primary_artist"];
+    seed_id = p["id"].As<std::int64_t>(0);
+    seed_name = p["name"].As<std::string>("");
+    seed_image = p["image_url"].As<std::string>("");
   }
 
-  // --- Step 2: list the seed artist's popular songs -----------------------
-  const std::string songs_url =
-      genius_base_url_ + "/artists/" + std::to_string(seed_id) +
-      "/songs?sort=popularity&per_page=" + std::to_string(songs_limit_);
+  std::string songs_url;
+  songs_url.reserve(genius_base_url_.size() + 48);
+  songs_url = genius_base_url_;
+  songs_url += "/artists/";
+  songs_url += std::to_string(seed_id);
+  songs_url += "/songs?sort=popularity&per_page=";
+  songs_url += std::to_string(songs_limit_);
 
   const auto songs_resp = http_client_.CreateRequest()
                               .get(songs_url)
@@ -257,138 +243,159 @@ std::string GraphHandler::BuildGraphJson(const std::string& artist_name) const {
   std::vector<std::int64_t> song_ids;
   if (songs.IsArray()) {
     song_ids.reserve(songs.GetSize());
-    for (const auto& s : songs) {
+    for (const auto &s : songs) {
       const auto sid = s["id"].As<std::int64_t>(0);
-      if (sid != 0) song_ids.push_back(sid);
+      if (sid != 0)
+        song_ids.push_back(sid);
     }
   }
 
-  // --- Step 2.5: fan out /songs/{id} requests IN PARALLEL -----------------
-  // Each request becomes its own task on the current task processor. Because
-  // the HTTP calls suspend the coroutine on I/O, all of them are in flight at
-  // once, so the added latency is ~one round-trip, not N of them.
-  std::vector<engine::TaskWithResult<std::optional<SongDetail>>> tasks;
-  tasks.reserve(song_ids.size());
-  for (const auto sid : song_ids) {
-    std::string url = genius_base_url_ + "/songs/" + std::to_string(sid);
-    tasks.push_back(utils::Async(
-        "fetch-song-detail",
-        [this, url = std::move(url), auth] {
-          return FetchSongDetail(http_client_, url, auth);
-        }));
-  }
+  struct Pending {
+    std::int64_t song_id;
+    engine::TaskWithResult<std::optional<SongDetail>> task;
+  };
 
-  // Collect results. Get() rethrows a task's stored exception, and a task may
-  // also be cancelled on deadline — in both cases we just drop that track.
   std::vector<SongDetail> details;
-  details.reserve(tasks.size());
-  for (auto& task : tasks) {
-    try {
-      auto detail = task.Get();
-      if (detail) details.push_back(std::move(*detail));
-    } catch (const std::exception& e) {
-      LOG_WARNING() << "song-detail task failed: " << e.what();
+  details.reserve(song_ids.size());
+  std::vector<Pending> pending;
+  pending.reserve(song_ids.size());
+
+  {
+    std::lock_guard lock(song_cache_mutex_);
+    for (const auto sid : song_ids) {
+      const auto it = song_cache_.find(sid);
+      if (it != song_cache_.end()) {
+        if (it->second)
+          details.push_back(*it->second);
+        continue;
+      }
+      song_cache_.emplace(sid, std::nullopt);
+
+      std::string url = genius_base_url_ + "/songs/" + std::to_string(sid);
+      pending.push_back({sid, utils::Async("fetch-song-detail",
+                                           [this, url = std::move(url), auth] {
+                                             return FetchSongDetail(
+                                                 http_client_, url, auth);
+                                           })});
     }
   }
 
-  // --- Step 3: aggregate into a weighted graph (serial, single coroutine) -
-  // No locks needed: every parallel task above was pure, and this aggregation
-  // runs only here, in one coroutine, after all tasks have been joined. So
-  // names / images / edges_by_id are touched by exactly one thread.
-  std::unordered_map<std::int64_t, std::string> names;   // gid -> display name
-  std::unordered_map<std::int64_t, std::string> images;  // gid -> image_url
-  std::unordered_map<std::int64_t, EdgeAgg> edges_by_id;  // collaborator gid
-  std::vector<std::int64_t> collaborator_order;           // stable output order
-  names[seed_id] = seed_name;
-  if (!seed_image.empty()) images[seed_id] = seed_image;
+  for (auto &p : pending) {
+    try {
+      auto detail = p.task.Get();
+      {
+        std::lock_guard lock(song_cache_mutex_);
+        song_cache_[p.song_id] = detail; // update nullopt placeholder
+      }
+      if (detail)
+        details.push_back(std::move(*detail));
+    } catch (const std::exception &e) {
+      LOG_WARNING() << "song-detail task failed (sid=" << p.song_id
+                    << "): " << e.what();
+    }
+  }
 
-  for (const auto& d : details) {
-    // Roles this track assigns to each involved artist (deduped, ordered).
+  std::unordered_map<std::int64_t, std::string> names;
+  std::unordered_map<std::int64_t, std::string> images;
+  std::unordered_map<std::int64_t, EdgeAgg> edges_by_id;
+  std::vector<std::int64_t> collaborator_order;
+  names.reserve(details.size() * 4);
+  images.reserve(details.size() * 4);
+  edges_by_id.reserve(details.size() * 4);
+  collaborator_order.reserve(details.size() * 3);
+
+  names[seed_id] = seed_name;
+  if (!seed_image.empty())
+    images[seed_id] = seed_image;
+
+  for (const auto &d : details) {
     std::unordered_map<std::int64_t, std::vector<std::string>> track_roles;
     std::unordered_map<std::int64_t, std::string> track_names;
     std::unordered_map<std::int64_t, std::string> track_images;
+    track_roles.reserve(8);
 
-    const auto note = [&](const ArtistRef& a, std::string role) {
-      if (a.id == 0) return;
+    const auto note = [&](const ArtistRef &a, std::string role) {
+      if (a.id == 0)
+        return;
       track_names[a.id] = a.name;
-      if (!a.image.empty()) track_images[a.id] = a.image;
-      auto& roles = track_roles[a.id];
-      if (std::find(roles.begin(), roles.end(), role) == roles.end()) {
+      if (!a.image.empty())
+        track_images[a.id] = a.image;
+      auto &roles = track_roles[a.id];
+      if (std::find(roles.begin(), roles.end(), role) == roles.end())
         roles.push_back(std::move(role));
-      }
     };
 
     note(d.primary, "primary");
-    for (const auto& a : d.producers) note(a, "producer");
-    for (const auto& a : d.writers) note(a, "writer");
-    for (const auto& a : d.featured) note(a, "featured");
+    for (const auto &a : d.producers)
+      note(a, "producer");
+    for (const auto &a : d.writers)
+      note(a, "writer");
+    for (const auto &a : d.featured)
+      note(a, "featured");
 
-    // Connect the seed to every *other* artist on this track.
-    for (auto& [gid, roles] : track_roles) {
-      if (gid == seed_id) continue;
-      if (names.find(gid) == names.end()) names[gid] = track_names[gid];
-      if (images.find(gid) == images.end()) {
+    for (auto &[gid, roles] : track_roles) {
+      if (gid == seed_id)
+        continue;
+      if (!names.count(gid))
+        names[gid] = track_names[gid];
+      if (!images.count(gid)) {
         const auto iit = track_images.find(gid);
-        if (iit != track_images.end()) images[gid] = iit->second;
+        if (iit != track_images.end())
+          images[gid] = iit->second;
       }
 
-      auto& agg = edges_by_id[gid];
-      if (agg.weight == 0) collaborator_order.push_back(gid);
+      auto &agg = edges_by_id[gid];
+      if (agg.weight == 0)
+        collaborator_order.push_back(gid);
       ++agg.weight;
-      agg.collaborations.push_back(Collab{d.title, std::move(roles)});
+      agg.collaborations.push_back({d.title, std::move(roles)});
     }
   }
 
-  // --- Step 4: serialize {seed, seed_id, nodes, edges} --------------------
-  // Node "id" is the real Genius artist id (global, int64). This makes the
-  // payload mergeable on the client: expanding a new artist can never collide
-  // with nodes already on screen, because ids are globally unique.
-  formats::json::ValueBuilder nodes(formats::json::Type::kArray);
+  formats::json::ValueBuilder nodes_b(formats::json::Type::kArray);
+  formats::json::ValueBuilder edges_b(formats::json::Type::kArray);
 
   const auto emit_node = [&](std::int64_t gid) {
-    formats::json::ValueBuilder node(formats::json::Type::kObject);
-    node["id"] = gid;  // global Genius id, not a per-request local index
+    formats::json::ValueBuilder nb(formats::json::Type::kObject);
+    nb["id"] = gid;
     const auto nit = names.find(gid);
-    node["label"] = nit != names.end() ? nit->second : std::string{};
+    nb["label"] = nit != names.end() ? nit->second : std::string{};
     const auto iit = images.find(gid);
-    if (iit != images.end() && !iit->second.empty()) {
-      node["image"] = iit->second;  // frontend falls back to a placeholder if absent
-    }
-    nodes.PushBack(std::move(node));
+    if (iit != images.end() && !iit->second.empty())
+      nb["image"] = iit->second;
+    nodes_b.PushBack(std::move(nb));
   };
 
-  emit_node(seed_id);  // the focused artist
+  emit_node(seed_id);
 
-  // collaborator_order holds unique gids (seed excluded), so every node and
-  // edge below is emitted exactly once per response.
-  formats::json::ValueBuilder edges(formats::json::Type::kArray);
   for (const auto gid : collaborator_order) {
     emit_node(gid);
-    const auto& agg = edges_by_id[gid];
+    const auto &agg = edges_by_id[gid];
 
-    formats::json::ValueBuilder edge(formats::json::Type::kObject);
-    edge["from"] = seed_id;
-    edge["to"] = gid;
-    edge["weight"] = agg.weight;
+    formats::json::ValueBuilder eb(formats::json::Type::kObject);
+    eb["from"] = seed_id;
+    eb["to"] = gid;
+    eb["weight"] = agg.weight;
 
-    formats::json::ValueBuilder collabs(formats::json::Type::kArray);
-    for (const auto& c : agg.collaborations) {
-      formats::json::ValueBuilder cb(formats::json::Type::kObject);
-      cb["song"] = c.song;
+    formats::json::ValueBuilder cb(formats::json::Type::kArray);
+    for (const auto &c : agg.collaborations) {
+      formats::json::ValueBuilder c_item(formats::json::Type::kObject);
+      c_item["song"] = c.song;
       formats::json::ValueBuilder rb(formats::json::Type::kArray);
-      for (const auto& r : c.roles) rb.PushBack(r);
-      cb["roles"] = std::move(rb);
-      collabs.PushBack(std::move(cb));
+      for (const auto &r : c.roles)
+        rb.PushBack(r);
+      c_item["roles"] = std::move(rb);
+      cb.PushBack(std::move(c_item));
     }
-    edge["collaborations"] = std::move(collabs);
-    edges.PushBack(std::move(edge));
+    eb["collaborations"] = std::move(cb);
+    edges_b.PushBack(std::move(eb));
   }
 
   formats::json::ValueBuilder graph(formats::json::Type::kObject);
   graph["seed"] = seed_name;
-  graph["seed_id"] = seed_id;  // lets the client highlight the focused node
-  graph["nodes"] = std::move(nodes);
-  graph["edges"] = std::move(edges);
+  graph["seed_id"] = seed_id;
+  graph["nodes"] = std::move(nodes_b);
+  graph["edges"] = std::move(edges_b);
   return formats::json::ToString(graph.ExtractValue());
 }
 
@@ -412,4 +419,4 @@ properties:
 )");
 }
 
-}  // namespace six_feat
+} // namespace six_feat

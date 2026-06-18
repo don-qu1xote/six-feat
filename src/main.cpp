@@ -9,16 +9,14 @@
 
 using namespace userver;
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   const auto component_list =
       components::MinimalServerComponentList()
-          // Infra needed to make outbound HTTP calls to Genius:
           .Append<clients::dns::Component>()
           .AppendComponentList(clients::http::ComponentList())
-          // Our endpoints:
-          .Append<six_feat::GraphHandler>()   // GET /api/v1/graph
-          .Append<six_feat::IndexHandler>()   // GET /
-          .Append<six_feat::ScriptHandler>();  // GET /script.js
+          .Append<six_feat::GraphHandler>()
+          .Append<six_feat::IndexHandler>()
+          .Append<six_feat::ScriptHandler>();
 
   return utils::DaemonMain(argc, argv, component_list);
 }

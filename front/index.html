@@ -21,8 +21,8 @@
       --line:   #283044;
       --mist:   #8A94A6;
       --paper:  #EDEFF4;
-      --signal: #5EE6C5; /* teal  — the searched artist */
-      --pulse:  #B98AFF; /* violet — collaborators       */
+      --signal: #5EE6C5;
+      --pulse:  #B98AFF;
       --warn:   #FF8FA3;
       --shadow: 0 18px 50px rgba(0, 0, 0, .45);
     }
@@ -41,7 +41,6 @@
       overflow: hidden;
     }
 
-    /* ------------------------------------------------------------------ HERO */
     .hero {
       position: absolute;
       inset: 0;
@@ -92,7 +91,6 @@
       line-height: 1.55;
     }
 
-    /* --------------------------------------------------------------- SEARCH */
     .search {
       display: flex;
       gap: 10px;
@@ -157,7 +155,6 @@
       background: rgba(185, 138, 255, .10);
     }
 
-    /* ----------------------------------------------------------- GRAPH VIEW */
     .graph-view {
       position: absolute;
       inset: 0;
@@ -168,7 +165,6 @@
 
     #network { position: absolute; inset: 0; }
 
-    /* slim docked search bar on top of the graph */
     .dock {
       position: absolute;
       top: 0; left: 0; right: 0;
@@ -178,7 +174,7 @@
       gap: 16px;
       padding: 14px 20px;
       background: linear-gradient(180deg, rgba(11,14,20,.92), rgba(11,14,20,0));
-      pointer-events: none; /* let canvas drag through empty areas */
+      pointer-events: none;
     }
     .dock > * { pointer-events: auto; }
 
@@ -223,7 +219,6 @@
       background: linear-gradient(100deg, var(--signal), var(--pulse));
     }
 
-    /* status panel bottom-left */
     .status {
       position: absolute;
       left: 20px; bottom: 18px;
@@ -249,7 +244,6 @@
     }
     .status .hint { color: #6B7589; margin-top: 4px; }
 
-    /* loading + error overlays */
     .overlay {
       position: absolute;
       z-index: 6;
@@ -293,9 +287,6 @@
     }
     .toast.show { display: block; }
 
-    /* ----------------------------------------------- VIS-NETWORK TOOLTIPS */
-    /* vis-network injects its own .vis-tooltip styles, so we override with
-       higher specificity (div.vis-tooltip) + !important where needed.       */
     div.vis-tooltip {
       position: absolute;
       background: var(--panel) !important;
@@ -313,7 +304,6 @@
     }
     .vis-tooltip .tt { padding: 12px 14px; min-width: 170px; }
 
-    /* node tooltip: just the artist name */
     .vis-tooltip .tt-name { font-weight: 600; color: var(--paper); }
     .vis-tooltip .tt > .tt-name:only-child { font-size: 14px; }
     .vis-tooltip .tt-seed {
@@ -325,7 +315,6 @@
       vertical-align: middle;
     }
 
-    /* edge tooltip: seed × collaborator, weight, and the track list */
     .vis-tooltip .tt-head {
       display: flex; align-items: center; gap: 8px;
       font-weight: 600; font-size: 14px;
@@ -389,7 +378,6 @@
 </head>
 
 <body>
-  <!-- ============================ HERO (initial state) ===================== -->
   <main class="hero" id="hero">
     <span class="eyebrow">// genius collaboration atlas</span>
     <h1>Trace the people behind the <span class="grad">features</span>.</h1>
@@ -418,7 +406,6 @@
     </div>
   </main>
 
-  <!-- ============================ GRAPH (after search) ==================== -->
   <section class="graph-view" id="graph-view" hidden>
     <div class="dock">
       <div class="brand" id="brand" title="Back to start">
@@ -450,7 +437,6 @@
 
   <div class="toast" id="toast"></div>
 
-  <!-- vis-network (standalone bundle includes vis-data) -->
   <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
   <script src="/script.js"></script>
 </body>

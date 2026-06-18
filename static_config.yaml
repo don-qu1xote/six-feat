@@ -1,22 +1,18 @@
-# userver static configuration.
-# Run with:
-#   ./six-feat --config static_config.yaml --config_vars config_vars.yaml
-
 components_manager:
     coro_pool:
-        initial_size: 500          # coroutines preallocated at startup
+        initial_size: 500
         max_size: 1000
 
     task_processors:
-        main-task-processor:       # handles incoming requests + CPU work
+        main-task-processor:
             worker_threads: 4
-        fs-task-processor:         # blocking filesystem / client bootstrap
+        fs-task-processor:
             worker_threads: 2
 
     default_task_processor: main-task-processor
+    fs_task_processor: fs-task-processor
 
     components:
-        # ---------- core HTTP server ----------
         server:
             listener:
                 port: 8080
@@ -30,33 +26,19 @@ components_manager:
                     level: info
                     overflow_behavior: discard
 
-        # ---------- outbound HTTP client (-> api.genius.com) ----------
-        dns-client:                # required dependency of http-client
+        dns-client:
             fs-task-processor: fs-task-processor
 
-        # HTTP client - this should be the only component needed
-        http-client:
-            load-enabled: true
-            # fs-task-processor: fs-task-processor
-            # If you need to configure timeouts, add them here:
-            # timeout: 30s
-            # pool:
-            #   max-size: 50
-            #   min-size: 10
+        http-client: {}
 
-        http-client-core:
-            fs-task-processor: fs-task-processor
-
-        # ---------- our JSON API ----------
         handler-graph:
             path: /api/v1/graph
             method: GET
             task_processor: main-task-processor
-            genius-api-token: $genius_token        # value lives in config_vars.yaml
+            genius-api-token: $genius_token
             genius-base-url: https://api.genius.com
             songs-limit: 15
 
-        # ---------- frontend (files under ./front) ----------
         handler-index:
             path: /
             method: GET
