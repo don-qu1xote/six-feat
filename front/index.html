@@ -13,6 +13,7 @@
   />
 
   <style>
+    /* ─── Design tokens ─────────────────────────────────────────────────────── */
     :root {
       --ink:    #0B0E14;
       --ink-2:  #0E1320;
@@ -23,14 +24,12 @@
       --paper:  #EDEFF4;
       --signal: #5EE6C5;
       --pulse:  #B98AFF;
+      --amber:  #FFD27A;
       --warn:   #FF8FA3;
-      --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+      --shadow: 0 18px 50px rgba(0,0,0,.45);
     }
-
     * { box-sizing: border-box; }
-
     html, body { height: 100%; }
-
     body {
       margin: 0;
       font-family: "Inter", system-ui, -apple-system, sans-serif;
@@ -41,333 +40,312 @@
       overflow: hidden;
     }
 
+    /* ─── Hero screen ──────────────────────────────────────────────────────── */
     .hero {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 22px;
-      padding: 28px;
-      text-align: center;
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 22px; padding: 28px; text-align: center;
       transition: opacity .5s ease, transform .5s ease;
     }
-    .hero.is-hidden {
-      opacity: 0;
-      transform: translateY(-14px) scale(.985);
-      pointer-events: none;
-    }
-
+    .hero.is-hidden { opacity: 0; transform: translateY(-14px) scale(.985); pointer-events: none; }
     .eyebrow {
-      font-family: "Space Mono", monospace;
-      font-size: 13px;
-      letter-spacing: .22em;
-      text-transform: uppercase;
-      color: var(--signal);
+      font-family: "Space Mono", monospace; font-size: 13px;
+      letter-spacing: .22em; text-transform: uppercase; color: var(--signal);
     }
-
     .hero h1 {
-      font-family: "Syne", sans-serif;
-      font-weight: 800;
-      font-size: clamp(2rem, 6vw, 3.9rem);
-      line-height: 1.04;
-      letter-spacing: -.02em;
-      margin: 0;
-      max-width: 14ch;
+      font-family: "Syne", sans-serif; font-weight: 800;
+      font-size: clamp(2rem, 6vw, 3.9rem); line-height: 1.04;
+      letter-spacing: -.02em; margin: 0; max-width: 14ch;
     }
     .hero h1 .grad {
       background: linear-gradient(100deg, var(--signal), var(--pulse));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+      -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-
-    .hero p {
-      margin: 0;
-      max-width: 52ch;
-      color: var(--mist);
-      font-size: clamp(.95rem, 1.8vw, 1.12rem);
-      line-height: 1.55;
-    }
-
+    .hero p { margin: 0; max-width: 52ch; color: var(--mist); font-size: clamp(.95rem,1.8vw,1.12rem); line-height: 1.55; }
     .search {
-      display: flex;
-      gap: 10px;
-      width: min(620px, 92vw);
-      margin-top: 6px;
+      display: flex; gap: 10px; width: min(620px, 92vw); margin-top: 6px;
     }
     .search input {
-      flex: 1;
-      min-width: 0;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      color: var(--paper);
-      font: inherit;
-      font-size: 1.05rem;
-      padding: 16px 18px;
-      outline: none;
-      transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+      flex: 1; min-width: 0;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      color: var(--paper); font: inherit; font-size: 1.05rem; padding: 16px 18px;
+      outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
     }
     .search input::placeholder { color: #5C677C; }
-    .search input:focus {
-      background: var(--panel-2);
-      border-color: var(--signal);
-      box-shadow: 0 0 0 4px rgba(94, 230, 197, .14);
-    }
+    .search input:focus { background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(94,230,197,.14); }
     .search button {
-      border: 0;
-      border-radius: 14px;
-      padding: 0 22px;
-      font: inherit;
-      font-weight: 700;
-      color: #07120F;
-      cursor: pointer;
+      border: 0; border-radius: 14px; padding: 0 22px;
+      font: inherit; font-weight: 700; color: #07120F; cursor: pointer;
       background: linear-gradient(100deg, var(--signal), var(--pulse));
-      transition: transform .12s ease, filter .18s ease;
-      white-space: nowrap;
+      transition: transform .12s, filter .18s; white-space: nowrap;
     }
     .search button:hover { filter: brightness(1.06); }
     .search button:active { transform: translateY(1px); }
     .search button:disabled { opacity: .55; cursor: progress; }
-
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: center;
-    }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
     .chip {
-      font-family: "Space Mono", monospace;
-      font-size: 12.5px;
-      color: var(--mist);
-      background: transparent;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 7px 13px;
-      cursor: pointer;
-      transition: color .15s ease, border-color .15s ease, background .15s ease;
+      font-family: "Space Mono", monospace; font-size: 12.5px;
+      color: var(--mist); background: transparent;
+      border: 1px solid var(--line); border-radius: 999px; padding: 7px 13px;
+      cursor: pointer; transition: color .15s, border-color .15s, background .15s;
     }
-    .chip:hover {
-      color: var(--paper);
-      border-color: var(--pulse);
-      background: rgba(185, 138, 255, .10);
-    }
+    .chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
 
+    /* ─── Graph view ───────────────────────────────────────────────────────── */
     .graph-view {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      transition: opacity .55s ease;
+      position: absolute; inset: 0; opacity: 0; transition: opacity .55s;
     }
     .graph-view.is-visible { opacity: 1; }
-
     #network { position: absolute; inset: 0; }
 
+    /* ─── Top dock ─────────────────────────────────────────────────────────── */
     .dock {
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      z-index: 5;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 14px 20px;
-      background: linear-gradient(180deg, rgba(11,14,20,.92), rgba(11,14,20,0));
-      pointer-events: none;
+      position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+      display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+      background: linear-gradient(180deg, rgba(11,14,20,.94), rgba(11,14,20,0));
+      pointer-events: none; flex-wrap: wrap;
     }
     .dock > * { pointer-events: auto; }
-
     .brand {
-      font-family: "Syne", sans-serif;
-      font-weight: 700;
-      font-size: 1.05rem;
-      letter-spacing: -.01em;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      white-space: nowrap;
+      font-family: "Syne", sans-serif; font-weight: 700; font-size: 1.05rem;
+      letter-spacing: -.01em; cursor: pointer;
+      display: flex; align-items: center; gap: 9px; white-space: nowrap;
     }
     .brand .dotmark {
       width: 11px; height: 11px; border-radius: 50%;
       background: linear-gradient(120deg, var(--signal), var(--pulse));
       box-shadow: 0 0 14px rgba(94,230,197,.55);
     }
-
     .dock-search {
-      display: flex;
-      gap: 8px;
-      width: min(440px, 60vw);
-      margin-left: auto;
+      display: flex; gap: 8px; width: min(320px, 40vw);
     }
     .dock-search input {
       flex: 1; min-width: 0;
-      background: rgba(20, 26, 40, .85);
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      color: var(--paper);
-      font: inherit;
-      padding: 11px 14px;
-      outline: none;
+      background: rgba(20,26,40,.88); border: 1px solid var(--line);
+      border-radius: 11px; color: var(--paper); font: inherit; padding: 10px 14px; outline: none;
+      font-size: .9rem;
     }
     .dock-search input:focus { border-color: var(--signal); }
     .dock-search button {
-      border: 0; border-radius: 11px;
-      padding: 0 16px;
+      border: 0; border-radius: 11px; padding: 0 14px;
       font: inherit; font-weight: 700; color: #07120F; cursor: pointer;
       background: linear-gradient(100deg, var(--signal), var(--pulse));
+      font-size: .9rem;
     }
 
+    /* ─── Dock icon buttons ─────────────────────────────────────────────────── */
+    .dock-btn {
+      border: 1px solid var(--line); border-radius: 10px;
+      background: rgba(20,26,40,.80); color: var(--mist);
+      font: inherit; font-size: 12px; padding: 8px 11px; cursor: pointer;
+      transition: color .15s, border-color .15s, background .15s;
+      white-space: nowrap;
+    }
+    .dock-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
+    .dock-btn.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
+    .dock-sep {
+      width: 1px; height: 24px; background: var(--line); flex-shrink: 0; align-self: center;
+    }
+
+    /* ─── Role filter toggles ───────────────────────────────────────────────── */
+    .filter-bar {
+      display: flex; gap: 6px; align-items: center;
+    }
+    .filter-label {
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
+      letter-spacing: .1em; text-transform: uppercase; margin-right: 2px;
+    }
+    #filter-featured.active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.08); }
+    #filter-producer.active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.08); }
+    #filter-writer.active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.08); }
+
+    /* ─── Layout switcher ───────────────────────────────────────────────────── */
+    .layout-bar { display: flex; gap: 6px; align-items: center; }
+
+    /* ─── History panel ─────────────────────────────────────────────────────── */
+    .history-panel {
+      position: absolute; left: 16px; top: 64px; z-index: 5;
+      background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px 14px; min-width: 200px; max-width: 260px;
+      backdrop-filter: blur(8px);
+    }
+    .history-title {
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
+      letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px;
+    }
+    .hist-item {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 5px 0;
+      border-bottom: 1px solid rgba(40,48,68,.4);
+    }
+    .hist-item:last-child { border-bottom: none; }
+    .hist-name { font-size: 13px; color: var(--paper); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-btn {
+      border: 1px solid var(--line); border-radius: 6px; background: transparent;
+      color: var(--mist); font-size: 13px; font-weight: 700; cursor: pointer; padding: 2px 8px;
+      transition: color .15s, border-color .15s;
+    }
+    .hist-btn:hover { color: var(--signal); border-color: var(--signal); }
+    .hist-empty { font-size: 12px; color: var(--mist); }
+
+    /* ─── Status bar ────────────────────────────────────────────────────────── */
     .status {
-      position: absolute;
-      left: 20px; bottom: 18px;
-      z-index: 5;
-      font-family: "Space Mono", monospace;
-      font-size: 12.5px;
-      color: var(--mist);
-      background: rgba(14, 19, 32, .72);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 11px 14px;
-      max-width: min(360px, 80vw);
-      backdrop-filter: blur(6px);
+      position: absolute; left: 16px; bottom: 18px; z-index: 5;
+      font-family: "Space Mono", monospace; font-size: 12px; color: var(--mist);
+      background: rgba(14,19,32,.75); border: 1px solid var(--line); border-radius: 12px;
+      padding: 10px 14px; max-width: min(360px, 80vw); backdrop-filter: blur(6px);
     }
     .status .seed { color: var(--paper); }
     .status .seed::before {
-      content: "";
-      display: inline-block;
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--signal);
-      margin-right: 7px;
-      vertical-align: middle;
+      content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--signal); margin-right: 7px; vertical-align: middle;
     }
-    .status .hint { color: #6B7589; margin-top: 4px; }
+    .status .hint { color: #6B7589; margin-top: 4px; font-size: 11px; }
 
-    .overlay {
-      position: absolute;
-      z-index: 6;
-      left: 50%; top: 50%;
-      transform: translate(-50%, -50%);
+    /* ─── Bottom-right actions ───────────────────────────────────────────────── */
+    .actions-bar {
+      position: absolute; right: 16px; bottom: 18px; z-index: 5;
+      display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;
+    }
+
+    /* ─── Path finder panel ─────────────────────────────────────────────────── */
+    .path-panel {
+      position: absolute; right: 16px; top: 64px; z-index: 5;
       display: none;
-      align-items: center;
-      gap: 12px;
-      font-family: "Space Mono", monospace;
-      font-size: 14px;
-      color: var(--paper);
-      background: rgba(14, 19, 32, .9);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 16px 20px;
-      box-shadow: var(--shadow);
+      background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: 14px;
+      padding: 14px 16px; min-width: 260px;
+      backdrop-filter: blur(8px); flex-direction: column; gap: 10px;
+    }
+    .path-panel.show { display: flex; }
+    .path-title {
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
+      letter-spacing: .12em; text-transform: uppercase;
+    }
+    .path-input {
+      background: rgba(20,26,40,.9); border: 1px solid var(--line); border-radius: 10px;
+      color: var(--paper); font: inherit; font-size: 13px; padding: 10px 12px; outline: none;
+      width: 100%;
+    }
+    .path-input:focus { border-color: var(--signal); }
+    .path-input::placeholder { color: #5C677C; }
+    .path-actions { display: flex; gap: 8px; }
+    .path-result {
+      font-size: 12px; color: var(--signal); line-height: 1.5;
+      min-height: 18px; word-break: break-word;
+    }
+
+    /* ─── Node search overlay ───────────────────────────────────────────────── */
+    .node-search-overlay {
+      position: absolute; inset: 0; z-index: 20;
+      background: rgba(11,14,20,.72); backdrop-filter: blur(4px);
+      display: none; align-items: flex-start; justify-content: center;
+      padding-top: 15vh;
+    }
+    .node-search-overlay.show { display: flex; }
+    .node-search-box {
+      background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: 18px; padding: 18px; width: min(520px, 90vw);
+      box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
+    }
+    .node-search-hint {
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
+      letter-spacing: .14em; text-transform: uppercase;
+    }
+    #node-search-input {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+      color: var(--paper); font: inherit; font-size: 1.1rem; padding: 14px 16px; outline: none;
+      width: 100%;
+    }
+    #node-search-input:focus { border-color: var(--signal); box-shadow: 0 0 0 3px rgba(94,230,197,.12); }
+    #node-search-results { display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto; }
+    .ns-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; border-radius: 10px; cursor: pointer;
+      transition: background .12s;
+    }
+    .ns-item:hover { background: rgba(94,230,197,.08); }
+    .ns-name { color: var(--paper); font-size: 14px; }
+    .ns-weight { color: var(--mist); font-family: "Space Mono", monospace; font-size: 11px; }
+    .ns-empty { color: var(--mist); font-size: 13px; padding: 10px 12px; }
+
+    /* ─── Loading overlay ───────────────────────────────────────────────────── */
+    .overlay {
+      position: absolute; z-index: 6; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      display: none; align-items: center; gap: 12px;
+      font-family: "Space Mono", monospace; font-size: 14px; color: var(--paper);
+      background: rgba(14,19,32,.90); border: 1px solid var(--line);
+      border-radius: 14px; padding: 16px 20px; box-shadow: var(--shadow);
     }
     .overlay.show { display: flex; }
     .spinner {
-      width: 17px; height: 17px;
-      border: 2px solid rgba(255,255,255,.18);
-      border-top-color: var(--signal);
-      border-radius: 50%;
+      width: 17px; height: 17px; border: 2px solid rgba(255,255,255,.18);
+      border-top-color: var(--signal); border-radius: 50%;
       animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ─── Toast ─────────────────────────────────────────────────────────────── */
     .toast {
-      position: absolute;
-      z-index: 7;
-      left: 50%; top: 22px;
-      transform: translateX(-50%);
-      display: none;
-      max-width: min(520px, 92vw);
-      font-size: 14px;
-      color: #2A0E16;
-      background: var(--warn);
-      border-radius: 12px;
-      padding: 12px 16px;
-      box-shadow: var(--shadow);
+      position: absolute; z-index: 7; left: 50%; top: 22px;
+      transform: translateX(-50%); display: none;
+      max-width: min(520px, 92vw); font-size: 14px; color: #2A0E16;
+      background: var(--warn); border-radius: 12px; padding: 12px 16px;
+      box-shadow: var(--shadow); text-align: center;
     }
     .toast.show { display: block; }
 
+    /* ─── vis.js tooltip overrides ──────────────────────────────────────────── */
     div.vis-tooltip {
       position: absolute;
-      background: var(--panel) !important;
-      color: var(--paper) !important;
-      border: 1px solid var(--line) !important;
-      border-radius: 12px !important;
-      padding: 0 !important;
-      font-family: "Inter", system-ui, sans-serif !important;
-      font-size: 13px !important;
-      box-shadow: 0 16px 40px rgba(0, 0, 0, .55) !important;
-      white-space: normal !important;
-      max-width: 320px !important;
-      pointer-events: none;
-      z-index: 20;
+      background: var(--panel) !important; color: var(--paper) !important;
+      border: 1px solid var(--line) !important; border-radius: 12px !important;
+      padding: 0 !important; font-family: "Inter", system-ui, sans-serif !important;
+      font-size: 13px !important; box-shadow: 0 16px 40px rgba(0,0,0,.55) !important;
+      white-space: normal !important; max-width: 320px !important;
+      pointer-events: none; z-index: 20;
     }
     .vis-tooltip .tt { padding: 12px 14px; min-width: 170px; }
-
     .vis-tooltip .tt-name { font-weight: 600; color: var(--paper); }
-    .vis-tooltip .tt > .tt-name:only-child { font-size: 14px; }
     .vis-tooltip .tt-seed {
-      font-family: "Space Mono", monospace;
-      font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
-      color: var(--signal);
-      border: 1px solid rgba(94, 230, 197, .5);
-      border-radius: 999px; padding: 1px 6px; margin-left: 6px;
-      vertical-align: middle;
+      font-family: "Space Mono", monospace; font-size: 9px; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--signal);
+      border: 1px solid rgba(94,230,197,.5); border-radius: 999px; padding: 1px 6px;
+      margin-left: 6px; vertical-align: middle;
     }
-
     .vis-tooltip .tt-head {
-      display: flex; align-items: center; gap: 8px;
-      font-weight: 600; font-size: 14px;
-      padding-bottom: 8px; margin-bottom: 8px;
-      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px;
+      padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line);
     }
     .vis-tooltip .tt-x { color: var(--mist); font-weight: 400; }
     .vis-tooltip .tt-meta {
-      font-family: "Space Mono", monospace;
-      font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
-      color: var(--mist); margin-bottom: 9px;
+      font-family: "Space Mono", monospace; font-size: 11px; letter-spacing: .05em;
+      text-transform: uppercase; color: var(--mist); margin-bottom: 9px;
     }
-    .vis-tooltip .tt-list {
-      list-style: none; margin: 0; padding: 0;
-      display: grid; gap: 8px;
-    }
-    .vis-tooltip .tt-row {
-      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
-    }
+    .vis-tooltip .tt-hint { font-size: 11px; color: #6B7589; margin-top: 6px; }
+    .vis-tooltip .tt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .vis-tooltip .tt-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
     .vis-tooltip .tt-song { color: var(--paper); line-height: 1.3; }
-    .vis-tooltip .tt-roles {
-      display: flex; flex-wrap: wrap; gap: 4px;
-      justify-content: flex-end; flex-shrink: 0;
-    }
+    .vis-tooltip .tt-roles { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; flex-shrink: 0; }
     .vis-tooltip .tt-role {
-      font-family: "Space Mono", monospace;
-      font-size: 10px; line-height: 1;
-      padding: 3px 6px; border-radius: 999px;
-      border: 1px solid var(--line); color: var(--mist);
-      white-space: nowrap;
+      font-family: "Space Mono", monospace; font-size: 10px; line-height: 1;
+      padding: 3px 6px; border-radius: 999px; border: 1px solid var(--line);
+      color: var(--mist); white-space: nowrap;
     }
-    .vis-tooltip .tt-role--featured {
-      color: var(--signal); border-color: rgba(94, 230, 197, .42);
-      background: rgba(94, 230, 197, .08);
-    }
-    .vis-tooltip .tt-role--producer {
-      color: var(--pulse); border-color: rgba(185, 138, 255, .42);
-      background: rgba(185, 138, 255, .08);
-    }
-    .vis-tooltip .tt-role--writer {
-      color: #FFD27A; border-color: rgba(255, 210, 122, .35);
-      background: rgba(255, 210, 122, .08);
-    }
-    .vis-tooltip .tt-role--primary {
-      color: var(--paper); border-color: var(--line);
-      background: rgba(255, 255, 255, .05);
-    }
+    .vis-tooltip .tt-role--featured { color: var(--signal); border-color: rgba(94,230,197,.42); background: rgba(94,230,197,.08); }
+    .vis-tooltip .tt-role--producer { color: var(--pulse);  border-color: rgba(185,138,255,.42); background: rgba(185,138,255,.08); }
+    .vis-tooltip .tt-role--writer   { color: var(--amber);  border-color: rgba(255,210,122,.35); background: rgba(255,210,122,.08); }
+    .vis-tooltip .tt-role--primary  { color: var(--paper);  border-color: var(--line); background: rgba(255,255,255,.05); }
     .vis-tooltip .tt-empty { color: var(--mist); }
 
-    @media (max-width: 620px) {
+    /* ─── Responsive ────────────────────────────────────────────────────────── */
+    @media (max-width: 700px) {
       .dock { flex-wrap: wrap; }
-      .dock-search { width: 100%; margin-left: 0; }
-      .status { font-size: 11.5px; }
+      .dock-search { width: 100%; min-width: 0; }
+      .history-panel, .path-panel { display: none !important; }
+      .filter-label { display: none; }
+      .actions-bar { right: 8px; bottom: 12px; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -378,25 +356,20 @@
 </head>
 
 <body>
+  <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
   <main class="hero" id="hero">
     <span class="eyebrow">// genius collaboration atlas</span>
     <h1>Trace the people behind the <span class="grad">features</span>.</h1>
     <p>
-      Search an artist to map who they’ve made songs with. Drag the network
+      Search an artist to map who they've made songs with. Drag the network
       around, zoom in, and tap any node to dive into theirs.
     </p>
-
     <form class="search" id="hero-form">
-      <input
-        id="hero-input"
-        type="text"
-        autocomplete="off"
-        placeholder='Try “Kendrick Lamar”, “Gorillaz”, “Rosalía”…'
-        aria-label="Artist name"
-      />
+      <input id="hero-input" type="text" autocomplete="off"
+        placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
+        aria-label="Artist name" />
       <button type="submit">Map it</button>
     </form>
-
     <div class="chips" id="chips">
       <button class="chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
       <button class="chip" data-artist="Gorillaz">Gorillaz</button>
@@ -406,36 +379,121 @@
     </div>
   </main>
 
+  <!-- ─── Graph view ────────────────────────────────────────────────────────── -->
   <section class="graph-view" id="graph-view" hidden>
+
+    <!-- Top dock -->
     <div class="dock">
       <div class="brand" id="brand" title="Back to start">
         <span class="dotmark"></span> Feature Atlas
       </div>
+
       <form class="dock-search" id="dock-form">
-        <input
-          id="dock-input"
-          type="text"
-          autocomplete="off"
-          placeholder="Search another artist…"
-          aria-label="Artist name"
-        />
+        <input id="dock-input" type="text" autocomplete="off"
+          placeholder="Search another artist…" aria-label="Artist name" />
         <button type="submit">Go</button>
       </form>
+
+      <div class="dock-sep"></div>
+
+      <!-- Node search -->
+      <button class="dock-btn" id="btn-node-search" title="Search loaded nodes (Cmd+K)">⌘K Search</button>
+
+      <div class="dock-sep"></div>
+
+      <!-- Role filters -->
+      <div class="filter-bar" id="filter-bar">
+        <span class="filter-label">Roles</span>
+        <button class="dock-btn" id="filter-featured" title="Toggle featured collaborations">Featured</button>
+        <button class="dock-btn" id="filter-producer" title="Toggle producer collaborations">Producer</button>
+        <button class="dock-btn" id="filter-writer"   title="Toggle writer collaborations">Writer</button>
+      </div>
+
+      <div class="dock-sep"></div>
+
+      <!-- Layout -->
+      <div class="layout-bar" id="layout-bar">
+        <button class="dock-btn active" id="layout-force"  title="Force-directed layout">Force</button>
+        <button class="dock-btn"        id="layout-radial" title="Radial layout">Radial</button>
+        <button class="dock-btn"        id="layout-hier"   title="Hierarchical layout">Hier</button>
+      </div>
+
+      <div class="dock-sep"></div>
+
+      <!-- Physics + fit -->
+      <button class="dock-btn" id="btn-physics"  title="Space — freeze/unfreeze physics">⏸ Freeze</button>
+      <button class="dock-btn" id="btn-fit-view" title="F — fit all nodes in view">Fit</button>
+
+      <div class="dock-sep"></div>
+
+      <!-- Path finder -->
+      <button class="dock-btn" id="btn-find-path" title="Find shortest path between two artists">Path</button>
+
+      <div class="dock-sep"></div>
+
+      <!-- Share -->
+      <button class="dock-btn" id="btn-copy-link" title="Copy shareable URL">🔗 Share</button>
     </div>
 
+    <!-- Canvas -->
     <div id="network"></div>
 
-    <div class="status" id="status" hidden>
-      <div class="seed" id="status-seed"></div>
-      <div class="hint">tap a node to expand it · drag to rearrange · scroll to zoom</div>
+    <!-- Search history (left sidebar) -->
+    <div class="history-panel" id="history-panel">
+      <div class="history-title">Recent searches</div>
+      <div id="history-list"></div>
     </div>
 
+    <!-- Path finder panel (right sidebar) -->
+    <div class="path-panel" id="path-panel">
+      <div class="path-title">Six degrees of separation</div>
+      <input class="path-input" id="path-from-input" type="text"
+        placeholder="From artist (exact name)…" autocomplete="off" />
+      <input class="path-input" id="path-to-input" type="text"
+        placeholder="To artist (exact name)…" autocomplete="off" />
+      <div class="path-actions">
+        <button class="dock-btn" id="btn-run-path" style="flex:1">Find path</button>
+        <button class="dock-btn" id="btn-clear-path">Clear</button>
+      </div>
+      <div class="path-result" id="path-result"></div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status" id="status" hidden>
+      <div class="seed" id="status-seed"></div>
+      <div class="hint">
+        single-click focus · dbl-click expand · right-click pin ·
+        ctrl+click Genius · ⌘K search nodes
+      </div>
+    </div>
+
+    <!-- Bottom-right action buttons -->
+    <div class="actions-bar">
+      <button class="dock-btn" id="btn-export-png"  title="Export graph as PNG">↓ PNG</button>
+      <button class="dock-btn" id="btn-export-json" title="Export graph data as JSON">↓ JSON</button>
+      <button class="dock-btn" id="btn-clear-graph" title="Clear graph and start over"
+        style="color:var(--warn);border-color:rgba(255,143,163,.3);">✕ Clear</button>
+    </div>
+
+    <!-- Loading overlay -->
     <div class="overlay" id="loading">
       <span class="spinner"></span> Tracing collaborations…
     </div>
+
+    <!-- Node search overlay (Cmd+K) -->
+    <div class="node-search-overlay" id="node-search-overlay" role="dialog" aria-label="Search loaded nodes">
+      <div class="node-search-box">
+        <div class="node-search-hint">Search loaded nodes · Esc to close</div>
+        <input id="node-search-input" type="text" autocomplete="off"
+          placeholder="Artist name…" aria-label="Search nodes in graph" />
+        <div id="node-search-results"></div>
+      </div>
+    </div>
+
   </section>
 
-  <div class="toast" id="toast"></div>
+  <!-- Toast -->
+  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
 
   <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
   <script src="/script.js"></script>

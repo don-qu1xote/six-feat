@@ -37,7 +37,7 @@ components_manager:
             task_processor: main-task-processor
             genius-api-token: $genius_token
             genius-base-url: https://api.genius.com
-            songs-limit: 15
+            songs-limit: 50
 
         handler-index:
             path: /

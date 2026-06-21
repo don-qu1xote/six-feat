@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include <userver/clients/http/client.hpp>
 #include <userver/components/component_fwd.hpp>
@@ -18,6 +20,7 @@ struct ArtistRef {
   std::int64_t id{0};
   std::string name;
   std::string image;
+  std::string url; // genius.com artist page (for Ctrl+Click)
 };
 
 struct SongDetail {
@@ -26,6 +29,24 @@ struct SongDetail {
   std::vector<ArtistRef> producers;
   std::vector<ArtistRef> writers;
   std::vector<ArtistRef> featured;
+};
+
+// A search hit considered for disambiguation ("Did you mean?").
+struct Candidate {
+  std::int64_t id{0};
+  std::string name;
+  std::string image;
+  std::string url;
+  double score{0.0}; // fuzzy similarity to the query, 0..1
+};
+
+// Which role types to keep when building the graph (server-side ?roles=
+// filter).
+struct RoleMask {
+  bool primary{true};
+  bool producer{true};
+  bool writer{true};
+  bool featured{true};
 };
 
 class GraphHandler final : public userver::server::handlers::HttpHandlerBase {
@@ -42,15 +63,24 @@ public:
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
 private:
-  std::string BuildGraphJson(const std::string &artist_name) const;
+  // Stage 0: two-step search. Returns candidates scored against `query`.
+  std::vector<Candidate> ResolveCandidates(const std::string &query) const;
+
+  // Fetch canonical artist info by id (used for ?id= / shareable URLs).
+  std::optional<ArtistRef> FetchArtist(std::int64_t id) const;
+
+  // Build the collaboration graph JSON for an already-resolved seed artist.
+  std::string BuildGraphForSeed(const ArtistRef &seed,
+                                const RoleMask &roles) const;
 
   userver::clients::http::Client &http_client_;
   const std::string genius_token_;
   const std::string genius_base_url_;
   const int songs_limit_;
+  const double match_threshold_; // confidence below which we disambiguate
 
-  mutable userver::engine::SharedMutex artist_cache_mutex_;
-  mutable std::unordered_map<std::string, std::string> artist_cache_;
+  mutable userver::engine::SharedMutex graph_cache_mutex_;
+  mutable std::unordered_map<std::string, std::string> graph_cache_;
 
   mutable userver::engine::Mutex song_cache_mutex_;
   mutable std::unordered_map<std::int64_t, std::optional<SongDetail>>
