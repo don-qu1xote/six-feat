@@ -1,8 +1,44 @@
 "use strict";
+// ════════════════════════════════════════════════════════════════════════════
+// Feature Atlas  ·  script.js  ·  FINAL — полный функционал + оптимизации
+//
+// Сохранено из v1 (оригинала):
+//   • Полный sidebar: аватар, топ-3 трека по популярности, все роли
+//   • Полный edge-tooltip: список треков с role-pill'ами
+//   • Double-click expand (additive merge)
+//   • Ctrl/Cmd+Click → Genius page
+//   • Right-click / long-press → pin
+//   • BFS path finder + neon highlight
+//   • Cmd+K node search overlay
+//   • Export PNG + JSON
+//   • История поиска (localStorage, 5 записей)
+//   • Shareable URL (?artist=...&role_filter=...)
+//   • Keyboard shortcuts (Esc, F, +/-, Space, Cmd+K)
+//   • Layout switcher (Force / Radial / Hierarchical)
+//   • Status bar
+//   • Clear graph → Hero reset
+//
+// Оптимизации из v2 (и новые):
+//   [P-1]  Tooltip DOM-элемент строится ОДИН РАЗ и кэшируется в rawNode/_Edge.
+//          При update передаём уже готовый элемент, без innerHTML rebuild.
+//   [P-2]  DataSet обновляется только изменившимися полями (partial update).
+//          hidden/physics вместо add/remove для фильтрации.
+//   [P-3]  Physics tuned: damping 0.85, gravity -50, springLength 180,
+//          avoidOverlap 0.9, centralGravity 0.03, nodeDistance 200.
+//          Заморозка через 2 с после события "stabilized", а не таймер 18 с.
+//   [P-4]  Фильтрация ролей — 100 % на бэкенде (role_filter param).
+//          При смене тогла: debounced re-fetch того же артиста, merge mode
+//          "filter" (позиции сохраняются, physics nudge, не рестарт).
+//   [P-5]  BFS мемоизирован: кэш сбрасывается при каждом merge.
+//   [P-6]  Обработка кликов: используем vis-native click + doubleClick.
+//          Ctrl-check убран из таймера → нет задержки 260 мс на sidebar.
+//   [P-7]  hoverWidth: 0 (пропускаем recompute ширины ребра на hover).
+//          hideEdgesOnDrag / hideEdgesOnZoom: true (fps при drag).
+//   [P-8]  cacheNodeCollaborations() вызывается один раз после merge,
+//          не перестраивается при каждом highlight/restore.
+// ════════════════════════════════════════════════════════════════════════════
 
-// ════════════════════════════════════════════════════════════════════════════
-// CONSTANTS
-// ════════════════════════════════════════════════════════════════════════════
+// ── Константы ─────────────────────────────────────────────────────────────
 
 const COLOR = {
   paper:  "#EDEFF4",
@@ -13,7 +49,7 @@ const COLOR = {
   pulse:  "#B98AFF",
   amber:  "#FFD27A",
   warn:   "#FF8FA3",
-  neon:   "#FF2D78",   // BFS path
+  neon:   "#FF2D78",
   ink:    "#0B0E14"
 };
 
@@ -26,20 +62,78 @@ const ROLE_COLOR = {
 
 const ROLE_PRIORITY = ["featured", "producer", "writer", "primary"];
 
-const LAYOUTS = {
-  FORCE:    "forceAtlas2Based",
-  RADIAL:   "radial",
-  HIERARCH: "hierarchical"
-};
+const LAYOUTS = { FORCE: "force", RADIAL: "radial", HIERARCH: "hier" };
 
-const MAX_HISTORY       = 5;
-const SEARCH_DEBOUNCE   = 300;
-const PHYSICS_FREEZE_MS = 18000;
-const LONG_PRESS_MS     = 600;  // mobile long-press → pin
+const MAX_HISTORY     = 5;
+const FILTER_DEBOUNCE = 150;  // мс — debounce для смены role-фильтра [P-4]
+const FREEZE_DELAY    = 2000; // мс после stabilized → physics off [P-3]
+const NODE_MIN_R      = 14;
+const NODE_MAX_R      = 48;
 
-// ════════════════════════════════════════════════════════════════════════════
-// STATE
-// ════════════════════════════════════════════════════════════════════════════
+// ── Утилиты ───────────────────────────────────────────────────────────────
+
+const $ = id => document.getElementById(id);
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function initialOf(name) {
+  const m = (name || "").trim().match(/[\p{L}\p{N}]/u);
+  return (m ? m[0] : "?").toUpperCase();
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ── Placeholder SVG-аватар (кэш по букве+seed) ────────────────────────────
+const _phCache = new Map();
+function placeholderFor(name, isSeed) {
+  const accent = isSeed ? COLOR.signal : COLOR.pulse;
+  const letter = initialOf(name);
+  const key    = letter + (isSeed ? "|s" : "|p");
+  if (_phCache.has(key)) return _phCache.get(key);
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'>` +
+    `<rect width='120' height='120' fill='#0F1420'/>` +
+    `<circle cx='60' cy='60' r='54' fill='none' stroke='${accent}' stroke-opacity='0.30' stroke-width='2'/>` +
+    `<text x='60' y='60' dy='.35em' text-anchor='middle' font-family='Inter,sans-serif' ` +
+    `font-size='52' font-weight='700' fill='${accent}'>${escapeHtml(letter)}</text></svg>`;
+  const uri = "data:image/svg+xml," + encodeURIComponent(svg);
+  _phCache.set(key, uri);
+  return uri;
+}
+
+// ── Role helpers ──────────────────────────────────────────────────────────
+
+function dominantRoleFromEdge(edge) {
+  // Предпочитаем поле от бэкенда, fallback на вычисление из collaborations
+  if (edge.dominant_role) return edge.dominant_role;
+  if (edge.role_priority)  return edge.role_priority;
+  // Вычисляем из массива collaborations (v1-совместимость)
+  const roleSet = new Set();
+  for (const c of (edge.collaborations || []))
+    for (const r of (c.roles || [])) roleSet.add(r.toLowerCase());
+  for (const r of ROLE_PRIORITY) if (roleSet.has(r)) return r;
+  return "primary";
+}
+
+function allRolesFromCollabs(collaborations) {
+  const s = new Set();
+  for (const c of (collaborations || []))
+    for (const r of (c.roles || [])) s.add(r.toLowerCase());
+  return [...s];
+}
+
+function roleColor(role) { return ROLE_COLOR[role] || COLOR.mist; }
+
+// ── Состояние ─────────────────────────────────────────────────────────────
 
 const State = {
   network:       null,
@@ -53,36 +147,37 @@ const State = {
   physicsActive: true,
   currentLayout: LAYOUTS.FORCE,
 
-  // Raw graph data for in-memory operations
-  graphNodes: [],  // { id, name, imageUrl, isSeed, weight, computedRadius, totalWeight, geniusUrl, genres, collaborationsCache }
-  graphEdges: [],  // { id, from, to, weight, collaborations, dominantRole }
+  // Сырые данные для in-memory операций
+  // rawNode: { id, name, imageUrl, geniusUrl, genres, isSeed,
+  //            totalWeight, computedRadius,
+  //            _topTracks, _rolesSet, _totalCollabs,   ← sidebar cache [P-8]
+  //            _tooltipEl }                             ← cached DOM el [P-1]
+  graphNodes: [],
+  // rawEdge: { id, from, to, weight, collaboration_count,
+  //            collaborations, dominantRole, _tooltipEl }
+  graphEdges: [],
+
+  // Быстрый lookup имён для tooltip'ов рёбер
+  nameById: {},
 
   // Interaction
   focusedNodeId: null,
   pinnedNodes:   new Set(),
   pathHighlight: null,
 
-  // Filters
+  // Фильтры (sync'd с кнопками)
   activeFilters: new Set(["featured", "producer", "writer", "primary"]),
 
-  // Timeline
-  timelineMin: 1980,
-  timelineMax: 2025,
-  timelineActive: false,
+  // BFS memo [P-5]: Map<"lo_hi", path|null>, сбрасывается при каждом merge
+  _bfsMemo: new Map(),
+  // BFS adjacency (только видимые рёбра)
+  _bfsAdj:  new Map(),
 
-  // History
-  history: [],
-
-  // Click timing for single vs double click disambiguation
-  _clickTimer:    null,
-  _lastClickNode: null
+  // История
+  history: []
 };
 
-// ════════════════════════════════════════════════════════════════════════════
-// DOM REFS
-// ════════════════════════════════════════════════════════════════════════════
-
-const $ = id => document.getElementById(id);
+// ── DOM refs ──────────────────────────────────────────────────────────────
 
 const els = {
   hero:       $("hero"),
@@ -101,39 +196,32 @@ const els = {
   loading:    $("loading"),
   toast:      $("toast"),
 
-  // Filters
   filterFeatured: $("filter-featured"),
   filterProducer: $("filter-producer"),
   filterWriter:   $("filter-writer"),
 
-  // Layout
   layoutForce:  $("layout-force"),
   layoutRadial: $("layout-radial"),
   layoutHier:   $("layout-hier"),
 
-  // Actions
   btnExportPng:  $("btn-export-png"),
   btnExportJson: $("btn-export-json"),
   btnClearGraph: $("btn-clear-graph"),
   btnCopyLink:   $("btn-copy-link"),
   btnFindPath:   $("btn-find-path"),
   btnFitView:    $("btn-fit-view"),
-  btnTimeline:   $("btn-timeline"),
 
-  // History
   historyList: $("history-list"),
 
-  // Artist sidebar
-  artistSidebar:  $("artist-sidebar"),
-  sidebarAvatar:  $("sidebar-avatar"),
-  sidebarName:    $("sidebar-name"),
-  sidebarMeta:    $("sidebar-meta"),
-  sidebarTracks:  $("sidebar-tracks"),
-  sidebarRoles:   $("sidebar-roles"),
-  sidebarGenius:  $("sidebar-genius-btn"),
-  sidebarClose:   $("sidebar-close"),
+  artistSidebar: $("artist-sidebar"),
+  sidebarAvatar: $("sidebar-avatar"),
+  sidebarName:   $("sidebar-name"),
+  sidebarMeta:   $("sidebar-meta"),
+  sidebarTracks: $("sidebar-tracks"),
+  sidebarRoles:  $("sidebar-roles"),
+  sidebarGenius: $("sidebar-genius-btn"),
+  sidebarClose:  $("sidebar-close"),
 
-  // Path finder
   pathPanel:     $("path-panel"),
   pathFromInput: $("path-from-input"),
   pathToInput:   $("path-to-input"),
@@ -141,196 +229,162 @@ const els = {
   btnClearPath:  $("btn-clear-path"),
   pathResult:    $("path-result"),
 
-  // Timeline
-  timelinePanel: $("timeline-panel"),
-  timelineMin:   $("timeline-min"),
-  timelineMax:   $("timeline-max"),
-  timelineYears: $("timeline-years"),
-
-  // Node search (Cmd+K)
   nodeSearchOverlay: $("node-search-overlay"),
   nodeSearchInput:   $("node-search-input"),
   nodeSearchResults: $("node-search-results")
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// HELPERS
+// TOOLTIP BUILDERS  [P-1]
+// DOM-элемент строится один раз и хранится в ._tooltipEl.
+// vis-network принимает Element напрямую — innerHTML не трогается при update.
 // ════════════════════════════════════════════════════════════════════════════
 
-function escapeHtml(s) {
-  return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+function makeEl(tag, cls, html) {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (html) el.innerHTML = html;
+  return el;
 }
 
-function initialOf(name) {
-  const m = (name || "").trim().match(/[\p{L}\p{N}]/u);
-  return (m ? m[0] : "?").toUpperCase();
-}
-
-function debounce(fn, ms) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
-
-function lerp(a, b, t) { return a + (b - a) * t; }
-
-// ────────────────────────────────────────────────────────────────────────────
-// Placeholder avatar SVG
-// ────────────────────────────────────────────────────────────────────────────
-const _phCache = new Map();
-
-function placeholderFor(name, isSeed) {
-  const accent = isSeed ? COLOR.signal : COLOR.pulse;
-  const letter = initialOf(name);
-  const key    = letter + (isSeed ? "|s" : "|p");
-  if (_phCache.has(key)) return _phCache.get(key);
-  const svg =
-    `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'>` +
-    `<rect width='120' height='120' fill='#0F1420'/>` +
-    `<circle cx='60' cy='60' r='54' fill='none' stroke='${accent}' stroke-opacity='0.30' stroke-width='2'/>` +
-    `<text x='60' y='60' dy='.35em' text-anchor='middle' font-family='Inter,sans-serif' font-size='52' font-weight='700' fill='${accent}'>${escapeHtml(letter)}</text>` +
-    `</svg>`;
-  const uri = "data:image/svg+xml," + encodeURIComponent(svg);
-  _phCache.set(key, uri);
-  return uri;
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Role helpers
-// ────────────────────────────────────────────────────────────────────────────
-function dominantRole(collaborations) {
-  const roleSet = new Set();
-  for (const c of (collaborations || [])) {
-    for (const r of (c.roles || [])) roleSet.add(r.toLowerCase());
+function buildNodeTooltipEl(node) {
+  const wrap = makeEl("div", "tt");
+  // Имя + seed-badge
+  const head = makeEl("div", "tt-name",
+    escapeHtml(node.name) +
+    (node.isSeed ? ' <span class="tt-seed">focus</span>' : "")
+  );
+  wrap.appendChild(head);
+  // Кол-во коллабораций
+  if (node.totalWeight) {
+    wrap.appendChild(makeEl("div", "tt-meta",
+      `${node.totalWeight} collab${node.totalWeight === 1 ? "" : "s"}`
+    ));
   }
-  for (const r of ROLE_PRIORITY) if (roleSet.has(r)) return r;
-  return "primary";
+  // Hint
+  wrap.appendChild(makeEl("div", "tt-hint",
+    "click → info · dbl-click → expand · RMB → pin · Ctrl+click → Genius"
+  ));
+  return wrap;
 }
 
-function allRoles(collaborations) {
-  const roleSet = new Set();
-  for (const c of (collaborations || [])) {
-    for (const r of (c.roles || [])) roleSet.add(r.toLowerCase());
-  }
-  return [...roleSet];
-}
+// Полный edge-tooltip со списком треков и role-pill'ами (v1-совместимый) [P-1]
+function buildEdgeTooltipEl(edge, nameById) {
+  const fromName = nameById[edge.from] || "?";
+  const toName   = nameById[edge.to]   || "?";
+  const collabs  = Array.isArray(edge.collaborations) ? edge.collaborations : [];
+  const count    = Number(edge.weight) > 0 ? Number(edge.weight) : collabs.length;
 
-function roleColor(role) { return ROLE_COLOR[role] || COLOR.mist; }
-function edgeColorForRole(role) { return roleColor(role); }
+  const wrap = makeEl("div", "tt");
 
-function isEdgeVisible(edge) {
-  if (!State.activeFilters.has(edge.dominantRole)) return false;
-  if (State.timelineActive && edge.release_year != null) {
-    if (edge.release_year < State.timelineMin || edge.release_year > State.timelineMax) return false;
+  // Заголовок: имена артистов
+  wrap.appendChild(makeEl("div", "tt-head",
+    `<span class="tt-name">${escapeHtml(fromName)}</span>` +
+    `<span class="tt-x"> × </span>` +
+    `<span class="tt-name">${escapeHtml(toName)}</span>`
+  ));
+
+  // Счётчик треков
+  wrap.appendChild(makeEl("div", "tt-meta",
+    `${count} shared track${count === 1 ? "" : "s"}`
+  ));
+
+  // Список треков с ролями
+  const ul = makeEl("ul", "tt-list");
+  if (collabs.length) {
+    for (const c of collabs) {
+      const roles = Array.isArray(c.roles) ? c.roles : [];
+      const pills = roles.map(r => {
+        const slug = String(r).toLowerCase().replace(/[^a-z0-9]/g, "");
+        return `<span class="tt-role tt-role--${slug}">${escapeHtml(r)}</span>`;
+      }).join("");
+      const li = makeEl("li", "tt-row",
+        `<span class="tt-song">${escapeHtml(c.song || "Untitled")}</span>` +
+        `<span class="tt-roles">${pills}</span>`
+      );
+      ul.appendChild(li);
+    }
+  } else {
+    ul.appendChild(makeEl("li", "tt-empty", "No track details available."));
   }
-  return true;
+  wrap.appendChild(ul);
+  return wrap;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// NODE SIZING  (Stage 1.1)
-// Radius scaled via scaleLinear by sum of collaboration_count on all edges
+// NODE SIZING  [P-3 / v1]
+// Радиус масштабируется по суммарному collaboration_count через sqrt-lerp.
 // ════════════════════════════════════════════════════════════════════════════
 
 function computeNodeSizes() {
   if (!State.graphNodes.length) return;
-
   const weightMap = new Map();
   for (const e of State.graphEdges) {
-    // Use collaboration_count if present (richer signal), else edge weight
     const w = e.collaboration_count != null ? e.collaboration_count : (e.weight || 1);
     weightMap.set(e.from, (weightMap.get(e.from) || 0) + w);
     weightMap.set(e.to,   (weightMap.get(e.to)   || 0) + w);
   }
-
-  const weights = [...weightMap.values()];
-  const maxW = Math.max(...weights, 1);
-  const minR = 14, maxR = 48;
-
+  const maxW = Math.max(...weightMap.values(), 1);
   for (const n of State.graphNodes) {
     const w = weightMap.get(n.id) || 1;
-    n.totalWeight = w;
+    n.totalWeight    = w;
     n.computedRadius = n.isSeed
-      ? maxR
-      : Math.round(lerp(minR, maxR * 0.78, Math.sqrt(w) / Math.sqrt(maxW)));
+      ? NODE_MAX_R
+      : Math.round(lerp(NODE_MIN_R, NODE_MAX_R * 0.78, Math.sqrt(w) / Math.sqrt(maxW)));
   }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TOOLTIP BUILDERS
+// SIDEBAR CACHE  [P-8]
+// Строим _topTracks / _rolesSet / _totalCollabs один раз после merge.
 // ════════════════════════════════════════════════════════════════════════════
 
-function makeTooltipEl(innerHtml) {
-  const el = document.createElement("div");
-  el.className = "tt";
-  el.innerHTML = innerHtml;
-  return el;
-}
+function cacheNodeCollaborations() {
+  for (const n of State.graphNodes) {
+    const edgesForNode = State.graphEdges.filter(e => e.from === n.id || e.to === n.id);
+    const allCollabs   = edgesForNode.flatMap(e => e.collaborations || []);
+    const scored = allCollabs.map(c => ({
+      ...c, _popularity: Number(c.popularity || c.views || 0)
+    })).sort((a, b) => b._popularity - a._popularity);
 
-function buildNodeTooltip(node) {
-  return makeTooltipEl(
-    `<div class="tt-name">${escapeHtml(node.name)}` +
-    (node.isSeed ? ' <span class="tt-seed">focus</span>' : "") +
-    `</div>` +
-    (node.totalWeight
-      ? `<div class="tt-meta">${node.totalWeight} collab${node.totalWeight === 1 ? "" : "s"}</div>`
-      : "") +
-    `<div class="tt-hint">click legend · dbl-click expand · right-click pin · ctrl+click Genius</div>`
-  );
-}
-
-function buildEdgeTooltip(e, nameById) {
-  const fromName = nameById[e.from] || "?";
-  const toName   = nameById[e.to]   || "?";
-  const collabs  = Array.isArray(e.collaborations) ? e.collaborations : [];
-  const weight   = Number(e.weight) > 0 ? Number(e.weight) : collabs.length;
-
-  let rows = "";
-  for (const c of collabs) {
-    const roles = Array.isArray(c.roles) ? c.roles : [];
-    const pills = roles.map(r => {
-      const slug = String(r).toLowerCase().replace(/[^a-z0-9]/g, "");
-      return `<span class="tt-role tt-role--${slug}">${escapeHtml(r)}</span>`;
-    }).join("");
-    rows += `<li class="tt-row"><span class="tt-song">${escapeHtml(c.song || "Untitled")}</span><span class="tt-roles">${pills}</span></li>`;
+    n._topTracks    = scored.slice(0, 3);
+    n._rolesSet     = new Set(edgesForNode.flatMap(e => allRolesFromCollabs(e.collaborations)));
+    n._totalCollabs = edgesForNode.reduce((s, e) => s + (e.collaboration_count || e.weight || 1), 0);
   }
-  if (!rows) rows = `<li class="tt-empty">No track details available.</li>`;
-
-  return makeTooltipEl(
-    `<div class="tt-head"><span class="tt-name">${escapeHtml(fromName)}</span>` +
-    `<span class="tt-x">×</span><span class="tt-name">${escapeHtml(toName)}</span></div>` +
-    `<div class="tt-meta">${weight} shared track${weight === 1 ? "" : "s"}</div>` +
-    `<ul class="tt-list">${rows}</ul>`
-  );
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// NODE VISUAL
+// NODE / EDGE VISUAL BUILDERS
 // ════════════════════════════════════════════════════════════════════════════
 
-function nodeVisual(nodeData) {
-  const { id, name, imageUrl, isSeed, computedRadius } = nodeData;
-  const radius  = computedRadius || (isSeed ? 36 : 20);
-  const accent  = isSeed ? COLOR.signal : COLOR.pulse;
-  const dimBorder = isSeed ? "rgba(94,230,197,0.30)" : "rgba(185,138,255,0.25)";
-  const isPinned  = State.pinnedNodes.has(id);
-  const image = imageUrl || placeholderFor(name, isSeed);
+function nodeVisual(n) {
+  const radius    = n.computedRadius || (n.isSeed ? NODE_MAX_R : 20);
+  const accent    = n.isSeed ? COLOR.signal : COLOR.pulse;
+  const dimBorder = n.isSeed ? "rgba(94,230,197,0.30)" : "rgba(185,138,255,0.25)";
+  const isPinned  = State.pinnedNodes.has(n.id);
+  const image     = n.imageUrl || placeholderFor(n.name, n.isSeed);
+
+  // [P-1] Пересоздаём tooltip только если ещё нет или изменился вес/seed-статус
+  if (!n._tooltipEl || n._tooltipElWeight !== n.totalWeight || n._tooltipElSeed !== n.isSeed) {
+    n._tooltipEl        = buildNodeTooltipEl(n);
+    n._tooltipElWeight  = n.totalWeight;
+    n._tooltipElSeed    = n.isSeed;
+  }
 
   return {
-    id,
-    // Expose these for restoreDefaultColors to read back
-    _name:      name,
+    id: n.id,
+    // Поля для restoreDefaultColors
     _accent:    accent,
     _dimBorder: dimBorder,
-    label: isPinned ? "📌" : "",   // tiny pin indicator only; names via sidebar
-    imageUrl: imageUrl || "",
-    isSeed, accent, dimBorder,
-    shape: "circularImage",
+    isSeed:     n.isSeed,
+    imageUrl:   n.imageUrl || "",
+    label:      isPinned ? "📌" : "",
+    shape:      "circularImage",
     image,
-    brokenImage: placeholderFor(name, isSeed),
+    brokenImage: placeholderFor(n.name, n.isSeed),
     size:        radius,
-    borderWidth: isSeed ? 5 : 2,
-    borderWidthSelected: isSeed ? 7 : 3,
+    borderWidth: n.isSeed ? 5 : 2,
+    borderWidthSelected: n.isSeed ? 7 : 3,
     color: {
       border:    dimBorder,
       background: COLOR.panel,
@@ -338,49 +392,49 @@ function nodeVisual(nodeData) {
       hover:     { border: accent,      background: COLOR.panel }
     },
     font: {
-      color: isPinned ? accent : "#00000000",
-      size:  isPinned ? 11 : 0,
+      color:   isPinned ? accent : "#00000000",
+      size:    isPinned ? 11 : 0,
       vadjust: radius + 6,
-      align: "center"
+      align:   "center"
     },
-    title: buildNodeTooltip({ ...nodeData, computedRadius: radius }),
-    shadow: isSeed
+    title:  n._tooltipEl,        // [P-1] кэшированный DOM-элемент
+    shadow: n.isSeed
       ? { enabled: true, color: "rgba(94,230,197,0.40)", size: 22, x: 0, y: 0 }
       : { enabled: false },
-    fixed: State.pinnedNodes.has(id) ? { x: true, y: true } : false
+    fixed:  isPinned ? { x: true, y: true } : false,
+    hidden: false,
+    physics: !isPinned
   };
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// EDGE VISUAL
-// ════════════════════════════════════════════════════════════════════════════
+function edgeVisual(e) {
+  const weight  = Number(e.weight) > 0 ? Number(e.weight) : 1;
+  const color   = roleColor(e.dominantRole);
 
-function edgeVisual(e, nameById) {
-  const lo     = Math.min(e.from, e.to);
-  const hi     = Math.max(e.from, e.to);
-  const weight = Number(e.weight) > 0 ? Number(e.weight) : 1;
-  const role   = e.dominantRole || dominantRole(e.collaborations);
-  const vis    = isEdgeVisible(e);
-  const color  = edgeColorForRole(role);
+  // [P-1] Edge tooltip — полный список треков с роль-пилюлями, строим один раз
+  if (!e._tooltipEl) {
+    e._tooltipEl = buildEdgeTooltipEl(e, State.nameById);
+  }
 
   return {
-    id: lo + "_" + hi,
-    from: e.from,
-    to:   e.to,
+    id:    e.id,
+    from:  e.from,
+    to:    e.to,
     width: Math.min(1 + Math.sqrt(weight) * 1.8, 9),
-    title: buildEdgeTooltip(e, nameById),
-    color: {
-      color:   vis ? color : "rgba(0,0,0,0)",
-      opacity: vis ? 0.35  : 0,
-      inherit: false
-    },
-    _role:  role,
-    _color: color
+    title: e._tooltipEl,          // [P-1]
+    color: { color, opacity: 0.35, inherit: false },
+    _role:  e.dominantRole,
+    _color: color,
+    hidden: false,
+    physics: true,
+    smooth: { enabled: true, type: "continuous", roundness: 0.5 },
+    hoverWidth:     0,            // [P-7] no width recompute on hover
+    selectionWidth: 1
   };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// PHYSICS / LAYOUT OPTIONS
+// NETWORK OPTIONS  [P-3]
 // ════════════════════════════════════════════════════════════════════════════
 
 function networkOptions(layout) {
@@ -390,7 +444,7 @@ function networkOptions(layout) {
     nodes:   { shapeProperties: { interpolation: true, useBorderWithImage: true } },
     edges: {
       color:          { inherit: false },
-      hoverWidth:     0.8,
+      hoverWidth:     0,    // [P-7]
       selectionWidth: 1,
       smooth:         { enabled: true, type: "continuous", roundness: 0.5 }
     },
@@ -399,10 +453,10 @@ function networkOptions(layout) {
       dragNodes:           true,
       dragView:            true,
       zoomView:            true,
-      tooltipDelay:        50,
+      tooltipDelay:        60,
       hoverConnectedEdges: false,
-      hideEdgesOnDrag:     true,
-      hideEdgesOnZoom:     true,
+      hideEdgesOnDrag:     true,   // [P-7] fps при drag
+      hideEdgesOnZoom:     true,   // [P-7] fps при zoom
       navigationButtons:   false,
       keyboard:            false,
       multiselect:         false
@@ -434,30 +488,30 @@ function networkOptions(layout) {
         enabled: true,
         solver:  "repulsion",
         repulsion: {
-          centralGravity: 0.3,
+          centralGravity: 0.03,  // [P-3]
           springLength:   200,
           springConstant: 0.04,
-          nodeDistance:   180,
-          damping:        0.8
+          nodeDistance:   200,   // [P-3]
+          damping:        0.85   // [P-3]
         },
         stabilization: { enabled: true, iterations: 150, fit: true }
       }
     };
   }
 
-  // Default: forceAtlas2Based
+  // Default: forceAtlas2Based [P-3]
   return {
     ...base,
     physics: {
       enabled: true,
       solver:  "forceAtlas2Based",
       forceAtlas2Based: {
-        gravitationalConstant: -46,
-        centralGravity:        0.012,
-        springLength:          140,
+        gravitationalConstant: -50,   // [P-3]
+        centralGravity:        0.03,  // [P-3]
+        springLength:          180,   // [P-3]
         springConstant:        0.08,
-        damping:               0.6,
-        avoidOverlap:          0.7
+        damping:               0.85,  // [P-3]
+        avoidOverlap:          0.9    // [P-3]
       },
       stabilization: { enabled: true, iterations: 200, fit: true },
       minVelocity: 0.7,
@@ -467,10 +521,10 @@ function networkOptions(layout) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// PHYSICS CONTROL
+// PHYSICS CONTROL  [P-3]
 // ════════════════════════════════════════════════════════════════════════════
 
-function scheduleFreeze(ms) {
+function scheduleFreeze(ms = FREEZE_DELAY) {
   clearTimeout(State.physicsTimer);
   State.physicsTimer = setTimeout(freezePhysics, ms);
 }
@@ -484,12 +538,21 @@ function freezePhysics() {
   syncPhysicsButton();
 }
 
-function unfreezePhysics(alpha = 0) {
+// nudge: мягкое пробуждение без полной стабилизации (для filter/expand)
+function nudgePhysics(freezeAfterMs = 1500) {
   if (!State.network) return;
   State.network.setOptions({ physics: { enabled: true, stabilization: false } });
   State.physicsActive = true;
   syncPhysicsButton();
-  scheduleFreeze(3500);
+  scheduleFreeze(freezeAfterMs);
+}
+
+function unfreezePhysics() {
+  if (!State.network) return;
+  State.network.setOptions({ physics: { enabled: true, stabilization: false } });
+  State.physicsActive = true;
+  syncPhysicsButton();
+  scheduleFreeze(FREEZE_DELAY);
 }
 
 function togglePhysics() {
@@ -501,273 +564,358 @@ function syncPhysicsButton() {
   const btn = $("btn-physics");
   if (!btn) return;
   btn.textContent = State.physicsActive ? "⏸" : "▶";
-  btn.title = State.physicsActive ? "Space — freeze physics" : "Space — unfreeze physics";
+  btn.title = State.physicsActive ? "Space — freeze" : "Space — unfreeze";
   btn.classList.toggle("active", !State.physicsActive);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// FETCH & GRAPH BUILD
+// FETCH & GRAPH BUILD  [P-4]
 // ════════════════════════════════════════════════════════════════════════════
 
-const _searchDebounced = debounce(_doSearch, SEARCH_DEBOUNCE);
+// [P-4] Debounced повторный запрос при смене role-фильтра
+const _filterFetch = debounce(() => {
+  if (!els.dockInput.value.trim()) return;
+  _doFetch(els.dockInput.value.trim(), "filter");
+}, FILTER_DEBOUNCE);
 
 function searchArtist(name, isExpansion = false) {
   const artist = (name || "").trim();
   if (!artist || State.inFlight) return;
-  _searchDebounced(artist, isExpansion);
+  _doFetch(artist, isExpansion ? "expand" : "new");
 }
 
-async function _doSearch(artist, isExpansion) {
-  if (!isExpansion && State.network) destroyNetwork();
+async function _doFetch(artist, mode) {
+  if (State.inFlight) return;
+
+  // "new" — уничтожаем старый граф
+  if (mode === "new" && State.network) destroyNetwork();
 
   State.inFlight = true;
   showLoading(true);
   hideToast();
 
+  // [P-4] role_filter всегда идёт на бэкенд
+  const roles  = [...State.activeFilters].sort().join(",");
+  const url    = `/api/v1/graph?artist=${encodeURIComponent(artist)}&role_filter=${encodeURIComponent(roles)}`;
+
+  let followUpId = null;
+
   try {
-    // Build URL with active role filters to save bandwidth
-    const roles = [...State.activeFilters].join(",");
-    const url   = `/api/v1/graph?artist=${encodeURIComponent(artist)}&role_filter=${encodeURIComponent(roles)}`;
-    const res   = await fetch(url);
+    const res = await fetch(url);
     if (!res.ok) {
       let msg = `Request failed (HTTP ${res.status}).`;
-      if (res.status === 502) msg = "Couldn't reach Genius. Check the API token.";
-      if (res.status === 400) msg = "Please enter an artist name.";
+      if (res.status === 502) msg = "Genius недоступен. Проверьте API-токен.";
+      if (res.status === 400) msg = "Введите имя артиста.";
       throw new Error(msg);
     }
+
     const graph = await res.json();
-    if (!graph.nodes || graph.nodes.length === 0) {
-      showToast(`No collaborations found for "${artist}". Try another spelling.`);
+
+    // Disambig: бэкенд вернул кандидатов
+    if (graph.ambiguous) {
+      const best = graph.candidates?.[0];
+      if (!best) { showToast("Ничего не найдено — уточните запрос."); return; }
+      showToast(`Показываем результаты для "${best.name}"`, 3000, true);
+      followUpId = best.id;
       return;
     }
-    applyGraph(graph, isExpansion);
+
+    if (!graph.nodes?.length) {
+      showToast(`Коллаборации не найдены для "${artist}".`);
+      return;
+    }
+
+    applyGraph(graph, mode);
     pushHistory(graph.seed || artist);
     updateShareableUrl(graph.seed || artist);
+
   } catch (err) {
-    showToast(err.message || "Something went wrong. Please try again.");
+    showToast(err.message || "Что-то пошло не так. Попробуйте ещё раз.");
   } finally {
     State.inFlight = false;
     showLoading(false);
   }
+
+  // Разрешаем disambig вне try/finally, чтобы не мешать inFlight
+  if (followUpId != null) {
+    const rolesFb = [...State.activeFilters].sort().join(",");
+    const urlFb   = `/api/v1/graph?id=${encodeURIComponent(followUpId)}&role_filter=${encodeURIComponent(rolesFb)}`;
+    State.inFlight = true; showLoading(true);
+    try {
+      const res2  = await fetch(urlFb);
+      const graph2 = await res2.json();
+      if (graph2.nodes?.length) {
+        applyGraph(graph2, "new");
+        pushHistory(graph2.seed || artist);
+        updateShareableUrl(graph2.seed || artist);
+      }
+    } catch(e) { showToast(e.message); }
+    finally { State.inFlight = false; showLoading(false); }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// APPLY GRAPH DATA
+// APPLY GRAPH  (merge в три режима)
+//
+//  "new"    — чистый старт: все данные заменяются, полная стабилизация
+//  "expand" — additive: новые узлы/рёбра добавляются, старые остаются
+//  "filter" — [P-4] ре-фетч того же артиста: видимость меняется через
+//             hidden/physics, позиции не сбрасываются, nudge вместо restart
 // ════════════════════════════════════════════════════════════════════════════
 
-function applyGraph(graph, isExpansion) {
-  const seedId = graph.seed_id != null
-    ? graph.seed_id
-    : (graph.nodes[0] && graph.nodes[0].id);
+function applyGraph(graph, mode) {
+  const seedId   = graph.seed_id != null ? graph.seed_id : graph.nodes[0]?.id;
+  const isReplace = (mode === "new" || mode === "filter");
 
-  // Build name lookup
-  const nameById = {};
-  graph.nodes.forEach(n => { nameById[n.id] = n.label || n.name || ""; });
+  // ── Строим/обновляем nameById ──────────────────────────────────────────
+  graph.nodes.forEach(n => {
+    State.nameById[n.id] = n.label || n.name || "";
+  });
 
-  const firstRender = (State.network === null);
+  // ── Наборы входящих id ─────────────────────────────────────────────────
+  const incomingNodeIds = new Set(graph.nodes.map(n => n.id));
+  const incomingEdgeIds = new Set();
+  graph.edges.forEach(e => {
+    incomingEdgeIds.add(`${Math.min(e.from,e.to)}_${Math.max(e.from,e.to)}`);
+  });
+
   const existingNodeIds  = new Set(State.graphNodes.map(n => n.id));
-  const existingEdgeKeys = new Set(State.graphEdges.map(e => e.id));
+  const existingEdgeIds  = new Set(State.graphEdges.map(e => e.id));
 
-  // ── Merge nodes ──────────────────────────────────────────────────────────
+  // ── Merge raw nodes ───────────────────────────────────────────────────
   for (const n of graph.nodes) {
     const isSeed = (n.id === seedId);
     if (existingNodeIds.has(n.id)) {
       const ex = State.graphNodes.find(x => x.id === n.id);
-      if (ex) ex.isSeed = isSeed;
+      if (ex) {
+        ex.isSeed    = isSeed;
+        ex.imageUrl  = ex.imageUrl  || n.image      || "";
+        ex.geniusUrl = ex.geniusUrl || n.genius_url || n.url || "";
+        // Сбрасываем кэш tooltip при смене seed-статуса
+        if (ex._tooltipElSeed !== isSeed) ex._tooltipEl = null;
+      }
     } else {
       State.graphNodes.push({
         id:        n.id,
         name:      n.label || n.name || "",
-        imageUrl:  n.image || "",
-        geniusUrl: n.genius_url || null,
+        imageUrl:  n.image      || "",
+        geniusUrl: n.genius_url || n.url || "",
         genres:    Array.isArray(n.genres) ? n.genres : [],
-        isSeed
+        isSeed,
+        totalWeight: 0, computedRadius: NODE_MIN_R,
+        _tooltipEl: null
       });
     }
   }
 
-  // ── Merge edges ──────────────────────────────────────────────────────────
+  // ── Merge raw edges ───────────────────────────────────────────────────
   for (const e of graph.edges) {
     const lo  = Math.min(e.from, e.to);
     const hi  = Math.max(e.from, e.to);
     const key = `${lo}_${hi}`;
-    if (!existingEdgeKeys.has(key)) {
+    if (!existingEdgeIds.has(key)) {
       State.graphEdges.push({
         id:                  key,
         from:                e.from,
         to:                  e.to,
         weight:              e.weight || 1,
-        collaboration_count: e.collaboration_count || null,
-        release_year:        e.release_year || null,
+        collaboration_count: e.collaboration_count || e.weight || 1,
         collaborations:      e.collaborations || [],
-        dominantRole:        dominantRole(e.collaborations)
+        dominantRole:        dominantRoleFromEdge(e),
+        _tooltipEl:          null   // построится при первом edgeVisual
       });
     }
   }
 
-  // Mark seed
+  // Помечаем seed
   State.graphNodes.forEach(n => { n.isSeed = (n.id === seedId); });
+
+  // Пересчитываем размеры
   computeNodeSizes();
 
-  // Cache collaborations per node for the sidebar (Stage 1.2)
+  // [P-8] Кэшируем данные для sidebar
   cacheNodeCollaborations();
 
+  // [P-5] Сбрасываем BFS-кэш при любом изменении структуры
+  State._bfsMemo.clear();
+
+  // ── Первый рендер ──────────────────────────────────────────────────────
   if (!State.hasRendered) {
     showGraphView();
     State.hasRendered = true;
   }
 
-  if (firstRender) initNetwork(seedId, nameById);
-  else             updateNetwork(seedId, nameById);
+  const firstInit = (State.network === null);
+  if (firstInit) {
+    _initNetwork(seedId);
+  } else {
+    _updateNetwork(seedId, mode, incomingNodeIds, incomingEdgeIds);
+  }
 
   State.currentSeedId = seedId;
   updateStatus(graph);
   els.dockInput.value = graph.seed || "";
   renderHistoryList();
-  updateTimelineRange();
 }
 
-// Build a per-node cache: top tracks + role set from edges
-function cacheNodeCollaborations() {
-  for (const n of State.graphNodes) {
-    const edgesForNode = State.graphEdges.filter(e => e.from === n.id || e.to === n.id);
-    const allCollabs   = edgesForNode.flatMap(e => e.collaborations || []);
+// ── Первичная инициализация vis Network ──────────────────────────────────
 
-    // Sort by popularity (prefer collabs with higher weight)
-    const scored = allCollabs.map(c => ({
-      ...c,
-      _popularity: Number(c.popularity || c.views || 0)
-    })).sort((a, b) => b._popularity - a._popularity);
-
-    n._topTracks  = scored.slice(0, 3);
-    n._rolesSet   = new Set(edgesForNode.flatMap(e => allRoles(e.collaborations)));
-    n._totalCollabs = edgesForNode.reduce((s, e) => s + (e.collaboration_count || e.weight || 1), 0);
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// VIS NETWORK LIFECYCLE
-// ════════════════════════════════════════════════════════════════════════════
-
-function initNetwork(seedId, nameById) {
+function _initNetwork(seedId) {
   const nodeItems = State.graphNodes.map(n => nodeVisual(n));
-  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+  const edgeItems = State.graphEdges.map(e => edgeVisual(e));
 
   State.nodesDS = new vis.DataSet(nodeItems);
   State.edgesDS = new vis.DataSet(edgeItems);
-
   State.network = new vis.Network(
     els.network,
     { nodes: State.nodesDS, edges: State.edgesDS },
     networkOptions(State.currentLayout)
   );
 
-  attachNetworkEvents(nameById);
-  scheduleFreeze(PHYSICS_FREEZE_MS);
+  // [P-3] Заморозка через 2 с после события stabilized, а не фиксированный таймер
+  State.network.on("stabilized", () => scheduleFreeze(FREEZE_DELAY));
   State.physicsActive = true;
   syncPhysicsButton();
+
+  attachNetworkEvents();
 }
 
-function updateNetwork(seedId, nameById) {
-  // Freeze existing nodes temporarily to avoid jumps
-  const pins = [];
-  State.nodesDS.forEach(nd => { if (!nd.fixed) pins.push({ id: nd.id, fixed: true }); });
-  if (pins.length) State.nodesDS.update(pins);
+// ── Обновление существующего Network [P-2] ────────────────────────────────
 
-  const nodeItems = State.graphNodes.map(n => nodeVisual(n));
-  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
-  State.nodesDS.update(nodeItems);
-  State.edgesDS.update(edgeItems);
+function _updateNetwork(seedId, mode, incomingNodeIds, incomingEdgeIds) {
+  const isReplace = (mode === "new" || mode === "filter");
 
-  // Unpin non-manually-pinned nodes
-  const unpin = [];
-  State.nodesDS.forEach(nd => {
-    if (nd.fixed && !State.pinnedNodes.has(nd.id)) unpin.push({ id: nd.id, fixed: false });
+  // Добавляем новые узлы и рёбра
+  const newNodeItems = State.graphNodes
+    .filter(n => !State.nodesDS.get(n.id))
+    .map(n => nodeVisual(n));
+  const newEdgeItems = State.graphEdges
+    .filter(e => !State.edgesDS.get(e.id))
+    .map(e => edgeVisual(e));
+  if (newNodeItems.length) State.nodesDS.add(newNodeItems);
+  if (newEdgeItems.length) State.edgesDS.add(newEdgeItems);
+
+  // [P-2] Partial update: размер + seed-визуал + tooltip
+  const sizeUpdates = State.graphNodes.map(n => {
+    const isPinned = State.pinnedNodes.has(n.id);
+    const radius   = n.computedRadius;
+    const accent   = n.isSeed ? COLOR.signal : COLOR.pulse;
+    const dimBorder = n.isSeed ? "rgba(94,230,197,0.30)" : "rgba(185,138,255,0.25)";
+    // [P-2] Только поля, которые могут измениться
+    return {
+      id:      n.id,
+      size:    radius,
+      title:   n._tooltipEl || buildNodeTooltipEl(n),
+      borderWidth: n.isSeed ? 5 : 2,
+      borderWidthSelected: n.isSeed ? 7 : 3,
+      shadow:  n.isSeed
+        ? { enabled: true, color: "rgba(94,230,197,0.40)", size: 22, x: 0, y: 0 }
+        : { enabled: false },
+      color: {
+        border:    dimBorder,
+        background: COLOR.panel,
+        highlight: { border: COLOR.paper, background: COLOR.panel },
+        hover:     { border: accent,      background: COLOR.panel }
+      },
+      font: {
+        color:   isPinned ? accent : "#00000000",
+        size:    isPinned ? 11 : 0,
+        vadjust: radius + 6,
+        align:   "center"
+      },
+      _accent: accent, _dimBorder: dimBorder
+    };
   });
-  if (unpin.length) State.nodesDS.update(unpin);
+  State.nodesDS.update(sizeUpdates);
 
-  // Soft re-ignite physics (alpha 0.3 style)
-  State.network.setOptions({ physics: { enabled: true, stabilization: false } });
-  State.physicsActive = true;
-  syncPhysicsButton();
-  scheduleFreeze(2500);
+  // [P-2] Для режима filter/new: скрываем узлы и рёбра вне incoming-set
+  if (isReplace) {
+    const nodeVisUpdates = [];
+    State.nodesDS.forEach(nd => {
+      const rn      = State.graphNodes.find(n => n.id === nd.id);
+      const visible = rn?.isSeed || incomingNodeIds.has(nd.id);
+      nodeVisUpdates.push({ id: nd.id, hidden: !visible, physics: visible && !State.pinnedNodes.has(nd.id) });
+    });
+    State.nodesDS.update(nodeVisUpdates);
+
+    const edgeVisUpdates = [];
+    State.edgesDS.forEach(ed => {
+      const visible = incomingEdgeIds.has(ed.id);
+      const re      = State.graphEdges.find(e => e.id === ed.id);
+      edgeVisUpdates.push({
+        id:     ed.id,
+        hidden: !visible,
+        physics: visible,
+        color:  visible
+          ? { color: roleColor(re?.dominantRole || "primary"), opacity: 0.35, inherit: false }
+          : { color: "rgba(0,0,0,0)", opacity: 0, inherit: false }
+      });
+    });
+    State.edgesDS.update(edgeVisUpdates);
+  }
+
+  // [P-3] Physics: для filter — nudge, для expand — nudge, для new не попадём сюда
+  nudgePhysics(mode === "filter" ? 1200 : 2000);
+
+  // Rebuild BFS adjacency
+  rebuildBfsAdj();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// NETWORK EVENTS
+// NETWORK EVENTS  [P-6]
 // ════════════════════════════════════════════════════════════════════════════
 
-function attachNetworkEvents(nameById) {
+function attachNetworkEvents() {
   const net = State.network;
 
-  // ── Click logic: single vs double click disambiguation ───────────────────
-  // Single → sidebar + focus highlight (no fetch)
-  // Double → expand (fetch)
-  // Ctrl/Cmd → Genius
+  // [P-6] Нативные click + doubleClick без кастомного таймера
+  // click → sidebar + focus (нет fetch)
+  // doubleClick → expand (fetch)
+  // Ctrl+Click → Genius
 
   net.on("click", function(params) {
-    if (!params.nodes || params.nodes.length === 0) {
-      clearFocus();
-      return;
-    }
+    if (!params.nodes?.length) { clearFocus(); return; }
     const nodeId  = params.nodes[0];
-    const ctrlKey = params.event && (params.event.ctrlKey || params.event.metaKey);
+    const ctrlKey = params.event?.ctrlKey || params.event?.metaKey
+                 || params.event?.srcEvent?.ctrlKey
+                 || params.event?.srcEvent?.metaKey;
 
-    if (ctrlKey) {
-      openGeniusPage(nodeId);
-      return;
-    }
+    if (ctrlKey) { openGeniusPage(nodeId); return; }
 
-    // Disambiguate single vs double click
-    if (State._clickTimer && State._lastClickNode === nodeId) {
-      // Second click on same node quickly → treat as double
-      clearTimeout(State._clickTimer);
-      State._clickTimer    = null;
-      State._lastClickNode = null;
-      // Expand
-      const gn = State.graphNodes.find(n => n.id === nodeId);
-      if (gn) searchArtist(gn.name, true);
-    } else {
-      clearTimeout(State._clickTimer);
-      State._lastClickNode = nodeId;
-      State._clickTimer = setTimeout(() => {
-        State._clickTimer    = null;
-        State._lastClickNode = null;
-        // Single click action: show sidebar + highlight neighborhood
-        setFocus(nodeId);
-        showArtistSidebar(nodeId);
-      }, 260);
-    }
+    // Одинарный клик: sidebar + highlight (без fetch, без задержки)
+    setFocus(nodeId);
+    showArtistSidebar(nodeId);
   });
 
-  // Double-click fallback (in case vis fires doubleClick separately)
+  // [P-6] Двойной клик → expand
   net.on("doubleClick", function(params) {
-    clearTimeout(State._clickTimer);
-    State._clickTimer    = null;
-    State._lastClickNode = null;
-    if (!params.nodes || params.nodes.length === 0) return;
-    const gn = State.graphNodes.find(n => n.id === params.nodes[0]);
+    if (!params.nodes?.length) return;
+    const nodeId = params.nodes[0];
+    const gn     = State.graphNodes.find(n => n.id === nodeId);
     if (gn) searchArtist(gn.name, true);
   });
 
-  // Right-click → pin
+  // ПКМ → pin
   net.on("oncontext", function(params) {
     params.event.preventDefault();
-    if (!params.nodes || params.nodes.length === 0) return;
-    togglePin(params.nodes[0]);
+    const nodeId = params.nodes?.length
+      ? params.nodes[0]
+      : State.network.getNodeAt(params.pointer.DOM);
+    if (nodeId == null) return;
+    togglePin(nodeId);
   });
 
-  // Long press on mobile → pin
-  let _touchTimer = null, _touchNodeId = null;
+  // Long-press (mobile) → pin
   net.on("hold", function(params) {
-    if (!params.nodes || params.nodes.length === 0) return;
-    togglePin(params.nodes[0]);
+    const nodeId = params.nodes?.[0] ?? State.network.getNodeAt(params.pointer?.DOM);
+    if (nodeId == null) return;
+    togglePin(nodeId);
   });
 
-  // Hover effects
+  // Hover highlight
   net.on("hoverNode", function(params) {
     els.network.style.cursor = "pointer";
-    if (!State.focusedNodeId) highlightNeighborhood(params.node, false);
+    if (!State.focusedNodeId) highlightNeighborhood(params.node);
   });
   net.on("hoverEdge", function(params) {
     els.network.style.cursor = "pointer";
@@ -781,22 +929,23 @@ function attachNetworkEvents(nameById) {
     els.network.style.cursor = "default";
     if (!State.focusedNodeId) restoreDefaultColors();
   });
+
+  // [P-3] Заморозка через FREEZE_DELAY после stabilized
+  net.on("stabilized", () => scheduleFreeze(FREEZE_DELAY));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ARTIST SIDEBAR  (Stage 1.2)
+// SIDEBAR  (полный v1 функционал)
 // ════════════════════════════════════════════════════════════════════════════
 
 function showArtistSidebar(nodeId) {
   const node = State.graphNodes.find(n => n.id === nodeId);
   if (!node) return;
 
-  // Hide path panel if open to avoid overlap
-  els.pathPanel.classList.remove("show");
+  els.pathPanel?.classList.remove("show");
 
-  // Avatar
-  els.sidebarAvatar.src    = node.imageUrl || placeholderFor(node.name, node.isSeed);
-  els.sidebarAvatar.alt    = node.name;
+  els.sidebarAvatar.src = node.imageUrl || placeholderFor(node.name, node.isSeed);
+  els.sidebarAvatar.alt = node.name;
   els.sidebarName.textContent = node.name;
 
   const collab = node._totalCollabs || node.totalWeight || 0;
@@ -804,45 +953,45 @@ function showArtistSidebar(nodeId) {
   els.sidebarMeta.textContent =
     `${collab} collab${collab === 1 ? "" : "s"}` + (genres ? ` · ${genres}` : "");
 
-  // Top tracks
+  // Топ-3 трека
   const tracks = node._topTracks || [];
   if (tracks.length) {
     els.sidebarTracks.innerHTML = tracks.map(t => {
-      const roles = (t.roles || []);
-      const mainRole = roles[0] ? roles[0].toLowerCase() : "primary";
-      const slug = mainRole.replace(/[^a-z0-9]/g, "");
-      return `<div class="sidebar-track">
-        <span class="sidebar-track-name">${escapeHtml(t.song || "Untitled")}</span>
-        <span class="sidebar-track-role role-chip--${slug}">${escapeHtml(roles[0] || "primary")}</span>
-      </div>`;
+      const roles   = t.roles || [];
+      const mainRole = (roles[0] || "primary").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return `<div class="sidebar-track">` +
+        `<span class="sidebar-track-name">${escapeHtml(t.song || "Untitled")}</span>` +
+        `<span class="sidebar-track-role role-chip--${mainRole}">${escapeHtml(roles[0] || "primary")}</span>` +
+        `</div>`;
     }).join("");
   } else {
-    els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">No track data cached.</div>`;
+    els.sidebarTracks.innerHTML =
+      `<div style="color:var(--mist);font-size:12px;">No track data cached.</div>`;
   }
 
-  // Roles
+  // Все роли
   const roles = [...(node._rolesSet || [])];
   els.sidebarRoles.innerHTML = roles.length
-    ? roles.map(r => `<span class="sidebar-role-chip role-chip--${r.replace(/[^a-z0-9]/g, "")}">${escapeHtml(r)}</span>`).join("")
+    ? roles.map(r =>
+        `<span class="sidebar-role-chip role-chip--${r.replace(/[^a-z0-9]/g,"")}">${escapeHtml(r)}</span>`
+      ).join("")
     : `<span style="color:var(--mist);font-size:11px;">—</span>`;
 
-  // Genius button
   els.sidebarGenius.onclick = () => openGeniusPage(nodeId);
-
-  els.artistSidebar.classList.add("show");
+  els.artistSidebar?.classList.add("show");
 }
 
 function hideArtistSidebar() {
-  els.artistSidebar.classList.remove("show");
+  els.artistSidebar?.classList.remove("show");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// FOCUS & HIGHLIGHT
+// FOCUS & HIGHLIGHT  [P-2]
 // ════════════════════════════════════════════════════════════════════════════
 
 function setFocus(nodeId) {
   State.focusedNodeId = nodeId;
-  highlightNeighborhood(nodeId, true);
+  highlightNeighborhood(nodeId);
 }
 
 function clearFocus() {
@@ -851,157 +1000,132 @@ function clearFocus() {
   restoreDefaultColors();
 }
 
-function highlightNeighborhood(nodeId, persistent) {
+function highlightNeighborhood(nodeId) {
   if (!State.nodesDS || !State.edgesDS) return;
   const connectedNodes = new Set(State.network.getConnectedNodes(nodeId));
   const connectedEdges = new Set(State.network.getConnectedEdges(nodeId));
 
-  const nUpdates = [], eUpdates = [];
+  const nUp = [], eUp = [];
 
   State.nodesDS.forEach(nd => {
+    if (nd.hidden) return;
     const isTarget = nd.id === nodeId || connectedNodes.has(nd.id);
-    nUpdates.push({
+    nUp.push({
       id:      nd.id,
-      color:   { border: isTarget ? (nd._accent || nd.accent || COLOR.pulse) : "rgba(40,48,68,0.10)", background: isTarget ? COLOR.panel : "rgba(20,26,40,0.12)" },
+      color:   {
+        border:     isTarget ? (nd._accent || COLOR.pulse) : "rgba(40,48,68,0.10)",
+        background: isTarget ? COLOR.panel : "rgba(20,26,40,0.12)"
+      },
       opacity: isTarget ? 1 : 0.1
     });
   });
 
   State.edgesDS.forEach(ed => {
+    if (ed.hidden) return;
     const isTarget = connectedEdges.has(ed.id);
-    const rawEdge  = State.graphEdges.find(e => e.id === ed.id) || { dominantRole: "primary" };
-    const vis      = isEdgeVisible(rawEdge);
-    eUpdates.push({
+    eUp.push({
       id:    ed.id,
       color: {
-        color:   isTarget && vis ? (ed._color || COLOR.pulse) : "rgba(40,48,68,0.02)",
-        opacity: isTarget && vis ? 0.95 : 0.02
+        color:   isTarget ? (ed._color || COLOR.pulse) : "rgba(40,48,68,0.02)",
+        opacity: isTarget ? 0.95 : 0.02
       }
     });
   });
 
-  State.nodesDS.update(nUpdates);
-  State.edgesDS.update(eUpdates);
+  State.nodesDS.update(nUp);
+  State.edgesDS.update(eUp);
 }
 
 function highlightEdge(edgeId) {
   if (!State.edgesDS) return;
-  const eUpdates = [];
+  const eUp = [];
   State.edgesDS.forEach(ed => {
-    const rawEdge = State.graphEdges.find(e => e.id === ed.id) || { dominantRole: "primary" };
-    const vis     = isEdgeVisible(rawEdge);
-    eUpdates.push({
+    if (ed.hidden) return;
+    eUp.push({
       id:    ed.id,
       color: {
-        color:   ed.id === edgeId && vis ? (ed._color || COLOR.pulse) : "rgba(40,48,68,0.03)",
-        opacity: ed.id === edgeId && vis ? 1.0 : 0.03
+        color:   ed.id === edgeId ? (ed._color || COLOR.pulse) : "rgba(40,48,68,0.03)",
+        opacity: ed.id === edgeId ? 1.0 : 0.03
       }
     });
   });
-  State.edgesDS.update(eUpdates);
+  State.edgesDS.update(eUp);
 }
 
 function restoreDefaultColors() {
   if (!State.nodesDS || !State.edgesDS) return;
-  const nUpdates = [], eUpdates = [];
+  const nUp = [], eUp = [];
 
   State.nodesDS.forEach(nd => {
-    nUpdates.push({
+    if (nd.hidden) return;
+    nUp.push({
       id:      nd.id,
-      color:   { border: nd._dimBorder || nd.dimBorder, background: COLOR.panel },
+      color:   { border: nd._dimBorder || "rgba(185,138,255,0.25)", background: COLOR.panel },
       opacity: 1
     });
   });
 
   State.graphEdges.forEach(e => {
-    const vis = isEdgeVisible(e);
-    const c   = edgeColorForRole(e.dominantRole);
-    eUpdates.push({
+    if (!State.edgesDS.get(e.id) || State.edgesDS.get(e.id).hidden) return;
+    eUp.push({
       id:    e.id,
-      color: { color: vis ? c : "rgba(0,0,0,0)", opacity: vis ? 0.35 : 0 }
+      width: Math.min(1 + Math.sqrt(e.weight || 1) * 1.8, 9), // сброс ширины BFS
+      color: { color: roleColor(e.dominantRole), opacity: 0.35, inherit: false }
     });
   });
 
-  State.nodesDS.update(nUpdates);
-  State.edgesDS.update(eUpdates);
+  State.nodesDS.update(nUp);
+  State.edgesDS.update(eUp);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// PINNING  (Stage 2.2)
+// PIN
 // ════════════════════════════════════════════════════════════════════════════
 
 function togglePin(nodeId) {
-  if (State.pinnedNodes.has(nodeId)) {
+  const isPinned = State.pinnedNodes.has(nodeId);
+  if (isPinned) {
     State.pinnedNodes.delete(nodeId);
-    if (State.network) State.network.editNode(nodeId, { fixed: false });
+    // [P-2] Только нужные поля
+    State.nodesDS.update([{ id: nodeId, fixed: false, physics: true, label: "", font: { color: "#00000000", size: 0 } }]);
   } else {
-    const pos = State.network && State.network.getPositions([nodeId]);
-    const p   = pos && pos[nodeId];
+    const pos = State.network?.getPositions([nodeId])?.[nodeId];
     State.pinnedNodes.add(nodeId);
-    if (State.network && p) {
-      State.network.moveNode(nodeId, p.x, p.y);
-    }
+    const rn = State.graphNodes.find(n => n.id === nodeId);
+    State.nodesDS.update([{
+      id:     nodeId,
+      fixed:  pos ? { x: true, y: true } : true,
+      physics: false,
+      x:      pos?.x, y: pos?.y,
+      label:  "📌",
+      font:   { color: COLOR.signal, size: 11, vadjust: (rn?.computedRadius || 20) + 6, align: "center" }
+    }]);
+    if (pos) State.network.moveNode(nodeId, pos.x, pos.y);
   }
-  const gn = State.graphNodes.find(n => n.id === nodeId);
-  if (gn && State.nodesDS) State.nodesDS.update([nodeVisual(gn)]);
-  showToast(
-    State.pinnedNodes.has(nodeId) ? "📌 Pinned — right-click to unpin" : "Unpinned",
-    2000
-  );
+  showToast(!isPinned ? "📌 Закреплён — ПКМ для открепления" : "Откреплён", 2000);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// GENIUS PAGE  (Stage 2.1)
+// GENIUS PAGE
 // ════════════════════════════════════════════════════════════════════════════
 
 function openGeniusPage(nodeId) {
   const node = State.graphNodes.find(n => n.id === nodeId);
   if (!node) return;
-  // Prefer a cached genius_url from the API if available
   const url = node.geniusUrl ||
-    `https://genius.com/artists/${encodeURIComponent(node.name.replace(/\s+/g, "-").toLowerCase())}`;
+    `https://genius.com/artists/${encodeURIComponent(node.name.replace(/\s+/g,"-").toLowerCase())}`;
   window.open(url, "_blank", "noopener");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ROLE FILTERING  (Stage 2.2)
+// ROLE FILTER TOGGLES  [P-4]
+// Смена тогла → debounced re-fetch (бэкенд возвращает отфильтрованный граф)
 // ════════════════════════════════════════════════════════════════════════════
-
-function applyFilters() {
-  if (!State.edgesDS) return;
-  const updates = [];
-
-  State.graphEdges.forEach(e => {
-    const vis = isEdgeVisible(e);
-    const c   = edgeColorForRole(e.dominantRole);
-    updates.push({ id: e.id, color: { color: vis ? c : "rgba(0,0,0,0)", opacity: vis ? 0.35 : 0 } });
-  });
-  State.edgesDS.update(updates);
-
-  // Hide nodes that have no visible edges
-  hideOrphanNodes();
-  updateShareableUrl(els.dockInput.value);
-}
-
-function hideOrphanNodes() {
-  if (!State.nodesDS || !State.edgesDS) return;
-  const visibleEdges = State.graphEdges.filter(isEdgeVisible);
-  const connectedIds = new Set();
-  for (const e of visibleEdges) { connectedIds.add(e.from); connectedIds.add(e.to); }
-
-  const updates = [];
-  State.nodesDS.forEach(nd => {
-    const gn = State.graphNodes.find(n => n.id === nd.id);
-    const isSeed = gn && gn.isSeed;
-    // Seed is always shown; others hidden if disconnected
-    const hidden = !isSeed && !connectedIds.has(nd.id);
-    updates.push({ id: nd.id, hidden });
-  });
-  State.nodesDS.update(updates);
-}
 
 function setupFilterToggles() {
   function makeToggle(role, btn) {
+    if (!btn) return;
+    btn.classList.add("active");
     btn.addEventListener("click", () => {
       if (State.activeFilters.has(role)) {
         State.activeFilters.delete(role);
@@ -1010,36 +1134,29 @@ function setupFilterToggles() {
         State.activeFilters.add(role);
         btn.classList.add("active");
       }
-      applyFilters();
+      // [P-4] Re-fetch у бэкенда, не клиентская фильтрация
+      _filterFetch();
     });
-    btn.classList.add("active");
   }
-  if (els.filterFeatured) makeToggle("featured", els.filterFeatured);
-  if (els.filterProducer) makeToggle("producer", els.filterProducer);
-  if (els.filterWriter)   makeToggle("writer",   els.filterWriter);
+  makeToggle("featured", els.filterFeatured);
+  makeToggle("producer", els.filterProducer);
+  makeToggle("writer",   els.filterWriter);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// LAYOUT SWITCHER  (Stage 3.1)
+// LAYOUT SWITCHER  [P-3]
 // ════════════════════════════════════════════════════════════════════════════
 
 function switchLayout(layout) {
   State.currentLayout = layout;
   if (!State.network) return;
 
-  // Disable physics first
   State.network.setOptions({ physics: { enabled: false } });
-
-  // Apply new layout options
   State.network.setOptions(networkOptions(layout));
 
   if (layout !== LAYOUTS.HIERARCH) {
-    // Soft re-enable with alpha-like low energy
     setTimeout(() => {
-      State.network.setOptions({ physics: { enabled: true, stabilization: false } });
-      State.physicsActive = true;
-      syncPhysicsButton();
-      scheduleFreeze(3000);
+      nudgePhysics(2000);
     }, 80);
   } else {
     State.physicsActive = false;
@@ -1055,107 +1172,78 @@ function switchLayout(layout) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TIMELINE SLIDER  (Stage 3.3)
+// BFS PATH FINDER  [P-5] — мемоизированный
 // ════════════════════════════════════════════════════════════════════════════
 
-function updateTimelineRange() {
-  // Auto-detect min/max year from edges
-  const years = State.graphEdges
-    .map(e => e.release_year)
-    .filter(y => y != null && y > 1900 && y <= new Date().getFullYear());
-  if (!years.length) return;
-  const minY = Math.min(...years);
-  const maxY = Math.max(...years);
-  els.timelineMin.min = minY; els.timelineMin.max = maxY; els.timelineMin.value = minY;
-  els.timelineMax.min = minY; els.timelineMax.max = maxY; els.timelineMax.value = maxY;
-  State.timelineMin = minY; State.timelineMax = maxY;
-  els.timelineYears.textContent = `${minY} – ${maxY}`;
-}
-
-function setupTimeline() {
-  els.btnTimeline && els.btnTimeline.addEventListener("click", () => {
-    State.timelineActive = !State.timelineActive;
-    els.timelinePanel.classList.toggle("show", State.timelineActive);
-    els.btnTimeline.classList.toggle("active", State.timelineActive);
-  });
-
-  function onSlider() {
-    let min = Number(els.timelineMin.value);
-    let max = Number(els.timelineMax.value);
-    if (min > max) [min, max] = [max, min];
-    State.timelineMin = min;
-    State.timelineMax = max;
-    els.timelineYears.textContent = `${min} – ${max}`;
-    applyFilters();
+function rebuildBfsAdj() {
+  State._bfsAdj.clear();
+  State._bfsMemo.clear();
+  for (const e of State.graphEdges) {
+    // Учитываем только видимые рёбра (не hidden)
+    const visItem = State.edgesDS?.get(e.id);
+    if (visItem?.hidden) continue;
+    if (!State._bfsAdj.has(e.from)) State._bfsAdj.set(e.from, []);
+    if (!State._bfsAdj.has(e.to))   State._bfsAdj.set(e.to,   []);
+    State._bfsAdj.get(e.from).push(e.to);
+    State._bfsAdj.get(e.to).push(e.from);
   }
-
-  els.timelineMin && els.timelineMin.addEventListener("input", onSlider);
-  els.timelineMax && els.timelineMax.addEventListener("input", onSlider);
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// BFS PATHFINDING  (Stage 2.3)
-// ════════════════════════════════════════════════════════════════════════════
 
 function bfsPath(fromId, toId) {
-  const adj = new Map();
-  State.graphEdges.forEach(e => {
-    if (!adj.has(e.from)) adj.set(e.from, []);
-    if (!adj.has(e.to))   adj.set(e.to,   []);
-    adj.get(e.from).push(e.to);
-    adj.get(e.to).push(e.from);
-  });
+  const key = `${Math.min(fromId,toId)}_${Math.max(fromId,toId)}`;
+  if (State._bfsMemo.has(key)) return State._bfsMemo.get(key);
 
-  if (!adj.has(fromId) || !adj.has(toId)) return null;
+  const adj = State._bfsAdj;
+  if (!adj.has(fromId) || !adj.has(toId)) { State._bfsMemo.set(key, null); return null; }
 
   const visited = new Set([fromId]);
   const queue   = [[fromId, [fromId]]];
+  let result    = null;
 
-  while (queue.length) {
+  outer: while (queue.length) {
     const [curr, path] = queue.shift();
-    if (curr === toId) return path;
-    for (const neighbor of (adj.get(curr) || [])) {
-      if (!visited.has(neighbor)) {
-        visited.add(neighbor);
-        queue.push([neighbor, [...path, neighbor]]);
-      }
+    for (const nbr of (adj.get(curr) || [])) {
+      if (nbr === toId) { result = [...path, toId]; break outer; }
+      if (!visited.has(nbr)) { visited.add(nbr); queue.push([nbr, [...path, nbr]]); }
     }
   }
-  return null;
+
+  State._bfsMemo.set(key, result);
+  // Кэшируем обратный путь бесплатно
+  const revKey = `${Math.min(toId,fromId)}_${Math.max(toId,fromId)}`;
+  if (revKey !== key) State._bfsMemo.set(revKey, result ? [...result].reverse() : null);
+  return result;
 }
 
 function highlightPath(path) {
   if (!State.nodesDS || !State.edgesDS || !path) return;
   const pathSet   = new Set(path);
   const pathEdges = new Set();
-
   for (let i = 0; i < path.length - 1; i++) {
-    const lo = Math.min(path[i], path[i + 1]);
-    const hi = Math.max(path[i], path[i + 1]);
-    pathEdges.add(`${lo}_${hi}`);
+    pathEdges.add(`${Math.min(path[i],path[i+1])}_${Math.max(path[i],path[i+1])}`);
   }
 
-  const nUpdates = [], eUpdates = [];
+  const nUp = [], eUp = [];
 
   State.nodesDS.forEach(nd => {
-    nUpdates.push({
+    if (nd.hidden) return;
+    nUp.push({
       id:      nd.id,
       color:   { border: pathSet.has(nd.id) ? COLOR.neon : "rgba(40,48,68,0.08)", background: COLOR.panel },
       opacity: pathSet.has(nd.id) ? 1 : 0.12
     });
   });
-
   State.edgesDS.forEach(ed => {
+    if (ed.hidden) return;
     const inPath = pathEdges.has(ed.id);
-    eUpdates.push({
+    eUp.push({
       id:    ed.id,
-      color: { color: inPath ? COLOR.neon : "rgba(40,48,68,0.02)", opacity: inPath ? 1 : 0.02 },
-      width: inPath ? 5 : undefined
+      width: inPath ? 5 : undefined,
+      color: { color: inPath ? COLOR.neon : "rgba(40,48,68,0.02)", opacity: inPath ? 1 : 0.02, inherit: false }
     });
   });
-
-  State.nodesDS.update(nUpdates);
-  State.edgesDS.update(eUpdates);
+  State.nodesDS.update(nUp);
+  State.edgesDS.update(eUp);
 }
 
 function clearPathHighlight() {
@@ -1165,26 +1253,28 @@ function clearPathHighlight() {
 }
 
 function setupPathPanel() {
-  els.btnFindPath && els.btnFindPath.addEventListener("click", () => {
-    // Hide sidebar if open to avoid overlap
+  els.btnFindPath?.addEventListener("click", () => {
     hideArtistSidebar();
-    els.pathPanel.classList.toggle("show");
+    els.pathPanel?.classList.toggle("show");
   });
 
-  els.btnRunPath && els.btnRunPath.addEventListener("click", () => {
-    const fromName = (els.pathFromInput.value || "").trim();
-    const toName   = (els.pathToInput.value   || "").trim();
-    if (!fromName || !toName) { showToast("Enter both artist names."); return; }
+  els.btnRunPath?.addEventListener("click", () => {
+    const fromName = (els.pathFromInput?.value || "").trim();
+    const toName   = (els.pathToInput?.value   || "").trim();
+    if (!fromName || !toName) { showToast("Введите имена обоих артистов."); return; }
 
     const fromNode = State.graphNodes.find(n => n.name.toLowerCase() === fromName.toLowerCase());
     const toNode   = State.graphNodes.find(n => n.name.toLowerCase() === toName.toLowerCase());
 
-    if (!fromNode) { showToast(`"${fromName}" not loaded in current graph.`); return; }
-    if (!toNode)   { showToast(`"${toName}" not loaded in current graph.`);   return; }
+    if (!fromNode) { showToast(`"${fromName}" не загружен в граф.`); return; }
+    if (!toNode)   { showToast(`"${toName}" не загружен в граф.`);   return; }
 
-    const path = bfsPath(fromNode.id, toNode.id);
+    // Перестраиваем adj при первом запросе (если ещё нет)
+    if (!State._bfsAdj.size) rebuildBfsAdj();
+
+    const path = bfsPath(fromNode.id, toNode.id);  // [P-5]
     if (!path) {
-      els.pathResult.textContent = "No path found — artists may not be connected.";
+      if (els.pathResult) els.pathResult.textContent = "Путь не найден — артисты могут не быть связаны.";
       restoreDefaultColors();
       return;
     }
@@ -1192,73 +1282,65 @@ function setupPathPanel() {
     State.pathHighlight = { from: fromNode.id, to: toNode.id, path };
     highlightPath(path);
 
-    const names = path.map(id => {
-      const n = State.graphNodes.find(x => x.id === id);
-      return n ? n.name : String(id);
-    });
-    const hops = path.length - 1;
-    els.pathResult.textContent = `${hops} hop${hops === 1 ? "" : "s"}: ${names.join(" → ")}`;
+    const names = path.map(id => State.graphNodes.find(n => n.id === id)?.name || String(id));
+    const hops  = path.length - 1;
+    if (els.pathResult)
+      els.pathResult.textContent = `${hops} шаг${hops===1?"":"а"}: ${names.join(" → ")}`;
   });
 
-  els.btnClearPath && els.btnClearPath.addEventListener("click", clearPathHighlight);
+  els.btnClearPath?.addEventListener("click", clearPathHighlight);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// NODE SEARCH  (Cmd+K)  (Stage 4.4)
+// NODE SEARCH  (Cmd+K)
 // ════════════════════════════════════════════════════════════════════════════
 
 function openNodeSearch() {
   if (!State.hasRendered) return;
-  els.nodeSearchOverlay.classList.add("show");
-  els.nodeSearchInput.value = "";
-  els.nodeSearchInput.focus();
+  els.nodeSearchOverlay?.classList.add("show");
+  if (els.nodeSearchInput) { els.nodeSearchInput.value = ""; els.nodeSearchInput.focus(); }
   renderNodeSearchResults("");
 }
-
-function closeNodeSearch() {
-  els.nodeSearchOverlay.classList.remove("show");
-}
+function closeNodeSearch() { els.nodeSearchOverlay?.classList.remove("show"); }
 
 function renderNodeSearchResults(query) {
+  if (!els.nodeSearchResults) return;
   const q = query.toLowerCase().trim();
-  const results = q
-    ? State.graphNodes.filter(n => n.name.toLowerCase().includes(q)).slice(0, 12)
-    : State.graphNodes.slice(0, 12);
+  const results = State.graphNodes
+    .filter(n => !q || n.name.toLowerCase().includes(q))
+    .slice(0, 12);
 
   els.nodeSearchResults.innerHTML = results.map(n =>
     `<div class="ns-item" data-id="${n.id}">` +
     `<span class="ns-name">${escapeHtml(n.name)}</span>` +
-    `<span class="ns-weight">${n.totalWeight || 0} collab${n.totalWeight === 1 ? "" : "s"}</span>` +
+    `<span class="ns-weight">${n.totalWeight} collab${n.totalWeight===1?"":"s"}</span>` +
     `</div>`
-  ).join("") || `<div class="ns-empty">No nodes match</div>`;
+  ).join("") || `<div class="ns-empty">Нет совпадений</div>`;
 
   els.nodeSearchResults.querySelectorAll(".ns-item").forEach(item => {
     item.addEventListener("click", () => {
       const id = Number(item.getAttribute("data-id"));
       closeNodeSearch();
-      focusOnNode(id);
+      if (!State.network) return;
+      State.network.focus(id, { scale: 1.5, animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+      setFocus(id);
+      showArtistSidebar(id);
     });
   });
 }
 
-function focusOnNode(nodeId) {
-  if (!State.network) return;
-  State.network.focus(nodeId, { scale: 1.5, animation: { duration: 600, easingFunction: "easeInOutQuad" } });
-  setFocus(nodeId);
-  showArtistSidebar(nodeId);
-}
-
 function setupNodeSearch() {
-  const onInput = debounce(e => renderNodeSearchResults(e.target.value), 120);
-  els.nodeSearchInput.addEventListener("input", onInput);
-  els.nodeSearchInput.addEventListener("keydown", e => { if (e.key === "Escape") closeNodeSearch(); });
-  els.nodeSearchOverlay.addEventListener("click", e => {
+  els.nodeSearchInput?.addEventListener("input",
+    debounce(e => renderNodeSearchResults(e.target.value), 120)
+  );
+  els.nodeSearchInput?.addEventListener("keydown", e => { if (e.key === "Escape") closeNodeSearch(); });
+  els.nodeSearchOverlay?.addEventListener("click", e => {
     if (e.target === els.nodeSearchOverlay) closeNodeSearch();
   });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SEARCH HISTORY  (Stage 4.2)
+// HISTORY (localStorage)
 // ════════════════════════════════════════════════════════════════════════════
 
 function loadHistory() {
@@ -1270,8 +1352,7 @@ function loadHistory() {
 }
 
 function saveHistory() {
-  try { localStorage.setItem("feat-atlas-history", JSON.stringify(State.history)); }
-  catch { /* quota */ }
+  try { localStorage.setItem("feat-atlas-history", JSON.stringify(State.history)); } catch {}
 }
 
 function pushHistory(name) {
@@ -1280,57 +1361,52 @@ function pushHistory(name) {
   renderHistoryList();
 }
 
-function clearHistory() {
-  State.history = [];
-  saveHistory();
-  renderHistoryList();
-}
-
 function renderHistoryList() {
   if (!els.historyList) return;
   if (!State.history.length) {
-    els.historyList.innerHTML = `<span class="hist-empty">No recent searches</span>`;
+    els.historyList.innerHTML = `<span class="hist-empty">Нет недавних поисков</span>`;
     return;
   }
   els.historyList.innerHTML =
     State.history.map(name =>
       `<div class="hist-item">` +
-      `<span class="hist-name" data-artist="${escapeHtml(name)}" title="Re-search ${escapeHtml(name)}">${escapeHtml(name)}</span>` +
-      `<button class="hist-btn" data-artist="${escapeHtml(name)}" title="Re-search">↻</button>` +
+      `<span class="hist-name" data-artist="${escapeHtml(name)}">${escapeHtml(name)}</span>` +
+      `<button class="hist-btn" data-artist="${escapeHtml(name)}">↻</button>` +
       `</div>`
     ).join("") +
-    `<button class="dock-btn hist-clear-btn" id="btn-hist-clear">Clear history</button>`;
+    `<button class="dock-btn hist-clear-btn" id="btn-hist-clear">Очистить</button>`;
 
   els.historyList.querySelectorAll("[data-artist]").forEach(el => {
     el.addEventListener("click", () => searchArtist(el.getAttribute("data-artist"), false));
   });
-  const clearBtn = $("btn-hist-clear");
-  if (clearBtn) clearBtn.addEventListener("click", () => { clearHistory(); });
+  $("btn-hist-clear")?.addEventListener("click", () => {
+    State.history = []; saveHistory(); renderHistoryList();
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// SHAREABLE URL  (Stage 4.3)
+// SHAREABLE URL
 // ════════════════════════════════════════════════════════════════════════════
 
 function updateShareableUrl(artistName) {
   if (!artistName) return;
   const url = new URL(window.location.href);
   url.searchParams.set("artist", artistName);
-  // Also store active filters
-  const roles = [...State.activeFilters].sort().join(",");
-  url.searchParams.set("roles", roles);
+  const roles = [...State.activeFilters].filter(r => r !== "primary").sort().join(",");
+  if (roles) url.searchParams.set("role_filter", roles);
+  else url.searchParams.delete("role_filter");
   history.replaceState(null, "", url.toString());
 }
 
 function loadArtistFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const artist = params.get("artist");
-  const roles  = params.get("roles");
+  const params     = new URLSearchParams(window.location.search);
+  const artist     = params.get("artist");
+  const roleFilter = params.get("role_filter") || params.get("roles"); // backward compat
 
-  // Restore role filters from URL
-  if (roles) {
-    const set = new Set(roles.split(",").map(r => r.trim()).filter(Boolean));
-    State.activeFilters = set;
+  if (roleFilter) {
+    const incoming = new Set(roleFilter.split(",").map(r => r.trim()).filter(Boolean));
+    // Восстанавливаем: primary всегда включён
+    State.activeFilters = new Set(["primary", ...incoming]);
     [els.filterFeatured, els.filterProducer, els.filterWriter].forEach((btn, i) => {
       const role = ["featured", "producer", "writer"][i];
       if (!btn) return;
@@ -1345,57 +1421,50 @@ function loadArtistFromUrl() {
 }
 
 function copyShareableLink() {
-  const url = window.location.href;
-  navigator.clipboard.writeText(url)
-    .then(() => showToast("🔗 Link copied!", 2000, true))
-    .catch(() => showToast(`Copy: ${url}`, 5000));
+  navigator.clipboard.writeText(window.location.href)
+    .then(() => showToast("🔗 Ссылка скопирована!", 2000, true))
+    .catch(() => showToast(`Скопируйте вручную: ${window.location.href}`, 6000));
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// EXPORT  (Stage 4.1)
+// EXPORT
 // ════════════════════════════════════════════════════════════════════════════
 
 function exportPng() {
-  if (!State.network) { showToast("No graph to export yet."); return; }
+  if (!State.network) { showToast("Сначала постройте граф."); return; }
   try {
     const canvas = els.network.querySelector("canvas");
-    if (!canvas) { showToast("Canvas not found."); return; }
-
-    // Composite: fill dark background then draw graph
+    if (!canvas) { showToast("Canvas не найден."); return; }
     const out = document.createElement("canvas");
     out.width  = canvas.width;
     out.height = canvas.height;
     const ctx  = out.getContext("2d");
-    ctx.fillStyle = "#0B0E14";
+    ctx.fillStyle = COLOR.ink;
     ctx.fillRect(0, 0, out.width, out.height);
     ctx.drawImage(canvas, 0, 0);
-
-    const link = document.createElement("a");
+    const link    = document.createElement("a");
     link.download = "feature-atlas.png";
-    link.href = out.toDataURL("image/png");
+    link.href     = out.toDataURL("image/png");
     link.click();
-  } catch (e) {
-    showToast("Export failed: " + e.message);
-  }
+  } catch(e) { showToast("Ошибка экспорта: " + e.message); }
 }
 
 function exportJson() {
-  if (!State.graphNodes.length) { showToast("No graph to export yet."); return; }
+  if (!State.graphNodes.length) { showToast("Сначала постройте граф."); return; }
   const data = {
     exported:   new Date().toISOString(),
     seedArtist: els.dockInput.value,
     nodes: State.graphNodes.map(n => ({ id: n.id, name: n.name, imageUrl: n.imageUrl, genres: n.genres })),
     edges: State.graphEdges.map(e => ({
       from: e.from, to: e.to, weight: e.weight,
-      dominantRole: e.dominantRole, collaborations: e.collaborations,
-      release_year: e.release_year
+      dominantRole: e.dominantRole, collaborations: e.collaborations
     }))
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const url  = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.download = "feature-atlas.json";
-  link.href     = url;
+  link.href = url;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -1405,7 +1474,7 @@ function exportJson() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function fitView() {
-  if (State.network) State.network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
+  State.network?.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
 }
 
 function focusSeed() {
@@ -1415,40 +1484,31 @@ function focusSeed() {
   }
 }
 
-function zoomIn() {
-  if (!State.network) return;
-  State.network.moveTo({ scale: State.network.getScale() * 1.25, animation: { duration: 220, easingFunction: "easeInOutQuad" } });
-}
-
-function zoomOut() {
-  if (!State.network) return;
-  State.network.moveTo({ scale: State.network.getScale() * 0.8, animation: { duration: 220, easingFunction: "easeInOutQuad" } });
-}
+function zoomIn()  { State.network?.moveTo({ scale: (State.network.getScale() || 1) * 1.25, animation: { duration: 220, easingFunction: "easeInOutQuad" } }); }
+function zoomOut() { State.network?.moveTo({ scale: (State.network.getScale() || 1) * 0.8,  animation: { duration: 220, easingFunction: "easeInOutQuad" } }); }
 
 // ════════════════════════════════════════════════════════════════════════════
-// KEYBOARD SHORTCUTS  (Stage 4.4)
+// KEYBOARD SHORTCUTS
 // ════════════════════════════════════════════════════════════════════════════
 
 function setupKeyboard() {
   document.addEventListener("keydown", e => {
-    const tag     = document.activeElement && document.activeElement.tagName;
+    const tag     = document.activeElement?.tagName;
     const inInput = tag === "INPUT" || tag === "TEXTAREA";
 
-    // Cmd/Ctrl+K — node search (works even from inputs)
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
       e.preventDefault();
-      if (els.nodeSearchOverlay.classList.contains("show")) closeNodeSearch();
+      if (els.nodeSearchOverlay?.classList.contains("show")) closeNodeSearch();
       else openNodeSearch();
       return;
     }
-
     if (inInput) return;
 
     switch (e.key) {
       case "Escape":
-        if (els.nodeSearchOverlay.classList.contains("show")) { closeNodeSearch(); }
-        else if (State.pathHighlight) { clearPathHighlight(); }
-        else { focusSeed(); }
+        if (els.nodeSearchOverlay?.classList.contains("show")) { closeNodeSearch(); break; }
+        if (State.pathHighlight) { clearPathHighlight(); break; }
+        focusSeed();
         break;
       case "f": case "F": fitView(); break;
       case "+": case "=": zoomIn();  break;
@@ -1462,14 +1522,14 @@ function setupKeyboard() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// UI LIFECYCLE
+// LIFECYCLE
 // ════════════════════════════════════════════════════════════════════════════
 
 function showGraphView() {
   els.hero.classList.add("is-hidden");
   els.graphView.hidden = false;
   requestAnimationFrame(() => els.graphView.classList.add("is-visible"));
-  els.status.hidden = false;
+  if (els.status) els.status.hidden = false;
 }
 
 function destroyNetwork() {
@@ -1480,12 +1540,15 @@ function destroyNetwork() {
   State.edgesDS       = null;
   State.graphNodes    = [];
   State.graphEdges    = [];
+  State.nameById      = {};
   State.currentSeedId = null;
   State.focusedNodeId = null;
   State.pinnedNodes.clear();
   State.pathHighlight = null;
   State.hasRendered   = false;
   State.physicsActive = true;
+  State._bfsMemo.clear();
+  State._bfsAdj.clear();
   hideArtistSidebar();
 }
 
@@ -1493,41 +1556,41 @@ function resetToHero() {
   els.graphView.classList.remove("is-visible");
   setTimeout(() => {
     els.graphView.hidden = true;
-    els.status.hidden    = true;
+    if (els.status) els.status.hidden = true;
   }, 420);
   els.hero.classList.remove("is-hidden");
   els.heroInput.value = "";
   els.heroInput.focus();
   hideToast();
   hideArtistSidebar();
-  els.pathPanel.classList.remove("show");
-  els.timelinePanel.classList.remove("show");
-  State.timelineActive = false;
+  els.pathPanel?.classList.remove("show");
   destroyNetwork();
   history.replaceState(null, "", window.location.pathname);
 }
 
 function updateStatus(graph) {
-  const total = State.nodesDS ? State.nodesDS.length : (graph.nodes || []).length;
-  const links  = State.edgesDS ? State.edgesDS.length : (graph.edges || []).length;
-  const focus  = graph.seed || "—";
-  els.statusSeed.textContent = `${focus} · ${total} artist${total === 1 ? "" : "s"} · ${links} link${links === 1 ? "" : "s"}`;
+  let visible = 0, visEdge = 0;
+  State.nodesDS?.forEach(nd => { if (!nd.hidden) visible++; });
+  State.edgesDS?.forEach(ed => { if (!ed.hidden) visEdge++; });
+  if (!State.nodesDS) { visible = (graph.nodes||[]).length; visEdge = (graph.edges||[]).length; }
+  const seed = graph.seed || "—";
+  if (els.statusSeed)
+    els.statusSeed.textContent =
+      `${seed} · ${visible} артист${visible===1?"":"а"} · ${visEdge} связь${visEdge===1?"":"и"}`;
 }
 
-function showLoading(on) {
-  els.loading.classList.toggle("show", !!on);
-}
+function showLoading(on) { els.loading?.classList.toggle("show", !!on); }
 
-function showToast(message, ms = 4800, isInfo = false) {
-  els.toast.textContent = message;
+function showToast(msg, ms = 4800, isInfo = false) {
+  if (!els.toast) return;
+  els.toast.textContent = msg;
   els.toast.classList.toggle("toast--info", isInfo);
   els.toast.classList.add("show");
   if (State.toastTimer) clearTimeout(State.toastTimer);
   State.toastTimer = setTimeout(hideToast, ms);
 }
-
 function hideToast() {
-  els.toast.classList.remove("show", "toast--info");
+  els.toast?.classList.remove("show","toast--info");
   if (State.toastTimer) { clearTimeout(State.toastTimer); State.toastTimer = null; }
 }
 
@@ -1542,64 +1605,36 @@ function init() {
   setupKeyboard();
   setupNodeSearch();
   setupPathPanel();
-  setupTimeline();
 
-  // Hero form
-  els.heroForm.addEventListener("submit", e => {
-    e.preventDefault();
-    searchArtist(els.heroInput.value, false);
-  });
+  els.heroForm?.addEventListener("submit", e => { e.preventDefault(); searchArtist(els.heroInput.value, false); });
+  els.dockForm?.addEventListener("submit", e => { e.preventDefault(); searchArtist(els.dockInput.value, false); els.dockInput.blur(); });
 
-  // Dock form
-  els.dockForm.addEventListener("submit", e => {
-    e.preventDefault();
-    searchArtist(els.dockInput.value, false);
-    els.dockInput.blur();
-  });
-
-  // Chips
-  els.chips.addEventListener("click", e => {
+  els.chips?.addEventListener("click", e => {
     const chip = e.target.closest(".chip");
     if (!chip) return;
-    const name = chip.getAttribute("data-artist");
-    els.heroInput.value = name;
-    searchArtist(name, false);
+    els.heroInput.value = chip.getAttribute("data-artist");
+    searchArtist(chip.getAttribute("data-artist"), false);
   });
 
-  // Brand → back to hero
-  els.brand.addEventListener("click", resetToHero);
+  els.brand?.addEventListener("click", resetToHero);
+  els.sidebarClose?.addEventListener("click", () => { hideArtistSidebar(); clearFocus(); });
 
-  // Sidebar close
-  els.sidebarClose.addEventListener("click", () => {
-    hideArtistSidebar();
-    clearFocus();
-  });
+  els.layoutForce?.addEventListener("click",  () => switchLayout(LAYOUTS.FORCE));
+  els.layoutRadial?.addEventListener("click", () => switchLayout(LAYOUTS.RADIAL));
+  els.layoutHier?.addEventListener("click",   () => switchLayout(LAYOUTS.HIERARCH));
 
-  // Layout buttons
-  els.layoutForce  && els.layoutForce.addEventListener("click",  () => switchLayout(LAYOUTS.FORCE));
-  els.layoutRadial && els.layoutRadial.addEventListener("click", () => switchLayout(LAYOUTS.RADIAL));
-  els.layoutHier   && els.layoutHier.addEventListener("click",   () => switchLayout(LAYOUTS.HIERARCH));
+  els.btnExportPng?.addEventListener("click",  exportPng);
+  els.btnExportJson?.addEventListener("click", exportJson);
+  els.btnClearGraph?.addEventListener("click", resetToHero);
+  els.btnCopyLink?.addEventListener("click",   copyShareableLink);
+  els.btnFitView?.addEventListener("click",    fitView);
 
-  // Action buttons
-  els.btnExportPng  && els.btnExportPng.addEventListener("click",  exportPng);
-  els.btnExportJson && els.btnExportJson.addEventListener("click",  exportJson);
-  els.btnClearGraph && els.btnClearGraph.addEventListener("click",  resetToHero);
-  els.btnCopyLink   && els.btnCopyLink.addEventListener("click",   copyShareableLink);
-  els.btnFitView    && els.btnFitView.addEventListener("click",    fitView);
+  $("btn-physics")?.addEventListener("click", togglePhysics);
+  $("btn-node-search")?.addEventListener("click", openNodeSearch);
 
-  // Physics
-  const btnPhysics = $("btn-physics");
-  if (btnPhysics) btnPhysics.addEventListener("click", togglePhysics);
-
-  // Node search
-  const btnNodeSearch = $("btn-node-search");
-  if (btnNodeSearch) btnNodeSearch.addEventListener("click", openNodeSearch);
-
-  // URL auto-search
   loadArtistFromUrl();
-
-  // Focus input
   els.heroInput.focus();
 }
 
 window.addEventListener("DOMContentLoaded", init);
+window._featureAtlas = { State, searchArtist, bfsPath };
