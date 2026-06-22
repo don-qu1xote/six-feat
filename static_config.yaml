@@ -37,6 +37,19 @@ components_manager:
             task_processor: main-task-processor
             genius-api-token: $genius_token
             genius-base-url: https://api.genius.com
+
+            # FIX #4 (fuzzy search): lower threshold so partial names like
+            # "kendrick" still auto-resolve to "Kendrick Lamar" when the
+            # backend's Levenshtein+substring similarity is >= 0.72.
+            # Below this score the backend returns ambiguous=true and the
+            # frontend shows the interactive candidate picker.
+            # Range: 0.0–1.0. 0.72 is a good balance; raise to 0.85 if you
+            # want the picker to appear more often (stricter auto-resolve).
+            match-threshold: 0.72
+
+            # songs-limit: 50 is a good balance between coverage and latency.
+            # The backend caches results per (artist_id, role_mask) so
+            # subsequent loads with the same filters are instant.
             songs-limit: 50
 
         handler-index:
