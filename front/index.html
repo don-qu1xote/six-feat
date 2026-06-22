@@ -7,48 +7,51 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"
-    rel="stylesheet"
-  />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
   <style>
-    /* ─── Design tokens ─────────────────────────────────────────────────────── */
+    /* ─── Design tokens ─────────────────────────────────────────────── */
     :root {
-      --ink:    #0B0E14;
-      --ink-2:  #0E1320;
-      --panel:  #141A28;
-      --panel-2:#1B2236;
-      --line:   #283044;
-      --mist:   #8A94A6;
-      --paper:  #EDEFF4;
-      --signal: #5EE6C5;
-      --pulse:  #B98AFF;
-      --amber:  #FFD27A;
-      --warn:   #FF8FA3;
-      --shadow: 0 18px 50px rgba(0,0,0,.45);
+      --ink:      #0B0E14;
+      --ink-2:    #0E1320;
+      --panel:    #141A28;
+      --panel-2:  #1B2236;
+      --line:     #283044;
+      --mist:     #8A94A6;
+      --paper:    #EDEFF4;
+      --signal:   #5EE6C5;
+      --pulse:    #B98AFF;
+      --amber:    #FFD27A;
+      --warn:     #FF8FA3;
+      --neon:     #FF2D78;   /* BFS path highlight */
+      --shadow:   0 18px 50px rgba(0,0,0,.45);
+      --r-sm:     10px;
+      --r-md:     14px;
+      --r-lg:     18px;
     }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+
     body {
-      margin: 0;
       font-family: "Inter", system-ui, -apple-system, sans-serif;
       color: var(--paper);
       background:
         radial-gradient(1100px 760px at 50% -12%, #14203A 0%, var(--ink) 58%),
         var(--ink);
-      overflow: hidden;
     }
 
-    /* ─── Hero screen ──────────────────────────────────────────────────────── */
+    /* ─── Hero ──────────────────────────────────────────────────────── */
     .hero {
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       gap: 22px; padding: 28px; text-align: center;
       transition: opacity .5s ease, transform .5s ease;
+      z-index: 10;
     }
     .hero.is-hidden { opacity: 0; transform: translateY(-14px) scale(.985); pointer-events: none; }
+
     .eyebrow {
       font-family: "Space Mono", monospace; font-size: 13px;
       letter-spacing: .22em; text-transform: uppercase; color: var(--signal);
@@ -56,33 +59,35 @@
     .hero h1 {
       font-family: "Syne", sans-serif; font-weight: 800;
       font-size: clamp(2rem, 6vw, 3.9rem); line-height: 1.04;
-      letter-spacing: -.02em; margin: 0; max-width: 14ch;
+      letter-spacing: -.02em; max-width: 14ch;
     }
     .hero h1 .grad {
       background: linear-gradient(100deg, var(--signal), var(--pulse));
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .hero p { margin: 0; max-width: 52ch; color: var(--mist); font-size: clamp(.95rem,1.8vw,1.12rem); line-height: 1.55; }
+    .hero p { max-width: 52ch; color: var(--mist); font-size: clamp(.95rem,1.8vw,1.12rem); line-height: 1.55; }
+
     .search {
       display: flex; gap: 10px; width: min(620px, 92vw); margin-top: 6px;
     }
     .search input {
       flex: 1; min-width: 0;
-      background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
       color: var(--paper); font: inherit; font-size: 1.05rem; padding: 16px 18px;
       outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
     }
     .search input::placeholder { color: #5C677C; }
     .search input:focus { background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(94,230,197,.14); }
     .search button {
-      border: 0; border-radius: 14px; padding: 0 22px;
+      border: 0; border-radius: var(--r-md); padding: 0 22px;
       font: inherit; font-weight: 700; color: #07120F; cursor: pointer;
       background: linear-gradient(100deg, var(--signal), var(--pulse));
-      transition: transform .12s, filter .18s; white-space: nowrap;
+      transition: transform .12s, filter .18s; white-space: nowrap; font-size: 1rem;
     }
     .search button:hover { filter: brightness(1.06); }
     .search button:active { transform: translateY(1px); }
     .search button:disabled { opacity: .55; cursor: progress; }
+
     .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
     .chip {
       font-family: "Space Mono", monospace; font-size: 12.5px;
@@ -92,21 +97,22 @@
     }
     .chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
 
-    /* ─── Graph view ───────────────────────────────────────────────────────── */
+    /* ─── Graph view ─────────────────────────────────────────────────── */
     .graph-view {
       position: absolute; inset: 0; opacity: 0; transition: opacity .55s;
     }
     .graph-view.is-visible { opacity: 1; }
     #network { position: absolute; inset: 0; }
 
-    /* ─── Top dock ─────────────────────────────────────────────────────────── */
+    /* ─── Top dock ───────────────────────────────────────────────────── */
     .dock {
       position: absolute; top: 0; left: 0; right: 0; z-index: 5;
-      display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-      background: linear-gradient(180deg, rgba(11,14,20,.94), rgba(11,14,20,0));
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      background: linear-gradient(180deg, rgba(11,14,20,.96) 0%, rgba(11,14,20,0) 100%);
       pointer-events: none; flex-wrap: wrap;
     }
     .dock > * { pointer-events: auto; }
+
     .brand {
       font-family: "Syne", sans-serif; font-weight: 700; font-size: 1.05rem;
       letter-spacing: -.01em; cursor: pointer;
@@ -117,57 +123,55 @@
       background: linear-gradient(120deg, var(--signal), var(--pulse));
       box-shadow: 0 0 14px rgba(94,230,197,.55);
     }
-    .dock-search {
-      display: flex; gap: 8px; width: min(320px, 40vw);
-    }
+
+    .dock-search { display: flex; gap: 8px; width: min(280px, 36vw); }
     .dock-search input {
       flex: 1; min-width: 0;
       background: rgba(20,26,40,.88); border: 1px solid var(--line);
-      border-radius: 11px; color: var(--paper); font: inherit; padding: 10px 14px; outline: none;
-      font-size: .9rem;
+      border-radius: var(--r-sm); color: var(--paper); font: inherit; padding: 9px 13px; outline: none;
+      font-size: .9rem; transition: border-color .15s;
     }
     .dock-search input:focus { border-color: var(--signal); }
     .dock-search button {
-      border: 0; border-radius: 11px; padding: 0 14px;
+      border: 0; border-radius: var(--r-sm); padding: 0 13px;
       font: inherit; font-weight: 700; color: #07120F; cursor: pointer;
       background: linear-gradient(100deg, var(--signal), var(--pulse));
-      font-size: .9rem;
+      font-size: .88rem; white-space: nowrap;
     }
 
-    /* ─── Dock icon buttons ─────────────────────────────────────────────────── */
+    /* ─── Generic dock button ────────────────────────────────────────── */
     .dock-btn {
-      border: 1px solid var(--line); border-radius: 10px;
+      border: 1px solid var(--line); border-radius: var(--r-sm);
       background: rgba(20,26,40,.80); color: var(--mist);
-      font: inherit; font-size: 12px; padding: 8px 11px; cursor: pointer;
+      font: inherit; font-size: 12px; padding: 7px 10px; cursor: pointer;
       transition: color .15s, border-color .15s, background .15s;
-      white-space: nowrap;
+      white-space: nowrap; line-height: 1;
     }
     .dock-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
     .dock-btn.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
+
     .dock-sep {
-      width: 1px; height: 24px; background: var(--line); flex-shrink: 0; align-self: center;
+      width: 1px; height: 22px; background: var(--line); flex-shrink: 0; align-self: center;
     }
 
-    /* ─── Role filter toggles ───────────────────────────────────────────────── */
-    .filter-bar {
-      display: flex; gap: 6px; align-items: center;
-    }
+    /* ─── Role filter toggles ────────────────────────────────────────── */
+    .filter-bar { display: flex; gap: 5px; align-items: center; }
     .filter-label {
       font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
-      letter-spacing: .1em; text-transform: uppercase; margin-right: 2px;
+      letter-spacing: .1em; text-transform: uppercase; margin-right: 2px; white-space: nowrap;
     }
-    #filter-featured.active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.08); }
+    #filter-featured.active { color: var(--signal); border-color: rgba(94,230,197,.5);  background: rgba(94,230,197,.08); }
     #filter-producer.active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.08); }
     #filter-writer.active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.08); }
 
-    /* ─── Layout switcher ───────────────────────────────────────────────────── */
-    .layout-bar { display: flex; gap: 6px; align-items: center; }
+    /* ─── Layout bar ─────────────────────────────────────────────────── */
+    .layout-bar { display: flex; gap: 5px; align-items: center; }
 
-    /* ─── History panel ─────────────────────────────────────────────────────── */
+    /* ─── History panel ──────────────────────────────────────────────── */
     .history-panel {
-      position: absolute; left: 16px; top: 64px; z-index: 5;
-      background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: 14px;
-      padding: 12px 14px; min-width: 200px; max-width: 260px;
+      position: absolute; left: 16px; top: 56px; z-index: 5;
+      background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: var(--r-md);
+      padding: 12px 14px; min-width: 196px; max-width: 240px;
       backdrop-filter: blur(8px);
     }
     .history-title {
@@ -180,40 +184,75 @@
       border-bottom: 1px solid rgba(40,48,68,.4);
     }
     .hist-item:last-child { border-bottom: none; }
-    .hist-name { font-size: 13px; color: var(--paper); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hist-name {
+      font-size: 13px; color: var(--paper); flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      cursor: pointer;
+    }
+    .hist-name:hover { color: var(--signal); }
     .hist-btn {
       border: 1px solid var(--line); border-radius: 6px; background: transparent;
-      color: var(--mist); font-size: 13px; font-weight: 700; cursor: pointer; padding: 2px 8px;
-      transition: color .15s, border-color .15s;
+      color: var(--mist); font-size: 12px; font-weight: 700; cursor: pointer; padding: 2px 7px;
+      transition: color .15s, border-color .15s; flex-shrink: 0;
     }
     .hist-btn:hover { color: var(--signal); border-color: var(--signal); }
+    .hist-clear-btn {
+      margin-top: 8px; width: 100%; font-size: 11px; color: #FF8FA3;
+      border-color: rgba(255,143,163,.3); text-align: center;
+    }
+    .hist-clear-btn:hover { background: rgba(255,143,163,.08); border-color: var(--warn); }
     .hist-empty { font-size: 12px; color: var(--mist); }
 
-    /* ─── Status bar ────────────────────────────────────────────────────────── */
+    /* ─── Status bar ─────────────────────────────────────────────────── */
     .status {
       position: absolute; left: 16px; bottom: 18px; z-index: 5;
-      font-family: "Space Mono", monospace; font-size: 12px; color: var(--mist);
-      background: rgba(14,19,32,.75); border: 1px solid var(--line); border-radius: 12px;
-      padding: 10px 14px; max-width: min(360px, 80vw); backdrop-filter: blur(6px);
+      font-family: "Space Mono", monospace; font-size: 11px; color: var(--mist);
+      background: rgba(14,19,32,.75); border: 1px solid var(--line); border-radius: var(--r-sm);
+      padding: 9px 13px; max-width: min(380px, 80vw); backdrop-filter: blur(6px);
+      line-height: 1.6;
     }
-    .status .seed { color: var(--paper); }
+    .status .seed { color: var(--paper); display: flex; align-items: center; gap: 7px; }
     .status .seed::before {
-      content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-      background: var(--signal); margin-right: 7px; vertical-align: middle;
+      content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--signal); flex-shrink: 0;
     }
-    .status .hint { color: #6B7589; margin-top: 4px; font-size: 11px; }
+    .status .hint { color: #6B7589; margin-top: 3px; font-size: 10px; }
 
-    /* ─── Bottom-right actions ───────────────────────────────────────────────── */
+    /* ─── Bottom-right actions ───────────────────────────────────────── */
     .actions-bar {
       position: absolute; right: 16px; bottom: 18px; z-index: 5;
       display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;
     }
 
-    /* ─── Path finder panel ─────────────────────────────────────────────────── */
+    /* ─── Timeline slider ────────────────────────────────────────────── */
+    .timeline-panel {
+      position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+      z-index: 5; display: none; flex-direction: column; align-items: center; gap: 6px;
+      background: rgba(14,19,32,.88); border: 1px solid var(--line);
+      border-radius: var(--r-md); padding: 12px 18px; min-width: 280px;
+      backdrop-filter: blur(8px);
+    }
+    .timeline-panel.show { display: flex; }
+    .timeline-label {
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
+      letter-spacing: .1em; text-transform: uppercase;
+    }
+    .timeline-range {
+      display: flex; gap: 10px; align-items: center; width: 100%;
+    }
+    .timeline-range input[type=range] {
+      flex: 1; accent-color: var(--signal);
+    }
+    .timeline-years {
+      font-family: "Space Mono", monospace; font-size: 11px; color: var(--paper);
+      white-space: nowrap;
+    }
+
+    /* ─── Path finder panel ──────────────────────────────────────────── */
     .path-panel {
-      position: absolute; right: 16px; top: 64px; z-index: 5;
+      position: absolute; right: 16px; top: 56px; z-index: 5;
       display: none;
-      background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: var(--r-md);
       padding: 14px 16px; min-width: 260px;
       backdrop-filter: blur(8px); flex-direction: column; gap: 10px;
     }
@@ -223,29 +262,94 @@
       letter-spacing: .12em; text-transform: uppercase;
     }
     .path-input {
-      background: rgba(20,26,40,.9); border: 1px solid var(--line); border-radius: 10px;
-      color: var(--paper); font: inherit; font-size: 13px; padding: 10px 12px; outline: none;
-      width: 100%;
+      background: rgba(20,26,40,.9); border: 1px solid var(--line); border-radius: var(--r-sm);
+      color: var(--paper); font: inherit; font-size: 13px; padding: 9px 12px; outline: none;
+      width: 100%; transition: border-color .15s;
     }
     .path-input:focus { border-color: var(--signal); }
     .path-input::placeholder { color: #5C677C; }
     .path-actions { display: flex; gap: 8px; }
     .path-result {
-      font-size: 12px; color: var(--signal); line-height: 1.5;
+      font-size: 12px; color: var(--neon); line-height: 1.6;
       min-height: 18px; word-break: break-word;
     }
 
-    /* ─── Node search overlay ───────────────────────────────────────────────── */
+    /* ─── Artist sidebar (legend on click) ──────────────────────────── */
+    .artist-sidebar {
+      position: absolute; right: 16px; top: 56px; z-index: 6;
+      display: none;
+      background: rgba(14,19,32,.95); border: 1px solid var(--line); border-radius: var(--r-lg);
+      padding: 0; min-width: 260px; max-width: 300px;
+      backdrop-filter: blur(12px); flex-direction: column;
+      box-shadow: var(--shadow); overflow: hidden;
+    }
+    .artist-sidebar.show { display: flex; }
+    .sidebar-header {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .sidebar-avatar {
+      width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+      border: 2px solid var(--line);
+    }
+    .sidebar-info { flex: 1; min-width: 0; }
+    .sidebar-name {
+      font-family: "Syne", sans-serif; font-weight: 700; font-size: 15px;
+      color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sidebar-meta {
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
+      margin-top: 3px; letter-spacing: .04em;
+    }
+    .sidebar-close {
+      border: 0; background: transparent; color: var(--mist); cursor: pointer;
+      font-size: 18px; padding: 0 4px; line-height: 1; flex-shrink: 0;
+      transition: color .15s;
+    }
+    .sidebar-close:hover { color: var(--paper); }
+    .sidebar-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .sidebar-section-label {
+      font-family: "Space Mono", monospace; font-size: 9px; color: var(--mist);
+      letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px;
+    }
+    .sidebar-track {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid rgba(40,48,68,.35);
+    }
+    .sidebar-track:last-child { border-bottom: none; }
+    .sidebar-track-name { font-size: 12.5px; color: var(--paper); line-height: 1.3; flex: 1; min-width: 0; }
+    .sidebar-track-role {
+      font-family: "Space Mono", monospace; font-size: 10px; padding: 2px 6px;
+      border-radius: 999px; border: 1px solid; flex-shrink: 0; white-space: nowrap;
+    }
+    .sidebar-role-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .sidebar-role-chip {
+      font-family: "Space Mono", monospace; font-size: 10px;
+      padding: 3px 8px; border-radius: 999px; border: 1px solid;
+    }
+    .role-chip--featured { color: var(--signal); border-color: rgba(94,230,197,.4); background: rgba(94,230,197,.08); }
+    .role-chip--producer { color: var(--pulse);  border-color: rgba(185,138,255,.4); background: rgba(185,138,255,.08); }
+    .role-chip--writer   { color: var(--amber);  border-color: rgba(255,210,122,.35); background: rgba(255,210,122,.08); }
+    .role-chip--primary  { color: var(--mist);   border-color: var(--line); background: rgba(255,255,255,.04); }
+    .sidebar-genius-btn {
+      width: 100%; border: 1px solid var(--line); border-radius: var(--r-sm);
+      background: rgba(185,138,255,.08); color: var(--pulse);
+      font: inherit; font-size: 12px; padding: 8px; cursor: pointer;
+      transition: background .15s, border-color .15s; text-align: center;
+    }
+    .sidebar-genius-btn:hover { background: rgba(185,138,255,.18); border-color: var(--pulse); }
+
+    /* ─── Node search overlay (Cmd+K) ───────────────────────────────── */
     .node-search-overlay {
       position: absolute; inset: 0; z-index: 20;
       background: rgba(11,14,20,.72); backdrop-filter: blur(4px);
       display: none; align-items: flex-start; justify-content: center;
-      padding-top: 15vh;
+      padding-top: 14vh;
     }
     .node-search-overlay.show { display: flex; }
     .node-search-box {
       background: var(--panel-2); border: 1px solid var(--line);
-      border-radius: 18px; padding: 18px; width: min(520px, 90vw);
+      border-radius: var(--r-lg); padding: 18px; width: min(520px, 90vw);
       box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
     }
     .node-search-hint {
@@ -253,15 +357,15 @@
       letter-spacing: .14em; text-transform: uppercase;
     }
     #node-search-input {
-      background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-      color: var(--paper); font: inherit; font-size: 1.1rem; padding: 14px 16px; outline: none;
-      width: 100%;
+      background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-sm);
+      color: var(--paper); font: inherit; font-size: 1.1rem; padding: 13px 15px; outline: none;
+      width: 100%; transition: border-color .15s, box-shadow .15s;
     }
     #node-search-input:focus { border-color: var(--signal); box-shadow: 0 0 0 3px rgba(94,230,197,.12); }
     #node-search-results { display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto; }
     .ns-item {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 10px 12px; border-radius: 10px; cursor: pointer;
+      padding: 10px 12px; border-radius: var(--r-sm); cursor: pointer;
       transition: background .12s;
     }
     .ns-item:hover { background: rgba(94,230,197,.08); }
@@ -269,44 +373,45 @@
     .ns-weight { color: var(--mist); font-family: "Space Mono", monospace; font-size: 11px; }
     .ns-empty { color: var(--mist); font-size: 13px; padding: 10px 12px; }
 
-    /* ─── Loading overlay ───────────────────────────────────────────────────── */
+    /* ─── Loading overlay ────────────────────────────────────────────── */
     .overlay {
       position: absolute; z-index: 6; left: 50%; top: 50%;
       transform: translate(-50%, -50%);
       display: none; align-items: center; gap: 12px;
-      font-family: "Space Mono", monospace; font-size: 14px; color: var(--paper);
+      font-family: "Space Mono", monospace; font-size: 13px; color: var(--paper);
       background: rgba(14,19,32,.90); border: 1px solid var(--line);
-      border-radius: 14px; padding: 16px 20px; box-shadow: var(--shadow);
+      border-radius: var(--r-md); padding: 15px 20px; box-shadow: var(--shadow);
     }
     .overlay.show { display: flex; }
     .spinner {
-      width: 17px; height: 17px; border: 2px solid rgba(255,255,255,.18);
+      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.18);
       border-top-color: var(--signal); border-radius: 50%;
-      animation: spin .8s linear infinite;
+      animation: spin .8s linear infinite; flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ─── Toast ─────────────────────────────────────────────────────────────── */
+    /* ─── Toast ──────────────────────────────────────────────────────── */
     .toast {
-      position: absolute; z-index: 7; left: 50%; top: 22px;
+      position: absolute; z-index: 7; left: 50%; top: 20px;
       transform: translateX(-50%); display: none;
-      max-width: min(520px, 92vw); font-size: 14px; color: #2A0E16;
-      background: var(--warn); border-radius: 12px; padding: 12px 16px;
-      box-shadow: var(--shadow); text-align: center;
+      max-width: min(520px, 92vw); font-size: 13px; color: #2A0E16;
+      background: var(--warn); border-radius: var(--r-sm); padding: 11px 16px;
+      box-shadow: var(--shadow); text-align: center; pointer-events: none;
     }
     .toast.show { display: block; }
+    .toast.toast--info { color: var(--ink); background: var(--signal); }
 
-    /* ─── vis.js tooltip overrides ──────────────────────────────────────────── */
+    /* ─── vis.js tooltip overrides ───────────────────────────────────── */
     div.vis-tooltip {
       position: absolute;
       background: var(--panel) !important; color: var(--paper) !important;
-      border: 1px solid var(--line) !important; border-radius: 12px !important;
+      border: 1px solid var(--line) !important; border-radius: var(--r-md) !important;
       padding: 0 !important; font-family: "Inter", system-ui, sans-serif !important;
       font-size: 13px !important; box-shadow: 0 16px 40px rgba(0,0,0,.55) !important;
-      white-space: normal !important; max-width: 320px !important;
+      white-space: normal !important; max-width: 300px !important;
       pointer-events: none; z-index: 20;
     }
-    .vis-tooltip .tt { padding: 12px 14px; min-width: 170px; }
+    .vis-tooltip .tt { padding: 12px 14px; min-width: 160px; }
     .vis-tooltip .tt-name { font-weight: 600; color: var(--paper); }
     .vis-tooltip .tt-seed {
       font-family: "Space Mono", monospace; font-size: 9px; letter-spacing: .08em;
@@ -317,20 +422,22 @@
     .vis-tooltip .tt-head {
       display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px;
       padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line);
+      padding: 12px 14px 8px;
     }
     .vis-tooltip .tt-x { color: var(--mist); font-weight: 400; }
     .vis-tooltip .tt-meta {
-      font-family: "Space Mono", monospace; font-size: 11px; letter-spacing: .05em;
-      text-transform: uppercase; color: var(--mist); margin-bottom: 9px;
+      font-family: "Space Mono", monospace; font-size: 10px; letter-spacing: .05em;
+      text-transform: uppercase; color: var(--mist); margin-bottom: 8px;
+      padding: 0 14px;
     }
     .vis-tooltip .tt-hint { font-size: 11px; color: #6B7589; margin-top: 6px; }
-    .vis-tooltip .tt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-    .vis-tooltip .tt-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .vis-tooltip .tt-song { color: var(--paper); line-height: 1.3; }
-    .vis-tooltip .tt-roles { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; flex-shrink: 0; }
+    .vis-tooltip .tt-list { list-style: none; padding: 0 14px 12px; display: grid; gap: 7px; }
+    .vis-tooltip .tt-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .vis-tooltip .tt-song { color: var(--paper); line-height: 1.3; font-size: 12px; }
+    .vis-tooltip .tt-roles { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; flex-shrink: 0; }
     .vis-tooltip .tt-role {
-      font-family: "Space Mono", monospace; font-size: 10px; line-height: 1;
-      padding: 3px 6px; border-radius: 999px; border: 1px solid var(--line);
+      font-family: "Space Mono", monospace; font-size: 9px; line-height: 1;
+      padding: 2px 5px; border-radius: 999px; border: 1px solid var(--line);
       color: var(--mist); white-space: nowrap;
     }
     .vis-tooltip .tt-role--featured { color: var(--signal); border-color: rgba(94,230,197,.42); background: rgba(94,230,197,.08); }
@@ -339,11 +446,11 @@
     .vis-tooltip .tt-role--primary  { color: var(--paper);  border-color: var(--line); background: rgba(255,255,255,.05); }
     .vis-tooltip .tt-empty { color: var(--mist); }
 
-    /* ─── Responsive ────────────────────────────────────────────────────────── */
+    /* ─── Responsive ─────────────────────────────────────────────────── */
     @media (max-width: 700px) {
       .dock { flex-wrap: wrap; }
       .dock-search { width: 100%; min-width: 0; }
-      .history-panel, .path-panel { display: none !important; }
+      .history-panel, .path-panel, .timeline-panel { display: none !important; }
       .filter-label { display: none; }
       .actions-bar { right: 8px; bottom: 12px; }
     }
@@ -356,14 +463,12 @@
 </head>
 
 <body>
-  <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
+
+  <!-- ─── Hero ──────────────────────────────────────────────────────────── -->
   <main class="hero" id="hero">
     <span class="eyebrow">// genius collaboration atlas</span>
     <h1>Trace the people behind the <span class="grad">features</span>.</h1>
-    <p>
-      Search an artist to map who they've made songs with. Drag the network
-      around, zoom in, and tap any node to dive into theirs.
-    </p>
+    <p>Search an artist to map who they've made songs with. Drag, zoom, and click any node to explore their world.</p>
     <form class="search" id="hero-form">
       <input id="hero-input" type="text" autocomplete="off"
         placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
@@ -379,7 +484,7 @@
     </div>
   </main>
 
-  <!-- ─── Graph view ────────────────────────────────────────────────────────── -->
+  <!-- ─── Graph view ─────────────────────────────────────────────────────── -->
   <section class="graph-view" id="graph-view" hidden>
 
     <!-- Top dock -->
@@ -390,49 +495,52 @@
 
       <form class="dock-search" id="dock-form">
         <input id="dock-input" type="text" autocomplete="off"
-          placeholder="Search another artist…" aria-label="Artist name" />
+          placeholder="New artist…" aria-label="Artist name" />
         <button type="submit">Go</button>
       </form>
 
       <div class="dock-sep"></div>
 
-      <!-- Node search -->
-      <button class="dock-btn" id="btn-node-search" title="Search loaded nodes (Cmd+K)">⌘K Search</button>
+      <!-- Cmd+K node search -->
+      <button class="dock-btn" id="btn-node-search" title="Search loaded nodes (Cmd+K)">⌘K</button>
 
       <div class="dock-sep"></div>
 
       <!-- Role filters -->
       <div class="filter-bar" id="filter-bar">
         <span class="filter-label">Roles</span>
-        <button class="dock-btn" id="filter-featured" title="Toggle featured collaborations">Featured</button>
-        <button class="dock-btn" id="filter-producer" title="Toggle producer collaborations">Producer</button>
-        <button class="dock-btn" id="filter-writer"   title="Toggle writer collaborations">Writer</button>
+        <button class="dock-btn" id="filter-featured">Featured</button>
+        <button class="dock-btn" id="filter-producer">Producer</button>
+        <button class="dock-btn" id="filter-writer">Writer</button>
       </div>
 
       <div class="dock-sep"></div>
 
       <!-- Layout -->
       <div class="layout-bar" id="layout-bar">
-        <button class="dock-btn active" id="layout-force"  title="Force-directed layout">Force</button>
-        <button class="dock-btn"        id="layout-radial" title="Radial layout">Radial</button>
-        <button class="dock-btn"        id="layout-hier"   title="Hierarchical layout">Hier</button>
+        <button class="dock-btn active" id="layout-force">Force</button>
+        <button class="dock-btn"        id="layout-radial">Radial</button>
+        <button class="dock-btn"        id="layout-hier">Hier</button>
       </div>
 
       <div class="dock-sep"></div>
 
-      <!-- Physics + fit -->
-      <button class="dock-btn" id="btn-physics"  title="Space — freeze/unfreeze physics">⏸ Freeze</button>
-      <button class="dock-btn" id="btn-fit-view" title="F — fit all nodes in view">Fit</button>
+      <!-- Physics -->
+      <button class="dock-btn" id="btn-physics" title="Space — freeze/unfreeze">⏸</button>
+      <button class="dock-btn" id="btn-fit-view" title="F — fit all nodes">Fit</button>
 
       <div class="dock-sep"></div>
 
-      <!-- Path finder -->
-      <button class="dock-btn" id="btn-find-path" title="Find shortest path between two artists">Path</button>
+      <!-- Path finder toggle -->
+      <button class="dock-btn" id="btn-find-path" title="Find shortest path">Path</button>
+
+      <!-- Timeline toggle -->
+      <button class="dock-btn" id="btn-timeline" title="Timeline filter">Timeline</button>
 
       <div class="dock-sep"></div>
 
       <!-- Share -->
-      <button class="dock-btn" id="btn-copy-link" title="Copy shareable URL">🔗 Share</button>
+      <button class="dock-btn" id="btn-copy-link" title="Copy shareable URL">🔗</button>
     </div>
 
     <!-- Canvas -->
@@ -444,13 +552,36 @@
       <div id="history-list"></div>
     </div>
 
-    <!-- Path finder panel (right sidebar) -->
+    <!-- Artist sidebar (right) — shown on single click -->
+    <div class="artist-sidebar" id="artist-sidebar">
+      <div class="sidebar-header">
+        <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
+        <div class="sidebar-info">
+          <div class="sidebar-name" id="sidebar-name">—</div>
+          <div class="sidebar-meta" id="sidebar-meta">—</div>
+        </div>
+        <button class="sidebar-close" id="sidebar-close" title="Close">×</button>
+      </div>
+      <div class="sidebar-body">
+        <div>
+          <div class="sidebar-section-label">Top tracks by collabs</div>
+          <div id="sidebar-tracks"></div>
+        </div>
+        <div>
+          <div class="sidebar-section-label">Roles in this graph</div>
+          <div class="sidebar-role-chips" id="sidebar-roles"></div>
+        </div>
+        <button class="sidebar-genius-btn" id="sidebar-genius-btn">Open on Genius ↗</button>
+      </div>
+    </div>
+
+    <!-- Path finder panel -->
     <div class="path-panel" id="path-panel">
       <div class="path-title">Six degrees of separation</div>
       <input class="path-input" id="path-from-input" type="text"
-        placeholder="From artist (exact name)…" autocomplete="off" />
-      <input class="path-input" id="path-to-input" type="text"
-        placeholder="To artist (exact name)…" autocomplete="off" />
+        placeholder="From artist…" autocomplete="off" />
+      <input class="path-input" id="path-to-input"   type="text"
+        placeholder="To artist…" autocomplete="off" />
       <div class="path-actions">
         <button class="dock-btn" id="btn-run-path" style="flex:1">Find path</button>
         <button class="dock-btn" id="btn-clear-path">Clear</button>
@@ -458,20 +589,27 @@
       <div class="path-result" id="path-result"></div>
     </div>
 
-    <!-- Status bar -->
+    <!-- Timeline slider (bottom center) -->
+    <div class="timeline-panel" id="timeline-panel">
+      <div class="timeline-label">Timeline filter</div>
+      <div class="timeline-range">
+        <input type="range" id="timeline-min" min="1980" max="2025" value="1980" />
+        <span class="timeline-years" id="timeline-years">1980 – 2025</span>
+        <input type="range" id="timeline-max" min="1980" max="2025" value="2025" />
+      </div>
+    </div>
+
+    <!-- Status bar (bottom left) -->
     <div class="status" id="status" hidden>
       <div class="seed" id="status-seed"></div>
-      <div class="hint">
-        single-click focus · dbl-click expand · right-click pin ·
-        ctrl+click Genius · ⌘K search nodes
-      </div>
+      <div class="hint">click → focus · dbl-click → expand · right-click → pin · ctrl+click → Genius · ⌘K search</div>
     </div>
 
     <!-- Bottom-right action buttons -->
     <div class="actions-bar">
-      <button class="dock-btn" id="btn-export-png"  title="Export graph as PNG">↓ PNG</button>
-      <button class="dock-btn" id="btn-export-json" title="Export graph data as JSON">↓ JSON</button>
-      <button class="dock-btn" id="btn-clear-graph" title="Clear graph and start over"
+      <button class="dock-btn" id="btn-export-png"  title="Export as PNG">↓ PNG</button>
+      <button class="dock-btn" id="btn-export-json" title="Export data as JSON">↓ JSON</button>
+      <button class="dock-btn" id="btn-clear-graph"
         style="color:var(--warn);border-color:rgba(255,143,163,.3);">✕ Clear</button>
     </div>
 
