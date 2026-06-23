@@ -703,7 +703,6 @@ function finalizeGraphState(seedId, nameById, savedPositions, graph, isMerge) {
   updateStatus(graph);
   updateStatusFilters();
   els.dockInput.value = graph.seed || els.dockInput.value;
-  renderHistoryList();
 }
 
 function computeNodeDominantRoles() {
@@ -746,9 +745,33 @@ function initNetwork(seedId, nameById) {
     networkOptions()
   );
 
+  // FIX-PERF: When edge count is high (>120), throttle vis rendering during
+  // zoom/scroll to prevent frame drops. We temporarily disable rendering for
+  // 80 ms bursts and re-enable it once the interaction stops.
+  // This is separate from hideEdgesOnZoom (which only hides edges during drag).
+  _attachZoomThrottle();
+
   fadeInNewNodes();
   attachNetworkEvents(nameById);
   scheduleFreeze(PHYSICS_FREEZE_MS);
+}
+
+// ─── Zoom/scroll rendering throttle for dense graphs ──────────────────────
+// vis-network re-renders every frame during zoom even when frozen.
+// For graphs with many edges (>120) each frame is expensive.
+// Solution: disable rendering while zooming, re-enable 80ms after last event.
+let _zoomThrottleTimer = null;
+function _attachZoomThrottle() {
+  if (!State.network) return;
+  State.network.on("zoom", () => {
+    if (State.graphEdges.length < 120) return; // only throttle dense graphs
+    State.network.stopSimulation();
+    if (_zoomThrottleTimer) clearTimeout(_zoomThrottleTimer);
+    _zoomThrottleTimer = setTimeout(() => {
+      _zoomThrottleTimer = null;
+      if (State.network) State.network.redraw();
+    }, 80);
+  });
 }
 
 // Full replace
@@ -1338,11 +1361,178 @@ function clearPathHighlight() {
   if (els.pathResult) els.pathResult.textContent = "";
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// AUTOCOMPLETE  — Genius /search suggestions for hero + dock search inputs
+//                 and smart node-graph suggestions for path-finder inputs
+// ════════════════════════════════════════════════════════════════════════════
+
+// Shared debounce for Genius search suggestions (300 ms)
+const _acGenius = debounce(async (query, dropdownEl, onSelect) => {
+  if (!query || query.length < 2) { dropdownEl.classList.remove("open"); return; }
+  dropdownEl.innerHTML = `<div class="ac-spinner">Searching…</div>`;
+  dropdownEl.classList.add("open");
+  try {
+    // Hit the Genius search endpoint via the backend proxy.
+    // The backend already handles auth; we piggyback on /api/v1/graph with
+    // an intentionally-low threshold so we always get candidates back.
+    const res  = await fetch(`/api/v1/graph?artist=${encodeURIComponent(query)}&role_filter=featured,producer,writer,primary&__ac=1`);
+    const data = res.ok ? await res.json() : null;
+    const candidates = data?.ambiguous ? (data.candidates || []) : [];
+
+    // If the backend returned a direct hit (not ambiguous), synthesise a
+    // single candidate card so the dropdown still has something useful.
+    if (!data?.ambiguous && data?.seed) {
+      candidates.unshift({ name: data.seed, image: data.nodes?.[0]?.image || "", score: 1 });
+    }
+
+    if (!candidates.length) { dropdownEl.classList.remove("open"); return; }
+
+    dropdownEl.innerHTML = candidates.slice(0, 6).map(c => `
+      <div class="ac-item" data-name="${escapeHtml(c.name)}" role="option">
+        <img class="ac-avatar" src="${escapeHtml(c.image || placeholderFor(c.name, false))}"
+            onerror="this.src='${placeholderFor(c.name, false)}'" alt="" />
+        <div class="ac-info">
+          <span class="ac-name">${escapeHtml(c.name)}</span>
+          ${c.score != null && c.score < 1
+            ? `<span class="ac-hint">${Math.round(c.score * 100)}%</span>`
+            : ''}
+        </div>
+      </div>
+    `).join('');
+
+    dropdownEl.querySelectorAll(".ac-item").forEach(item => {
+      item.addEventListener("mousedown", e => {
+        e.preventDefault(); // prevent blur before click fires
+        const name = item.getAttribute("data-name");
+        dropdownEl.classList.remove("open");
+        onSelect(name);
+      });
+    });
+  } catch { dropdownEl.classList.remove("open"); }
+}, 300);
+
+// Wire autocomplete to a (input, dropdown, onSelect) triple.
+function attachGeniusAutocomplete(inputEl, dropdownEl, onSelect) {
+  // Показывает историю поиска в выпадающем списке
+  function showHistoryDropdown() {
+    const items = State.history.slice(0, 5);
+    if (!items.length) {
+      dropdownEl.innerHTML = `<div class="ac-spinner">No recent searches</div>`;
+      dropdownEl.classList.add("open");
+      return;
+    }
+    dropdownEl.innerHTML = items.map(name => `
+      <div class="ac-item ac-history" data-name="${escapeHtml(name)}">
+        <div class="ac-info">
+          <span class="ac-name">${escapeHtml(name)}</span>
+        </div>
+      </div>
+    `).join('');
+    dropdownEl.classList.add("open");
+
+    // Обработчики для элементов истории
+    dropdownEl.querySelectorAll(".ac-history").forEach(item => {
+      item.addEventListener("mousedown", e => {
+        e.preventDefault();
+        const name = item.getAttribute("data-name");
+        dropdownEl.classList.remove("open");
+        inputEl.value = name;
+        onSelect(name);
+      });
+    });
+  }
+
+  // При фокусе и пустом поле показываем историю
+  inputEl.addEventListener("focus", () => {
+    if (!inputEl.value.trim()) {
+      showHistoryDropdown();
+    }
+  });
+
+  // При вводе текста — подсказки Genius, при пустом — история
+  inputEl.addEventListener("input", () => {
+    const val = inputEl.value.trim();
+    if (val) {
+      _acGenius(val, dropdownEl, onSelect);
+    } else {
+      showHistoryDropdown();
+    }
+  });
+
+  // Закрываем при потере фокуса (с задержкой, чтобы успел сработать клик)
+  inputEl.addEventListener("blur", () => {
+    setTimeout(() => dropdownEl.classList.remove("open"), 150);
+  });
+
+  // Навигация клавишами и Escape — оставляем без изменений
+  inputEl.addEventListener("keydown", e => {
+    if (e.key === "Escape") dropdownEl.classList.remove("open");
+    if (e.key === "ArrowDown") {
+      const first = dropdownEl.querySelector(".ac-item");
+      if (first) { first.classList.add("ac-active"); first.focus(); }
+    }
+  });
+
+  dropdownEl.addEventListener("keydown", e => {
+    const items = [...dropdownEl.querySelectorAll(".ac-item")];
+    const idx   = items.findIndex(i => i === document.activeElement);
+    if (e.key === "ArrowDown" && idx < items.length - 1) items[idx + 1].focus();
+    if (e.key === "ArrowUp"   && idx > 0)                items[idx - 1].focus();
+    if (e.key === "ArrowUp"   && idx === 0)              inputEl.focus();
+    if (e.key === "Enter" && idx >= 0) items[idx].dispatchEvent(new MouseEvent("mousedown"));
+    if (e.key === "Escape") { dropdownEl.classList.remove("open"); inputEl.focus(); }
+  });
+}
+
+// Path-panel: suggest from already-loaded graph nodes (no network call needed)
+function attachNodeAutocomplete(inputEl, dropdownEl, onSelect) {
+  const _show = debounce(() => {
+    const q = inputEl.value.trim().toLowerCase();
+    if (!q) { dropdownEl.classList.remove("open"); return; }
+    const matches = State.graphNodes
+      .filter(n => n.name.toLowerCase().includes(q))
+      .slice(0, 8);
+    if (!matches.length) { dropdownEl.classList.remove("open"); return; }
+    dropdownEl.innerHTML = matches.map(n => {
+      const img = n.imageUrl || placeholderFor(n.name, n.isSeed);
+      return `<div class="ac-item" data-name="${escapeHtml(n.name)}" role="option">
+        <img class="ac-avatar" src="${escapeHtml(img)}"
+             onerror="this.src='${placeholderFor(n.name, false)}'" alt="" />
+        <div class="ac-info"><div class="ac-name">${escapeHtml(n.name)}</div></div>
+      </div>`;
+    }).join("");
+    dropdownEl.querySelectorAll(".ac-item").forEach(item => {
+      item.addEventListener("mousedown", e => {
+        e.preventDefault();
+        const name = item.getAttribute("data-name");
+        inputEl.value = name;
+        dropdownEl.classList.remove("open");
+        onSelect(name);
+      });
+    });
+    dropdownEl.classList.add("open");
+  }, 80);
+
+  inputEl.addEventListener("input", _show);
+  inputEl.addEventListener("focus", _show);
+  inputEl.addEventListener("blur",  () => { setTimeout(() => dropdownEl.classList.remove("open"), 150); });
+  inputEl.addEventListener("keydown", e => {
+    if (e.key === "Escape") dropdownEl.classList.remove("open");
+  });
+}
+
 function setupPathPanel() {
   els.btnFindPath?.addEventListener("click", () => {
     hideArtistSidebar();
     els.pathPanel.classList.toggle("show");
   });
+
+  // Wire smart node-autocomplete to path inputs
+  const pathFromAc = $("path-from-ac");
+  const pathToAc   = $("path-to-ac");
+  if (pathFromAc) attachNodeAutocomplete(els.pathFromInput, pathFromAc, () => {});
+  if (pathToAc)   attachNodeAutocomplete(els.pathToInput,   pathToAc,   () => {});
+
   els.btnRunPath?.addEventListener("click", () => {
     const fromName = (els.pathFromInput.value || "").trim();
     const toName   = (els.pathToInput.value   || "").trim();
@@ -1434,32 +1624,11 @@ function saveHistory() {
 
 function pushHistory(name) {
   State.history = [name, ...State.history.filter(h => h !== name)].slice(0, MAX_HISTORY);
-  saveHistory(); renderHistoryList();
+  saveHistory();
 }
 
 function clearHistory() {
-  State.history = []; saveHistory(); renderHistoryList();
-}
-
-function renderHistoryList() {
-  if (!els.historyList) return;
-  if (!State.history.length) {
-    els.historyList.innerHTML = `<span class="hist-empty">No recent searches</span>`;
-    return;
-  }
-  els.historyList.innerHTML =
-    State.history.map(name =>
-      `<div class="hist-item">` +
-      `<span class="hist-name" data-artist="${escapeHtml(name)}">${escapeHtml(name)}</span>` +
-      `<button class="hist-btn" data-artist="${escapeHtml(name)}">↻</button>` +
-      `</div>`
-    ).join("") +
-    `<button class="dock-btn hist-clear-btn" id="btn-hist-clear">Clear history</button>`;
-  els.historyList.querySelectorAll("[data-artist]").forEach(el => {
-    el.addEventListener("click", () => searchArtist(el.getAttribute("data-artist"), false, true));
-  });
-  const cb = $("btn-hist-clear");
-  if (cb) cb.addEventListener("click", clearHistory);
+  State.history = []; saveHistory();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1505,20 +1674,38 @@ function copyShareableLink() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function exportPng() {
+  // FIX-PNG: vis-network exposes the real drawing canvas via
+  // network.canvas.frame.canvas — this is guaranteed to be the composited
+  // graph canvas, not the transparent interaction overlay that
+  // querySelector("canvas") sometimes returns first.
   if (!State.network) { showToast("No graph to export yet."); return; }
   try {
-    const canvas = els.network.querySelector("canvas");
+    // Primary: use the vis API canvas reference
+    const canvas = State.network.canvas?.frame?.canvas
+                || els.network.querySelector("canvas");
     if (!canvas) { showToast("Canvas not found."); return; }
-    const out = document.createElement("canvas");
-    out.width = canvas.width; out.height = canvas.height;
-    const ctx = out.getContext("2d");
-    ctx.fillStyle = "#0B0E14";
-    ctx.fillRect(0, 0, out.width, out.height);
-    ctx.drawImage(canvas, 0, 0);
-    const link = document.createElement("a");
-    link.download = "feature-atlas.png";
-    link.href = out.toDataURL("image/png");
-    link.click();
+
+    // We need to trigger a full redraw so the canvas isn't blank
+    // (vis clears it between frames when physics is frozen).
+    State.network.redraw();
+
+    // Give the redraw one animation frame to complete before capturing.
+    requestAnimationFrame(() => {
+      try {
+        const out = document.createElement("canvas");
+        out.width  = canvas.width;
+        out.height = canvas.height;
+        const ctx = out.getContext("2d");
+        // Fill background with the app's dark ink colour
+        ctx.fillStyle = "#0B0E14";
+        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.drawImage(canvas, 0, 0);
+        const link = document.createElement("a");
+        link.download = "feature-atlas.png";
+        link.href = out.toDataURL("image/png");
+        link.click();
+      } catch (e2) { showToast("Export failed: " + e2.message); }
+    });
   } catch (e) { showToast("Export failed: " + e.message); }
 }
 
@@ -1668,20 +1855,37 @@ function hideToast() {
 
 function init() {
   loadHistory();
-  renderHistoryList();
   setupFilterToggles();
   setupKeyboard();
   setupNodeSearch();
   setupPathPanel();
   updateStatusFilters();
 
+  // FIX-AC: Genius autocomplete for hero and dock search boxes
+  const heroAc = $("hero-ac");
+  const dockAc = $("dock-ac");
+  if (heroAc) {
+    attachGeniusAutocomplete(els.heroInput, heroAc, name => {
+      els.heroInput.value = name;
+      searchArtist(name, false, true);
+    });
+  }
+  if (dockAc) {
+    attachGeniusAutocomplete(els.dockInput, dockAc, name => {
+      els.dockInput.value = name;
+      searchArtist(name, false, true);
+    });
+  }
+
   els.heroForm.addEventListener("submit", e => {
     e.preventDefault();
+    heroAc?.classList.remove("open");
     searchArtist(els.heroInput.value, false, true);
   });
 
   els.dockForm.addEventListener("submit", e => {
     e.preventDefault();
+    dockAc?.classList.remove("open");
     searchArtist(els.dockInput.value, false, true);
     els.dockInput.blur();
   });

@@ -8,7 +8,10 @@ find_package(userver COMPONENTS core REQUIRED)
 
 add_executable(${PROJECT_NAME}
     src/main.cpp
+    src/genius_client.cpp
+    src/analytics.cpp
     src/graph_handler.cpp
+    src/path_handler.cpp
     src/static_handler.cpp
 )
 

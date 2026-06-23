@@ -31,26 +31,46 @@ components_manager:
 
         http-client: {}
 
+        # ── Shared Genius API client ──────────────────────────────────────
+        # All I/O, caching, and resilience live here.
+        # Both handler-graph and handler-path reference this component.
+        genius-client:
+            genius-api-token: $genius_token
+            genius-base-url: https://api.genius.com
+            songs-limit: 50
+            match-threshold: 0.72
+            cache-max-artists: 512
+            cache-ttl-seconds: 1800
+            cb-failure-threshold: 5
+            cb-open-seconds: 30
+            backoff-max-attempts: 4
+            backoff-base-ms: 200
+            backoff-cap-ms: 10000
+
+        # ── Radial collaboration graph ────────────────────────────────────
+        # GET /api/v1/graph?artist=…&roles=…
+        # Response: { "type":"graph", nodes[{betweenness,…}], edges[…] }
         handler-graph:
             path: /api/v1/graph
             method: GET
             task_processor: main-task-processor
-            genius-api-token: $genius_token
-            genius-base-url: https://api.genius.com
 
-            # FIX #4 (fuzzy search): lower threshold so partial names like
-            # "kendrick" still auto-resolve to "Kendrick Lamar" when the
-            # backend's Levenshtein+substring similarity is >= 0.72.
-            # Below this score the backend returns ambiguous=true and the
-            # frontend shows the interactive candidate picker.
-            # Range: 0.0–1.0. 0.72 is a good balance; raise to 0.85 if you
-            # want the picker to appear more often (stricter auto-resolve).
-            match-threshold: 0.72
-
-            # songs-limit: 50 is a good balance between coverage and latency.
-            # The backend caches results per (artist_id, role_mask) so
-            # subsequent loads with the same filters are instant.
-            songs-limit: 50
+        # ── Six-degrees pathfinder ────────────────────────────────────────
+        # GET /api/v1/graph/path?from=…&to=…&roles=…
+        # Response: { "type":"path", hops:N, path:[id,…], nodes[{betweenness,…}], edges[{songs:[…],…}] }
+        #
+        # path-max-expand-rounds: how many rounds of lazy Genius API fetches
+        # to attempt before giving up.  Each round costs up to songs-limit
+        # API calls per frontier node (parallelised with utils::Async).
+        # Round 0: only data already in cache.
+        # Round 1: fetch songs for all nodes reachable from src/dst.
+        # Round 2: fetch songs for nodes at depth 2.
+        # Round 3: fetch songs for nodes at depth 3 (≈ 6 hops worst case).
+        handler-path:
+            path: /api/v1/graph/path
+            method: GET
+            task_processor: main-task-processor
+            path-max-expand-rounds: 3
 
         handler-index:
             path: /

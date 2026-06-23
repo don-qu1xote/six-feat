@@ -19,11 +19,11 @@
       --line:     #283044;
       --mist:     #8A94A6;
       --paper:    #EDEFF4;
-      --signal:   #5EE6C5;   /* featured — solid green  */
-      --pulse:    #B98AFF;   /* producer — dashed purple */
-      --amber:    #FFD27A;   /* writer   — dotted yellow */
+      --signal:   #5EE6C5;
+      --pulse:    #B98AFF;
+      --amber:    #FFD27A;
       --warn:     #FF8FA3;
-      --neon:     #FF2D78;   /* BFS path */
+      --neon:     #FF2D78;
       --shadow:   0 18px 50px rgba(0,0,0,.45);
       --r-sm:     10px;
       --r-md:     14px;
@@ -67,7 +67,9 @@
     }
     .hero p { max-width: 52ch; color: var(--mist); font-size: clamp(.95rem,1.8vw,1.12rem); line-height: 1.55; }
 
-    .search { display: flex; gap: 10px; width: min(620px, 92vw); margin-top: 6px; }
+    /* ── Hero autocomplete wrapper ── */
+    .search-wrap { position: relative; width: min(620px, 92vw); margin-top: 6px; }
+    .search { display: flex; gap: 10px; width: 100%; }
     .search input {
       flex: 1; min-width: 0;
       background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
@@ -85,6 +87,34 @@
     .search button:hover { filter: brightness(1.06); }
     .search button:active { transform: translateY(1px); }
     .search button:disabled { opacity: .55; cursor: progress; }
+
+    /* ── Autocomplete dropdown (shared hero + dock) ── */
+    .ac-dropdown {
+      position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+      background: var(--panel-2); border: 1px solid var(--line);
+      border-radius: var(--r-md); box-shadow: var(--shadow);
+      z-index: 50; display: none; flex-direction: column; overflow: hidden;
+      max-height: 320px; overflow-y: auto;
+    }
+    .ac-dropdown.open { display: flex; }
+    .ac-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; cursor: pointer;
+      transition: background .12s; border-bottom: 1px solid rgba(40,48,68,.3);
+    }
+    .ac-item:last-child { border-bottom: none; }
+    .ac-item:hover, .ac-item.ac-active { background: rgba(94,230,197,.07); }
+    .ac-avatar {
+      width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+      flex-shrink: 0; border: 1px solid var(--line);
+    }
+    .ac-info { flex: 1; min-width: 0; }
+    .ac-name { font-size: 13.5px; font-weight: 600; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-hint { font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist); margin-top: 1px; }
+    .ac-spinner {
+      padding: 14px; text-align: center;
+      font-family: "Space Mono", monospace; font-size: 11px; color: var(--mist);
+    }
 
     .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
     .chip {
@@ -120,7 +150,9 @@
       box-shadow: 0 0 14px rgba(94,230,197,.55);
     }
 
-    .dock-search { display: flex; gap: 8px; width: min(280px, 36vw); }
+    /* ── Dock search with autocomplete ── */
+    .dock-search-wrap { position: relative; width: min(280px, 36vw); }
+    .dock-search { display: flex; gap: 8px; }
     .dock-search input {
       flex: 1; min-width: 0;
       background: rgba(20,26,40,.88); border: 1px solid var(--line);
@@ -134,6 +166,11 @@
       background: linear-gradient(100deg, var(--signal), var(--pulse));
       font-size: .88rem; white-space: nowrap;
     }
+    /* dock dropdown smaller font */
+    .dock-search-wrap .ac-dropdown { border-radius: var(--r-sm); }
+    .dock-search-wrap .ac-item { padding: 8px 12px; }
+    .dock-search-wrap .ac-avatar { width: 28px; height: 28px; }
+    .dock-search-wrap .ac-name { font-size: 12.5px; }
 
     .dock-btn {
       border: 1px solid var(--line); border-radius: var(--r-sm);
@@ -156,52 +193,6 @@
     #filter-featured.active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.08); }
     #filter-producer.active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.08); }
     #filter-writer.active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.08); }
-
-    /* ─── Legend ─────────────────────────────────────────────────────── */
-    .legend-bar { display: flex; gap: 10px; align-items: center; }
-    .legend-item { display: flex; align-items: center; gap: 5px;
-      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist); }
-    .legend-line { width: 22px; height: 2px; flex-shrink: 0; }
-    .legend-line--featured { background: var(--signal); }
-    .legend-line--producer {
-      background: repeating-linear-gradient(90deg,var(--pulse) 0,var(--pulse) 5px,transparent 5px,transparent 8px);
-    }
-    .legend-line--writer {
-      background: repeating-linear-gradient(90deg,var(--amber) 0,var(--amber) 2px,transparent 2px,transparent 6px);
-    }
-
-    /* ─── History panel ──────────────────────────────────────────────── */
-    .history-panel {
-      position: absolute; left: 16px; top: 56px; z-index: 5;
-      background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: var(--r-md);
-      padding: 12px 14px; min-width: 196px; max-width: 240px; backdrop-filter: blur(8px);
-    }
-    .history-title {
-      font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
-      letter-spacing: .12em; text-transform: uppercase; margin-bottom: 8px;
-    }
-    .hist-item {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(40,48,68,.4);
-    }
-    .hist-item:last-child { border-bottom: none; }
-    .hist-name {
-      font-size: 13px; color: var(--paper); flex: 1; min-width: 0;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
-    }
-    .hist-name:hover { color: var(--signal); }
-    .hist-btn {
-      border: 1px solid var(--line); border-radius: 6px; background: transparent;
-      color: var(--mist); font-size: 12px; font-weight: 700; cursor: pointer; padding: 2px 7px;
-      transition: color .15s, border-color .15s; flex-shrink: 0;
-    }
-    .hist-btn:hover { color: var(--signal); border-color: var(--signal); }
-    .hist-clear-btn {
-      margin-top: 8px; width: 100%; font-size: 11px; color: #FF8FA3;
-      border-color: rgba(255,143,163,.3); text-align: center;
-    }
-    .hist-clear-btn:hover { background: rgba(255,143,163,.08); border-color: var(--warn); }
-    .hist-empty { font-size: 12px; color: var(--mist); }
 
     /* ─── Status bar ─────────────────────────────────────────────────── */
     .status {
@@ -234,13 +225,16 @@
     .path-panel {
       position: absolute; right: 16px; top: 56px; z-index: 5; display: none;
       background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: var(--r-md);
-      padding: 14px 16px; min-width: 260px; backdrop-filter: blur(8px); flex-direction: column; gap: 10px;
+      padding: 14px 16px; min-width: 280px; backdrop-filter: blur(8px);
+      flex-direction: column; gap: 10px;
     }
     .path-panel.show { display: flex; }
     .path-title {
       font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
       letter-spacing: .12em; text-transform: uppercase;
     }
+    /* ── Path input with suggestions ── */
+    .path-input-wrap { position: relative; }
     .path-input {
       background: rgba(20,26,40,.9); border: 1px solid var(--line); border-radius: var(--r-sm);
       color: var(--paper); font: inherit; font-size: 13px; padding: 9px 12px; outline: none;
@@ -248,6 +242,13 @@
     }
     .path-input:focus { border-color: var(--signal); }
     .path-input::placeholder { color: #5C677C; }
+    /* path suggestions reuse ac-dropdown */
+    .path-input-wrap .ac-dropdown { border-radius: var(--r-sm); }
+    .path-input-wrap .ac-item { padding: 7px 10px; gap: 8px; }
+    .path-input-wrap .ac-avatar { width: 26px; height: 26px; }
+    .path-input-wrap .ac-name { font-size: 12px; }
+    .path-input-wrap .ac-hint { display: none; }
+
     .path-actions { display: flex; gap: 8px; }
     .path-result { font-size: 12px; color: var(--neon); line-height: 1.6; min-height: 18px; word-break: break-word; }
 
@@ -281,7 +282,10 @@
       font-size: 18px; padding: 0 4px; line-height: 1; flex-shrink: 0; transition: color .15s;
     }
     .sidebar-close:hover { color: var(--paper); }
-    .sidebar-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: calc(100vh - 200px); }
+    .sidebar-body {
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;
+      overflow-y: auto; max-height: calc(100vh - 200px);
+    }
     .sidebar-section-label {
       font-family: "Space Mono", monospace; font-size: 9px; color: var(--mist);
       letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px;
@@ -314,28 +318,21 @@
     }
     .sidebar-genius-btn:hover { background: rgba(185,138,255,.18); border-color: var(--pulse); }
 
-    /* ─── FIX #4: Candidate picker overlay ───────────────────────────── */
-    /*
-     * NEW: shows fuzzy-matched artist candidates as clickable cards.
-     * Replaces the old toast-only disambiguation.
-     */
+    /* ─── Candidate picker overlay ───────────────────────────────────── */
     .candidate-overlay {
       position: absolute; inset: 0; z-index: 25;
       background: rgba(11,14,20,.78); backdrop-filter: blur(5px);
-      display: none; align-items: flex-start; justify-content: center;
-      padding-top: 12vh;
+      display: none; align-items: flex-start; justify-content: center; padding-top: 12vh;
     }
     .candidate-overlay.show { display: flex; }
     .candidate-box {
       background: var(--panel-2); border: 1px solid var(--line);
-      border-radius: var(--r-lg); padding: 20px; width: min(480px, 90vw);
-      box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 12px;
+      border-radius: var(--r-lg); padding: 18px; width: min(480px, 92vw);
+      box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 14px;
     }
-    .candidate-header {
-      display: flex; align-items: center; justify-content: space-between;
-    }
+    .candidate-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .candidate-title {
-      font-family: "Syne", sans-serif; font-weight: 700; font-size: 15px; color: var(--paper);
+      font-family: "Syne", sans-serif; font-weight: 700; font-size: 16px; color: var(--paper);
     }
     .candidate-subtitle {
       font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
@@ -424,7 +421,7 @@
     .toast.show { display: block; }
     .toast.toast--info { color: var(--ink); background: var(--signal); }
 
-    /* ─── FIX #2: vis.js tooltip — full track list restored ──────────── */
+    /* ─── vis.js tooltips ────────────────────────────────────────────── */
     div.vis-tooltip {
       position: absolute;
       background: var(--panel) !important; color: var(--paper) !important;
@@ -435,7 +432,6 @@
       pointer-events: none; z-index: 20;
     }
     .vis-tooltip .tt { padding: 0; min-width: 180px; }
-    /* Node tooltip */
     .vis-tooltip .tt-name { font-weight: 600; color: var(--paper); padding: 11px 14px 0; display: block; }
     .vis-tooltip .tt-seed {
       font-family: "Space Mono", monospace; font-size: 9px; letter-spacing: .08em;
@@ -443,7 +439,6 @@
       border: 1px solid rgba(94,230,197,.5); border-radius: 999px; padding: 1px 6px;
       margin-left: 6px; vertical-align: middle;
     }
-    /* Edge tooltip */
     .vis-tooltip .tt-head {
       display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px;
       padding: 11px 14px 8px; border-bottom: 1px solid var(--line); color: var(--paper);
@@ -461,7 +456,6 @@
     .vis-tooltip .tt-role-badge--featured { color: var(--signal); border-color: rgba(94,230,197,.42); background: rgba(94,230,197,.08); }
     .vis-tooltip .tt-role-badge--producer { color: var(--pulse);  border-color: rgba(185,138,255,.42); background: rgba(185,138,255,.08); }
     .vis-tooltip .tt-role-badge--writer   { color: var(--amber);  border-color: rgba(255,210,122,.35); background: rgba(255,210,122,.08); }
-    /* Track list inside edge tooltip */
     .vis-tooltip .tt-list { list-style: none; padding: 0 14px 12px; display: grid; gap: 6px; }
     .vis-tooltip .tt-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .vis-tooltip .tt-song { color: var(--paper); line-height: 1.3; font-size: 12px; }
@@ -476,14 +470,12 @@
     .vis-tooltip .tt-role--writer   { color: var(--amber);  border-color: rgba(255,210,122,.35); background: rgba(255,210,122,.08); }
     .vis-tooltip .tt-empty { color: var(--mist); font-size: 11px; }
     .vis-tooltip .tt-hint  { font-size: 10px; color: #6B7589; padding: 0 14px 10px; }
-    .vis-tooltip .tt-meta-row { padding: 5px 14px 2px; }
 
     /* ─── Responsive ─────────────────────────────────────────────────── */
     @media (max-width: 700px) {
       .dock { flex-wrap: wrap; }
-      .dock-search { width: 100%; min-width: 0; }
-      .history-panel, .path-panel { display: none !important; }
-      .filter-label, .legend-bar { display: none; }
+      .dock-search-wrap { width: 100%; min-width: 0; }
+      .filter-label { display: none; }
       .actions-bar { right: 8px; bottom: 12px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -500,12 +492,18 @@
     <span class="eyebrow">// genius collaboration atlas</span>
     <h1>Trace the people behind the <span class="grad">features</span>.</h1>
     <p>Search an artist to map who they've made songs with. Drag, zoom, and click any node to explore their world.</p>
-    <form class="search" id="hero-form">
-      <input id="hero-input" type="text" autocomplete="off"
-        placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
-        aria-label="Artist name" />
-      <button type="submit">Map it</button>
-    </form>
+
+    <!-- Hero autocomplete search -->
+    <div class="search-wrap">
+      <form class="search" id="hero-form">
+        <input id="hero-input" type="text" autocomplete="off"
+          placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
+          aria-label="Artist name" aria-autocomplete="list" aria-controls="hero-ac" />
+        <button type="submit">Map it</button>
+      </form>
+      <div class="ac-dropdown" id="hero-ac" role="listbox"></div>
+    </div>
+
     <div class="chips" id="chips">
       <button class="chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
       <button class="chip" data-artist="Gorillaz">Gorillaz</button>
@@ -524,17 +522,22 @@
         <span class="dotmark"></span> Feature Atlas
       </div>
 
-      <form class="dock-search" id="dock-form">
-        <input id="dock-input" type="text" autocomplete="off"
-          placeholder="New artist…" aria-label="Artist name" />
-        <button type="submit">Go</button>
-      </form>
+      <!-- Dock search with autocomplete -->
+      <div class="dock-search-wrap">
+        <form class="dock-search" id="dock-form">
+          <input id="dock-input" type="text" autocomplete="off"
+            placeholder="New artist…" aria-label="Artist name"
+            aria-autocomplete="list" aria-controls="dock-ac" />
+          <button type="submit">Go</button>
+        </form>
+        <div class="ac-dropdown" id="dock-ac" role="listbox"></div>
+      </div>
 
       <div class="dock-sep"></div>
       <button class="dock-btn" id="btn-node-search" title="Search loaded nodes (Cmd+K)">⌘K</button>
       <div class="dock-sep"></div>
 
-      <!-- Role filters — FIX #3: toggling triggers a backend re-fetch -->
+      <!-- Role filters -->
       <div class="filter-bar" id="filter-bar">
         <span class="filter-label">Roles</span>
         <button class="dock-btn" id="filter-featured">🎤 feat.</button>
@@ -542,23 +545,9 @@
         <button class="dock-btn" id="filter-writer">✍️ writer</button>
       </div>
 
-      <div class="dock-sep"></div>
-
-      <!-- Legend: colour + line style per role -->
-      <div class="legend-bar" aria-label="Edge style legend">
-        <div class="legend-item" title="Featured — solid line">
-          <span class="legend-line legend-line--featured"></span><span>🎤</span>
-        </div>
-        <div class="legend-item" title="Producer — dashed line">
-          <span class="legend-line legend-line--producer"></span><span>🎛</span>
-        </div>
-        <div class="legend-item" title="Songwriter — dotted line">
-          <span class="legend-line legend-line--writer"></span><span>✍️</span>
-        </div>
-      </div>
+      <!-- REMOVED: legend-bar (line type legend) — redundant, visual clutter -->
 
       <div class="dock-sep"></div>
-
       <button class="dock-btn" id="btn-fit-view" title="F — fit all nodes">Fit</button>
       <div class="dock-sep"></div>
       <button class="dock-btn" id="btn-find-path" title="Find shortest path">Path</button>
@@ -568,12 +557,6 @@
 
     <!-- Canvas -->
     <div id="network"></div>
-
-    <!-- Search history (left sidebar) -->
-    <div class="history-panel" id="history-panel">
-      <div class="history-title">Recent searches</div>
-      <div id="history-list"></div>
-    </div>
 
     <!-- Artist / edge sidebar (right) -->
     <div class="artist-sidebar" id="artist-sidebar">
@@ -587,7 +570,6 @@
       </div>
       <div class="sidebar-body">
         <div>
-          <!-- FIX #2: shows up to 5 tracks; edge sidebar shows full collab list -->
           <div class="sidebar-section-label">Tracks</div>
           <div id="sidebar-tracks"></div>
         </div>
@@ -599,11 +581,19 @@
       </div>
     </div>
 
-    <!-- Path finder panel -->
+    <!-- Path finder panel — inputs have smart suggestions from loaded nodes -->
     <div class="path-panel" id="path-panel">
       <div class="path-title">Six degrees of separation</div>
-      <input class="path-input" id="path-from-input" type="text" placeholder="From artist…" autocomplete="off" />
-      <input class="path-input" id="path-to-input"   type="text" placeholder="To artist…"   autocomplete="off" />
+      <div class="path-input-wrap">
+        <input class="path-input" id="path-from-input" type="text"
+          placeholder="From artist…" autocomplete="off" />
+        <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
+      </div>
+      <div class="path-input-wrap">
+        <input class="path-input" id="path-to-input" type="text"
+          placeholder="To artist…" autocomplete="off" />
+        <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+      </div>
       <div class="path-actions">
         <button class="dock-btn" id="btn-run-path" style="flex:1">Find path</button>
         <button class="dock-btn" id="btn-clear-path">Clear</button>
@@ -631,7 +621,7 @@
       <span class="spinner"></span> Tracing collaborations…
     </div>
 
-    <!-- FIX #4: Candidate picker — fuzzy search disambiguation -->
+    <!-- Candidate picker -->
     <div class="candidate-overlay" id="candidate-overlay" role="dialog" aria-label="Select artist">
       <div class="candidate-box">
         <div class="candidate-header">
