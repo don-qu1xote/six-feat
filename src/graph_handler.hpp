@@ -1,21 +1,25 @@
 #pragma once
 
 // ════════════════════════════════════════════════════════════════════════════
-// graph_handler.hpp  —  iteration 4
+// graph_handler.hpp  —  iteration 6
 //
-// GraphHandler is now a thin presentation layer.
-// All I/O, caching, and resilience live in GeniusClient (genius_client.hpp).
+// GraphHandler is now a pure presentation layer.
+// All data acquisition and caching decisions live in CollabService.
 //
-// New in iteration 4:
-//   • BuildGraphJson() now computes BetweennessCentrality (Brandes O(V·E))
-//     for the returned subgraph and annotates each node with:
-//       "betweenness"            — raw score
-//       "betweenness_normalised" — score / max_score (frontend sizing hint)
-//   • Response JSON gains "type":"graph" so the frontend can distinguish
-//     a radial graph from a "type":"path" chain response.
+// Request: GET /api/v1/graph
+//   ?artist=<name>  — fuzzy resolve
+//   ?id=<int64>     — direct id resolve
+//   ?roles=<csv>    — role filter (default: all)
+//
+// Response types:
+//   "type":"graph"     — radial graph JSON (seed + collaborators + BC scores)
+//   "type":"graph",
+//     "ambiguous":true — candidate picker payload
+//   "type":"graph",
+//     "error":...      — error JSON
 // ════════════════════════════════════════════════════════════════════════════
 
-#include "genius_client.hpp"
+#include "collab_service.hpp"
 
 #include <string>
 #include <string_view>
@@ -26,26 +30,25 @@
 
 namespace six_feat {
 
-class GeniusClient;
-
 class GraphHandler final : public userver::server::handlers::HttpHandlerBase {
 public:
-  static constexpr std::string_view kName = "handler-graph";
+    static constexpr std::string_view kName = "handler-graph";
 
-  GraphHandler(const userver::components::ComponentConfig &config,
-               const userver::components::ComponentContext &context);
+    GraphHandler(const userver::components::ComponentConfig&  config,
+                 const userver::components::ComponentContext& context);
 
-  std::string HandleRequestThrow(
-      const userver::server::http::HttpRequest &request,
-      userver::server::request::RequestContext &context) const override;
+    std::string HandleRequestThrow(
+        const userver::server::http::HttpRequest&  request,
+        userver::server::request::RequestContext& context) const override;
 
-  static userver::yaml_config::Schema GetStaticConfigSchema();
+    static userver::yaml_config::Schema GetStaticConfigSchema();
 
 private:
-  std::string BuildGraphJson(const ArtistSongs &data,
-                             const RoleMask &mask) const;
+    // Pure presentation: builds JSON from ArtistSongs + betweenness scores.
+    std::string BuildGraphJson(const ArtistSongs& data,
+                               const RoleMask&    mask) const;
 
-  GeniusClient &client_;
+    CollabService& service_;
 };
 
 } // namespace six_feat

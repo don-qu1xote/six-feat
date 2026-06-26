@@ -1,10 +1,36 @@
 services:
   six-feat:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Pass the version arg so you can override it without editing the file:
+      #   USERVER_IMAGE=ghcr.io/.../ubuntu-22.04-userver:v2.8 docker compose build
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:latest
     image: six-feat:latest
     container_name: six-feat
     ports:
       - "8080:8080"
     environment:
-      GENIUS_TOKEN: ${GENIUS_TOKEN:?set GENIUS_TOKEN in your shell or in a .env file}
+      # Resolved from shell env or .env file (see .env.example)
+      GENIUS_TOKEN: ${GENIUS_TOKEN:?Set GENIUS_TOKEN in your shell or copy .env.example → .env}
+    volumes:
+      # Named volume: SQLite data persists across restarts and image rebuilds
+      - six_feat_data:/var/lib/six_feat
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/graph"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    # Limit resources so a runaway background worker doesn't starve the host
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+
+volumes:
+  six_feat_data:
+    driver: local

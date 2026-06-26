@@ -215,24 +215,51 @@
     .status-chip--writer   { color: var(--amber);  border-color: rgba(255,210,122,.4); }
     .status .hint { color: #6B7589; margin-top: 3px; font-size: 10px; }
 
+    /* ─── Betweenness legend ─────────────────────────────────────────── */
+    .bc-legend {
+      position: absolute; left: 16px; bottom: 18px; z-index: 5;
+      margin-bottom: 0; /* sits inside status bar via flex, but placed below it */
+    }
+    /* Actually we'll add it as a sub-line inside .status via JS */
+    .status .bc-hint {
+      display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 10px;
+    }
+    .status .bc-hint .bc-glow-demo {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--pulse);
+      box-shadow: 0 0 8px 3px rgba(185,138,255,0.55);
+      flex-shrink: 0;
+    }
+
     /* ─── Bottom-right actions ───────────────────────────────────────── */
     .actions-bar {
       position: absolute; right: 16px; bottom: 18px; z-index: 5;
       display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end;
     }
 
-    /* ─── Path finder panel ──────────────────────────────────────────── */
+    /* ─── Path finder panel — LEFT side ─────────────────────────────── */
     .path-panel {
-      position: absolute; right: 16px; top: 56px; z-index: 5; display: none;
+      position: absolute; left: 16px; top: 56px; z-index: 5; display: none;
       background: rgba(14,19,32,.92); border: 1px solid var(--line); border-radius: var(--r-md);
-      padding: 14px 16px; min-width: 280px; backdrop-filter: blur(8px);
+      padding: 14px 16px; width: 300px; max-width: calc(100vw - 32px);
+      backdrop-filter: blur(8px);
       flex-direction: column; gap: 10px;
+      max-height: calc(100vh - 80px); overflow-y: auto;
     }
     .path-panel.show { display: flex; }
+    .path-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+    }
     .path-title {
       font-family: "Space Mono", monospace; font-size: 10px; color: var(--mist);
       letter-spacing: .12em; text-transform: uppercase;
     }
+    .path-close {
+      border: 0; background: transparent; color: var(--mist); cursor: pointer;
+      font-size: 16px; padding: 0 2px; line-height: 1; transition: color .15s;
+    }
+    .path-close:hover { color: var(--paper); }
+
     /* ── Path input with suggestions ── */
     .path-input-wrap { position: relative; }
     .path-input {
@@ -250,9 +277,41 @@
     .path-input-wrap .ac-hint { display: none; }
 
     .path-actions { display: flex; gap: 8px; }
-    .path-result { font-size: 12px; color: var(--neon); line-height: 1.6; min-height: 18px; word-break: break-word; }
+    .path-result {
+      font-size: 12px; color: var(--neon); line-height: 1.6;
+      min-height: 18px; word-break: break-word;
+    }
+    .path-result.is-error { color: var(--warn); }
+    .path-result.is-loading { color: var(--mist); display: flex; align-items: center; gap: 8px; }
 
-    /* ─── Artist sidebar ─────────────────────────────────────────────── */
+    /* ── Hop chain ── */
+    .hop-chain { display: flex; flex-direction: column; gap: 0; margin-top: 2px; }
+    .hop-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 7px 0; border-bottom: 1px solid rgba(40,48,68,.3);
+      position: relative;
+    }
+    .hop-row:last-child { border-bottom: none; }
+    .hop-avatar {
+      width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
+      flex-shrink: 0; border: 1px solid var(--line);
+    }
+    .hop-info { flex: 1; min-width: 0; }
+    .hop-name {
+      font-size: 12.5px; font-weight: 600; color: var(--paper);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .hop-songs {
+      font-family: "Space Mono", monospace; font-size: 9.5px; color: var(--mist);
+      margin-top: 2px; line-height: 1.5; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis;
+    }
+    .hop-arrow {
+      font-size: 10px; color: var(--neon); flex-shrink: 0;
+      align-self: center; padding: 0 2px; opacity: 0.7;
+    }
+
+    /* ─── Artist sidebar — RIGHT side (unchanged) ────────────────────── */
     .artist-sidebar {
       position: absolute; right: 16px; top: 56px; z-index: 6; display: none;
       background: rgba(14,19,32,.95); border: 1px solid var(--line); border-radius: var(--r-lg);
@@ -477,6 +536,7 @@
       .dock-search-wrap { width: 100%; min-width: 0; }
       .filter-label { display: none; }
       .actions-bar { right: 8px; bottom: 12px; }
+      .path-panel { width: calc(100vw - 32px); }
     }
     @media (prefers-reduced-motion: reduce) {
       .hero, .graph-view { transition: none; }
@@ -545,8 +605,6 @@
         <button class="dock-btn" id="filter-writer">✍️ writer</button>
       </div>
 
-      <!-- REMOVED: legend-bar (line type legend) — redundant, visual clutter -->
-
       <div class="dock-sep"></div>
       <button class="dock-btn" id="btn-fit-view" title="F — fit all nodes">Fit</button>
       <div class="dock-sep"></div>
@@ -581,9 +639,12 @@
       </div>
     </div>
 
-    <!-- Path finder panel — inputs have smart suggestions from loaded nodes -->
+    <!-- Path finder panel — LEFT side, can open alongside artist sidebar -->
     <div class="path-panel" id="path-panel">
-      <div class="path-title">Six degrees of separation</div>
+      <div class="path-panel-header">
+        <div class="path-title">Six degrees of separation</div>
+        <button class="path-close" id="path-panel-close" title="Close">×</button>
+      </div>
       <div class="path-input-wrap">
         <input class="path-input" id="path-from-input" type="text"
           placeholder="From artist…" autocomplete="off" />
@@ -599,19 +660,22 @@
         <button class="dock-btn" id="btn-clear-path">Clear</button>
       </div>
       <div class="path-result" id="path-result"></div>
+      <div class="hop-chain" id="hop-chain"></div>
     </div>
 
     <!-- Status bar -->
     <div class="status" id="status" hidden>
       <div class="seed" id="status-seed"></div>
       <div class="filter-chips" id="status-filters"></div>
+      <div class="bc-hint">
+        <span class="bc-glow-demo"></span>
+        <span>Node glow = collaboration centrality</span>
+      </div>
       <div class="hint">click node → details · dbl-click → expand · click edge → tracks · ctrl+click → Genius · ⌘K search</div>
     </div>
 
     <!-- Bottom-right actions -->
     <div class="actions-bar">
-      <button class="dock-btn" id="btn-export-png"  title="Export PNG">↓ PNG</button>
-      <button class="dock-btn" id="btn-export-json" title="Export JSON">↓ JSON</button>
       <button class="dock-btn" id="btn-clear-graph"
         style="color:var(--warn);border-color:rgba(255,143,163,.3);">✕ Clear</button>
     </div>

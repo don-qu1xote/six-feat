@@ -1,34 +1,25 @@
 #pragma once
 
 // ════════════════════════════════════════════════════════════════════════════
-// path_handler.hpp  —  iteration 4
+// path_handler.hpp  —  iteration 6
 //
 // PathHandler serves GET /api/v1/graph/path
 //
+// All data acquisition and BFS logic moved to CollabService::FindPath.
+// This handler only:
+//   • Parses query parameters.
+//   • Calls service_.FindPath().
+//   • Assembles the JSON response from PathContext.
+//
 // Query parameters:
-//   from    — artist name (fuzzy) or numeric id  (required)
-//   to      — artist name (fuzzy) or numeric id  (required)
-//   roles   — comma-separated role filter         (optional, default all)
-//   expand  — max rounds of lazy graph expansion  (optional, default 3)
+//   from    — artist name or id  (required)
+//   to      — artist name or id  (required)
+//   roles   — comma-separated    (optional, default all)
 //
-// Response JSON (type = "path"):
-// {
-//   "type": "path",
-//   "hops": 3,
-//   "from": { "id": 1, "name": "Artist A", ... },
-//   "to":   { "id": 2, "name": "Artist B", ... },
-//   "nodes": [ { "id":…, "name":…, "betweenness":… }, … ],
-//   "edges": [ { "from":…, "to":…, "weight":…, … }, … ],
-//   "path":  [ id_0, id_1, id_2 ]          // ordered hop list
-// }
-//
-// On failure (no path found within expand rounds):
-// {
-//   "type": "path",
-//   "error": "no_path",
-//   "message": "…"
-// }
+// Response JSON: unchanged from iteration 4.
 // ════════════════════════════════════════════════════════════════════════════
+
+#include "collab_service.hpp"
 
 #include <string>
 #include <string_view>
@@ -39,10 +30,7 @@
 
 namespace six_feat {
 
-class GeniusClient;
-
-class PathHandler final
-    : public userver::server::handlers::HttpHandlerBase {
+class PathHandler final : public userver::server::handlers::HttpHandlerBase {
 public:
     static constexpr std::string_view kName = "handler-path";
 
@@ -56,8 +44,11 @@ public:
     static userver::yaml_config::Schema GetStaticConfigSchema();
 
 private:
-    GeniusClient& client_;
-    const int     max_expand_rounds_;   // hard cap on lazy-expansion passes
+    std::string BuildPathJson(const ArtistRef& from_ref,
+                               const ArtistRef& to_ref,
+                               const PathContext& ctx) const;
+
+    CollabService& service_;
 };
 
 } // namespace six_feat

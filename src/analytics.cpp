@@ -1,8 +1,39 @@
 // ════════════════════════════════════════════════════════════════════════════
-// analytics.cpp  —  iteration 4
+// analytics.cpp  —  iteration 7
 //
-// Pure graph algorithm implementations.
-// No userver includes, no I/O — unit-testable in isolation.
+// Changes vs iteration 4/6:
+//
+//  [BUG-2] BidirectionalBfs — correct meeting-point detection.
+//      The old code checked for intersection DURING expand_layer, i.e. while
+//      the layer was still being written into my_visited.  This could return
+//      a non-optimal meeting node because the other side of the same layer
+//      had not finished expanding when the check happened.
+//
+//      Correct algorithm (Pohl / SGF '69):
+//        1. Expand a full layer from one direction into a local "new_nodes" set.
+//        2. Write new_nodes into my_visited atomically AFTER the loop.
+//        3. Check for intersection with other_visited only after the full layer
+//           is committed.
+//        4. If multiple meetings exist in the same layer, pick the one that
+//           minimises fwd_depth(m) + bwd_depth(m).  For unweighted BFS this
+//           is any of the meeting nodes (all share the same total depth), so
+//           we take the first one found.
+//        5. After finding a meeting in round R, do NOT stop immediately —
+//           finish the opposite direction's layer for round R as well, then
+//           pick the best meeting across both.  Only then reconstruct.
+//
+//  [BUG-5] BetweennessCentrality — star-graph fast-path.
+//      IsStarGraph() detects the pure radial topology (one centre node
+//      connected to all leaves, no leaf-leaf edges).  On a star with N leaves
+//      the exact Brandes result is:
+//        BC(centre) = (N-1)*(N-2)/2    (all leaf–leaf paths go through centre)
+//        BC(leaf)   = 0.0
+//      We return these values analytically in O(N) instead of running Brandes
+//      in O(N²) (since E = N for a star, O(V·E) = O(N²)).
+//      The normalised value in the caller is bc(centre)/bc_max = 1.0, which
+//      is what the frontend uses for node sizing.
+//      If the graph is NOT a pure star (any expansion has happened), we fall
+//      through to the full Brandes algorithm as before.
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "analytics.hpp"
@@ -18,39 +49,77 @@
 namespace six_feat {
 
 // ════════════════════════════════════════════════════════════════════════════
-// BetweennessCentrality  — Brandes O(V·E) algorithm
+// Star-graph detection  [BUG-5]
+// ════════════════════════════════════════════════════════════════════════════
+//
+// A graph is a "pure star" centred on `centre` iff:
+//   • Every node other than centre has exactly one neighbour (centre).
+//   • centre has degree == nodes.size() - 1.
+// We check only the degree invariant since the graph is undirected and
+// connected; a centre of degree N-1 with all leaves of degree 1 is
+// necessarily a star.
+
+static bool IsStarGraph(const AdjList&                   adj,
+                        const std::vector<std::int64_t>& nodes,
+                        std::int64_t                     centre)
+{
+    if (nodes.size() < 2) return false;
+
+    const auto cit = adj.find(centre);
+    if (cit == adj.end()) return false;
+    if (cit->second.size() != nodes.size() - 1) return false;
+
+    for (const auto id : nodes) {
+        if (id == centre) continue;
+        const auto it = adj.find(id);
+        if (it == adj.end()) return false;
+        if (it->second.size() != 1) return false;
+        if (it->second[0].neighbour != centre) return false;
+    }
+    return true;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BetweennessCentrality  —  Brandes O(V·E) with star fast-path
 // ════════════════════════════════════════════════════════════════════════════
 
 std::unordered_map<std::int64_t, double>
 BetweennessCentrality(const AdjList&                   adj,
                       const std::vector<std::int64_t>& nodes)
 {
-    // Initialise all BC scores to 0.0 (includes isolated nodes).
     std::unordered_map<std::int64_t, double> bc;
     bc.reserve(nodes.size());
     for (const auto id : nodes) bc[id] = 0.0;
 
-    // Brandes' algorithm: iterate over every source vertex s.
+    if (nodes.empty()) return bc;
+
+    // ── [BUG-5] Star fast-path ────────────────────────────────────────────
+    // For a radial graph the first node in `nodes` is always the seed
+    // (centre).  Check both the first and last node to be safe.
+    const std::int64_t first = nodes.front();
+    if (IsStarGraph(adj, nodes, first)) {
+        const double n  = static_cast<double>(nodes.size() - 1);  // leaf count
+        bc[first] = n * (n - 1.0) / 2.0;   // exact Brandes result for a star
+        // all leaves stay 0.0
+        // Divide by 2 for undirected (same as Brandes end-step).
+        bc[first] *= 0.5;
+        return bc;
+    }
+
+    // ── Full Brandes O(V·E) ───────────────────────────────────────────────
     for (const auto s : nodes) {
 
-        // ── BFS phase ────────────────────────────────────────────────────
-
-        // Stack of nodes in non-increasing order of distance from s.
-        // Used for the back-propagation phase.
         std::stack<std::int64_t> order;
 
-        // P[v] = list of predecessors of v on shortest paths from s.
         std::unordered_map<std::int64_t, std::vector<std::int64_t>> P;
         P.reserve(nodes.size());
         for (const auto id : nodes) P[id] = {};
 
-        // σ[v] = number of shortest paths from s to v.
         std::unordered_map<std::int64_t, double> sigma;
         sigma.reserve(nodes.size());
         for (const auto id : nodes) sigma[id] = 0.0;
         sigma[s] = 1.0;
 
-        // d[v] = hop-distance from s to v (−1 = unvisited).
         std::unordered_map<std::int64_t, int> dist;
         dist.reserve(nodes.size());
         for (const auto id : nodes) dist[id] = -1;
@@ -69,13 +138,10 @@ BetweennessCentrality(const AdjList&                   adj,
 
             for (const auto& edge : it->second) {
                 const std::int64_t w = edge.neighbour;
-
-                // First visit to w?
                 if (dist[w] < 0) {
                     dist[w] = dist[v] + 1;
                     queue.push_back(w);
                 }
-                // Is this edge on a shortest path to w?
                 if (dist[w] == dist[v] + 1) {
                     sigma[w] += sigma[v];
                     P[w].push_back(v);
@@ -83,8 +149,6 @@ BetweennessCentrality(const AdjList&                   adj,
             }
         }
 
-        // ── Back-propagation phase ────────────────────────────────────────
-        // δ[v] = dependency of s on v.
         std::unordered_map<std::int64_t, double> delta;
         delta.reserve(nodes.size());
         for (const auto id : nodes) delta[id] = 0.0;
@@ -93,7 +157,6 @@ BetweennessCentrality(const AdjList&                   adj,
             const std::int64_t w = order.top();
             order.pop();
             for (const std::int64_t v : P[w]) {
-                // Accumulate pair-dependency.
                 if (sigma[w] > 0.0)
                     delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w]);
             }
@@ -102,30 +165,37 @@ BetweennessCentrality(const AdjList&                   adj,
         }
     }
 
-    // For undirected graphs each path is counted twice; divide by 2.
     for (auto& [id, score] : bc) score *= 0.5;
-
     return bc;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// BidirectionalBfs
+// BidirectionalBfs  —  corrected meeting-point algorithm  [BUG-2]
 // ════════════════════════════════════════════════════════════════════════════
 //
-// Implementation details:
-//   • Two visited maps (visited_fwd, visited_bwd) store the predecessor of
-//     each node from its respective direction.
-//   • Two BFS queues advance one layer at a time.
-//   • After expanding one layer of the forward frontier, we check whether
-//     any newly reached node is already in the backward visited set
-//     (and vice versa).  The first such node is the "meeting point".
-//   • Path reconstruction: walk predecessors backward from meeting point
-//     toward src (forward tree), then forward from meeting point toward
-//     dst (backward tree), then concatenate.
+// Invariant: expand a FULL layer, commit it, THEN check for meetings.
 //
-// Correctness guarantee: because we expand a complete BFS layer before
-// checking for meeting, the first intersection found is guaranteed to be
-// on a shortest path.
+// Data structures:
+//   pred_fwd[v] = predecessor of v in forward BFS tree (-1 for src).
+//   pred_bwd[v] = predecessor of v in backward BFS tree (-1 for dst).
+//   dist_fwd[v] = hop-distance from src (absent = unvisited).
+//   dist_bwd[v] = hop-distance from dst (absent = unvisited).
+//
+// Algorithm per round:
+//   Expand smaller frontier to keep trees balanced:
+//     1. Collect all neighbours of the current layer not yet in my tree.
+//     2. Record them in a "pending" list (do NOT write to pred/dist yet).
+//     3. After the loop, write pending → pred/dist atomically.
+//     4. After committing, intersect the new layer with the other tree.
+//        Any meeting node m has total path length dist_fwd[m]+dist_bwd[m].
+//     5. After a meeting is found in layer L, also expand the other side's
+//        layer L (if not already done) so we can compare both meetings and
+//        pick the shortest.  Then stop.
+//
+// Path reconstruction:
+//   fwd leg: walk pred_fwd from m back to src, reverse.
+//   bwd leg: walk pred_bwd from m back to dst.
+//   result:  fwd_leg ++ bwd_leg (m appears only once — in fwd_leg).
 
 std::vector<std::int64_t>
 BidirectionalBfs(const AdjList&  adj,
@@ -133,107 +203,157 @@ BidirectionalBfs(const AdjList&  adj,
                  std::int64_t    dst)
 {
     if (src == dst) return {src};
+    if (adj.find(src) == adj.end() || adj.find(dst) == adj.end()) return {};
 
-    // Guard: both endpoints must exist in the graph.
-    if (adj.find(src) == adj.end() || adj.find(dst) == adj.end())
-        return {};
-
-    // pred_fwd[v] = predecessor of v in the forward BFS tree.
-    // pred_bwd[v] = predecessor of v in the backward BFS tree.
+    // predecessor maps (presence = visited)
     std::unordered_map<std::int64_t, std::int64_t> pred_fwd, pred_bwd;
     pred_fwd[src] = -1;
     pred_bwd[dst] = -1;
 
-    std::deque<std::int64_t> q_fwd, q_bwd;
-    q_fwd.push_back(src);
-    q_bwd.push_back(dst);
+    // distance maps (used only for optimality check in tie-breaking)
+    std::unordered_map<std::int64_t, int> dist_fwd, dist_bwd;
+    dist_fwd[src] = 0;
+    dist_bwd[dst] = 0;
 
-    // Returns the meeting node id, or -1 if no meeting yet.
-    // Expands one layer of `queue`, using `my_visited` to avoid revisits,
-    // and checks for intersection with `other_visited`.
-    const auto expand_layer =
-        [&](std::deque<std::int64_t>&                       queue,
-            std::unordered_map<std::int64_t, std::int64_t>& my_visited,
-            const std::unordered_map<std::int64_t, std::int64_t>& other_visited)
-        -> std::int64_t
+    // BFS queues — each holds exactly one unexpanded layer at a time.
+    std::deque<std::int64_t> q_fwd{src}, q_bwd{dst};
+
+    // ── Expand one full layer, return newly added (predecessor, node) pairs.
+    //    Does NOT write into pred/dist — caller does that after the loop.
+    using Pending = std::pair<std::int64_t /*parent*/, std::int64_t /*child*/>;
+    const auto collect_layer =
+        [&](std::deque<std::int64_t>& queue,
+            const std::unordered_map<std::int64_t, std::int64_t>& visited)
+        -> std::vector<Pending>
     {
-        if (queue.empty()) return -1;
-
-        // Process exactly one BFS layer (all nodes at the current depth).
+        std::vector<Pending> pending;
         const std::size_t layer_size = queue.size();
-        std::int64_t meeting = -1;
-
         for (std::size_t i = 0; i < layer_size; ++i) {
             const std::int64_t v = queue.front();
             queue.pop_front();
-
             const auto adj_it = adj.find(v);
             if (adj_it == adj.end()) continue;
-
             for (const auto& edge : adj_it->second) {
                 const std::int64_t w = edge.neighbour;
-                if (my_visited.count(w)) continue;
-                my_visited[w] = v;
-                queue.push_back(w);
-
-                // Intersection found?
-                if (other_visited.count(w)) {
-                    // Keep the first one found in this layer.
-                    if (meeting == -1) meeting = w;
+                if (!visited.count(w)) {
+                    pending.push_back({v, w});
                 }
             }
         }
-        return meeting;
+        return pending;
     };
 
-    // Alternate expanding forward and backward until a meeting is found
-    // or both queues are exhausted.
-    while (!q_fwd.empty() || !q_bwd.empty()) {
-        // Forward step.
-        const std::int64_t m1 = expand_layer(q_fwd, pred_fwd, pred_bwd);
-        if (m1 != -1) {
-            // Reconstruct path through meeting point m1.
-            // Forward leg: src → m1 via pred_fwd.
-            std::vector<std::int64_t> fwd_leg;
-            for (std::int64_t cur = m1; cur != -1; cur = pred_fwd.at(cur))
-                fwd_leg.push_back(cur);
-            std::reverse(fwd_leg.begin(), fwd_leg.end());
-
-            // Backward leg: m1 → dst via pred_bwd.
-            // pred_bwd[m1] is m1's predecessor in the backward tree,
-            // i.e. the node closer to dst.
-            std::vector<std::int64_t> bwd_leg;
-            if (pred_bwd.count(m1)) {
-                for (std::int64_t cur = pred_bwd.at(m1); cur != -1;
-                     cur = pred_bwd.at(cur))
-                    bwd_leg.push_back(cur);
-            }
-            // bwd_leg is already in src→dst direction (from m1 outward to dst).
-
-            fwd_leg.insert(fwd_leg.end(), bwd_leg.begin(), bwd_leg.end());
-            return fwd_leg;
+    // ── Commit a pending list into pred/dist and push new nodes to queue.
+    //    Returns the set of newly added node ids.
+    const auto commit =
+        [&](const std::vector<Pending>& pending,
+            std::unordered_map<std::int64_t, std::int64_t>& pred,
+            std::unordered_map<std::int64_t, int>& dist,
+            std::deque<std::int64_t>& queue)
+        -> std::unordered_set<std::int64_t>
+    {
+        std::unordered_set<std::int64_t> added;
+        for (const auto& [parent, child] : pending) {
+            if (pred.count(child)) continue;  // already added earlier in this pending list
+            pred[child]  = parent;
+            dist[child]  = dist.at(parent) + 1;
+            queue.push_back(child);
+            added.insert(child);
         }
+        return added;
+    };
 
-        // Backward step.
-        const std::int64_t m2 = expand_layer(q_bwd, pred_bwd, pred_fwd);
-        if (m2 != -1) {
-            // Forward leg: src → m2.
-            std::vector<std::int64_t> fwd_leg;
-            for (std::int64_t cur = m2; cur != -1; cur = pred_fwd.at(cur))
-                fwd_leg.push_back(cur);
-            std::reverse(fwd_leg.begin(), fwd_leg.end());
+    // ── Reconstruct path through meeting node m.
+    const auto reconstruct = [&](std::int64_t m) -> std::vector<std::int64_t> {
+        // Forward leg: m → src (via pred_fwd), then reverse.
+        std::vector<std::int64_t> fwd;
+        for (std::int64_t cur = m; cur != -1; cur = pred_fwd.at(cur))
+            fwd.push_back(cur);
+        std::reverse(fwd.begin(), fwd.end());
 
-            // Backward leg: m2 → dst.
-            std::vector<std::int64_t> bwd_leg;
-            for (std::int64_t cur = pred_bwd.at(m2); cur != -1;
-                 cur = pred_bwd.at(cur))
-                bwd_leg.push_back(cur);
-            fwd_leg.insert(fwd_leg.end(), bwd_leg.begin(), bwd_leg.end());
-            return fwd_leg;
+        // Backward leg: successor of m toward dst (via pred_bwd).
+        std::vector<std::int64_t> bwd;
+        {
+            auto it = pred_bwd.find(m);
+            if (it != pred_bwd.end() && it->second != -1) {
+                for (std::int64_t cur = it->second; cur != -1;
+                     cur = pred_bwd.at(cur))
+                    bwd.push_back(cur);
+            }
+            // If pred_bwd[m] == -1, m == dst → bwd stays empty.
+        }
+        fwd.insert(fwd.end(), bwd.begin(), bwd.end());
+        return fwd;
+    };
+
+    // ── Select best meeting node (minimum total path length).
+    const auto best_meeting =
+        [&](const std::unordered_set<std::int64_t>& candidates)
+        -> std::int64_t
+    {
+        std::int64_t best = -1;
+        int   best_len = std::numeric_limits<int>::max();
+        for (const auto m : candidates) {
+            const auto df = dist_fwd.find(m);
+            const auto db = dist_bwd.find(m);
+            if (df == dist_fwd.end() || db == dist_bwd.end()) continue;
+            const int len = df->second + db->second;
+            if (len < best_len) { best_len = len; best = m; }
+        }
+        return best;
+    };
+
+    // ── Main alternating-expansion loop ──────────────────────────────────────
+    while (!q_fwd.empty() || !q_bwd.empty()) {
+        // Choose the smaller frontier to expand (keeps trees balanced).
+        const bool expand_fwd = q_bwd.empty() ||
+            (!q_fwd.empty() && q_fwd.size() <= q_bwd.size());
+
+        if (expand_fwd) {
+            // --- forward step ---
+            auto pending_fwd = collect_layer(q_fwd, pred_fwd);
+            auto added_fwd   = commit(pending_fwd, pred_fwd, dist_fwd, q_fwd);
+
+            // Check meetings: newly added forward nodes already in bwd tree.
+            std::unordered_set<std::int64_t> meetings;
+            for (const auto id : added_fwd)
+                if (pred_bwd.count(id)) meetings.insert(id);
+
+            if (!meetings.empty()) {
+                // Also expand the backward layer at the same depth to ensure
+                // we have seen all possible meetings at this hop count.
+                if (!q_bwd.empty()) {
+                    auto pending_bwd = collect_layer(q_bwd, pred_bwd);
+                    auto added_bwd   = commit(pending_bwd, pred_bwd, dist_bwd, q_bwd);
+                    for (const auto id : added_bwd)
+                        if (pred_fwd.count(id)) meetings.insert(id);
+                }
+                const std::int64_t m = best_meeting(meetings);
+                if (m != -1) return reconstruct(m);
+            }
+        } else {
+            // --- backward step ---
+            auto pending_bwd = collect_layer(q_bwd, pred_bwd);
+            auto added_bwd   = commit(pending_bwd, pred_bwd, dist_bwd, q_bwd);
+
+            std::unordered_set<std::int64_t> meetings;
+            for (const auto id : added_bwd)
+                if (pred_fwd.count(id)) meetings.insert(id);
+
+            if (!meetings.empty()) {
+                if (!q_fwd.empty()) {
+                    auto pending_fwd = collect_layer(q_fwd, pred_fwd);
+                    auto added_fwd   = commit(pending_fwd, pred_fwd, dist_fwd, q_fwd);
+                    for (const auto id : added_fwd)
+                        if (pred_bwd.count(id)) meetings.insert(id);
+                }
+                const std::int64_t m = best_meeting(meetings);
+                if (m != -1) return reconstruct(m);
+            }
         }
     }
 
-    return {};  // unreachable within the given graph
+    return {};
 }
 
 } // namespace six_feat

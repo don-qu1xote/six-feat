@@ -53,7 +53,7 @@ components_manager:
 
     # ── Network layer ───────────────────────────────────────────────────────
     genius-gateway:
-      genius-api-token: $genius_token
+      genius-api-token: $GENIUS_API_TOKEN
       genius-base-url: https://api.genius.com
       songs-limit-fg: 10
       songs-limit-bg: 80
@@ -108,5 +108,5 @@ components_manager:
       path: /app.js
       method: GET
       task_processor: main-task-processor
-      file-path: /usr/share/six_feat/script.js
+      file-path: /usr/share/six_feat/app.js
       content-type: application/javascript; charset=utf-8

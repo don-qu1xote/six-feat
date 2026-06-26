@@ -1,23 +1,37 @@
 #pragma once
 
 // ════════════════════════════════════════════════════════════════════════════
-// genius_client.hpp  —  iteration 4
+// genius_client.hpp  —  iteration 5
 //
-// GeniusClient is a userver ComponentBase that owns:
-//   • The LRU artist-data cache (role-agnostic ArtistSongs)
-//   • RateLimiter + CircuitBreaker (resilience, from iteration 3)
-//   • GeniusGet() — the single resilient HTTP entry point
-//   • ResolveCandidates / FetchArtistById / GetOrFetchArtistSongs
+// Изменения по сравнению с iteration 4:
 //
-// Both GraphHandler and PathHandler inject GeniusClient via ComponentContext.
-// This eliminates the code duplication that existed when each handler owned
-// its own cache and resilience objects.
+//  1. CONCURRENCY LIMITER
+//     Новое поле `engine::Semaphore connection_semaphore_` ограничивает
+//     количество одновременных HTTP-запросов к Genius API.
+//     Конфигурируется через `max-concurrent-requests` (default: 3).
+//     Каждый вызов GeniusGet() захватывает SemaphoreLock до выхода.
 //
-// Why ComponentBase and not a plain shared_ptr?
-//   userver's DI container (ComponentContext) guarantees correct construction
-//   order, lifecycle management, and graceful shutdown.  It also lets us
-//   read the component's own config section from static_config.yaml without
-//   the caller needing to pass it down manually.
+//  2. SLOT-ORIENTED RATE LIMITER
+//     RateLimiter теперь держит атомарный счётчик слотов (atomic<int>).
+//     AcquireSlot() атомарно декрементирует счётчик; если слотов нет —
+//     корутина встаёт в очередь ожидания (ConditionVariable) вместо
+//     того, чтобы пролетать проверку одновременно с другими.
+//     Слоты возвращаются через ReleaseSlot() или полностью пополняются
+//     при вызове Update() с новым значением X-RateLimit-Remaining.
+//
+//  3. THUNDERING HERD PROTECTION (429 Cooldown Gate)
+//     Новый класс CooldownGate: когда одна корутина получает HTTP 429,
+//     она активирует «ворота» (устанавливает дедлайн кулдауна).
+//     Все последующие корутины, вошедшие в GeniusGet(), проверяют ворота
+//     через WaitForCooldown() и блокируются на ConditionVariable до
+//     истечения кулдауна — вместо того, чтобы самостоятельно штурмовать
+//     API и независимо засыпать на 60 секунд каждая.
+//     После истечения кулдауна все ждущие корутины просыпаются разом
+//     (broadcast), и конкурентность снова регулируется семафором.
+//
+//  Все примитивы — userver-native (engine::Semaphore, engine::Mutex,
+//  engine::ConditionVariable, engine::InterruptibleSleepFor), что
+//  гарантирует неблокирующий ввод-вывод в модели корутин userver.
 // ════════════════════════════════════════════════════════════════════════════
 
 #include <atomic>
@@ -33,13 +47,16 @@
 #include <userver/clients/http/client.hpp>
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>
+#include <userver/engine/condition_variable.hpp>
+#include <userver/engine/mutex.hpp>
+#include <userver/engine/semaphore.hpp>
 #include <userver/engine/sleep.hpp>
 #include <userver/yaml_config/schema.hpp>
 
 namespace six_feat {
 
 // ════════════════════════════════════════════════════════════════════════════
-// Domain types  (canonical definitions — included everywhere via this header)
+// Domain types
 // ════════════════════════════════════════════════════════════════════════════
 
 struct ArtistRef {
@@ -80,7 +97,7 @@ struct RoleMask {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// LruCache<K,V>  (unchanged from iteration 3, now lives here)
+// LruCache<K,V>
 // ════════════════════════════════════════════════════════════════════════════
 
 template <typename K, typename V>
@@ -101,7 +118,6 @@ public:
         return it->second->value;
     }
 
-    // Returns stale (expired) data rather than nullopt — CB fallback.
     std::optional<V> GetStale(const K& key) {
         std::lock_guard lock(mu_);
         auto it = index_.find(key);
@@ -149,23 +165,95 @@ private:
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// RateLimiter  (moved here from graph_handler.hpp, unchanged)
+// CooldownGate — защита от thundering herd при HTTP 429
+//
+// Принцип работы:
+//   Когда корутина получает 429, она вызывает Activate(deadline):
+//     - Устанавливает дедлайн кулдауна.
+//     - Все последующие корутины, вызывающие WaitForCooldown(), блокируются
+//       на ConditionVariable до истечения дедлайна.
+//     - По истечении — NotifyAll(), все корутины продолжают работу.
+//
+// Почему engine::Mutex + engine::ConditionVariable, а не std::mutex:
+//   std::mutex блокирует OS-поток, убивая модель корутин userver.
+//   engine::Mutex переключает планировщик — корутина паркуется без
+//   блокировки потока, другие корутины продолжают выполняться.
+// ════════════════════════════════════════════════════════════════════════════
+
+class CooldownGate {
+public:
+    using Clock    = std::chrono::steady_clock;
+    using TimePoint = Clock::time_point;
+
+    // Активировать кулдаун до `deadline`.
+    // Если кулдаун уже активен с более поздним дедлайном — не трогаем его.
+    void Activate(TimePoint deadline);
+
+    // Заблокировать вызывающую корутину, пока активен кулдаун.
+    // Использует engine::ConditionVariable — не блокирует OS-поток.
+    void WaitForCooldown();
+
+    // True, если кулдаун сейчас активен.
+    bool IsActive() const;
+
+private:
+    mutable userver::engine::Mutex      mu_;
+    userver::engine::ConditionVariable  cv_;
+    TimePoint                           deadline_{};   // zero = неактивен
+    bool                                active_{false};
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+// RateLimiter — slot-oriented token bucket
+//
+// Изменения по сравнению с предыдущей версией:
+//
+//   Старая версия просто читала `remaining_` и засыпала, если он ≤ kMinRemaining.
+//   Проблема: все N корутин читают значение одновременно, видят remaining > min,
+//   проходят проверку, разом отправляют запросы — и взрывают API.
+//
+//   Новая версия:
+//     - `available_slots_` — атомарный счётчик доступных слотов.
+//     - AcquireSlot() атомарно декрементирует CAS-петлёй. Если слотов нет
+//       (≤ kMinRemaining), корутина блокируется на ConditionVariable.
+//     - ReleaseSlot() — явный возврат слота (вызывается из GeniusGet при
+//       429/ошибке, чтобы не удерживать слот зря).
+//     - Update() пополняет счётчик до нового значения из заголовка
+//       X-RateLimit-Remaining и будит ждущие корутины.
 // ════════════════════════════════════════════════════════════════════════════
 
 class RateLimiter {
 public:
     static constexpr int kMinRemaining = 2;
+
+    // Обновить счётчик из заголовков ответа.
+    // Будит корутины, ждущие слота, если remaining вырос.
     void Update(int remaining, std::int64_t reset_unix);
-    void WaitIfNeeded() const;
+
+    // Атомарно захватить один слот.
+    // Если слотов нет — блокируется до появления слота или до reset.
+    // Возвращает true, если слот захвачен; false — если пора cooldown.
+    void AcquireSlot();
+
+    // Вернуть слот (при ошибке/429 до обновления заголовков).
+    void ReleaseSlot();
+
     int  Remaining() const;
+
 private:
-    mutable std::mutex  mu_;
-    int          remaining_{-1};
-    std::int64_t reset_unix_{0};
+    // Ждёт пока available_slots_ > kMinRemaining, затем декрементирует CAS.
+    void WaitAndDecrement();
+
+    mutable userver::engine::Mutex     mu_;
+    userver::engine::ConditionVariable cv_;
+
+    int          remaining_{-1};      // последнее известное значение из заголовка
+    std::int64_t reset_unix_{0};      // UNIX-timestamp сброса счётчика
+    int          available_slots_{-1}; // -1 = не инициализировано (нет данных от API)
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-// CircuitBreaker  (moved here, unchanged)
+// CircuitBreaker (без изменений)
 // ════════════════════════════════════════════════════════════════════════════
 
 class CircuitBreaker {
@@ -206,9 +294,6 @@ struct GeniusHttpError : std::runtime_error {
 
 // ════════════════════════════════════════════════════════════════════════════
 // GeniusClient — shared userver component
-//
-// Owns the cache, resilience objects, and all Genius I/O.
-// GraphHandler and PathHandler both hold a reference to it.
 // ════════════════════════════════════════════════════════════════════════════
 
 class GeniusClient final : public userver::components::ComponentBase {
@@ -222,20 +307,11 @@ public:
 
     // ── Public API ───────────────────────────────────────────────────────
 
-    /// Fuzzy name search → ranked Candidates.  Throws GeniusHttpError.
     std::vector<Candidate> ResolveCandidates(const std::string& query) const;
-
-    /// Fetch by numeric id (for ?id= / shareable URLs).
     std::optional<ArtistRef> FetchArtistById(std::int64_t id) const;
-
-    /// Cache-first fetch of raw song data for one artist.
-    /// Falls back to stale cache if the CircuitBreaker is open.
     ArtistSongs GetOrFetchArtistSongs(const ArtistRef& seed) const;
-
-    /// Check whether we already have (fresh or stale) data for an artist_id.
     bool HasCached(std::int64_t id) const;
 
-    // Expose config values needed by handlers.
     double      MatchThreshold()  const { return match_threshold_; }
     int         SongsLimit()      const { return songs_limit_; }
     std::string GeniusBaseUrl()   const { return genius_base_url_; }
@@ -252,10 +328,16 @@ private:
 
     mutable RateLimiter    rate_limiter_;
     mutable CircuitBreaker circuit_breaker_;
+    mutable CooldownGate   cooldown_gate_;     // ← thundering herd guard (new)
 
-    const int                      backoff_max_attempts_;
+    const int                       backoff_max_attempts_;
     const std::chrono::milliseconds backoff_base_ms_;
     const std::chrono::milliseconds backoff_cap_ms_;
+
+    // ── Concurrency limiter (new) ─────────────────────────────────────────
+    // engine::Semaphore — coroutine-friendly, не блокирует OS-поток.
+    // Инициализируется из конфига `max-concurrent-requests`.
+    mutable userver::engine::Semaphore connection_semaphore_;
 
     mutable LruCache<std::int64_t, ArtistSongs> artist_cache_;
 };

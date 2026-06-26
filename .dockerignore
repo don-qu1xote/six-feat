@@ -1,15 +1,17 @@
-build/
-cmake-build-*/
-*.o
-*.obj
+# .dockerignore
+# Keep the build context small and prevent secrets from leaking into image layers.
 
-config_vars.yaml
+# Never send real env files to the daemon
 .env
+*.env
 
-.git/
-.gitignore
-*.md
+# Build artifacts
+build/
+.cache/
 
-Dockerfile
-docker-compose.yml
-.dockerignore
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+**/*.swp
+**/*.swo

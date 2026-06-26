@@ -1,24 +1,24 @@
 // ════════════════════════════════════════════════════════════════════════════
-// graph_handler.cpp  —  iteration 4
+// graph_handler.cpp  —  iteration 6
 //
-// GraphHandler delegates all I/O to GeniusClient.
-// Its only responsibility: BuildGraphJson() — the presentation layer.
+// Pure presentation layer.  Data acquisition is delegated to CollabService.
+// Role utilities are imported from role_mask.hpp/cpp — no duplication.
 //
-// New vs iteration 3:
-//   • Imports analytics.hpp and calls BetweennessCentrality().
-//   • Each node in the response carries "betweenness" and
-//     "betweenness_normalised" fields.
-//   • Response root gains "type":"graph" for unambiguous front-end dispatch.
+// BuildGraphJson retains the full betweenness centrality logic and JSON
+// assembly from iteration 4, but no longer contains ParseRoleMask,
+// RoleAllowed, RoleRank, EdgeStyleForRole (all moved to role_mask.*).
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "graph_handler.hpp"
+#include "analytics.hpp"
+#include "role_mask.hpp"
 
 #include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 #include <vector>
-
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
 #include <userver/formats/json/serialize.hpp>
@@ -27,68 +27,23 @@
 #include <userver/logging/log.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
-#include "analytics.hpp"
-#include "genius_client.hpp"
-
 namespace six_feat {
 
 using namespace userver;
 
-// ════════════════════════════════════════════════════════════════════════════
-// File-private helpers
-// ════════════════════════════════════════════════════════════════════════════
-
 namespace {
-
-std::string ToLower(std::string v) {
-    std::transform(v.begin(), v.end(), v.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    return v;
-}
-
-RoleMask ParseRoleMask(const std::string& spec) {
-    if (spec.empty()) return RoleMask{};
-    RoleMask m{false, false, false, false};
-    std::size_t start = 0;
-    while (start <= spec.size()) {
-        const std::size_t comma = spec.find(',', start);
-        const std::size_t len   = (comma == std::string::npos)
-                                      ? std::string::npos : comma - start;
-        const std::string tok   = ToLower(spec.substr(start, len));
-        if      (tok == "primary")  m.primary  = true;
-        else if (tok == "producer") m.producer = true;
-        else if (tok == "writer")   m.writer   = true;
-        else if (tok == "featured") m.featured = true;
-        if (comma == std::string::npos) break;
-        start = comma + 1;
-    }
-    return m;
-}
-
-bool RoleAllowed(const std::string& role, const RoleMask& mask) {
-    if (role == "featured") return mask.featured;
-    if (role == "producer") return mask.producer;
-    if (role == "writer")   return mask.writer;
-    if (role == "primary")  return mask.primary;
-    return false;
-}
-
-int RoleRank(std::string_view role) {
-    if (role == "producer") return 4;
-    if (role == "writer")   return 3;
-    if (role == "featured") return 2;
-    if (role == "primary")  return 1;
-    return 0;
-}
-
-std::string_view EdgeStyleForRole(std::string_view role) {
-    if (role == "featured") return "solid";
-    if (role == "producer") return "dashed";
-    return "dotted";
-}
 
 std::string EmptyGraph() {
     return R"({"type":"graph","seed":"","seed_id":0,"nodes":[],"edges":[]})";
+}
+
+std::string ErrorGraph(const std::string& msg) {
+    formats::json::ValueBuilder b(formats::json::Type::kObject);
+    b["type"]  = std::string{"graph"};
+    b["error"] = msg;
+    b["nodes"] = formats::json::ValueBuilder(formats::json::Type::kArray);
+    b["edges"] = formats::json::ValueBuilder(formats::json::Type::kArray);
+    return formats::json::ToString(b.ExtractValue());
 }
 
 } // namespace
@@ -97,14 +52,14 @@ std::string EmptyGraph() {
 // Constructor
 // ════════════════════════════════════════════════════════════════════════════
 
-GraphHandler::GraphHandler(
-    const components::ComponentConfig&  config,
-    const components::ComponentContext& context)
+GraphHandler::GraphHandler(const components::ComponentConfig&  config,
+                            const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
-      client_(context.FindComponent<GeniusClient>()) {}
+      service_(context.FindComponent<CollabService>())
+{}
 
 // ════════════════════════════════════════════════════════════════════════════
-// Request entry point
+// HandleRequestThrow
 // ════════════════════════════════════════════════════════════════════════════
 
 std::string GraphHandler::HandleRequestThrow(
@@ -112,57 +67,52 @@ std::string GraphHandler::HandleRequestThrow(
     server::request::RequestContext& /*context*/) const
 {
     auto& response = request.GetHttpResponse();
-    response.SetContentType(
-        http::ContentType{"application/json; charset=utf-8"});
+    response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
 
     const RoleMask mask = ParseRoleMask(request.GetArg("roles"));
 
-    // ── Resolve seed ─────────────────────────────────────────────────────
+    // ── Resolve seed ─────────────────────────────────────────────────────────
     ArtistRef seed;
     const std::string& id_arg = request.GetArg("id");
     if (!id_arg.empty()) {
         std::int64_t id = 0;
-        try { id = std::stoll(id_arg); }
-        catch (...) {
+        try { id = std::stoll(id_arg); } catch (...) {
             response.SetStatus(server::http::HttpStatus::kBadRequest);
-            return R"({"type":"graph","error":"'id' must be numeric","nodes":[],"edges":[]})";
+            return ErrorGraph("'id' must be numeric");
         }
-        auto fetched = client_.FetchArtistById(id);
-        if (!fetched) return EmptyGraph();
-        seed = std::move(*fetched);
+        const auto ref = service_.ResolveById(id);
+        if (!ref) return EmptyGraph();
+        seed = *ref;
     } else {
         const std::string& artist = request.GetArg("artist");
         if (artist.empty()) {
             response.SetStatus(server::http::HttpStatus::kBadRequest);
-            return R"({"type":"graph","error":"'artist' or 'id' required","nodes":[],"edges":[]})";
+            return ErrorGraph("'artist' or 'id' required");
         }
 
-        std::vector<Candidate> candidates;
+        std::variant<ArtistRef, AmbiguousResult> resolved;
         try {
-            candidates = client_.ResolveCandidates(artist);
+            resolved = service_.ResolveByName(artist);
         } catch (const GeniusHttpError& e) {
             response.SetStatus(e.status_code == 503
                 ? server::http::HttpStatus::kServiceUnavailable
                 : server::http::HttpStatus::kBadGateway);
-            return R"({"type":"graph","error":"could not reach Genius","nodes":[],"edges":[]})";
+            return ErrorGraph("could not reach Genius");
         } catch (...) {
             response.SetStatus(server::http::HttpStatus::kBadGateway);
-            return R"({"type":"graph","error":"could not reach Genius","nodes":[],"edges":[]})";
+            return ErrorGraph("could not reach Genius");
         }
 
-        if (candidates.empty()) return EmptyGraph();
-
-        const Candidate& best = candidates.front();
-        if (best.score < client_.MatchThreshold()) {
-            // Ambiguous — return picker payload (unchanged from iteration 3).
+        if (std::holds_alternative<AmbiguousResult>(resolved)) {
+            const auto& ar = std::get<AmbiguousResult>(resolved);
+            if (ar.candidates.empty()) return EmptyGraph();
+            // Return picker payload.
             formats::json::ValueBuilder out(formats::json::Type::kObject);
             out["type"]      = std::string{"graph"};
             out["ambiguous"] = true;
-            out["query"]     = artist;
+            out["query"]     = ar.query;
             formats::json::ValueBuilder arr(formats::json::Type::kArray);
-            const std::size_t limit = std::min<std::size_t>(candidates.size(), 6);
-            for (std::size_t i = 0; i < limit; ++i) {
-                const auto& c = candidates[i];
+            for (const auto& c : ar.candidates) {
                 formats::json::ValueBuilder cb(formats::json::Type::kObject);
                 cb["id"]    = c.id;
                 cb["name"]  = c.name;
@@ -174,45 +124,49 @@ std::string GraphHandler::HandleRequestThrow(
             out["candidates"] = std::move(arr);
             return formats::json::ToString(out.ExtractValue());
         }
-        seed = {best.id, best.name, best.image, best.url};
+        seed = std::get<ArtistRef>(resolved);
     }
 
-    // ── Data layer ───────────────────────────────────────────────────────
+    // ── Fetch data (FG + trigger BG) ─────────────────────────────────────────
     ArtistSongs data;
     try {
-        data = client_.GetOrFetchArtistSongs(seed);
+        data = service_.BuildRadialGraph(seed);
     } catch (const GeniusHttpError& e) {
         response.SetStatus(e.status_code == 503
             ? server::http::HttpStatus::kServiceUnavailable
             : server::http::HttpStatus::kBadGateway);
-        return R"({"type":"graph","error":"could not reach Genius","nodes":[],"edges":[]})";
+        return ErrorGraph("could not reach Genius");
     } catch (...) {
         response.SetStatus(server::http::HttpStatus::kBadGateway);
-        return R"({"type":"graph","error":"could not reach Genius","nodes":[],"edges":[]})";
+        return ErrorGraph("could not reach Genius");
     }
 
     return BuildGraphJson(data, mask);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// BuildGraphJson — presentation layer + analytics
+// BuildGraphJson — presentation only (unchanged logic from iteration 4)
 // ════════════════════════════════════════════════════════════════════════════
 
-std::string GraphHandler::BuildGraphJson(
-    const ArtistSongs& data,
-    const RoleMask&    mask) const
+std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
+                                          const RoleMask&    mask) const
 {
     const std::int64_t seed_id = data.seed.id;
-
-    // ── Aggregate edges ──────────────────────────────────────────────────
 
     struct EdgeAgg {
         int         weight{0};
         int         best_rank{0};
         std::string dominant_role{"featured"};
         std::string name, image, url;
-        struct Collab { std::string song; std::vector<std::string> roles; };
-        std::vector<Collab> collabs;
+        struct Collab {
+            std::string              song;
+            std::vector<std::string> roles;
+        };
+        std::vector<Collab>         collabs;
+        // [BUG-6] Dedup set: tracks songs already in collabs to prevent
+        // duplicate entries when the same artist appears with multiple roles
+        // on the same track, or when artist credits are symmetric.
+        std::unordered_set<std::string> seen_songs;
     };
 
     std::unordered_map<std::int64_t, EdgeAgg> edges;
@@ -223,7 +177,6 @@ std::string GraphHandler::BuildGraphJson(
     for (const auto& song : data.songs) {
         std::unordered_map<std::int64_t, EdgeAgg::Collab> track;
         track.reserve(8);
-
         for (const auto& credit : song.credits) {
             if (credit.artist.id == seed_id)    continue;
             if (!RoleAllowed(credit.role, mask)) continue;
@@ -242,10 +195,12 @@ std::string GraphHandler::BuildGraphJson(
             if (std::find(roles.begin(), roles.end(), credit.role) == roles.end())
                 roles.push_back(credit.role);
         }
-
         for (auto& [gid, tc] : track) {
             auto& agg = edges[gid];
-            ++agg.weight;
+            // [BUG-6] Only count this song if we haven't seen it on this edge before.
+            if (agg.seen_songs.insert(tc.song).second) {
+                ++agg.weight;
+            }
             int tr = 0;
             for (const auto& r : tc.roles) tr = std::max(tr, RoleRank(r));
             if (tr > agg.best_rank) {
@@ -263,21 +218,12 @@ std::string GraphHandler::BuildGraphJson(
 
     if (order.empty()) return EmptyGraph();
 
-    // ── Build AdjList for Betweenness Centrality ─────────────────────────
-    //
-    // The graph is star-shaped: seed ↔ each collaborator.
-    // In a pure star graph all BC is concentrated on the seed node (it lies
-    // on every shortest path between pairs of leaf nodes).  That's correct
-    // and informative: the seed is the bridge between all collaborators.
-    // After expansion (double-click on a node) the graph becomes multi-hop
-    // and BC meaningfully identifies cross-genre bridges.
-
+    // Build AdjList for Brandes BC.
     AdjList adj;
     std::vector<std::int64_t> node_ids;
     node_ids.reserve(order.size() + 1);
     node_ids.push_back(seed_id);
-    adj[seed_id]; // ensure seed has an entry even if isolated (shouldn't happen)
-
+    adj[seed_id];
     for (const auto gid : order) {
         const int w = edges.at(gid).weight;
         adj[seed_id].push_back({gid, w});
@@ -285,20 +231,16 @@ std::string GraphHandler::BuildGraphJson(
         node_ids.push_back(gid);
     }
 
-    // ── Compute Betweenness Centrality ───────────────────────────────────
     const auto bc = BetweennessCentrality(adj, node_ids);
-
     double bc_max = 0.0;
     for (const auto& [id, score] : bc) bc_max = std::max(bc_max, score);
 
-    // ── Compute seed weight ──────────────────────────────────────────────
     const int seed_weight = [&] {
         int w = 0;
         for (const auto id : order) w += edges.at(id).weight;
         return std::max(w, 1);
     }();
 
-    // ── JSON assembly ─────────────────────────────────────────────────────
     formats::json::ValueBuilder nodes_b(formats::json::Type::kArray);
     formats::json::ValueBuilder edges_b(formats::json::Type::kArray);
 
@@ -319,8 +261,6 @@ std::string GraphHandler::BuildGraphJson(
 
     for (const auto gid : order) {
         const auto& agg = edges.at(gid);
-
-        // Collaborator node.
         {
             formats::json::ValueBuilder nb(formats::json::Type::kObject);
             nb["id"]     = gid;
@@ -334,8 +274,6 @@ std::string GraphHandler::BuildGraphJson(
             nb["is_seed"] = false;
             nodes_b.PushBack(std::move(nb));
         }
-
-        // Edge.
         {
             formats::json::ValueBuilder eb(formats::json::Type::kObject);
             eb["from"]                = seed_id;
@@ -343,9 +281,7 @@ std::string GraphHandler::BuildGraphJson(
             eb["weight"]              = agg.weight;
             eb["collaboration_count"] = agg.weight;
             eb["dominant_role"]       = agg.dominant_role;
-            eb["edge_style"]          =
-                std::string{EdgeStyleForRole(agg.dominant_role)};
-
+            eb["edge_style"]          = std::string{EdgeStyleForRole(agg.dominant_role)};
             formats::json::ValueBuilder cb(formats::json::Type::kArray);
             for (const auto& c : agg.collabs) {
                 formats::json::ValueBuilder ci(formats::json::Type::kObject);
@@ -361,7 +297,7 @@ std::string GraphHandler::BuildGraphJson(
     }
 
     formats::json::ValueBuilder graph(formats::json::Type::kObject);
-    graph["type"]    = std::string{"graph"};   // NEW: response type discriminator
+    graph["type"]    = std::string{"graph"};
     graph["seed"]    = data.seed.name;
     graph["seed_id"] = seed_id;
     if (!data.seed.url.empty()) graph["seed_url"] = data.seed.url;
@@ -377,7 +313,7 @@ std::string GraphHandler::BuildGraphJson(
 yaml_config::Schema GraphHandler::GetStaticConfigSchema() {
     return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
 type: object
-description: Radial artist collaboration graph
+description: Radial artist collaboration graph (iteration 6)
 additionalProperties: false
 properties: {}
 )");
