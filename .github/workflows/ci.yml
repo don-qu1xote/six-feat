@@ -1,0 +1,457 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ── Single source of truth for the userver base image tag ───────────────────
+# Both the CI container and Dockerfile's ARG USERVER_IMAGE must reference the
+# same tag. Instead of duplicating ":v3.0" in two files, it lives here once
+# and is passed into the Docker build as a --build-arg. If you need to bump
+# the version, change it only in this one place (or promote it to a repo-level
+# Actions variable: Settings → Secrets and variables → Actions → Variables →
+# USERVER_IMAGE_TAG, and replace `env.USERVER_IMAGE_TAG` below with
+# `vars.USERVER_IMAGE_TAG`).
+# USERVER_IMAGE_DIGEST pins the tag to an immutable content digest (the tag
+# alone is mutable and can be repointed at a different image); keep it in
+# sync with Dockerfile's ARG USERVER_IMAGE when bumping the version.
+# NOTE: `jobs.<job_id>.container`/`services` don't support the `env` context
+# (only `github`/`vars`/`needs`/`strategy`/`matrix`/`inputs` are available
+# there), so USERVER_IMAGE/POSTGRES_IMAGE below are the literal, digest-pinned
+# values duplicated into each container/services block; env.* here remains
+# the single source for the build-arg passed to docker/build-push-action.
+env:
+  USERVER_IMAGE_TAG: v3.0
+  USERVER_IMAGE_REPO: ghcr.io/userver-framework/ubuntu-22.04-userver
+  USERVER_IMAGE_DIGEST: sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+  # = USERVER_IMAGE_REPO:USERVER_IMAGE_TAG@USERVER_IMAGE_DIGEST (literal copy, see NOTE above)
+  USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+  POSTGRES_IMAGE: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+
+    # Postgres backs persistent-store (see static_config.yaml: postgres-db-1).
+    # The job container and this service share a user-defined network, so the
+    # service is reachable by its service id ("postgres") as hostname — same
+    # DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD scheme docker-entrypoint.sh
+    # uses locally to assemble db_connection_string.
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+        env:
+          POSTGRES_DB: six_feat_test
+          POSTGRES_USER: six_feat
+          POSTGRES_PASSWORD: six_feat_test_password
+        options: >-
+          --health-cmd "pg_isready -U six_feat -d six_feat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # [ТЗ-6] There is no server-level fallback Genius token anymore — every
+      # Genius API call requires a per-user OAuth session. The integration
+      # test suite authenticates by minting a valid `six_feat_session` cookie
+      # in-process (tests/session_crypto.py, a faithful Python port of
+      # src/auth/session_crypto.cpp's AES-256-GCM format) against a fixed
+      # test APP_SECRET, rather than driving a real Genius OAuth round-trip.
+      # See tests/conftest.py: TEST_APP_SECRET, auth_cookie, client,
+      # anon_client. No env var is needed here for that — conftest.py sets
+      # APP_SECRET/GENIUS_CLIENT_SECRET on the six_feat subprocess itself.
+      SIX_FEAT_PORT: 18080
+      MOCK_PORT: 18081
+      # PostgreSQL connection — same DB_* scheme as docker-compose.yml /
+      # docker-entrypoint.sh, pointed at the "postgres" service above.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: six_feat_test
+      DB_USER: six_feat
+      DB_PASSWORD: six_feat_test_password
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── System deps ─────────────────────────────────────────────────────────
+      - name: Install system deps
+        run: |
+          apt-get update -q
+          apt-get install -y --no-install-recommends \
+            libssl-dev \
+            python3 \
+            python3-pip \
+            python3-venv \
+            curl
+          rm -rf /var/lib/apt/lists/*
+
+      # ── Build service ───────────────────────────────────────────────────────
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Install
+        run: cmake --install build
+
+      # ── Python test env ──────────────────────────────────────────────────────
+      - name: Install Python test dependencies
+        run: |
+          python3 -m venv /opt/testenv
+          /opt/testenv/bin/pip install --upgrade pip
+          /opt/testenv/bin/pip install -r requirements-test.txt
+
+      # ── Unit tests (no binary needed) ────────────────────────────────────────
+      # Pure-Python / pure-algorithm coverage that doesn't require the
+      # compiled binary at all: analytics, role_mask, session_crypto.
+      - name: Run unit tests (analytics, role_mask, session_crypto, mocks)
+        run: |
+          /opt/testenv/bin/pytest \
+            tests/test_analytics.py \
+            tests/test_role_mask.py \
+            tests/test_session_crypto.py \
+            tests/test_genius_mock_gateway.py \
+            tests/test_genius_http_mock.py \
+            -v --tb=short \
+            --cov=tests --cov-append --cov-report=
+
+      # ── Integration tests ────────────────────────────────────────────────────
+      # Runs every other test file against the real compiled binary,
+      # including test_status.py and test_health.py — both endpoints are
+      # implemented (see static_config.yaml: handler-status, handler-healthz)
+      # and these tests self-skip via a 404 probe if that ever regresses, so
+      # the old `-m "not status_endpoint and not health_endpoint"` filter
+      # excluding them outright is no longer needed.
+      # Combined with the unit-test run above (--cov-append) to cover the
+      # whole tests/ package (test modules, tests/mocks/, session_crypto.py)
+      # in one report. 65% reflects the current baseline with a small
+      # buffer; ratchet it up as coverage improves, don't lower it to make
+      # a red build pass.
+      - name: Run integration tests
+        env:
+          SIX_FEAT_BINARY: /install/bin/six_feat
+          SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
+          SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
+          # [IDEA-53] tests/test_auth.py exercises /auth/* against a real
+          # six-feat-auth instance now (see conftest.py: auth_service_proc).
+          SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
+        run: |
+          /opt/testenv/bin/pytest tests/ -v --tb=short \
+            --ignore=tests/test_analytics.py \
+            --ignore=tests/test_role_mask.py \
+            --ignore=tests/test_session_crypto.py \
+            --ignore=tests/test_genius_mock_gateway.py \
+            --ignore=tests/test_genius_http_mock.py \
+            --timeout=60 \
+            --cov=tests --cov-append \
+            --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=65
+
+      # ── Upload coverage report ───────────────────────────────────────────────
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: pytest-coverage-report
+          path: coverage.xml
+          retention-days: 7
+
+      # ── Upload test results ──────────────────────────────────────────────────
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: pytest-results
+          path: |
+            .pytest_cache/
+          retention-days: 7
+          # .pytest_cache/ is a dot-directory; upload-artifact's glob skips
+          # hidden paths unless this is set, which was silently producing an
+          # empty "no files were found" artifact upload.
+          include-hidden-files: true
+
+      # ── Upload compile_commands.json for the clang-tidy job ────────────────
+      - name: Upload compile_commands.json
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: compile-commands
+          path: build/compile_commands.json
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # clang-tidy — blocking; gates the merge
+  # ══════════════════════════════════════════════════════════════════════════
+  # Minimal check set (bugprone-*, performance-*, cppcoreguidelines-*) run
+  # against src/, with --warnings-as-errors so any finding fails the job.
+  clang-tidy:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install system deps
+        run: |
+          apt-get update -q
+          apt-get install -y --no-install-recommends \
+            libssl-dev \
+            clang-tidy
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Configure CMake (generate compile_commands.json)
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-tidy
+        shell: bash  # Add this line
+        run: |
+          set -o pipefail
+          find src -name '*.cpp' | xargs -r \
+            clang-tidy -p build \
+              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
+              --warnings-as-errors='-*,bugprone-*,performance-*' \
+            2>&1 | tee clang-tidy-report.txt
+          echo "clang-tidy finished; see clang-tidy-report.txt for findings."
+
+      - name: Upload clang-tidy report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: clang-tidy-report
+          path: clang-tidy-report.txt
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # ESLint for front/
+  # ══════════════════════════════════════════════════════════════════════════
+  eslint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: front
+        run: npm run lint
+
+      - name: npm audit (front/)
+        working-directory: front
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Vitest coverage for front/
+  # ══════════════════════════════════════════════════════════════════════════
+  # Thresholds in front/vitest.config.js start soft (just under current
+  # levels) to catch regressions without blocking on the existing gap;
+  # ratchet them up as coverage improves.
+  frontend-coverage:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Run Vitest with coverage
+        working-directory: front
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: frontend-coverage-report
+          path: front/coverage/
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # IDEA-33: E2E smoke test (Playwright) — search artist → graph → node click
+  # → sidebar → path search → hop-chain, against a real compiled six_feat
+  # binary + real built front-end + mock Genius server (scripts/e2e_env.py).
+  # Independent job (no `needs`, nothing else depends on it) so a slow/flaky
+  # browser run never blocks build-and-test/eslint/docker-build-and-scan.
+  # continue-on-error: new infra, not yet trusted to gate merges.
+  # ══════════════════════════════════════════════════════════════════════════
+  e2e-smoke:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+        env:
+          POSTGRES_DB: six_feat_e2e
+          POSTGRES_USER: six_feat
+          POSTGRES_PASSWORD: six_feat_e2e_password
+        options: >-
+          --health-cmd "pg_isready -U six_feat -d six_feat_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: six_feat_e2e
+      DB_USER: six_feat
+      DB_PASSWORD: six_feat_e2e_password
+      E2E_ENV_FILE: /tmp/six_feat_e2e_env.json
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install system deps
+        run: |
+          apt-get update -q
+          apt-get install -y --no-install-recommends \
+            libssl-dev python3 python3-pip python3-venv curl
+          rm -rf /var/lib/apt/lists/*
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: "20"
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+
+      - name: Build service
+        run: cmake --build build -j"$(nproc)"
+
+      # six_feat lands at build/six_feat (defined in the root CMakeLists.txt),
+      # but six_feat_genius_gateway is defined in services/genius-gateway's
+      # CMakeLists.txt via add_subdirectory, so CMake places its raw build
+      # output at build/services/genius-gateway/six_feat_genius_gateway, not
+      # build/six_feat_genius_gateway. Install both into the flat /install/bin
+      # layout (same CMAKE_INSTALL_PREFIX used by the build-and-test job
+      # above) so both binaries are found at predictable, subdirectory-
+      # independent paths below.
+      - name: Install
+        run: cmake --install build
+
+      - name: Install Python test dependencies
+        run: |
+          python3 -m venv /opt/testenv
+          /opt/testenv/bin/pip install --upgrade pip
+          /opt/testenv/bin/pip install -r requirements-test.txt
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Build front-end bundle
+        working-directory: front
+        run: npm run build
+
+      - name: Install Playwright browsers
+        working-directory: front
+        run: npx playwright install --with-deps chromium
+
+      - name: Start six_feat + genius-gateway + mock Genius (real static assets)
+        run: |
+          SIX_FEAT_BINARY=/install/bin/six_feat \
+          SIX_FEAT_GENIUS_GATEWAY_BINARY=/install/bin/six_feat_genius_gateway \
+          /opt/testenv/bin/python3 scripts/e2e_env.py up &
+          echo $! > /tmp/e2e_env.pid
+          for i in $(seq 1 60); do
+            [ -f "$E2E_ENV_FILE" ] && break
+            sleep 1
+          done
+          test -f "$E2E_ENV_FILE" || { echo "::error::E2E environment did not come up"; exit 1; }
+
+      - name: Run Playwright E2E smoke test
+        working-directory: front
+        run: npm run e2e
+
+      - name: Stop six_feat + mock Genius
+        if: always()
+        run: |
+          /opt/testenv/bin/python3 scripts/e2e_env.py down || true
+          kill "$(cat /tmp/e2e_env.pid)" 2>/dev/null || true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: playwright-report
+          path: front/playwright-report/
+          retention-days: 7
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Build Docker image + Trivy vulnerability scan
+  # ══════════════════════════════════════════════════════════════════════════
+  docker-build-and-scan:
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - name: Build image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          push: false
+          load: true
+          tags: six-feat:ci
+          build-args: |
+            USERVER_IMAGE=${{ env.USERVER_IMAGE_REPO }}:${{ env.USERVER_IMAGE_TAG }}@${{ env.USERVER_IMAGE_DIGEST }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Fails the job on HIGH/CRITICAL CVEs in system packages of the built
+      # image. This is intentionally a hard gate (unlike clang-tidy above)
+      # since it scans the final artifact that would ship to prod.
+      #
+      # scanners: vuln (not the aquasecurity/trivy-action default, which
+      # also runs the secret scanner) — vuln-type: os alone doesn't disable
+      # secret scanning, and without this the job also flags demo/test
+      # private keys that ship inside the base userver-framework image's own
+      # source tree (/app/userver/samples/..., /app/userver/core/.../
+      # tls_wrapper_benchmark.cpp) — those are upstream fixtures, not a
+      # six_feat secret leak, and are out of scope for "CVE in system
+      # packages" per the task.
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: six-feat:ci
+          format: table
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true

@@ -1,0 +1,14 @@
+/data/
+/.pgdata/
+/.pgdata-replica/
+/build/
+.pytest_cache/
+__pycache__/
+.env
+.vscode
+.coverage
+coverage.xml
+htmlcov/
+front/coverage/
+.DS_Store
+*.orig

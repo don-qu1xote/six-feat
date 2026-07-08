@@ -1,0 +1,20 @@
+# .dockerignore
+# Keep the build context small and prevent secrets from leaking into image layers.
+
+# Never send real env files to the daemon
+.env
+*.env
+
+# Local SQLite data (dev bind mount) — never ship into the build context
+data/
+
+# Build artifacts
+build/
+.cache/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+**/*.swp
+**/*.swo

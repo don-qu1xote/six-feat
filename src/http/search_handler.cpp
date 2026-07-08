@@ -1,0 +1,141 @@
+// ════════════════════════════════════════════════════════════════════════════
+// search_handler.cpp
+//
+// F-10: lightweight candidate-resolve endpoint. See search_handler.hpp.
+// ════════════════════════════════════════════════════════════════════════════
+
+#include "http/search_handler.hpp"
+#include "genius/genius_error_mapping.hpp"
+#include "core/request_id.hpp"
+#include "core/security_headers.hpp"
+
+#include <string>
+
+#include <userver/components/component_config.hpp>
+#include <userver/components/component_context.hpp>
+#include <userver/formats/json/serialize.hpp>
+#include <userver/formats/json/value_builder.hpp>
+#include <userver/http/content_type.hpp>
+#include <userver/yaml_config/merge_schemas.hpp>
+
+namespace six_feat {
+
+using namespace userver;
+
+namespace {
+
+// code/msg have distinct call-site meanings (an error code literal vs. a
+// human-readable message); swapping them is not a realistic mistake at any
+// of this function's call sites.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+std::string ErrorJson(const std::string& code, const std::string& msg) {
+    formats::json::ValueBuilder b(formats::json::Type::kObject);
+    b["type"]    = std::string{"search"};
+    b["error"]   = code;
+    b["message"] = msg;
+    return formats::json::ToString(b.ExtractValue());
+}
+
+// Sets `response`'s status via the shared GeniusHttpError mapping and
+// renders it into search's error body format.
+std::string GeniusErrorJson(const GeniusHttpError&       e,
+                             server::http::HttpResponse& response) {
+    const std::string code = MapGeniusHttpError(e, response);
+    if (code == "token_invalid") {
+        return ErrorJson("token_invalid",
+            "Your Genius token is no longer valid — please sign in again.");
+    }
+    if (code == "client_cancelled") {
+        return ErrorJson("client_cancelled", "client request cancelled");
+    }
+    return ErrorJson("genius_error", "could not reach Genius");
+}
+
+std::string RateLimitKey(const server::http::HttpRequest& request,
+                          const auth::OAuthConfig&         oauth) {
+    std::string token = auth::ExtractToken(request, oauth.SessionKey());
+    if (!token.empty()) return token;
+    return request.GetRemoteAddress().PrimaryAddressString();
+}
+
+} // namespace
+
+SearchHandler::SearchHandler(const components::ComponentConfig&  config,
+                              const components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      gateway_(context.FindComponent<GeniusGatewayClient>()),
+      oauth_(context.FindComponent<auth::OAuthConfig>())
+{}
+
+std::string SearchHandler::HandleRequestThrow(
+    const server::http::HttpRequest&  request,
+    server::request::RequestContext& /*context*/) const
+{
+    EnsureRequestId(request);
+    ApplySecurityHeaders(request);
+
+    auto& response = request.GetHttpResponse();
+    response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
+
+    const std::string limit_key = RateLimitKey(request, oauth_);
+    if (!rate_limit_.Allow(limit_key)) {
+        response.SetStatus(server::http::HttpStatus::kTooManyRequests);
+        response.SetHeader(std::string{"Retry-After"}, std::string{"1"});
+        response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+        response.SetHeader(std::string{"X-RateLimit-Remaining"}, std::string{"0"});
+        return ErrorJson("rate_limit_exceeded", "rate limit exceeded");
+    }
+    response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+    response.SetHeader(std::string{"X-RateLimit-Remaining"},
+                         std::to_string(rate_limit_.Remaining(limit_key)));
+
+    const auto session = auth::RequireSession(request, oauth_);
+    if (!session) {
+        return ErrorJson("not_authenticated",
+            "Login with Genius to search for artists.");
+    }
+    const std::string& user_token = *session;
+
+    const std::string& query = request.GetArg("q");
+    if (query.empty()) {
+        response.SetStatus(server::http::HttpStatus::kBadRequest);
+        return ErrorJson("bad_request", "'q' query parameter is required");
+    }
+
+    std::vector<Candidate> candidates;
+    try {
+        candidates = gateway_.ResolveCandidates(query, user_token);
+    } catch (const GeniusHttpError& e) {
+        return GeniusErrorJson(e, response);
+    } catch (...) {
+        response.SetStatus(server::http::HttpStatus::kBadGateway);
+        return ErrorJson("genius_error", "could not reach Genius");
+    }
+
+    formats::json::ValueBuilder out(formats::json::Type::kObject);
+    out["type"]  = std::string{"search"};
+    out["query"] = query;
+    formats::json::ValueBuilder arr(formats::json::Type::kArray);
+    for (const auto& c : candidates) {
+        formats::json::ValueBuilder cb(formats::json::Type::kObject);
+        cb["id"]    = c.id;
+        cb["name"]  = c.name;
+        if (!c.image.empty()) cb["image"] = c.image;
+        if (!c.url.empty())   cb["url"]   = c.url;
+        cb["score"] = c.score;
+        arr.PushBack(std::move(cb));
+    }
+    out["candidates"] = std::move(arr);
+    return formats::json::ToString(out.ExtractValue());
+}
+
+yaml_config::Schema SearchHandler::GetStaticConfigSchema() {
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
+type: object
+description: Lightweight artist-candidate search for autocomplete (F-10)
+additionalProperties: false
+properties: {}
+)");
+}
+
+} // namespace six_feat

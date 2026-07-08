@@ -1,0 +1,7 @@
+# Safe defaults for a direct (not-Docker) run. In the container this file is
+# entirely overwritten by docker-entrypoint.sh from ENV (GENIUS_CLIENT_ID /
+# GENIUS_REDIRECT_URI / COOKIE_SECURE / LOGGING_LEVEL).
+genius_client_id: CHANGEME_set_GENIUS_CLIENT_ID
+genius_redirect_uri: http://localhost:8083/auth/callback
+cookie_secure: false
+logging_level: info

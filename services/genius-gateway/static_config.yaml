@@ -1,0 +1,103 @@
+# six-feat-genius-gateway — standalone Genius-API gateway service (IDEA-45).
+# All traffic to the external Genius API (incl. CircuitBreaker and
+# lane-based rate-limiting) is centralized here behind a small internal
+# HTTP API (POST /internal/genius/artist|song-list|song|candidates). One
+# instance of this service means one global CB / FG-BG rate-limit state,
+# shared across every caller instead of being duplicated per-process.
+#
+# No Postgres — this service never touches persistent storage, only
+# outbound HTTP to Genius.
+
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+
+    fs-task-processor:
+      worker_threads: 4
+      thread_name: fs-task-processor
+
+    # [IDEA-27 pattern] Dedicated, low-concurrency TP for the internal
+    # metrics endpoint so scraping never contends with gateway handling.
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: 8082
+        task_processor: main-task-processor
+      # Internal-only listener for handler-server-monitor below — separate
+      # port, no host port mapping in docker-compose.yml (this service has
+      # none), no auth-checker of its own.
+      listener-monitor:
+        port: 8087
+        task_processor: monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stdout'
+          level: $logging_level
+
+    testsuite-support:
+
+    genius-gateway:
+      genius-base-url: https://api.genius.com
+      songs-limit-fg: 40
+      songs-limit-bg: 80
+      match-threshold: 0.75
+      backoff-max-attempts: 4
+      backoff-base-ms: 200
+      backoff-cap-ms: 10000
+      lane-fg-tokens-per-sec: 8.0
+      lane-fg-burst: 8
+      lane-fg-max-concurrent: 3
+      lane-bg-tokens-per-sec: 2.0
+      lane-bg-burst: 2
+      lane-bg-max-concurrent: 1
+      cb-failure-threshold: 5
+      cb-open-seconds: 30
+
+    handler-internal-genius-artist:
+      path: /internal/genius/artist
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-genius-song-list:
+      path: /internal/genius/song-list
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-genius-song:
+      path: /internal/genius/song
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-genius-candidates:
+      path: /internal/genius/candidates
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-healthz:
+      path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
+    # Metrics: CB state and FG/BG lane token+slot availability (genius-gateway),
+    # centralized here now that this is the single instance driving Genius.
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: monitor-task-processor

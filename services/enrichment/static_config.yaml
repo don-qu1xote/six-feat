@@ -1,0 +1,107 @@
+# six-feat-enrichment — standalone background-enrichment service (IDEA-25).
+# Same PersistentStore/ArtistRepository/EnrichmentWorker stack as the main
+# six_feat service, behind a small internal HTTP API (POST /internal/enqueue,
+# GET /internal/status). [IDEA-46] Genius access itself is delegated to the
+# standalone six-feat-genius-gateway service via GeniusGatewayClient.
+
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+
+    bg-enrichment:
+      worker_threads: 2
+      thread_name: bg-enrich
+
+    fs-task-processor:
+      worker_threads: 4
+      thread_name: fs-task-processor
+
+    # [IDEA-27] Dedicated, low-concurrency TP for the internal metrics
+    # endpoint so scraping never contends with enqueue/status handling.
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: 8081
+        task_processor: main-task-processor
+      # [IDEA-27] Internal-only listener for handler-server-monitor below —
+      # separate port, no host port mapping in docker-compose.yml (this
+      # service already has none), no auth-checker of its own.
+      listener-monitor:
+        port: 8086
+        task_processor: monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stdout'
+          level: $logging_level
+
+    testsuite-support:
+
+    # ── Postgres cluster — SAME database as the main six_feat service ──────
+    postgres-db-1:
+      dbconnection: $db_connection_string
+      blocking_task_processor: fs-task-processor
+      dns_resolver: async
+      sync-start: true
+      connlimit_mode: manual
+      min_pool_size: 2
+      max_pool_size: 10
+      max_queue_size: 200
+
+    persistent-store:
+      dbname: postgres-db-1
+
+    # [IDEA-46] Genius API access (CircuitBreaker, FG/BG lane rate-limiting)
+    # moved to the standalone six-feat-genius-gateway service — this
+    # component is now just a secret-gated HTTP client to it.
+    genius-gateway-client:
+      genius-gateway-base-url: $genius_gateway_base_url
+      timeout-ms: 5000
+      songs-limit-fg: 40
+      songs-limit-bg: 80
+      match-threshold: 0.75
+
+    artist-repository: {}
+
+    enrichment-worker:
+      queue-capacity: 1024
+      drain-timeout-ms: 5000
+
+    handler-internal-enqueue:
+      path: /internal/enqueue
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-status:
+      path: /internal/status
+      method: GET
+      task_processor: main-task-processor
+
+    handler-internal-healthz:
+      path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # ── Observability (IDEA-27) ─────────────────────────────────────────────
+    # Metrics: enrichment_queue depth, pending_ count (enrichment-worker).
+    # [IDEA-46] CB state / FG/BG lane metrics now live on
+    # six-feat-genius-gateway's own /metrics.
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: monitor-task-processor

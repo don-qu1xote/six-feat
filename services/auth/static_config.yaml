@@ -1,0 +1,113 @@
+# six-feat-auth — standalone Genius OAuth-flow service (IDEA-53).
+#
+# Owns the whole OAuth 2.0 Authorization Code Flow (/auth/login,
+# /auth/callback, /auth/logout, /auth/me) plus PKCE (oauth-config.pkce-
+# enabled). It exchanges the authorization code for an access_token with
+# Genius directly (same http-client call oauth_handler.cpp always made —
+# no genius-gateway indirection here, this is a one-off outbound call, not
+# per-request FG/BG traffic), then encrypts the session with APP_SECRET
+# (session_crypto.cpp) and sets the six_feat_session cookie.
+#
+# IMPORTANT: per-request session validation (main's
+# src/auth/token_router.hpp — RequireSession/ExtractToken) stays entirely
+# inside the main six_feat service. It decrypts six_feat_session locally
+# with the same APP_SECRET this service uses — main never calls this
+# service over HTTP to check a session, so extracting the OAuth flow adds
+# no latency to graph/path/search/status/sse.
+
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+
+    fs-task-processor:
+      worker_threads: 4
+      thread_name: fs-task-processor
+
+    # [IDEA-27 pattern] Dedicated, low-concurrency TP for the internal
+    # metrics endpoint so scraping never contends with OAuth handling.
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: 8083
+        task_processor: main-task-processor
+      # Internal-only listener for handler-server-monitor below — separate
+      # port, no host port mapping in docker-compose.yml, no auth-checker
+      # of its own.
+      listener-monitor:
+        port: 8088
+        task_processor: monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stdout'
+          level: $logging_level
+
+    testsuite-support:
+
+    # ── OAuth 2.0 (Genius) ──────────────────────────────────────────────────
+    # client_id и redirect_uri — не секреты, можно в конфиге.
+    # client_secret берётся из GENIUS_CLIENT_SECRET env var в конструкторе.
+    # APP_SECRET (ключ шифрования сессий) тоже только из env — тот же
+    # APP_SECRET, что и у main six_feat, иначе main не сможет расшифровать
+    # cookie, выданную этим сервисом.
+    oauth-config:
+      client-id: $genius_client_id
+      redirect-uri: $genius_redirect_uri
+      genius-base-url: https://api.genius.com
+      session-ttl-days: 90
+      # cookie-secure: false в dev (HTTP localhost), true в prod (HTTPS)
+      cookie-secure: $cookie_secure
+      # [F-38] PKCE (RFC 7636) — код готов, но выключен по умолчанию: Genius
+      # не документирует code_challenge/code_verifier, включать без
+      # подтверждённой поддержки со стороны Genius рискованно (может сломать
+      # логин всем пользователям).
+      pkce-enabled: false
+
+    # ── OAuth handlers ───────────────────────────────────────────────────────
+    handler-auth-login:
+      path: /auth/login
+      method: GET
+      task_processor: main-task-processor
+
+    handler-auth-callback:
+      path: /auth/callback
+      method: GET
+      task_processor: main-task-processor
+
+    handler-auth-logout:
+      path: /auth/logout
+      # [F-38] POST-only — GET made logout triggerable cross-site by a bare
+      # <img src="/auth/logout"> or a browser/proxy link prefetch.
+      method: POST
+      task_processor: main-task-processor
+
+    handler-auth-me:
+      path: /auth/me
+      method: GET
+      task_processor: main-task-processor
+
+    handler-healthz:
+      path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: monitor-task-processor

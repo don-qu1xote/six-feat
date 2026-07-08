@@ -1,0 +1,297 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: six-feat-postgres
+    environment:
+      # Resolved from shell env or .env file (see .env.example)
+      POSTGRES_DB: ${DB_NAME:?Set DB_NAME}
+      POSTGRES_USER: ${DB_USER:?Set DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      # Consumed by postgresql/primary-entrypoint.sh to (idempotently, on
+      # every boot) create the role postgres-replica streams WAL through.
+      REPLICATION_USER: ${DB_REPLICATION_USER:?Set DB_REPLICATION_USER}
+      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD}
+    # Invoked via bash explicitly rather than exec'd directly: bind mounts
+    # don't reliably preserve the host's executable bit (e.g. Docker Desktop
+    # on Windows/macOS), which would otherwise fail with "permission denied".
+    entrypoint: ["/bin/bash", "/usr/local/bin/primary-entrypoint.sh"]
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "hot_standby=on"
+    volumes:
+      - ./.pgdata:/var/lib/postgresql/data
+      - ./postgresql/primary-entrypoint.sh:/usr/local/bin/primary-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # Streaming standby of "postgres" — gives userver's Cluster a real Slave
+  # host for the kSlave reads in src/storage/persistent_store.cpp (see
+  # DEVELOPMENT.md, "Postgres cluster topology"). Clones via pg_basebackup
+  # on first boot (postgresql/replica-entrypoint.sh), then just resumes
+  # standby recovery on restarts.
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: six-feat-postgres-replica
+    entrypoint: ["/bin/bash", "/usr/local/bin/replica-entrypoint.sh"]
+    command: ["postgres"]
+    environment:
+      PRIMARY_HOST: postgres
+      PRIMARY_PORT: 5432
+      REPLICATION_USER: ${DB_REPLICATION_USER:?Set DB_REPLICATION_USER}
+      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD}
+    volumes:
+      - ./.pgdata-replica:/var/lib/postgresql/data
+      - ./postgresql/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  six-feat:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Pass the version arg so you can override it without editing the file:
+      #   USERVER_IMAGE=ghcr.io/.../ubuntu-22.04-userver:v2.8 docker compose build
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+    image: six-feat:latest
+    container_name: six-feat
+    ports:
+      - "8080:8080"
+    environment:
+      # Resolved from shell env or .env file (see .env.example)
+      # [ТЗ-6] No more server-level Genius token — auth is OAuth-only.
+      # [IDEA-53] GENIUS_CLIENT_ID/SECRET and GENIUS_REDIRECT_URI below are
+      # NOT used by this service anymore for the OAuth flow itself (that
+      # moved to six-feat-auth) — they're only kept because OAuthConfig's
+      # constructor validates them (see static_config.yaml's oauth-config
+      # comment). APP_SECRET, however, MUST be the exact same value passed
+      # to six-feat-auth below: main decrypts the six_feat_session cookie
+      # six-feat-auth mints, locally, with this secret (src/auth/
+      # token_router.hpp) — no HTTP call between the two services.
+      GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
+      GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
+      APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
+      # Optional (have defaults in docker-entrypoint.sh):
+      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # PostgreSQL connection — combined into one multi-host DSN by
+      # docker-entrypoint.sh (master,replica) and handed to the Postgres
+      # component; never written to a tracked file.
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
+      DB_NAME: ${DB_NAME:?Set DB_NAME}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
+      # [IDEA-26] Background enrichment now lives in six-feat-enrichment —
+      # reached over the compose network by service name.
+      ENRICHMENT_BASE_URL: ${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      # [IDEA-45/46] All Genius API access (CB + FG/BG rate-limiting) now
+      # goes through the standalone six-feat-genius-gateway service instead
+      # of talking to Genius directly — reached over the compose network by
+      # service name, same shared secret as the enrichment mesh.
+      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-replica:
+        condition: service_healthy
+      six-feat-enrichment:
+        condition: service_started
+      # [IDEA-44/48] Soft dependency, like six-feat-enrichment above: don't
+      # gate six-feat's own startup on genius-gateway's healthcheck. The
+      # HTTP client already tolerates it being briefly unavailable (CB/retry
+      # in GeniusGatewayClient), so blocking start on service_healthy would
+      # just make genius-gateway a single point of failure for startup too.
+      six-feat-genius-gateway:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    # Hardening (IDEA-29): immutable rootfs, no Linux capabilities, no
+    # privilege escalation. The only path six_feat writes to at runtime is
+    # /tmp/config_vars.yaml (see docker-entrypoint.sh) — everything else
+    # under /app and /usr/share/six_feat is baked into the image read-only.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    # Limit resources so a runaway background worker doesn't starve the host
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+
+  # Standalone background-enrichment service (IDEA-25). Same Postgres
+  # cluster as six-feat; talks to it directly, not through the six-feat
+  # process. Internal-only — no host port mapping — six-feat reaches it
+  # over the compose network at http://six-feat-enrichment:8081.
+  six-feat-enrichment:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-enrichment
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+    image: six-feat-enrichment:latest
+    container_name: six-feat-enrichment
+    environment:
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
+      DB_NAME: ${DB_NAME:?Set DB_NAME}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [IDEA-45/46] Same standalone Genius gateway six-feat itself calls —
+      # one instance means one global CB / FG-BG rate-limit state shared
+      # between main and enrichment traffic.
+      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-replica:
+        condition: service_healthy
+      # [IDEA-44/48] Soft dependency — see the matching comment on six-feat's
+      # depends_on above; enrichment's EnrichmentClient/GeniusGatewayClient
+      # already handle the gateway being briefly unavailable at runtime.
+      six-feat-genius-gateway:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+  # Standalone OAuth-flow service (IDEA-53). Owns Genius's OAuth 2.0
+  # Authorization Code Flow end-to-end (/auth/login, /auth/callback,
+  # /auth/logout, /auth/me) and mints/clears the six_feat_session cookie.
+  # Per-request session VALIDATION stays in six-feat itself, decrypting the
+  # cookie locally with the same APP_SECRET (src/auth/token_router.hpp) —
+  # six-feat never calls this service over HTTP, so there's no
+  # per-request latency added by this split.
+  #
+  # Routing: there is no reverse proxy in front of six-feat/six-feat-auth in
+  # this compose file, so /auth/* is reachable only on this service's own
+  # host port, not on six-feat's :8080. GENIUS_REDIRECT_URI (below and in
+  # .env) must point at six-feat-auth's own origin
+  # (http://localhost:8083/auth/callback by default) — that is the value
+  # registered as the Redirect URI on https://genius.com/api-clients. If you
+  # put a reverse proxy in front of both services in production, route
+  # /auth/* to six-feat-auth and everything else to six-feat, and point
+  # GENIUS_REDIRECT_URI at the proxy's public origin instead.
+  six-feat-auth:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-auth
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+    image: six-feat-auth:latest
+    container_name: six-feat-auth
+    ports:
+      - "8083:8083"
+    environment:
+      # Same OAuth app credentials six-feat itself is configured with —
+      # registered once at https://genius.com/api-clients.
+      GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
+      GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
+      # MUST be the exact same value six-feat is started with — see the
+      # comment on six-feat's APP_SECRET above.
+      APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
+      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8083/auth/callback}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+  # Standalone Genius-API gateway service (IDEA-45/46). Centralizes the
+  # CircuitBreaker and FG/BG lane rate-limiting behind one internal HTTP API
+  # (POST /internal/genius/{artist,song-list,song,candidates}) so quota is
+  # shared globally across six-feat (main) and six-feat-enrichment instead of
+  # each process keeping its own resilience state. No Postgres — outbound
+  # HTTP to Genius only. Internal-only — no host port mapping.
+  six-feat-genius-gateway:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime-genius-gateway
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+    image: six-feat-genius-gateway:latest
+    container_name: six-feat-genius-gateway
+    environment:
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M

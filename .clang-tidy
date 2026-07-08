@@ -1,0 +1,18 @@
+---
+# Minimal, warning-only check set for the current stage of the project.
+# CI (see .github/workflows/ci.yml: job clang-tidy) runs this with
+# continue-on-error: true, so findings are reported but never fail the build.
+# Tighten this list / flip CI to blocking once the backlog of findings has
+# been triaged.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-non-private-member-variables-in-classes
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(?!.*userver).*/src/.*'
+FormatStyle: none

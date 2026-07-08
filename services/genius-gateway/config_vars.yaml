@@ -1,0 +1,3 @@
+# Safe defaults for a direct (non-Docker) run. In the container this file is
+# entirely overwritten by docker-entrypoint.sh from ENV (LOGGING_LEVEL).
+logging_level: info

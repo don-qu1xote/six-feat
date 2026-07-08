@@ -1,0 +1,22 @@
+{
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --outfile=dist/script.js --format=iife --global-name=_app && node scripts/hash-build.mjs",
+    "watch": "esbuild src/main.js --bundle --outfile=dist/script.js --format=iife --global-name=_app --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src scripts",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.0",
+    "vitest": "^2.1.9",
+    "@vitest/coverage-v8": "^2.1.9",
+    "jsdom": "^25.0.1",
+    "eslint": "^9.15.0",
+    "@eslint/js": "^9.15.0",
+    "globals": "^15.12.0",
+    "@playwright/test": "^1.48.0"
+  }
+}
