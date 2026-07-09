@@ -39,6 +39,39 @@ else
   echo "[entrypoint] six-feat-enrichment Postgres target: ${DB_HOST}:${DB_PORT} (single instance, no replica), db=${DB_NAME}"
 fi
 
+# ── Wait for Postgres to actually be reachable ─────────────────────────────
+# See the matching comment in the main service's docker-entrypoint.sh: on a
+# Postgres restart that lands close to this container's own restart,
+# postgres-db-1's synchronous pool bootstrap (static_config.yaml's
+# sync-start: true) races Postgres coming back up. A couple of transient
+# connection failures there trip userver's connection-pool circuit breaker,
+# and persistent-store's own single-shot connection attempt right after gets
+# rejected outright, crashing the whole process with an unhandled exception.
+# depends_on/healthcheck in docker-compose.yml only gate this container's
+# first start, not its "restart: unless-stopped" restarts, so wait here too.
+#
+# Capped well under the HEALTHCHECK's own budget so a slow/absent Postgres
+# fails the container's healthcheck instead of hanging the entrypoint
+# indefinitely. The replica is a soft dependency (cluster falls back to
+# master reads without it, and some deployments of this compose file don't
+# run a replica at all), so it only gets a brief best-effort wait.
+wait_for_postgres() {
+  local host="$1" port="$2" max="$3" waited=0
+  until (exec 3<>"/dev/tcp/${host}/${port}") 2>/dev/null; do
+    waited=$((waited + 1))
+    if (( waited >= max )); then
+      echo "[entrypoint] WARNING: gave up waiting for ${host}:${port} after ${max}s, starting anyway" >&2
+      return 0
+    fi
+    sleep 1
+  done
+}
+
+echo "[entrypoint] waiting for Postgres to accept TCP connections..."
+wait_for_postgres "${DB_HOST}" "${DB_PORT}" 20
+wait_for_postgres "${DB_REPLICA_HOST}" "${DB_REPLICA_PORT}" 5
+sleep 1
+
 cat > /app/config_vars.yaml <<EOF
 logging_level: ${LOGGING_LEVEL}
 db_connection_string: "${DB_CONNECTION_STRING}"

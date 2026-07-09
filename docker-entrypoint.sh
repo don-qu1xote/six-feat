@@ -98,6 +98,45 @@ else
   echo "[entrypoint] Postgres target: ${DB_HOST}:${DB_PORT} (single instance, no replica), db=${DB_NAME}"
 fi
 
+# ── Wait for Postgres to actually be reachable ─────────────────────────────
+# docker-compose's depends_on/healthcheck only gate this container's FIRST
+# start. Once it's up, "restart: unless-stopped" restarts it standalone on
+# every crash with no re-check that postgres is healthy — so a Postgres
+# restart that lands close to this container's own restart races
+# postgres-db-1's synchronous pool bootstrap (static_config.yaml's
+# sync-start: true). A couple of transient connection failures there are
+# enough to trip userver's connection-pool circuit breaker; persistent-store
+# then makes its own single-shot (non-retrying) connection attempt right
+# after and gets rejected outright ("No available connections found,
+# Connecting: 0, Active: 0"), throwing an unhandled exception that crashes
+# the whole process. Waiting here for the master to accept TCP connections,
+# plus a short settle delay, keeps postgres-db-1's bootstrap clean so the
+# breaker never trips in the first place.
+#
+# The wait is capped well under the HEALTHCHECK's own budget (start-period +
+# retries*interval) so a slow/absent Postgres fails the container's
+# healthcheck instead of hanging the entrypoint indefinitely. The replica is
+# a soft dependency (see DB_REPLICA_HOST comment above — the cluster falls
+# back to master reads without it, and some deployments of this compose file
+# don't run a replica at all), so it only gets a brief best-effort wait and
+# never blocks startup the way the master does.
+wait_for_postgres() {
+  local host="$1" port="$2" max="$3" waited=0
+  until (exec 3<>"/dev/tcp/${host}/${port}") 2>/dev/null; do
+    waited=$((waited + 1))
+    if (( waited >= max )); then
+      echo "[entrypoint] WARNING: gave up waiting for ${host}:${port} after ${max}s, starting anyway" >&2
+      return 0
+    fi
+    sleep 1
+  done
+}
+
+echo "[entrypoint] waiting for Postgres to accept TCP connections..."
+wait_for_postgres "${DB_HOST}" "${DB_PORT}" 20
+wait_for_postgres "${DB_REPLICA_HOST}" "${DB_REPLICA_PORT}" 5
+sleep 1
+
 cat > /tmp/config_vars.yaml <<EOF
 genius_client_id: ${GENIUS_CLIENT_ID}
 genius_redirect_uri: ${GENIUS_REDIRECT_URI}

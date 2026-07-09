@@ -105,7 +105,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      # Covers docker-entrypoint.sh's bounded wait for Postgres to become
+      # reachable (up to ~26s: 20s master + 5s replica + 1s settle) plus
+      # normal app startup, with headroom for one extra restart+retry cycle
+      # if the wait didn't fully dodge the userver connection-pool race (see
+      # the comment on wait_for_postgres in docker-entrypoint.sh) — so a
+      # container that self-heals via "restart: unless-stopped" isn't
+      # reported as a failed dependency before it's had the chance to.
+      start_period: 60s
     restart: unless-stopped
     # Hardening (IDEA-29): immutable rootfs, no Linux capabilities, no
     # privilege escalation. The only path six_feat writes to at runtime is
@@ -169,7 +176,14 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      # Covers docker-entrypoint.sh's bounded wait for Postgres to become
+      # reachable (up to ~26s: 20s master + 5s replica + 1s settle) plus
+      # normal app startup, with headroom for one extra restart+retry cycle
+      # if the wait didn't fully dodge the userver connection-pool race (see
+      # the comment on wait_for_postgres in docker-entrypoint.sh) — so a
+      # container that self-heals via "restart: unless-stopped" isn't
+      # reported as a failed dependency before it's had the chance to.
+      start_period: 60s
     restart: unless-stopped
     deploy:
       resources:

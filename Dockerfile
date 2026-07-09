@@ -62,6 +62,12 @@ FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce51
 #   from an `ldd` run. Without it every HTTPS call fails at the TLS setup
 #   step with "Problem with the SSL CA cert (path? access rights?)".
 # curl                    — used by HEALTHCHECK
+# tzdata                  — IANA zoneinfo database. Without it, userver's
+#   HTTP cookie parser (userver/core/src/server/http/http_response_cookie.cpp)
+#   can't resolve even "GMT" and logs "Error while parsing cookie timezone:
+#   Can't load time zone: GMT" on every response that carries a Set-Cookie
+#   with an HTTP-date Expires (e.g. every proxied Genius API response) —
+#   harmless on its own, but noisy enough to bury real warnings in the logs.
 # libc-ares2, libev4, libcrypto++8, libjemalloc2, libre2-9, libfmt8,
 #   libcctz2, libyaml-cpp0.7 — direct runtime deps pulled in by the
 #   statically-linked userver framework itself (async DNS, event loop,
@@ -80,6 +86,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends \
       libpq5 libssl3 ca-certificates curl \
+      tzdata \
       libc-ares2 \
       libev4 \
       libcrypto++8 \
@@ -94,6 +101,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       libboost-program-options1.74.0 \
       libboost-stacktrace1.74.0 \
  && apt-mark manual \
+      tzdata \
       libc-ares2 \
       libev4 \
       libcrypto++8 \
@@ -131,7 +139,11 @@ RUN mkdir -p /var/lib/six_feat_enrichment \
 
 EXPOSE 8081
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
+# start-period covers docker-entrypoint.sh's bounded wait for Postgres to
+# become reachable (up to ~26s: 20s master + 5s replica + 1s settle) plus
+# normal app startup time, so a merely-slow-but-healthy boot isn't flagged
+# unhealthy before it's had a real chance to come up.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=3 \
   CMD curl -f http://localhost:8081/healthz || exit 1
 
 USER six_feat:six_feat
@@ -222,7 +234,11 @@ RUN mkdir -p /var/lib/six_feat \
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
+# start-period covers docker-entrypoint.sh's bounded wait for Postgres to
+# become reachable (up to ~26s: 20s master + 5s replica + 1s settle) plus
+# normal app startup time, so a merely-slow-but-healthy boot isn't flagged
+# unhealthy before it's had a real chance to come up.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=3 \
   CMD curl -f http://localhost:8080/readyz || exit 1
 
 USER six_feat:six_feat
