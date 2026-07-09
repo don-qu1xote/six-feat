@@ -555,6 +555,25 @@
       opacity: 1; transform: translateY(0); visibility: visible; pointer-events: auto;
       transition: opacity .26s ease .04s, transform .26s ease .04s, visibility 0s linear 0s;
     }
+    /* БАГ (hover/double-click "не долетают" до канвы в ограниченной области
+       по центру графа, где раньше был hero-поиск): .hero-mode-panel.is-active
+       выставляет pointer-events:auto явно — это нужно для переключения
+       Explore/Connect табов, пока search-modal ОТКРЫТ. Но CSS pointer-events
+       не проверяет "было ли auto нужно когда-то" — потомок с явным auto
+       всегда перекрывает унаследованный none от .search-modal.is-closed (см.
+       выше), сколько бы уровней вложенности ни было между ними. После
+       закрытия модалки (первый же успешный поиск) #hero-input/"Map it"/
+       role-filter-кнопки/chips внутри активной панели остаются opacity:0, но
+       по-прежнему кликабельны и лежат ровно там, где их рисовал открытый
+       modal — по центру канвы, поверх графа. Любой hover/click/dblclick,
+       чей курсор физически попадает в эту invisible-но-живую область,
+       перехватывается этим DOM-слоем раньше, чем доходит до vis.js —
+       воспроизводится как "подсветка при наведении и даблклик не работают"
+       в одной и той же ограниченной области графа, а за её пределами всё
+       нормально. Фикс: когда search-modal .is-closed, глушим auto обратно в
+       none независимо от .is-active — панель не должна быть кликабельна,
+       когда сама модалка не активна. */
+    .search-modal.is-closed .hero-mode-panel.is-active { pointer-events: none; }
     @media (prefers-reduced-motion: reduce) {
       .hero-mode-thumb, .hero-mode-panel { transition-duration: 0s !important; }
     }
@@ -976,6 +995,19 @@
        поверх search-modal — добавляем в тот же search-open паттерн. */
     .app-canvas.search-open .status { opacity: 0; pointer-events: none; transition: opacity .2s; }
     .app-canvas.search-open .context-panel { opacity: 0; pointer-events: none; }
+    /* ПРЕВЕНТИВНО (тот же класс бага, что чинит соседний патч для
+       .hero-mode-panel.is-active): .context-panel > * безусловно
+       возвращает pointer-events:auto для .artist-sidebar/.path-panel,
+       поэтому .app-canvas.search-open .context-panel{pointer-events:none}
+       гасит auto только на самом .context-panel, а не на его детях — если
+       сайдбар или path-panel окажутся видимы (.show) одновременно с
+       открытым search-modal (сейчас все известные вызовы openSearchModal
+       успевают закрыть их сами — см. modals.js/canvas-controls.js), они
+       останутся кликабельным invisible-слоем поверх канвы точно так же,
+       как чинит соседний патч для hero-mode-panel. Глушим на детях явно,
+       чтобы это не стало живым багом при следующем новом вызове
+       openSearchModal(). */
+    .app-canvas.search-open .context-panel > * { pointer-events: none; }
 
     /* ТЗ-206: path panel is itself a bento tile — reuses --r-lg/--shadow
        instead of the old bespoke --r-md/rgba(14,19,32,.92) treatment, so it
