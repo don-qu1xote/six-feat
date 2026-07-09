@@ -9,10 +9,17 @@ with a set of hardening headers:
   - Content-Security-Policy: restricts default/img/connect/script/style/font
     sources. img-src explicitly allows https://images.genius.com (the CDN
     Genius serves artist images from — see genius_gateway.cpp, image_url is
-    passed through as-is from the Genius API response) plus data: (the
+    passed through as-is from the Genius API response) and
+    https://assets.genius.com (Genius's own "no artwork" placeholder image,
+    served from a separate host — without it every such node's avatar is
+    CSP-blocked, and since the graph re-sends the image URL on every hover
+    partial-update, each hover on one of those nodes re-triggers the blocked
+    load, which is the flicker/stutter reported on hover) plus data: (the
     inline SVG placeholder avatars generated in front/src/helpers.js).
-    script-src allows https://unpkg.com (the vis-network CDN bundle loaded
-    by index.html). style-src allows 'unsafe-inline' (index.html's inline
+    connect-src allows https://unpkg.com (vis-network's UMD bundle makes a
+    same-origin-relative fetch for its own assets at runtime). script-src
+    allows https://unpkg.com (the vis-network CDN bundle loaded by
+    index.html). style-src allows 'unsafe-inline' (index.html's inline
     <style> block) and https://fonts.googleapis.com; font-src allows
     https://fonts.gstatic.com.
   - X-Content-Type-Options: nosniff
@@ -23,7 +30,7 @@ Scenarios covered:
   1.  GET / returns all four headers with the expected values
   2.  GET /script.js returns all four headers with the expected values
   3.  Content-Security-Policy directives cover the external hosts the page
-      actually loads (images.genius.com, unpkg.com, fonts.*)
+      actually loads (images.genius.com, assets.genius.com, unpkg.com, fonts.*)
   4.  Existing Content-Type headers are unaffected by the new headers
 """
 
@@ -133,6 +140,27 @@ class TestCspDirectiveContents:
         resp = anon_client.get(INDEX_URL)
         _skip_if_not_implemented(resp)
         assert "data:" in resp.headers["content-security-policy"]
+
+    def test_img_src_allows_genius_assets_cdn(self, anon_client: requests.Session):
+        """Genius's "no artwork" placeholder is served from assets.genius.com,
+        a separate host from images.genius.com — without it, any node whose
+        artist has no real artwork gets a CSP-blocked image, re-triggered on
+        every hover (visuals.js re-sends the image URL on each hover
+        partial-update), which reads as flicker/stutter on hover."""
+        resp = anon_client.get(INDEX_URL)
+        _skip_if_not_implemented(resp)
+        csp = resp.headers["content-security-policy"]
+        assert "https://assets.genius.com" in csp
+
+    def test_connect_src_allows_unpkg(self, anon_client: requests.Session):
+        """vis-network's UMD bundle (loaded from unpkg.com, see script-src
+        below) issues its own fetch/XHR calls at runtime — without unpkg.com
+        in connect-src those are blocked."""
+        resp = anon_client.get(INDEX_URL)
+        _skip_if_not_implemented(resp)
+        csp = resp.headers["content-security-policy"]
+        assert "connect-src" in csp
+        assert "https://unpkg.com" in csp
 
     def test_script_src_allows_visnetwork_cdn(self, anon_client: requests.Session):
         """index.html loads vis-network from unpkg.com — must not be CSP-blocked."""

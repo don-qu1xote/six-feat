@@ -7,7 +7,7 @@
 //                                  stubs and State.graphNodes/graphEdges are
 //                                  hand-built mock graph data.
 // ════════════════════════════════════════════════════════════════════════════
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State, COLOR, DIM_LEVELS } from "../state/state.js";
 import { seedShadow } from "./visuals.js";
 import {
@@ -86,5 +86,71 @@ describe("invalidateColorCache", () => {
 
   it("is safe to call before any cache has ever been built", () => {
     expect(() => invalidateColorCache()).not.toThrow();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Regression guard for the O(1) node/edge id-lookup + adjacency-index caches
+// (_nodeById/_edgeById/_edgeIdsByNode) added to fix hover lag: hovering a node
+// used to rescan the ENTIRE State.graphEdges array (State.graphEdges.find())
+// once to find incident edges and again per incident edge, i.e. O(E + degree·E)
+// work per hover instead of O(degree). The tests below don't assert on timing
+// (flaky in CI) — they assert on the *correctness* of the new indexed lookups,
+// which is exactly what a broken adjacency-index refactor (wrong e.from/e.to
+// handling, or a cache not invalidated on graph mutation) would get wrong.
+// ════════════════════════════════════════════════════════════════════════════
+describe("applyDimState('hover') — adjacency-index edge highlighting", () => {
+  beforeEach(() => {
+    // Force the hover rAF debounce (see _applyHoverNode/_applyHoverNodeEdges
+    // in highlight.js) to run synchronously so the update() calls it makes
+    // are observable immediately, without a real animation-frame tick.
+    vi.stubGlobal("requestAnimationFrame", cb => { cb(0); return 1; });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("highlights only the edges actually incident to the hovered node, ignoring unrelated edges", () => {
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },
+      { id: 3, isSeed: false, _dimBorder: "#222222" },
+      { id: 4, isSeed: false, _dimBorder: "#333333" },
+    ];
+    // Node 2 is incident to "1_2" and "2_3" only — "3_4" must NOT light up.
+    State.graphEdges = [
+      { id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 },
+      { id: "2_3", from: 2, to: 3, dominantRole: "primary",  weight: 1 },
+      { id: "3_4", from: 3, to: 4, dominantRole: "primary",  weight: 1 },
+    ];
+    invalidateColorCache();
+    State.nodesDS = mockDataSet();
+    State.edgesDS = { update: vi.fn(), get: id => ({ id, _brightColor: "#fff" }) };
+
+    applyDimState("hover", { nodeId: 2 });
+
+    const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
+    expect(edgeUpdates.map(u => u.id).sort()).toEqual(["1_2", "2_3"]);
+  });
+
+  it("rebuilds the lookup caches after invalidateColorCache(), so a node/edge added since the last build is still hoverable", () => {
+    buildDefaultColorCache(); // builds caches from the 2-node graph in the outer beforeEach
+
+    // Simulate a graph mutation (e.g. expand merging in a new leaf) that adds
+    // a node/edge unknown to the cache just built above.
+    State.graphNodes.push({ id: 3, isSeed: false, _dimBorder: "#333333" });
+    State.graphEdges.push({ id: "2_3", from: 2, to: 3, dominantRole: "primary", weight: 1 });
+    State.edgesDS.get = id => ({ id, _brightColor: "#fff" });
+
+    invalidateColorCache();
+    applyDimState("hover", { nodeId: 3 });
+
+    // A stale (non-invalidated) cache wouldn't know node 3 exists, so
+    // _applyHoverNode would bail out early with no nodesDS.update() call at all.
+    expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }));
+    const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
+    expect(edgeUpdates.map(u => u.id)).toEqual(["2_3"]);
   });
 });

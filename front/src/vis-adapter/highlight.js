@@ -36,6 +36,22 @@
 //     O(1) lookup вместо find().
 //  3. hover/edge — debounced на requestAnimationFrame, не дублируем при
 //     быстром движении мыши.
+//  4. ПЕРФ (лаги при наведении на графах с большим числом рёбер/хабами):
+//     пункты 1-3 выше не были фактически O(1)/O(степень ноды) — каждый
+//     lookup ноды/ребра по id всё ещё шёл через State.graphNodes.find()/
+//     State.graphEdges.find(), O(N)/O(E). Хуже того, _applyHoverNodeEdges
+//     сканировала ВСЕ рёбра графа (O(E)) чтобы найти инцидентные наведённой
+//     ноде, и для КАЖДОГО найденного ребра снова звала _hoverEdgeUpdate(),
+//     которая опять делала find() по всем рёбрам — итого O(E + degree·E)
+//     синхронной работы на каждый hoverNode. На графе с сотнями рёбер и
+//     хаб-нодой (degree ~50) это десятки тысяч сравнений в одном
+//     rAF-колбэке — заметная просадка кадра при каждом движении мыши.
+//     Фикс: _nodeById/_edgeById (Map<id, объект>) + _edgeIdsByNode
+//     (Map<nodeId, edgeId[]>, adjacency-индекс) строятся один раз в
+//     buildDefaultColorCache() (та же точка инвалидации, что и у
+//     _defaultNodeColors/_defaultEdgeColors — см. invalidateColorCache) и
+//     дают настоящий O(1) lookup по id и O(degree) обход инцидентных рёбер
+//     вместо O(E) на каждый hover.
 // ════════════════════════════════════════════════════════════════════════════
 import { State, COLOR, PATH_HIGHLIGHT_LEVELS, DIM_LEVELS } from "../state/state.js";
 import { roleStyle } from "../state/helpers.js";
@@ -46,16 +62,34 @@ import { edgeWidthForWeight, seedShadow, _imageFieldsFor } from "./visuals.js";
 let _defaultNodeColors = null;  // Map<id, {border, shadow}>
 let _defaultEdgeColors = null;  // Map<id, color>
 
+// ПЕРФ (см. пункт 4 в шапке файла): O(1) id→объект lookup вместо
+// State.graphNodes.find()/State.graphEdges.find() (O(N)/O(E) каждый),
+// плюс готовый adjacency-индекс вместо пересканирования всех рёбер графа
+// ради инцидентных наведённой ноде. Строятся вместе с _defaultNodeColors/
+// _defaultEdgeColors (та же инвалидация), т.к. источник тот же самый
+// проход по State.graphNodes/graphEdges.
+let _nodeById      = null;  // Map<id, graphNode>
+let _edgeById      = null;  // Map<id, graphEdge>
+let _edgeIdsByNode = null;  // Map<nodeId, edgeId[]>
+
 // Called by graph.js whenever State.graphNodes/graphEdges change.
 export function invalidateColorCache() {
   _defaultNodeColors = null;
   _defaultEdgeColors = null;
+  _nodeById = null;
+  _edgeById = null;
+  _edgeIdsByNode = null;
 }
 
 export function buildDefaultColorCache() {
   _defaultNodeColors = new Map();
   _defaultEdgeColors = new Map();
+  _nodeById = new Map();
+  _edgeById = new Map();
+  _edgeIdsByNode = new Map();
   for (const n of State.graphNodes) {
+    _nodeById.set(n.id, n);
+    _edgeIdsByNode.set(n.id, []);
     _defaultNodeColors.set(n.id, {
       // Баг "ноды подсвечиваются серым": фоллбэк на случай отсутствующего
       // n._dimBorder был жёстко зашит как rgba(40,48,68,...) — это ровно
@@ -69,8 +103,28 @@ export function buildDefaultColorCache() {
     });
   }
   for (const e of State.graphEdges) {
+    _edgeById.set(e.id, e);
     _defaultEdgeColors.set(e.id, roleStyle(e.dominantRole).color);
+    if (_edgeIdsByNode.has(e.from)) _edgeIdsByNode.get(e.from).push(e.id);
+    if (_edgeIdsByNode.has(e.to))   _edgeIdsByNode.get(e.to).push(e.id);
   }
+}
+
+// Lazily (re)builds the caches above on first use after invalidation —
+// same guard pattern _defaultEdgeUpdate/_applyDefault already used for
+// _defaultNodeColors/_defaultEdgeColors, just centralized for the three
+// lookup-only helpers below.
+function _getNode(id) {
+  if (!_nodeById) buildDefaultColorCache();
+  return _nodeById.get(id);
+}
+function _getEdge(id) {
+  if (!_edgeById) buildDefaultColorCache();
+  return _edgeById.get(id);
+}
+function _getEdgeIdsForNode(nodeId) {
+  if (!_edgeIdsByNode) buildDefaultColorCache();
+  return _edgeIdsByNode.get(nodeId) || [];
 }
 
 // БАГ (этот патч): раньше _hlRafId был ОДНИМ общим requestAnimationFrame-id
@@ -133,7 +187,7 @@ function _applyHoverNode(nodeId) {
     // vis.js DataSet не сохраняет кастомные поля (_accent, _dimBorder)
     // после обновлений нод через nodesDS.update(), они молча теряются.
     // graphNodes — единственный надёжный источник истины для этих полей.
-    const graphNode = State.graphNodes.find(n => n.id === nodeId);
+    const graphNode = _getNode(nodeId);
     if (!graphNode) return;
     const accentColor = graphNode._accent || COLOR.pulse;
     const isSeedNode  = graphNode.isSeed;
@@ -167,7 +221,7 @@ function _applyHoverNode(nodeId) {
 
 function _clearHoveredNode() {
   if (_hoveredNodeId == null || !State.nodesDS) return;
-  const graphNode = State.graphNodes.find(n => n.id === _hoveredNodeId);
+  const graphNode = _getNode(_hoveredNodeId);
   if (graphNode) {
     const isExpanded = State.expandedNodes.has(graphNode.id);
     const defaultBorderWidth = graphNode.isSeed ? 5 : (isExpanded ? 4 : 2);
@@ -241,7 +295,7 @@ function _hoverEdgeUpdate(edgeId) {
   const ed = State.edgesDS.get(edgeId);
   if (!ed) return null;
   const edgeColor = ed._brightColor || ed._color || COLOR.pulse;
-  const graphEdge = State.graphEdges.find(e => e.id === edgeId);
+  const graphEdge = _getEdge(edgeId);
   const weight = graphEdge && Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1;
   return {
     id: edgeId,
@@ -261,11 +315,10 @@ function _hoverEdgeUpdate(edgeId) {
 function _applyHoverNodeEdges(nodeId) {
   if (!State.edgesDS) return;
   const upd = [];
-  for (const e of State.graphEdges) {
-    if (e.from !== nodeId && e.to !== nodeId) continue;
-    const u = _hoverEdgeUpdate(e.id);
+  for (const edgeId of _getEdgeIdsForNode(nodeId)) {
+    const u = _hoverEdgeUpdate(edgeId);
     if (!u) continue;
-    _hoveredEdgeIds.add(e.id);
+    _hoveredEdgeIds.add(edgeId);
     upd.push(u);
   }
   if (upd.length) {
@@ -311,7 +364,7 @@ function _defaultEdgeUpdate(edgeId) {
   const ed = State.edgesDS.get(edgeId);
   if (!ed) return null;
   const color = _defaultEdgeColors.get(edgeId) || (ed._color || COLOR.pulse);
-  const graphEdge = State.graphEdges.find(e => e.id === edgeId);
+  const graphEdge = _getEdge(edgeId);
   const weight = graphEdge ? (Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1) : 1;
   return { id: edgeId, color: { color, opacity: 0.45 }, width: edgeWidthForWeight(weight) };
 }
@@ -349,7 +402,7 @@ function _selectedEdgeUpdate(edgeId) {
   if (!State.edgesDS) return null;
   const ed = State.edgesDS.get(edgeId);
   if (!ed) return null;
-  const graphEdge = State.graphEdges.find(e => e.id === edgeId);
+  const graphEdge = _getEdge(edgeId);
   const weight = graphEdge && Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1;
   return {
     id: edgeId,
@@ -438,7 +491,7 @@ function _applyDefault() {
 
   const nU = [], eU = [];
   _defaultNodeColors.forEach(({ border, shadow }, id) => {
-    const graphNode = State.graphNodes.find(n => n.id === id);
+    const graphNode = _getNode(id);
     nU.push({ id, ..._imageFieldsFor(graphNode), color: { border, background: COLOR.panel }, opacity: DIM_LEVELS.off, shadow });
   });
   _defaultEdgeColors.forEach((color, id) => {
@@ -500,7 +553,7 @@ function _applyPath(path) {
   const nU = nodeIds.map(id => {
     const level  = getNodeHighlightLevel(id, pathSet);
     const config = PATH_HIGHLIGHT_LEVELS[level];
-    const graphNode = State.graphNodes.find(n => n.id === id);
+    const graphNode = _getNode(id);
 
     let borderColor;
     if (level === "onPath")             borderColor = COLOR.neon;
@@ -518,11 +571,11 @@ function _applyPath(path) {
 
   const edgeIds = State.edgesDS.getIds();
   const eU = edgeIds.map(id => {
-    const edgeObj = State.graphEdges.find(e => {
-      const lo = Math.min(e.from, e.to);
-      const hi = Math.max(e.from, e.to);
-      return `${lo}_${hi}` === id;
-    });
+    // edge.id is already built as `${min(from,to)}_${max(from,to)}` (see
+    // buildEdgeState in graph.js), so _edgeById (keyed by that same id) is
+    // an O(1) equivalent of the old O(E) find() that recomputed lo_hi for
+    // every edge to match it against `id`.
+    const edgeObj = _getEdge(id);
 
     if (!edgeObj) {
       return { id, color: { color: "rgba(40,48,68,0.02)", opacity: 0.02 }, width: 1 };

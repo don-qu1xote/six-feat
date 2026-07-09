@@ -186,9 +186,22 @@ services:
     image: nginx:1.27-alpine
     container_name: six-feat-nginx
     ports:
-      - "8080:8080"
+      - "${NGINX_PUBLIC_PORT:-8080}:${NGINX_PUBLIC_PORT:-8080}"
+    environment:
+      # The official nginx image's entrypoint runs envsubst over every
+      # /etc/nginx/templates/*.template file at container start and writes
+      # the result to /etc/nginx/conf.d/<name> — these are exactly the
+      # ${VAR} references nginx/default.conf.template uses. Mounting a
+      # static, already-rendered conf straight into conf.d/ (as an earlier
+      # version of this file did) skips that step entirely, so changing
+      # these vars silently stopped affecting nginx while still affecting
+      # every other service — this is the actual "single source of truth"
+      # from .env.example's Ports section.
+      NGINX_PUBLIC_PORT: ${NGINX_PUBLIC_PORT:-8080}
+      SIX_FEAT_PORT: ${SIX_FEAT_PORT:-8080}
+      SIX_FEAT_AUTH_PORT: ${SIX_FEAT_AUTH_PORT:-8083}
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
     depends_on:
       six-feat:
         condition: service_started

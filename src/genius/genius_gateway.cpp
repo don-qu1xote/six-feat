@@ -267,7 +267,7 @@ GeniusGateway::GeniusGateway(const components::ComponentConfig&  config,
               RequirePositive("lane-fg-burst",
                               config["lane-fg-burst"].As<int>(8)),
               RequirePositive("lane-fg-max-concurrent",
-                              config["lane-fg-max-concurrent"].As<int>(3))
+                              config["lane-fg-max-concurrent"].As<int>(8))
           },
           LaneConfig{
               RequirePositive("lane-bg-tokens-per-sec",
