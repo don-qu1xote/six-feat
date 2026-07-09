@@ -13,15 +13,22 @@ using namespace userver;
 
 namespace {
 
-// Genius API artist images are served from images.genius.com (verified
+// Genius API artist/song images are served from images.genius.com (verified
 // against genius_gateway.cpp: image_url is passed through as-is from the
-// Genius API JSON response, and Genius itself serves all artist/song art
-// from that single CDN host). Everything else the front-end loads is
+// Genius API JSON response) — but the "no artwork" placeholder Genius itself
+// falls back to (default_cover_image.png, seen on any artist/song without
+// real art) is served from the separate assets.genius.com host, not
+// images.genius.com. Without it here, every such node's image is CSP-blocked
+// — and since visuals.js's _imageFieldsFor re-sends the image URL on every
+// hover partial-update (structural fix for vis.js dropping avatars across
+// updates), each hover on one of those nodes re-triggers a blocked load ->
+// fallback swap instead of just rendering the cached placeholder, which is
+// the flicker reported on hover. Everything else the front-end loads is
 // either same-origin, Google Fonts, or the vis-network CDN bundle.
 constexpr std::string_view kContentSecurityPolicy =
     "default-src 'self'; "
-    "img-src 'self' https://images.genius.com data:; "
-    "connect-src 'self'; "
+    "img-src 'self' https://images.genius.com https://assets.genius.com data:; "
+    "connect-src 'self' https://unpkg.com; "
     "script-src 'self' https://unpkg.com; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src https://fonts.gstatic.com; "

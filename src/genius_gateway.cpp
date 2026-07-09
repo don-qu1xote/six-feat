@@ -10,9 +10,9 @@
 //     GeniusGet so no other layer touches it.
 // ════════════════════════════════════════════════════════════════════════════
 
-#include "genius/genius_gateway.hpp"
-#include "core/request_id.hpp"
-#include "domain/role_mask.hpp"
+#include "genius_gateway.hpp"
+#include "request_id.hpp"
+#include "role_mask.hpp"
 
 #include <algorithm>
 #include <array>

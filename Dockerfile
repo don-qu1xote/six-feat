@@ -18,11 +18,11 @@ COPY src ./src
 COPY services ./services
 COPY config/static_config.yaml ./config/static_config.yaml
 
-RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
-    -DUSERVER_FEATURE_TESTSUITE=OFF \
+RUN --mount=type=cache,target=/src/build,sharing=locked \
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
  && cmake --build build -j"$(nproc)" \
  && cmake --install build
-
+ 
 # ════════════════════════════════════════════════════════════════════════════
 # Stage 2 — JS Bundle
 # ════════════════════════════════════════════════════════════════════════════

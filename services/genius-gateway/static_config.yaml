@@ -62,7 +62,7 @@ components_manager:
       backoff-cap-ms: 10000
       lane-fg-tokens-per-sec: 8.0
       lane-fg-burst: 8
-      lane-fg-max-concurrent: 3
+      lane-fg-max-concurrent: 8
       lane-bg-tokens-per-sec: 2.0
       lane-bg-burst: 2
       lane-bg-max-concurrent: 1

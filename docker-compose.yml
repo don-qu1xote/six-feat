@@ -37,8 +37,12 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat:latest
     container_name: six-feat
-    ports:
-      - "8080:8080"
+    # No host port publish anymore — nginx is the single public entry point
+    # (see the nginx service below). Still reachable on the compose network
+    # at six-feat:${SIX_FEAT_PORT} (used by nginx's proxy_pass and by the
+    # healthcheck below, which curls the container's own localhost port).
+    expose:
+      - "${SIX_FEAT_PORT:-8080}"
     environment:
       # Resolved from shell env or .env file (see .env.example)
       # [ТЗ-6] No more server-level Genius token — auth is OAuth-only.
@@ -53,7 +57,11 @@ services:
       GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
       GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
-      # Optional (have defaults in docker-entrypoint.sh):
+      # Optional (have defaults in docker-entrypoint.sh). Not derived from
+      # NGINX_PUBLIC_PORT below on purpose — compose's ${A:-${B:-c}} nesting
+      # isn't something to gamble the OAuth redirect on; if you change
+      # NGINX_PUBLIC_PORT, update this default (and six-feat-auth's below,
+      # and the Redirect URI registered on genius.com/api-clients) to match.
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       # PostgreSQL connection, handed to docker-entrypoint.sh. Single instance
@@ -73,13 +81,13 @@ services:
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
       # [IDEA-26] Background enrichment now lives in six-feat-enrichment —
       # reached over the compose network by service name.
-      ENRICHMENT_BASE_URL: ${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}
+      ENRICHMENT_BASE_URL: ${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:${SIX_FEAT_ENRICHMENT_PORT:-8081}}
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
       # [IDEA-45/46] All Genius API access (CB + FG/BG rate-limiting) now
       # goes through the standalone six-feat-genius-gateway service instead
       # of talking to Genius directly — reached over the compose network by
       # service name, same shared secret as the enrichment mesh.
-      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
+      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,7 +101,7 @@ services:
       six-feat-genius-gateway:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_PORT:-8080}/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -147,7 +155,7 @@ services:
       # [IDEA-45/46] Same standalone Genius gateway six-feat itself calls —
       # one instance means one global CB / FG-BG rate-limit state shared
       # between main and enrichment traffic.
-      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
+      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -157,7 +165,7 @@ services:
       six-feat-genius-gateway:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_ENRICHMENT_PORT:-8081}/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -169,6 +177,25 @@ services:
           cpus: "1"
           memory: 256M
 
+  # Reverse proxy (IDEA-53 follow-up): single public origin for six-feat +
+  # six-feat-auth, routing /auth/* to six-feat-auth and everything else to
+  # six-feat. Without this, the front end's relative "/auth/login" etc.
+  # (front/src/api/net.js, front/src/api/auth.js) resolve against whichever
+  # of the two origins served the page, 404ing whenever that's six-feat.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: six-feat-nginx
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      six-feat:
+        condition: service_started
+      six-feat-auth:
+        condition: service_started
+    restart: unless-stopped
+
   # Standalone OAuth-flow service (IDEA-53). Owns Genius's OAuth 2.0
   # Authorization Code Flow end-to-end (/auth/login, /auth/callback,
   # /auth/logout, /auth/me) and mints/clears the six_feat_session cookie.
@@ -177,15 +204,14 @@ services:
   # six-feat never calls this service over HTTP, so there's no
   # per-request latency added by this split.
   #
-  # Routing: there is no reverse proxy in front of six-feat/six-feat-auth in
-  # this compose file, so /auth/* is reachable only on this service's own
-  # host port, not on six-feat's :8080. GENIUS_REDIRECT_URI (below and in
-  # .env) must point at six-feat-auth's own origin
-  # (http://localhost:8083/auth/callback by default) — that is the value
-  # registered as the Redirect URI on https://genius.com/api-clients. If you
-  # put a reverse proxy in front of both services in production, route
-  # /auth/* to six-feat-auth and everything else to six-feat, and point
-  # GENIUS_REDIRECT_URI at the proxy's public origin instead.
+  # Routing: nginx (below) is the single public entry point on :8080 and
+  # routes /auth/* here, everything else to six-feat — so the front end's
+  # relative "/auth/login" etc. (front/src/api/net.js, front/src/api/auth.js)
+  # resolve against the right backend regardless of which service actually
+  # rendered the page. GENIUS_REDIRECT_URI (below and in .env) must point at
+  # nginx's public origin (http://localhost:8080/auth/callback by default) —
+  # that is the value registered as the Redirect URI on
+  # https://genius.com/api-clients.
   six-feat-auth:
     platform: linux/amd64
     pull_policy: build
@@ -197,8 +223,11 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-auth:latest
     container_name: six-feat-auth
+    # Kept published for direct backend access/debugging — normal traffic
+    # should go through nginx on :8080 instead so cookies and redirects
+    # stay on one origin.
     ports:
-      - "8083:8083"
+      - "${SIX_FEAT_AUTH_PORT:-8083}:${SIX_FEAT_AUTH_PORT:-8083}"
     environment:
       # Same OAuth app credentials six-feat itself is configured with —
       # registered once at https://genius.com/api-clients.
@@ -207,11 +236,11 @@ services:
       # MUST be the exact same value six-feat is started with — see the
       # comment on six-feat's APP_SECRET above.
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
-      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8083/auth/callback}
+      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_AUTH_PORT:-8083}/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -251,7 +280,7 @@ services:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3

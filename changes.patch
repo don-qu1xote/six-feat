@@ -1,0 +1,323 @@
+$ git add -N nginx/default.conf.template && git diff
+
+diff --git a/.env.example b/.env.example
+index ae6fed9..f1900e3 100644
+--- a/.env.example
++++ b/.env.example
+@@ -16,10 +16,10 @@ APP_SECRET=CHANGEME_generate_with_openssl_rand_hex_32
+ # ── Optional (have sensible defaults) ─────────────────────────────────────────
+ # Must EXACTLY match the Redirect URI registered on genius.com/api-clients.
+ # [IDEA-53] The OAuth flow (/auth/login|callback|logout|me) lives in the
+-# standalone six-feat-auth service on port 8083, not on six-feat's 8080 —
+-# docker-compose.yml applies this same value to both services, so point it
+-# at six-feat-auth's own origin.
+-GENIUS_REDIRECT_URI=http://localhost:8083/auth/callback
++# standalone six-feat-auth service, reached through the nginx reverse proxy
++# on port 8080 (not six-feat-auth's own 8083) — docker-compose.yml applies
++# this same value to both services, so point it at the proxy's public origin.
++GENIUS_REDIRECT_URI=http://localhost:8080/auth/callback
+ # Set true in production (HTTPS) so cookies carry the Secure flag.
+ # Leave false for local HTTP dev.
+ COOKIE_SECURE=false
+@@ -53,3 +53,17 @@ DB_REPLICATION_PASSWORD=CHANGEME_use_a_real_password
+ ENRICHMENT_INTERNAL_SECRET=CHANGEME_generate_with_openssl_rand_hex_32
+ # Optional (defaults to the docker-compose "six-feat-enrichment" service on 8081):
+ ENRICHMENT_BASE_URL=http://six-feat-enrichment:8081
++# ── Ports — single source of truth ────────────────────────────────────────────
++# Every port number below is otherwise duplicated across docker-compose.yml
++# (expose/ports/healthchecks/internal URLs), nginx/default.conf.template
++# (envsubst'd from these same names) and each service's own static_config.yaml
++# listener — these env vars are the one place to change any of them without
++# hunting down every copy. NGINX_PUBLIC_PORT is the only one meant to be
++# reached from outside docker (nginx is the single public entry point, see
++# docker-compose.yml); the SIX_FEAT_*_PORT ones are internal compose-network
++# ports (six-feat-auth's is also published directly for debugging).
++NGINX_PUBLIC_PORT=8080
++SIX_FEAT_PORT=8080
++SIX_FEAT_AUTH_PORT=8083
++SIX_FEAT_ENRICHMENT_PORT=8081
++SIX_FEAT_GENIUS_GATEWAY_PORT=8082
+diff --git a/Dockerfile b/Dockerfile
+index 3ce121e..4deab0c 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -18,7 +18,17 @@ COPY src ./src
+ COPY services ./services
+ COPY config/static_config.yaml ./config/static_config.yaml
+ 
+-RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
++# [FIX] No cache mount on build/ meant every change to src/services/
++# static_config.yaml invalidated this layer and forced a full from-scratch
++# recompile+relink of all 4 binaries (observed repeatedly: full CXX compiler
++# identification + every .o rebuilt, 10+ minutes each time) — a BuildKit
++# cache mount persists CMake/Ninja's incremental build state across builds
++# independently of layer invalidation, so only changed translation units
++# actually get recompiled/relinked. /install stays a normal (non-cache) path
++# so `cmake --install` output still lands in the image layer for the
++# COPY --from=builder steps below to pick up.
++RUN --mount=type=cache,target=/src/build,sharing=locked \
++    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
+  && cmake --build build -j"$(nproc)" \
+  && cmake --install build
+ 
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 9b31a4d..c4ac5c5 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -76,8 +76,12 @@ services:
+         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+     image: six-feat:latest
+     container_name: six-feat
+-    ports:
+-      - "8080:8080"
++    # No host port publish anymore — nginx is the single public entry point
++    # (see the nginx service below). Still reachable on the compose network
++    # at six-feat:${SIX_FEAT_PORT} (used by nginx's proxy_pass and by the
++    # healthcheck below, which curls the container's own localhost port).
++    expose:
++      - "${SIX_FEAT_PORT:-8080}"
+     environment:
+       # Resolved from shell env or .env file (see .env.example)
+       # [ТЗ-6] No more server-level Genius token — auth is OAuth-only.
+@@ -92,7 +96,11 @@ services:
+       GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
+       GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
+       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
+-      # Optional (have defaults in docker-entrypoint.sh):
++      # Optional (have defaults in docker-entrypoint.sh). Not derived from
++      # NGINX_PUBLIC_PORT below on purpose — compose's ${A:-${B:-c}} nesting
++      # isn't something to gamble the OAuth redirect on; if you change
++      # NGINX_PUBLIC_PORT, update this default (and six-feat-auth's below,
++      # and the Redirect URI registered on genius.com/api-clients) to match.
+       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
+       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+       # PostgreSQL connection — combined into one multi-host DSN by
+@@ -107,13 +115,13 @@ services:
+       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
+       # [IDEA-26] Background enrichment now lives in six-feat-enrichment —
+       # reached over the compose network by service name.
+-      ENRICHMENT_BASE_URL: ${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}
++      ENRICHMENT_BASE_URL: ${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:${SIX_FEAT_ENRICHMENT_PORT:-8081}}
+       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+       # [IDEA-45/46] All Genius API access (CB + FG/BG rate-limiting) now
+       # goes through the standalone six-feat-genius-gateway service instead
+       # of talking to Genius directly — reached over the compose network by
+       # service name, same shared secret as the enrichment mesh.
+-      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
++      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
+     depends_on:
+       postgres:
+         condition: service_healthy
+@@ -129,7 +137,7 @@ services:
+       six-feat-genius-gateway:
+         condition: service_started
+     healthcheck:
+-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
++      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_PORT:-8080}/healthz"]
+       interval: 15s
+       timeout: 5s
+       retries: 3
+@@ -180,7 +188,7 @@ services:
+       # [IDEA-45/46] Same standalone Genius gateway six-feat itself calls —
+       # one instance means one global CB / FG-BG rate-limit state shared
+       # between main and enrichment traffic.
+-      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
++      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
+     depends_on:
+       postgres:
+         condition: service_healthy
+@@ -192,7 +200,7 @@ services:
+       six-feat-genius-gateway:
+         condition: service_started
+     healthcheck:
+-      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
++      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_ENRICHMENT_PORT:-8081}/healthz"]
+       interval: 15s
+       timeout: 5s
+       retries: 3
+@@ -204,6 +212,48 @@ services:
+           cpus: "1"
+           memory: 256M
+ 
++  # Reverse proxy (IDEA-53 follow-up): single public origin for six-feat +
++  # six-feat-auth, routing /auth/* to six-feat-auth and everything else to
++  # six-feat. Without this, the front end's relative "/auth/login" etc.
++  # (front/src/api/net.js, front/src/api/auth.js) resolve against whichever
++  # of the two origins served the page, 404ing whenever that's six-feat.
++  nginx:
++    image: nginx:1.27-alpine
++    container_name: six-feat-nginx
++    ports:
++      - "${NGINX_PUBLIC_PORT:-8080}:${NGINX_PUBLIC_PORT:-8080}"
++    environment:
++      # Templated into /etc/nginx/conf.d/default.conf by the official image's
++      # envsubst-on-templates entrypoint step — see nginx/default.conf.template.
++      # Same variables/defaults as the app services below: one place (this
++      # file / .env) to change a port instead of four (compose env, app's own
++      # static_config.yaml listener, nginx.conf, Dockerfile EXPOSE).
++      NGINX_PUBLIC_PORT: ${NGINX_PUBLIC_PORT:-8080}
++      SIX_FEAT_PORT: ${SIX_FEAT_PORT:-8080}
++      SIX_FEAT_AUTH_PORT: ${SIX_FEAT_AUTH_PORT:-8083}
++    volumes:
++      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
++    # [FIX] condition: service_started only waits for the container process
++    # to launch, not for the app inside to actually bind its listening
++    # socket — userver's own startup (stacktrace collector preheat, config
++    # parsing, etc.) visibly takes many seconds. nginx was starting to proxy
++    # before six-feat/six-feat-auth had a socket open, hence the
++    # "connect() failed (111: Connection refused)" 502s. service_healthy
++    # blocks nginx's own startup on the upstream HEALTHCHECKs below actually
++    # passing first.
++    depends_on:
++      six-feat:
++        condition: service_healthy
++      six-feat-auth:
++        condition: service_healthy
++    healthcheck:
++      test: ["CMD", "curl", "-f", "http://localhost:${NGINX_PUBLIC_PORT:-8080}/healthz"]
++      interval: 15s
++      timeout: 5s
++      retries: 3
++      start_period: 10s
++    restart: unless-stopped
++
+   # Standalone OAuth-flow service (IDEA-53). Owns Genius's OAuth 2.0
+   # Authorization Code Flow end-to-end (/auth/login, /auth/callback,
+   # /auth/logout, /auth/me) and mints/clears the six_feat_session cookie.
+@@ -212,15 +262,14 @@ services:
+   # six-feat never calls this service over HTTP, so there's no
+   # per-request latency added by this split.
+   #
+-  # Routing: there is no reverse proxy in front of six-feat/six-feat-auth in
+-  # this compose file, so /auth/* is reachable only on this service's own
+-  # host port, not on six-feat's :8080. GENIUS_REDIRECT_URI (below and in
+-  # .env) must point at six-feat-auth's own origin
+-  # (http://localhost:8083/auth/callback by default) — that is the value
+-  # registered as the Redirect URI on https://genius.com/api-clients. If you
+-  # put a reverse proxy in front of both services in production, route
+-  # /auth/* to six-feat-auth and everything else to six-feat, and point
+-  # GENIUS_REDIRECT_URI at the proxy's public origin instead.
++  # Routing: nginx (below) is the single public entry point on :8080 and
++  # routes /auth/* here, everything else to six-feat — so the front end's
++  # relative "/auth/login" etc. (front/src/api/net.js, front/src/api/auth.js)
++  # resolve against the right backend regardless of which service actually
++  # rendered the page. GENIUS_REDIRECT_URI (below and in .env) must point at
++  # nginx's public origin (http://localhost:8080/auth/callback by default) —
++  # that is the value registered as the Redirect URI on
++  # https://genius.com/api-clients.
+   six-feat-auth:
+     platform: linux/amd64
+     build:
+@@ -231,8 +280,11 @@ services:
+         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+     image: six-feat-auth:latest
+     container_name: six-feat-auth
++    # Kept published for direct backend access/debugging — normal traffic
++    # should go through nginx on :8080 instead so cookies and redirects
++    # stay on one origin.
+     ports:
+-      - "8083:8083"
++      - "${SIX_FEAT_AUTH_PORT:-8083}:${SIX_FEAT_AUTH_PORT:-8083}"
+     environment:
+       # Same OAuth app credentials six-feat itself is configured with —
+       # registered once at https://genius.com/api-clients.
+@@ -241,11 +293,13 @@ services:
+       # MUST be the exact same value six-feat is started with — see the
+       # comment on six-feat's APP_SECRET above.
+       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
+-      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8083/auth/callback}
++      # Flat literal default, same reasoning as six-feat's copy above — not
++      # derived from NGINX_PUBLIC_PORT on purpose.
++      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
+       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+     healthcheck:
+-      test: ["CMD", "curl", "-f", "http://localhost:8083/healthz"]
++      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_AUTH_PORT:-8083}/healthz"]
+       interval: 15s
+       timeout: 5s
+       retries: 3
+@@ -284,7 +338,7 @@ services:
+       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+     healthcheck:
+-      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
++      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}/healthz"]
+       interval: 15s
+       timeout: 5s
+       retries: 3
+diff --git a/nginx/default.conf.template b/nginx/default.conf.template
+new file mode 100644
+index 0000000..58b42b5
+--- /dev/null
++++ b/nginx/default.conf.template
+@@ -0,0 +1,37 @@
++# Unifies six-feat and six-feat-auth under one public origin, so the front
++# end's relative redirects/fetches (window.location.href = "/auth/login",
++# GET /auth/me, POST /auth/logout — see front/src/api/net.js and
++# front/src/api/auth.js) reach the right backend instead of 404ing on
++# whichever service happens to be serving the page.
++#
++# GENIUS_REDIRECT_URI must point here (this proxy's public origin), not at
++# six-feat-auth's own container port anymore — see docker-compose.yml.
++#
++# This file is a template, not a static conf: the official nginx image's
++# entrypoint runs envsubst over every file under
++# /etc/nginx/templates/*.template at container start and writes the result
++# to /etc/nginx/conf.d/<name> — substituting ${SIX_FEAT_PORT} etc. from the
++# nginx service's own `environment:` block in docker-compose.yml, which in
++# turn defaults from the exact same SIX_FEAT_PORT/SIX_FEAT_AUTH_PORT/
++# NGINX_PUBLIC_PORT variables used by the six-feat/six-feat-auth services
++# themselves — one place to change a port instead of a hardcoded copy here
++# that can silently drift from the app's actual listener.
++server {
++    listen ${NGINX_PUBLIC_PORT};
++
++    location /auth/ {
++        proxy_pass http://six-feat-auth:${SIX_FEAT_AUTH_PORT};
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
++        proxy_set_header X-Forwarded-Proto $scheme;
++    }
++
++    location / {
++        proxy_pass http://six-feat:${SIX_FEAT_PORT};
++        proxy_set_header Host $host;
++        proxy_set_header X-Real-IP $remote_addr;
++        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
++        proxy_set_header X-Forwarded-Proto $scheme;
++    }
++}
+diff --git a/src/http/static_handler.cpp b/src/http/static_handler.cpp
+index 984857e..93cf50c 100644
+--- a/src/http/static_handler.cpp
++++ b/src/http/static_handler.cpp
+@@ -13,15 +13,22 @@ using namespace userver;
+ 
+ namespace {
+ 
+-// Genius API artist images are served from images.genius.com (verified
++// Genius API artist/song images are served from images.genius.com (verified
+ // against genius_gateway.cpp: image_url is passed through as-is from the
+-// Genius API JSON response, and Genius itself serves all artist/song art
+-// from that single CDN host). Everything else the front-end loads is
++// Genius API JSON response) — but the "no artwork" placeholder Genius itself
++// falls back to (default_cover_image.png, seen on any artist/song without
++// real art) is served from the separate assets.genius.com host, not
++// images.genius.com. Without it here, every such node's image is CSP-blocked
++// — and since visuals.js's _imageFieldsFor re-sends the image URL on every
++// hover partial-update (structural fix for vis.js dropping avatars across
++// updates), each hover on one of those nodes re-triggers a blocked load ->
++// fallback swap instead of just rendering the cached placeholder, which is
++// the flicker reported on hover. Everything else the front-end loads is
+ // either same-origin, Google Fonts, or the vis-network CDN bundle.
+ constexpr std::string_view kContentSecurityPolicy =
+     "default-src 'self'; "
+-    "img-src 'self' https://images.genius.com data:; "
+-    "connect-src 'self'; "
++    "img-src 'self' https://images.genius.com https://assets.genius.com data:; "
++    "connect-src 'self' https://unpkg.com; "
+     "script-src 'self' https://unpkg.com; "
+     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+     "font-src https://fonts.gstatic.com; "

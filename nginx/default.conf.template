@@ -1,0 +1,37 @@
+# Unifies six-feat and six-feat-auth under one public origin, so the front
+# end's relative redirects/fetches (window.location.href = "/auth/login",
+# GET /auth/me, POST /auth/logout — see front/src/api/net.js and
+# front/src/api/auth.js) reach the right backend instead of 404ing on
+# whichever service happens to be serving the page.
+#
+# GENIUS_REDIRECT_URI must point here (this proxy's public origin), not at
+# six-feat-auth's own container port anymore — see docker-compose.yml.
+#
+# This file is a template, not a static conf: the official nginx image's
+# entrypoint runs envsubst over every file under
+# /etc/nginx/templates/*.template at container start and writes the result
+# to /etc/nginx/conf.d/<name> — substituting ${SIX_FEAT_PORT} etc. from the
+# nginx service's own `environment:` block in docker-compose.yml, which in
+# turn defaults from the exact same SIX_FEAT_PORT/SIX_FEAT_AUTH_PORT/
+# NGINX_PUBLIC_PORT variables used by the six-feat/six-feat-auth services
+# themselves — one place to change a port instead of a hardcoded copy here
+# that can silently drift from the app's actual listener.
+server {
+    listen ${NGINX_PUBLIC_PORT};
+
+    location /auth/ {
+        proxy_pass http://six-feat-auth:${SIX_FEAT_AUTH_PORT};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://six-feat:${SIX_FEAT_PORT};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
