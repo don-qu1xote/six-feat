@@ -87,9 +87,26 @@ export function attachNetworkEvents(nameById) {
     if (State.graphEdges.length > FAST_RENDER_EDGE_THRESHOLD) return;
     if (!State.focusedNodeId && !State._isDragging) highlightEdgePair(params.edge);
   });
-  net.on("blurNode",  function() {
+  net.on("blurNode",  function(params) {
     els.network.style.cursor = "default";
-    if (!State.focusedNodeId && !State._isDragging) clearHoverHighlight();
+    // БАГ (положение подсвеченной ноды не совпадает с курсором, стабильно
+    // воспроизводится в плотных областях графа): blurNode/hoverNode для
+    // ОДНОГО перехода A→B приходят синхронно и в правильном порядке
+    // (blur(A), затем hover(B)), но в плотном кластере курсор за один кадр
+    // может пересечь несколько нод — тогда несколько пар blur/hover
+    // приходят одна за другой, каждая синхронно, ДО того как rAF первой
+    // hover-подсветки успевает выполниться. clearHoverHighlight() раньше
+    // не знала, ДЛЯ какой ноды пришёл blur — она просто откатывала то, что
+    // сейчас лежит в _hoveredNodeId. Если к моменту обработки такого
+    // (устаревшего) blur свежий hover для ДРУГОЙ ноды уже успел
+    // применить свою подсветку (rAF выполнился и переставил
+    // _hoveredNodeId), устаревший blur всё равно откатывал ЕЁ — снимал
+    // подсветку с ноды, которую курсор реально сейчас наводит, оставляя
+    // графически подсвеченной ту, что была под курсором раньше (визуально
+    // "не там, где курсор"). Фикс: передаём params.node дальше и откатываем
+    // только если он всё ещё совпадает с _hoveredNodeId — иначе это
+    // устаревший blur для уже вытесненной ноды, трогать нечего.
+    if (!State.focusedNodeId && !State._isDragging) clearHoverHighlight(params.node);
   });
   net.on("blurEdge",  function() {
     els.network.style.cursor = "default";

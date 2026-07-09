@@ -15,6 +15,7 @@ import {
   invalidateColorCache,
   applyDimState,
   resetHoverState,
+  clearHoverHighlight,
 } from "./highlight.js";
 
 function mockDataSet() {
@@ -152,5 +153,78 @@ describe("applyDimState('hover') — adjacency-index edge highlighting", () => {
     expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }));
     const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
     expect(edgeUpdates.map(u => u.id)).toEqual(["2_3"]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Regression guard: clearHoverHighlight(blurredNodeId) must ignore a STALE
+// blur (one that no longer matches the currently-applied hover) instead of
+// reverting whatever IS currently hovered. Reproduces the reported bug —
+// "the highlighted node doesn't match the cursor" in dense areas of the
+// graph — where a node's own blurNode can be delivered after a *different*
+// node's hoverNode has already landed (vis.js only guarantees blur-before-
+// hover ordering within a single mousemove; several distinct mousemoves can
+// each fire their own blur/hover pair before the first one's rAF runs).
+// ════════════════════════════════════════════════════════════════════════════
+describe("clearHoverHighlight(blurredNodeId) — stale blur guard", () => {
+  beforeEach(() => {
+    vi.stubGlobal("requestAnimationFrame", cb => { cb(0); return 1; });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("does not revert node B's highlight when a stale blur for the previously-hovered node A arrives after B was already applied", () => {
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },
+      { id: 3, isSeed: false, _dimBorder: "#222222" },
+    ];
+    State.graphEdges = [
+      { id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 },
+      { id: "1_3", from: 1, to: 3, dominantRole: "featured", weight: 1 },
+    ];
+    invalidateColorCache();
+    State.nodesDS = mockDataSet();
+    State.edgesDS = { update: vi.fn(), get: id => ({ id, _brightColor: "#fff" }) };
+
+    // Cursor was on node 2 (A) — its hover already fully applied.
+    applyDimState("hover", { nodeId: 2 });
+    expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }));
+
+    // Cursor moved on to node 3 (B) — its hover applies too (both landed
+    // within the same simulated frame, as they would in a dense cluster).
+    State.nodesDS.update.mockClear();
+    applyDimState("hover", { nodeId: 3 });
+    expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }));
+
+    // A stale blurNode for node 2 (A) arrives after B's hover already
+    // landed — it must NOT revert node 3's (B, current) highlight.
+    State.nodesDS.update.mockClear();
+    clearHoverHighlight(2);
+    expect(State.nodesDS.update).not.toHaveBeenCalled();
+
+    // The matching blur for the actually-current node (3) still works.
+    clearHoverHighlight(3);
+    expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }));
+  });
+
+  it("still clears unconditionally when called with no id (blurEdge / existing callers)", () => {
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },
+    ];
+    State.graphEdges = [{ id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 }];
+    invalidateColorCache();
+    State.nodesDS = mockDataSet();
+    State.edgesDS = { update: vi.fn(), get: id => ({ id, _brightColor: "#fff" }) };
+
+    applyDimState("hover", { nodeId: 2 });
+    State.nodesDS.update.mockClear();
+
+    clearHoverHighlight();
+    expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }));
   });
 });

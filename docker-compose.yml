@@ -202,11 +202,20 @@ services:
       SIX_FEAT_AUTH_PORT: ${SIX_FEAT_AUTH_PORT:-8083}
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    # service_started (not service_healthy) meant nginx started accepting
+    # traffic as soon as the six-feat/six-feat-auth *containers* existed —
+    # not once their HTTP listeners were actually bound. six-feat's own
+    # startup does real work before it's ready to serve (stacktrace
+    # collector preheat alone has been observed taking 25+ seconds) — any
+    # request nginx forwarded before that finished hit "connection
+    # refused" on the upstream, which nginx reports to the client as a
+    # bare 502 Bad Gateway. Both services already define a /healthz
+    # healthcheck (below) — wait for that instead of "process exists".
     depends_on:
       six-feat:
-        condition: service_started
+        condition: service_healthy
       six-feat-auth:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   # Standalone OAuth-flow service (IDEA-53). Owns Genius's OAuth 2.0

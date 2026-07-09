@@ -460,10 +460,34 @@ export function clearSelectedEdge() {
 // hoverConnectedEdges обычно подсвечивает и то, и другое одновременно, и
 // оставлять одно из двух подсвеченным после ухода мыши — ровно тот баг,
 // который чинит эта функция.
-export function clearHoverHighlight() {
+//
+// БАГ (подсветка "не там, где курсор", стабильно воспроизводится в плотных
+// зонах графа — много нод/рёбер близко друг к другу, например вокруг
+// seed'а): vis.js гарантирует порядок blur(A)→hover(B) только ВНУТРИ ОДНОГО
+// mousemove — для соседних/пересекающихся hit-областей курсор может за один
+// кадр пересечь несколько нод, и тогда несколько пар blur/hover приходят
+// одна за другой, каждая синхронно, ДО того как rAF первой обработанной
+// hover-подсветки успевает выполниться. Раньше clearHoverHighlight() не
+// знала, ДЛЯ какой ноды пришёл конкретный blur, — она просто откатывала то,
+// что СЕЙЧАС лежит в _hoveredNodeId. Если к моменту обработки такого
+// (устаревшего) blur свежий hover для ДРУГОЙ ноды уже успел выполнить свой
+// rAF и переставить _hoveredNodeId, устаревший blur всё равно откатывал ЕЁ —
+// снимал подсветку с ноды, которую курсор реально наводит СЕЙЧАС, оставляя
+// на экране либо старую, либо вообще никакую подсветку — то есть
+// "подсвечено не то, над чем курсор". Фикс: blurNode передаёт id ноды,
+// которую он реально блюрит (params.node, см. events.js); откатываем ноду
+// только если он всё ещё совпадает с _hoveredNodeId — иначе это устаревший
+// blur для уже вытесненной ноды, и трогать нечего (новую, актуальную
+// подсветку оставляем как есть — её отменит её собственный будущий blur).
+// blurEdge по-прежнему не передаёт id (второй параметр остаётся undefined)
+// — поведение для рёбер не меняется.
+export function clearHoverHighlight(blurredNodeId) {
   if (_hoverNodeRafId) { cancelAnimationFrame(_hoverNodeRafId); _hoverNodeRafId = null; }
   if (_hoverEdgeRafId) { cancelAnimationFrame(_hoverEdgeRafId); _hoverEdgeRafId = null; }
   _pendingHoverEdgeIds.clear();
+
+  if (blurredNodeId !== undefined && blurredNodeId !== _hoveredNodeId) return;
+
   if (_hoveredNodeId != null) _clearHoveredNode();
   if (_hoveredEdgeIds.size > 0) _clearHoveredEdge();
   // Если ни то, ни другое не сработало — подсветки фактически не было
