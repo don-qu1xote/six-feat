@@ -19,6 +19,7 @@ COPY services ./services
 COPY config/static_config.yaml ./config/static_config.yaml
 
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
+    -DUSERVER_FEATURE_TESTSUITE=OFF \
  && cmake --build build -j"$(nproc)" \
  && cmake --install build
 

@@ -38,21 +38,27 @@ GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gatew
 # on them — see docker-compose.yml).
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
-# Read replica — streaming standby of DB_HOST (see docker-compose's
-# postgres-replica service). Reads in src/storage/persistent_store.cpp are issued
-# with ClusterHostType::kSlave; without a real host here the cluster has no
-# Slave pool and userver falls back to master for every read.
-DB_REPLICA_HOST="${DB_REPLICA_HOST:-postgres-replica}"
+# Optional — leave unset to run against a single Postgres instance (the
+# docker-compose.yml default). Set to a real streaming replica's host for
+# genuine kMaster/kSlave read isolation (see DEVELOPMENT.md, "Postgres
+# cluster topology"): userver's Cluster classifies each DSN host dynamically
+# via pg_is_in_recovery(), so pointing this at the SAME host as DB_HOST does
+# NOT simulate a replica — every host would answer "not in recovery",
+# leaving no Slave pool and silently falling back to master for every read.
+DB_REPLICA_HOST="${DB_REPLICA_HOST:-}"
 DB_REPLICA_PORT="${DB_REPLICA_PORT:-5432}"
 : "${DB_NAME:?DB_NAME env var is required — Postgres database name}"
 : "${DB_USER:?DB_USER env var is required — Postgres user}"
 : "${DB_PASSWORD:?DB_PASSWORD env var is required — Postgres password, keep it secret}"
 
 # Assembled only in memory / in the runtime config_vars.yaml written below —
-# never committed to a tracked file. Multi-host DSN: userver's Cluster
-# connects to every host and discovers master/slave dynamically via
-# pg_is_in_recovery(), so host order here doesn't matter.
-DB_CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT},${DB_REPLICA_HOST}:${DB_REPLICA_PORT}/${DB_NAME}"
+# never committed to a tracked file. Multi-host DSN only when a replica is
+# actually configured; single-host otherwise (the local-dev default).
+if [[ -n "$DB_REPLICA_HOST" ]]; then
+  DB_CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT},${DB_REPLICA_HOST}:${DB_REPLICA_PORT}/${DB_NAME}"
+else
+  DB_CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+fi
 
 # Optional overrides with sane defaults.
 GENIUS_REDIRECT_URI="${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}"
@@ -86,7 +92,11 @@ SCRIPT_PATH="/${SCRIPT_FILENAME}"
 SCRIPT_FILE_PATH="/usr/share/six_feat/${SCRIPT_FILENAME}"
 
 echo "[entrypoint] serving JS bundle as ${SCRIPT_PATH}"
-echo "[entrypoint] Postgres target: ${DB_HOST}:${DB_PORT} (master), ${DB_REPLICA_HOST}:${DB_REPLICA_PORT} (replica), db=${DB_NAME}"
+if [[ -n "$DB_REPLICA_HOST" ]]; then
+  echo "[entrypoint] Postgres target: ${DB_HOST}:${DB_PORT} (master), ${DB_REPLICA_HOST}:${DB_REPLICA_PORT} (replica), db=${DB_NAME}"
+else
+  echo "[entrypoint] Postgres target: ${DB_HOST}:${DB_PORT} (single instance, no replica), db=${DB_NAME}"
+fi
 
 cat > /tmp/config_vars.yaml <<EOF
 genius_client_id: ${GENIUS_CLIENT_ID}

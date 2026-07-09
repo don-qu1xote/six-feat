@@ -15,17 +15,29 @@ GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gatew
 
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
-DB_REPLICA_HOST="${DB_REPLICA_HOST:-postgres-replica}"
+# Optional — see the matching comment in the root docker-entrypoint.sh:
+# leave unset for a single Postgres instance, or point at a real streaming
+# replica for genuine kMaster/kSlave read isolation. Never point this at the
+# same host as DB_HOST — see DEVELOPMENT.md, "Postgres cluster topology".
+DB_REPLICA_HOST="${DB_REPLICA_HOST:-}"
 DB_REPLICA_PORT="${DB_REPLICA_PORT:-5432}"
 : "${DB_NAME:?DB_NAME env var is required — Postgres database name}"
 : "${DB_USER:?DB_USER env var is required — Postgres user}"
 : "${DB_PASSWORD:?DB_PASSWORD env var is required — Postgres password, keep it secret}"
 
-DB_CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT},${DB_REPLICA_HOST}:${DB_REPLICA_PORT}/${DB_NAME}"
+if [[ -n "$DB_REPLICA_HOST" ]]; then
+  DB_CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT},${DB_REPLICA_HOST}:${DB_REPLICA_PORT}/${DB_NAME}"
+else
+  DB_CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+fi
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
 
-echo "[entrypoint] six-feat-enrichment Postgres target: ${DB_HOST}:${DB_PORT} (master), ${DB_REPLICA_HOST}:${DB_REPLICA_PORT} (replica), db=${DB_NAME}"
+if [[ -n "$DB_REPLICA_HOST" ]]; then
+  echo "[entrypoint] six-feat-enrichment Postgres target: ${DB_HOST}:${DB_PORT} (master), ${DB_REPLICA_HOST}:${DB_REPLICA_PORT} (replica), db=${DB_NAME}"
+else
+  echo "[entrypoint] six-feat-enrichment Postgres target: ${DB_HOST}:${DB_PORT} (single instance, no replica), db=${DB_NAME}"
+fi
 
 cat > /app/config_vars.yaml <<EOF
 logging_level: ${LOGGING_LEVEL}

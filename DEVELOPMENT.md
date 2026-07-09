@@ -122,10 +122,8 @@
 | `DB_PASSWORD` | string | ✓ | — | Пароль PostgreSQL — **никогда не коммитить в репозиторий** |
 | `DB_HOST` | string | ✗ | `postgres` | Хост PostgreSQL master (имя сервиса в docker-compose) |
 | `DB_PORT` | int | ✗ | `5432` | Порт PostgreSQL master |
-| `DB_REPLICA_HOST` | string | ✗ | `postgres-replica` | Хост read-реплики (см. "Postgres cluster topology" ниже) |
-| `DB_REPLICA_PORT` | int | ✗ | `5432` | Порт read-реплики |
-| `DB_REPLICATION_USER` | string | ✓ (только для docker-compose) | — | Роль для стриминга WAL master → replica; используется `postgresql/primary-entrypoint.sh` и `postgresql/replica-entrypoint.sh`, приложением не читается |
-| `DB_REPLICATION_PASSWORD` | string | ✓ (только для docker-compose) | — | Пароль роли репликации — **никогда не коммитить в репозиторий** |
+| `DB_REPLICA_HOST` | string | ✗ | *(пусто)* | Хост read-реплики; не задан — работаем против одного инстанса (см. "Postgres cluster topology" ниже) |
+| `DB_REPLICA_PORT` | int | ✗ | `5432` | Порт read-реплики (используется только если задан `DB_REPLICA_HOST`) |
 
 **Примечание**: `GENIUS_CLIENT_ID` может храниться в конфиге (не секрет), но `GENIUS_CLIENT_SECRET` и `APP_SECRET` **всегда** передавать только через env vars.
 
@@ -135,15 +133,11 @@
 
 `PersistentStore` (`src/storage/persistent_store.cpp`) explicitly routes every read through `storages::postgres::ClusterHostType::kSlave` and every write through `kMaster` — this is intentional isolation, not decoration. `userver::storages::postgres::Cluster` discovers which DSN host is which **dynamically**, by running `SELECT pg_is_in_recovery()` against each host in `dbconnection` (topology refreshed every ~1s): a host that answers `false` is Master, everything else is Slave.
 
-That means `dbconnection` (`db_connection_string` → `static_config.yaml`'s `postgres-db-1.dbconnection`) has to actually be a **multi-host DSN** — `postgresql://user:pass@host1:port1,host2:port2/db` — for a Slave pool to exist at all. If it only lists one host, `kSlave` requests find no Slave pool, log a `WARNING ... FindPool ... There is no pool for slave, falling back to master`, and every read silently lands on master too — the isolation the code assumes is in place quietly stops existing.
+That means `dbconnection` (`db_connection_string` → `static_config.yaml`'s `postgres-db-1.dbconnection`) has to actually be a **multi-host DSN** — `postgresql://user:pass@host1:port1,host2:port2/db` — for a Slave pool to exist at all. If it only lists one host, `kSlave` requests find no Slave pool, log a `WARNING ... FindPool ... There is no pool for slave, falling back to master`, and every read silently lands on master too.
 
-Docker-compose provides this out of the box:
+**docker-compose.yml runs a single Postgres instance by default** — no `postgres-replica`, no streaming replication. This is a deliberate trade-off for local dev on modest hardware: a real standby means a second always-on Postgres process plus continuous WAL streaming, for a benefit (read/write isolation) that only matters once you're actually testing replication-lag-sensitive behavior. `DB_REPLICA_HOST` defaults to empty, `docker-entrypoint.sh` builds a single-host DSN, and every `kSlave` read deterministically falls back to master — this is expected, not a bug, and the `FindPool ... falling back to master` warning below is harmless in this mode.
 
-- **`postgres`** — primary. Runs with `wal_level=replica`/`max_wal_senders`/`hot_standby=on`. `postgresql/primary-entrypoint.sh` idempotently creates a dedicated `REPLICATION`-only role and opens `pg_hba.conf` for it in the background on **every** boot — not just on a fresh `initdb` — so it also fixes up a pre-existing local dev volume that predates this feature, instead of only working on a brand-new `.pgdata`.
-- **`postgres-replica`** — streaming standby of `postgres`. `postgresql/replica-entrypoint.sh` runs `pg_basebackup -R` against the primary on first boot (writing `standby.signal` + `primary_conninfo`), then just hands off to the upstream postgres entrypoint, which starts the data directory in recovery/hot-standby mode. On restarts PGDATA is already populated, so it skips straight to resuming standby recovery.
-- `docker-entrypoint.sh` (the app's) assembles `DB_CONNECTION_STRING` from **both** `DB_HOST:DB_PORT` and `DB_REPLICA_HOST:DB_REPLICA_PORT` — see the env var table above.
-
-Running against a single bare-metal/local Postgres outside docker-compose, with no second instance to point `DB_REPLICA_HOST` at: expect the `FindPool ... falling back to master` warning from the original issue this section describes — reads still work, just without the isolation from writes.
+To get genuine Master/Slave isolation (e.g. against a staging cluster with a real streaming standby), set `DB_REPLICA_HOST`/`DB_REPLICA_PORT` to that standby's address — `docker-entrypoint.sh` then assembles the multi-host DSN and the code path above starts meaning something. **Do not** point `DB_REPLICA_HOST` at the same host as `DB_HOST` to "fake" a replica: both DSN entries would resolve to the same live primary, both would answer `pg_is_in_recovery() = false`, and you'd land back in the exact `no pool for slave, falling back to master` case — just with a config that looks like it should be working, which is worse than not setting it at all.
 
 ---
 
@@ -228,8 +222,8 @@ APP_SECRET env var is required for session encryption — generate with: openssl
 
 ### БД недоступна / `/readyz` не проходит
 
-- Строка подключения к PostgreSQL собирается `docker-entrypoint.sh` из `DB_HOST`/`DB_PORT`/`DB_REPLICA_HOST`/`DB_REPLICA_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` в multi-host DSN (`host1,host2`) и передаётся в `static_config.yaml` через `postgres-db-1.dbconnection` (`$db_connection_string`) — никогда не коммитится. Убедитесь, что оба сервиса, `postgres` и `postgres-replica`, из `docker-compose.yml` здоровы (`depends_on: condition: service_healthy`) прежде чем разбираться с `/readyz`.
-- Если в логах видите `WARNING ... FindPool ... There is no pool for slave, falling back to master` — у кластера нет Slave-хоста (см. "Postgres cluster topology" выше): либо `postgres-replica` не поднялся/не прошёл healthcheck, либо `DB_REPLICA_HOST`/`DB_REPLICA_PORT` не попали в DSN.
+- Строка подключения к PostgreSQL собирается `docker-entrypoint.sh` из `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` (и `DB_REPLICA_HOST`/`DB_REPLICA_PORT`, если заданы) в DSN и передаётся в `static_config.yaml` через `postgres-db-1.dbconnection` (`$db_connection_string`) — никогда не коммитится. Убедитесь, что сервис `postgres` из `docker-compose.yml` здоров (`depends_on: condition: service_healthy`) прежде чем разбираться с `/readyz`.
+- Если в логах видите `WARNING ... FindPool ... There is no pool for slave, falling back to master` — это ожидаемо в дефолтной локальной конфигурации (один инстанс Postgres, `DB_REPLICA_HOST` не задан, см. "Postgres cluster topology" выше). Актуальная проблема — только если вы **осознанно** настраивали `DB_REPLICA_HOST` на реальный standby: тогда либо он не поднялся/не прошёл healthcheck, либо переменные не попали в окружение контейнера.
 - Готовность проверяется через `GET /readyz`: вызывает `PersistentStore::Ping()` и возвращает `503` с `{"status":"not_ready","checks":{"database":{"ok":false}}}`, если БД недоступна.
 
 ### Граф не рендерится в браузере

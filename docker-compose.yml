@@ -7,27 +7,8 @@ services:
       POSTGRES_DB: ${DB_NAME:?Set DB_NAME}
       POSTGRES_USER: ${DB_USER:?Set DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      # Consumed by postgresql/primary-entrypoint.sh to (idempotently, on
-      # every boot) create the role postgres-replica streams WAL through.
-      REPLICATION_USER: ${DB_REPLICATION_USER:?Set DB_REPLICATION_USER}
-      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD}
-    # Invoked via bash explicitly rather than exec'd directly: bind mounts
-    # don't reliably preserve the host's executable bit (e.g. Docker Desktop
-    # on Windows/macOS), which would otherwise fail with "permission denied".
-    entrypoint: ["/bin/bash", "/usr/local/bin/primary-entrypoint.sh"]
-    command:
-      - "postgres"
-      - "-c"
-      - "wal_level=replica"
-      - "-c"
-      - "max_wal_senders=10"
-      - "-c"
-      - "max_replication_slots=10"
-      - "-c"
-      - "hot_standby=on"
     volumes:
       - ./.pgdata:/var/lib/postgresql/data
-      - ./postgresql/primary-entrypoint.sh:/usr/local/bin/primary-entrypoint.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -35,38 +16,18 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
-
-  # Streaming standby of "postgres" — gives userver's Cluster a real Slave
-  # host for the kSlave reads in src/storage/persistent_store.cpp (see
-  # DEVELOPMENT.md, "Postgres cluster topology"). Clones via pg_basebackup
-  # on first boot (postgresql/replica-entrypoint.sh), then just resumes
-  # standby recovery on restarts.
-  postgres-replica:
-    image: postgres:16-alpine
-    container_name: six-feat-postgres-replica
-    entrypoint: ["/bin/bash", "/usr/local/bin/replica-entrypoint.sh"]
-    command: ["postgres"]
-    environment:
-      PRIMARY_HOST: postgres
-      PRIMARY_PORT: 5432
-      REPLICATION_USER: ${DB_REPLICATION_USER:?Set DB_REPLICATION_USER}
-      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD}
-    volumes:
-      - ./.pgdata-replica:/var/lib/postgresql/data
-      - ./postgresql/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    restart: unless-stopped
+    # Only Postgres process in the stack now — cap it so it can't starve a
+    # low-resource dev machine (matches the limits already set below on the
+    # app services).
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
 
   six-feat:
     platform: linux/amd64
+    pull_policy: build
     build:
       context: .
       dockerfile: Dockerfile
@@ -95,12 +56,17 @@ services:
       # Optional (have defaults in docker-entrypoint.sh):
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      # PostgreSQL connection — combined into one multi-host DSN by
-      # docker-entrypoint.sh (master,replica) and handed to the Postgres
-      # component; never written to a tracked file.
+      # PostgreSQL connection, handed to docker-entrypoint.sh. Single instance
+      # by default (this compose file no longer runs a standby) — leave
+      # DB_REPLICA_HOST unset for that. Point it at a real streaming replica
+      # in staging/prod for genuine kMaster/kSlave read isolation: userver's
+      # Cluster classifies hosts via pg_is_in_recovery(), so a fabricated
+      # second entry pointing at this same instance would just be classified
+      # as another Master and silently disable the Slave pool — see
+      # DEVELOPMENT.md, "Postgres cluster topology".
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
       DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
@@ -116,8 +82,6 @@ services:
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
     depends_on:
       postgres:
-        condition: service_healthy
-      postgres-replica:
         condition: service_healthy
       six-feat-enrichment:
         condition: service_started
@@ -159,6 +123,7 @@ services:
   # over the compose network at http://six-feat-enrichment:8081.
   six-feat-enrichment:
     platform: linux/amd64
+    pull_policy: build
     build:
       context: .
       dockerfile: Dockerfile
@@ -169,9 +134,11 @@ services:
     container_name: six-feat-enrichment
     environment:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      # See the matching comment on six-feat's DB_REPLICA_HOST above — same
+      # single-instance-by-default, real-standby-in-prod story.
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
       DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
@@ -183,8 +150,6 @@ services:
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
     depends_on:
       postgres:
-        condition: service_healthy
-      postgres-replica:
         condition: service_healthy
       # [IDEA-44/48] Soft dependency — see the matching comment on six-feat's
       # depends_on above; enrichment's EnrichmentClient/GeniusGatewayClient
@@ -223,6 +188,7 @@ services:
   # GENIUS_REDIRECT_URI at the proxy's public origin instead.
   six-feat-auth:
     platform: linux/amd64
+    pull_policy: build
     build:
       context: .
       dockerfile: Dockerfile
@@ -272,6 +238,7 @@ services:
   # HTTP to Genius only. Internal-only — no host port mapping.
   six-feat-genius-gateway:
     platform: linux/amd64
+    pull_policy: build
     build:
       context: .
       dockerfile: Dockerfile
