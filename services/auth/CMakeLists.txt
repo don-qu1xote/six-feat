@@ -2,23 +2,15 @@
 # Owns Genius's OAuth 2.0 Authorization Code Flow itself (/auth/login,
 # /auth/callback, /auth/logout, /auth/me) plus PKCE (oauth-config.pkce-enabled).
 #
-# Links six_feat_core for request_id/security_headers only — unlike
-# six-feat-enrichment/six-feat-genius-gateway it needs no Postgres, no
-# GeniusGatewayClient. It compiles src/auth/oauth_handler.cpp and
-# src/auth/session_crypto.cpp directly (same two translation units the main
-# six_feat target also compiles — see root CMakeLists.txt) rather than
-# duplicating OAuthConfig/LoginHandler/CallbackHandler/LogoutHandler/
-# MeHandler: both binaries link the exact same OAuth code, encrypting
-# sessions with the same APP_SECRET (session_crypto::KeyFromEnv()), so a
-# cookie minted here is exactly what main's src/auth/token_router.hpp
-# (RequireSession/ExtractToken) decrypts locally — no HTTP call between the
-# two services on the per-request session-validation path.
+# oauth_handler.cpp/session_crypto.cpp/health_handler.cpp now live in
+# six_feat_core itself (see root CMakeLists.txt, src/shared/) instead of
+# being compiled separately per target — six-feat needs the exact same OAuth
+# code (same APP_SECRET-encrypted session cookie format, decrypted locally
+# by six-feat's src/auth/token_router.hpp, no HTTP call between the two
+# services), so it's shared code, not duplicated code.
 
 add_executable(six_feat_auth
     main.cpp
-    ${CMAKE_SOURCE_DIR}/src/auth/oauth_handler.cpp
-    ${CMAKE_SOURCE_DIR}/src/auth/session_crypto.cpp
-    ${CMAKE_SOURCE_DIR}/src/http/health_handler.cpp
 )
 
 target_link_libraries(six_feat_auth

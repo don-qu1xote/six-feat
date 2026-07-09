@@ -1,0 +1,4 @@
+type: object
+description: Internal Genius artist song-list endpoint
+additionalProperties: false
+properties: {}

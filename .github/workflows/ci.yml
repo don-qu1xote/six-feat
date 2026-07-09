@@ -221,7 +221,7 @@ jobs:
         shell: bash  # Add this line
         run: |
           set -o pipefail
-          find src -name '*.cpp' | xargs -r \
+          find src services/six-feat/src -name '*.cpp' | xargs -r \
             clang-tidy -p build \
               --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
               --warnings-as-errors='-*,bugprone-*,performance-*' \

@@ -1,0 +1,4 @@
+type: object
+description: Six-degrees pathfinder (iteration 6)
+additionalProperties: false
+properties: {}

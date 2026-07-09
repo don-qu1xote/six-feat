@@ -19,6 +19,7 @@
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "domain/role_mask.hpp"
+#include "schemas/six-feat/graph_handler_schema.hpp"
 
 #include <algorithm>
 #include <string>
@@ -555,21 +556,7 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
 // ════════════════════════════════════════════════════════════════════════════
 
 yaml_config::Schema GraphHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Radial artist collaboration graph with full topology (ТЗ-Э)
-additionalProperties: false
-properties:
-    max-limit-override:
-        type: integer
-        description: >-
-            Upper bound accepted for the optional ?limit= query param
-            (IDEA-22), which overrides songs-limit-fg for a single request.
-            Genius's real /artists/:id/songs endpoint rejects per_page above
-            ~50 with HTTP 422, so this should not exceed that regardless of
-            configuration.
-        defaultDescription: '50'
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kGraphHandlerSchema);
 }
 
 } // namespace six_feat

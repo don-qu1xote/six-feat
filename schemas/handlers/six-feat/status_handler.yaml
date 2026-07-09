@@ -1,0 +1,4 @@
+type: object
+description: Enrichment status handler configuration
+additionalProperties: false
+properties: {}

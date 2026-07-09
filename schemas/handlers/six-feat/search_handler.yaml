@@ -1,0 +1,4 @@
+type: object
+description: Lightweight artist-candidate search for autocomplete (F-10)
+additionalProperties: false
+properties: {}

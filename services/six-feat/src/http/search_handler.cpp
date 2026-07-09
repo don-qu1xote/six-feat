@@ -8,6 +8,7 @@
 #include "genius/genius_error_mapping.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
+#include "schemas/six-feat/search_handler_schema.hpp"
 
 #include <string>
 
@@ -130,12 +131,7 @@ std::string SearchHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema SearchHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Lightweight artist-candidate search for autocomplete (F-10)
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kSearchHandlerSchema);
 }
 
 } // namespace six_feat

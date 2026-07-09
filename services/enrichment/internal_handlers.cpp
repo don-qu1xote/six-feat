@@ -1,6 +1,9 @@
 #include "internal_handlers.hpp"
 #include "core/internal_auth.hpp"
 #include "core/request_id.hpp"
+#include "schemas/enrichment/enqueue_handler_schema.hpp"
+#include "schemas/enrichment/internal_status_handler_schema.hpp"
+#include "schemas/enrichment/health_handler_schema.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -106,12 +109,7 @@ std::string EnqueueHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema EnqueueHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Internal enrichment enqueue endpoint
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kEnqueueHandlerSchema);
 }
 
 // ── InternalStatusHandler ─────────────────────────────────────────────────
@@ -157,12 +155,7 @@ std::string InternalStatusHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema InternalStatusHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Internal enrichment status probe
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kInternalStatusHandlerSchema);
 }
 
 // ── HealthHandler ─────────────────────────────────────────────────────────
@@ -184,12 +177,7 @@ std::string HealthHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema HealthHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Enrichment-service health-check handler
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kEnrichmentHealthHandlerSchema);
 }
 
 } // namespace six_feat::enrichment

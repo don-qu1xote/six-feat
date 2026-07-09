@@ -1,0 +1,30 @@
+type: object
+description: Genius OAuth 2.0 configuration
+additionalProperties: false
+properties:
+  client-id:
+    type: string
+    description: Genius API client_id
+  redirect-uri:
+    type: string
+    description: OAuth callback URL
+  genius-base-url:
+    type: string
+    description: Genius API base URL
+    defaultDescription: https://api.genius.com
+  session-ttl-days:
+    type: integer
+    description: Session cookie lifetime in days
+    defaultDescription: 90
+  cookie-secure:
+    type: boolean
+    description: Set Secure flag on cookies (disable for HTTP dev)
+    defaultDescription: true
+  pkce-enabled:
+    type: boolean
+    description: >-
+      Enable PKCE (RFC 7636): send code_challenge/code_challenge_method on
+      /oauth/authorize and code_verifier on /oauth/token. Off by default —
+      Genius's OAuth docs do not document PKCE support, so this is opt-in
+      until confirmed safe against production.
+    defaultDescription: false

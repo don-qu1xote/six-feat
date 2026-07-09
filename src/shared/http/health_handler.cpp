@@ -9,6 +9,7 @@
 #include "http/health_handler.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
+#include "schemas/shared/health_handler_schema.hpp"
 
 #include <chrono>
 #include <string>
@@ -52,12 +53,7 @@ std::string HealthHandler::HandleRequestThrow(
 
 // static
 userver::yaml_config::Schema HealthHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<HttpHandlerBase>(R"(
-type: object
-description: Health-check handler configuration
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<HttpHandlerBase>(kHealthHandlerSchema);
 }
 
 } // namespace six_feat

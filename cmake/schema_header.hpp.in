@@ -1,0 +1,6 @@
+// Generated at build time by cmake/GenerateSchemaHeader.cmake — do not edit.
+// Source of truth: the schemas/handlers/*.yaml file this was embedded from.
+#pragma once
+
+constexpr const char* @CONST_NAME@ = R"(
+@SCHEMA_CONTENT@)";

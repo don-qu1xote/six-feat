@@ -2,6 +2,11 @@
 #include "core/internal_auth.hpp"
 #include "core/request_id.hpp"
 #include "core/resilience.hpp"
+#include "schemas/genius-gateway/artist_handler_schema.hpp"
+#include "schemas/genius-gateway/song_list_handler_schema.hpp"
+#include "schemas/genius-gateway/song_handler_schema.hpp"
+#include "schemas/genius-gateway/candidates_handler_schema.hpp"
+#include "schemas/genius-gateway/health_handler_schema.hpp"
 
 #include <optional>
 #include <string>
@@ -131,12 +136,7 @@ std::string ArtistHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema ArtistHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Internal Genius artist lookup endpoint
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kArtistHandlerSchema);
 }
 
 // ── SongListHandler ──────────────────────────────────────────────────────
@@ -200,12 +200,7 @@ std::string SongListHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema SongListHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Internal Genius artist song-list endpoint
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kSongListHandlerSchema);
 }
 
 // ── SongHandler ───────────────────────────────────────────────────────────
@@ -277,12 +272,7 @@ std::string SongHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema SongHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Internal Genius song-detail endpoint
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kSongHandlerSchema);
 }
 
 // ── CandidatesHandler ────────────────────────────────────────────────────
@@ -345,12 +335,7 @@ std::string CandidatesHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema CandidatesHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Internal Genius fuzzy-search endpoint
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kCandidatesHandlerSchema);
 }
 
 // ── HealthHandler ─────────────────────────────────────────────────────────
@@ -372,12 +357,7 @@ std::string HealthHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema HealthHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Genius-gateway service health-check handler
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kGeniusGatewayHealthHandlerSchema);
 }
 
 } // namespace six_feat::genius_gateway

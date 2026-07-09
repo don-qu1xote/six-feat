@@ -20,6 +20,7 @@
 #include "http/sse_status_handler.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
+#include "schemas/six-feat/sse_status_handler_schema.hpp"
 
 #include <chrono>
 #include <string>
@@ -153,12 +154,7 @@ void SseStatusHandler::HandleStreamRequest(
 
 // static
 userver::yaml_config::Schema SseStatusHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<HttpHandlerBase>(R"(
-type: object
-description: SSE enrichment-status stream handler configuration
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<HttpHandlerBase>(kSseStatusHandlerSchema);
 }
 
 } // namespace six_feat

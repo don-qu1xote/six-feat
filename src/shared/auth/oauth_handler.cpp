@@ -2,6 +2,7 @@
 #include "auth/session_crypto.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
+#include "schemas/shared/oauth_handler_schema.hpp"
 
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
@@ -186,38 +187,7 @@ OAuthConfig::OAuthConfig(const components::ComponentConfig&  config,
 }
 
 userver::yaml_config::Schema OAuthConfig::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<ComponentBase>(R"(
-type: object
-description: Genius OAuth 2.0 configuration
-additionalProperties: false
-properties:
-  client-id:
-    type: string
-    description: Genius API client_id
-  redirect-uri:
-    type: string
-    description: OAuth callback URL
-  genius-base-url:
-    type: string
-    description: Genius API base URL
-    defaultDescription: https://api.genius.com
-  session-ttl-days:
-    type: integer
-    description: Session cookie lifetime in days
-    defaultDescription: 90
-  cookie-secure:
-    type: boolean
-    description: Set Secure flag on cookies (disable for HTTP dev)
-    defaultDescription: true
-  pkce-enabled:
-    type: boolean
-    description: >-
-      Enable PKCE (RFC 7636): send code_challenge/code_challenge_method on
-      /oauth/authorize and code_verifier on /oauth/token. Off by default —
-      Genius's OAuth docs do not document PKCE support, so this is opt-in
-      until confirmed safe against production.
-    defaultDescription: false
-)");
+    return yaml_config::MergeSchemas<ComponentBase>(kOAuthHandlerSchema);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

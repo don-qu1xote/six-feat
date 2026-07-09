@@ -1,0 +1,4 @@
+type: object
+description: Readiness-check handler configuration
+additionalProperties: false
+properties: {}

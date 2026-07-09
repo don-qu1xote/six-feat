@@ -1,0 +1,4 @@
+type: object
+description: Health-check handler configuration
+additionalProperties: false
+properties: {}

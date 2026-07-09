@@ -14,9 +14,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 WORKDIR /src
 COPY CMakeLists.txt ./
+COPY cmake ./cmake
+COPY schemas ./schemas
 COPY src ./src
 COPY services ./services
-COPY config/static_config.yaml ./config/static_config.yaml
 
 RUN --mount=type=cache,target=/src/build,sharing=locked \
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
@@ -226,7 +227,7 @@ RUN SCRIPT_FILENAME="$(sed -n 's/.*"script": *"\([^"]*\)".*/\1/p' /tmp/manifest.
  && echo "$SCRIPT_FILENAME" > /usr/share/six_feat/.script-filename \
  && rm /tmp/manifest.json
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY services/six-feat/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p /var/lib/six_feat \

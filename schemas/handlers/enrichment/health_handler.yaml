@@ -1,0 +1,4 @@
+type: object
+description: Enrichment-service health-check handler
+additionalProperties: false
+properties: {}

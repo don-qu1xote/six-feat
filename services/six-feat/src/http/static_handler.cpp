@@ -1,5 +1,6 @@
 #include "http/static_handler.hpp"
 #include "core/request_id.hpp"
+#include "schemas/six-feat/static_handler_schema.hpp"
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
@@ -99,30 +100,7 @@ std::string StaticFileHandler::HandleRequestThrow(
 }
 
 yaml_config::Schema StaticFileHandler::GetStaticConfigSchema() {
-  return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Serves a single static file (HTML/JS/CSS) read from disk at startup
-additionalProperties: false
-properties:
-    file-path:
-        type: string
-        description: path to the file to read and serve
-    content-type:
-        type: string
-        description: value for the Content-Type response header
-        defaultDescription: text/plain; charset=utf-8
-    cache-control:
-        type: string
-        description: value for the Cache-Control response header
-        defaultDescription: ''
-    script-url:
-        type: string
-        description: >-
-            if set, every "/script.js" occurrence in the served file is
-            replaced with this value (used by handler-index to point at the
-            content-hashed JS bundle)
-        defaultDescription: ''
-)");
+  return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kStaticHandlerSchema);
 }
 
 } // namespace six_feat

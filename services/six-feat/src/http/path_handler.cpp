@@ -4,6 +4,7 @@
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "domain/role_mask.hpp"
+#include "schemas/six-feat/path_handler_schema.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -324,12 +325,7 @@ std::string PathHandler::BuildPathJson(const ArtistRef&    from_ref,
 }
 
 yaml_config::Schema PathHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(R"(
-type: object
-description: Six-degrees pathfinder (iteration 6)
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kPathHandlerSchema);
 }
 
 } // namespace six_feat

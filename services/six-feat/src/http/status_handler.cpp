@@ -8,6 +8,7 @@
 #include "http/status_handler.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
+#include "schemas/six-feat/status_handler_schema.hpp"
 
 #include <stdexcept>
 #include <string>
@@ -92,12 +93,7 @@ std::string StatusHandler::HandleRequestThrow(
 
 // static
 userver::yaml_config::Schema StatusHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<HttpHandlerBase>(R"(
-type: object
-description: Enrichment status handler configuration
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<HttpHandlerBase>(kStatusHandlerSchema);
 }
 
 } // namespace six_feat
