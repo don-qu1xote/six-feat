@@ -9,7 +9,7 @@
 
 components_manager:
   task_processors:
-    main-task-processor:
+    &main_tp main-task-processor:
       worker_threads: 8
       thread_name: main-worker
 
@@ -19,24 +19,24 @@ components_manager:
 
     # [IDEA-27] Dedicated, low-concurrency TP for the internal metrics
     # endpoint so scraping never contends with foreground request handling.
-    monitor-task-processor:
+    &monitor_tp monitor-task-processor:
       worker_threads: 1
       thread_name: monitor-worker
 
-  default_task_processor: main-task-processor
+  default_task_processor: *main_tp
 
   components:
     # ── Userver built-ins ───────────────────────────────────────────────────
     server:
       listener:
         port: 8080
-        task_processor: main-task-processor
+        task_processor: *main_tp
       # [IDEA-27] Internal-only listener for handler-server-monitor below —
       # separate port, no public exposure (not mapped in docker-compose.yml),
       # no auth-checker configured since network isolation is the boundary.
       listener-monitor:
         port: 8085
-        task_processor: monitor-task-processor
+        task_processor: *monitor_tp
 
     dns-client:
       fs-task-processor: fs-task-processor
@@ -143,7 +143,7 @@ components_manager:
     handler-graph:
       path: /api/v1/graph
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
       # [IDEA-22] Upper bound for the optional ?limit= override (per-request
       # songs-limit-fg override) — caps how much Genius quota a single
       # "show more collaborations" request can spend.
@@ -152,14 +152,14 @@ components_manager:
     handler-path:
       path: /api/v1/graph/path
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     # [F-10] Lightweight autocomplete: candidate resolve only, no graph build,
     # no BG enrichment enqueue.
     handler-search:
       path: /api/v1/search
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     # ── OAuth handlers ──────────────────────────────────────────────────────
     # [IDEA-53] Moved to the standalone six-feat-auth service — see
@@ -169,7 +169,7 @@ components_manager:
     handler-index:
       path: /
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
       file-path: /usr/share/six_feat/index.html
       content-type: text/html; charset=utf-8
       # Always revalidated so a plain refresh (no hard-refresh needed) picks
@@ -188,7 +188,7 @@ components_manager:
       # always agree.
       path: $script_path
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
       file-path: $script_file_path
       content-type: application/javascript; charset=utf-8
       # Content-addressed filename → safe to cache "forever": if the
@@ -198,22 +198,22 @@ components_manager:
     handler-healthz:
       path: /healthz
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-readyz:
       path: /readyz
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-status:
       path: /api/v1/status
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
       response-body-stream: true
 
     # ── Observability (IDEA-27) ─────────────────────────────────────────────
@@ -223,4 +223,4 @@ components_manager:
     handler-server-monitor:
       path: /metrics
       method: GET
-      task_processor: monitor-task-processor
+      task_processor: *monitor_tp
