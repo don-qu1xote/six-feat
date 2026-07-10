@@ -22,7 +22,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "auth/oauth_handler.hpp"
-#include "session_crypto.hpp"
+#include "auth/session_crypto.hpp"
 
 #include <array>
 #include <optional>

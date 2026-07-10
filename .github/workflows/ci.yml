@@ -91,19 +91,47 @@ jobs:
             curl
           rm -rf /var/lib/apt/lists/*
 
-      # ── Build service ───────────────────────────────────────────────────────
-      - name: Configure CMake
+      # ── Build services ──────────────────────────────────────────────────────
+      # Each service now builds independently from its own CMakeLists.txt
+      # (services/<name>/CMakeLists.txt) — there is no more shared root
+      # CMakeLists.txt. All four install into the same /install prefix so
+      # SIX_FEAT_BINARY et al. below keep resolving at their existing,
+      # predictable /install/bin/<name> paths. Only six-feat's configure
+      # needs CMAKE_EXPORT_COMPILE_COMMANDS=ON — its build-six-feat tree
+      # covers both libs/six-feat-common/src and services/six-feat/src (see
+      # "Upload compile_commands.json" and the clang-tidy job below).
+      - name: Build & install six-feat
         run: |
-          cmake -S . -B build \
+          cmake -S services/six-feat -B build-six-feat \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/install \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          cmake --build build-six-feat -j"$(nproc)"
+          cmake --install build-six-feat
 
-      - name: Build
-        run: cmake --build build -j"$(nproc)"
+      - name: Build & install enrichment
+        run: |
+          cmake -S services/enrichment -B build-enrichment \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-enrichment -j"$(nproc)"
+          cmake --install build-enrichment
 
-      - name: Install
-        run: cmake --install build
+      - name: Build & install genius-gateway
+        run: |
+          cmake -S services/genius-gateway -B build-genius-gateway \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-genius-gateway -j"$(nproc)"
+          cmake --install build-genius-gateway
+
+      - name: Build & install auth
+        run: |
+          cmake -S services/auth -B build-auth \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-auth -j"$(nproc)"
+          cmake --install build-auth
 
       # ── Python test env ──────────────────────────────────────────────────────
       - name: Install Python test dependencies
@@ -186,7 +214,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: compile-commands
-          path: build/compile_commands.json
+          path: build-six-feat/compile_commands.json
           retention-days: 1
 
   # ══════════════════════════════════════════════════════════════════════════
@@ -211,9 +239,12 @@ jobs:
             clang-tidy
           rm -rf /var/lib/apt/lists/*
 
+      # services/six-feat's own build tree covers both libs/six-feat-common/src
+      # (pulled in via add_subdirectory) and services/six-feat/src — the same
+      # two roots checked below, just renamed from the old shared src/.
       - name: Configure CMake (generate compile_commands.json)
         run: |
-          cmake -S . -B build \
+          cmake -S services/six-feat -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
@@ -221,7 +252,7 @@ jobs:
         shell: bash  # Add this line
         run: |
           set -o pipefail
-          find src services/six-feat/src -name '*.cpp' | xargs -r \
+          find libs/six-feat-common/src services/six-feat/src -name '*.cpp' | xargs -r \
             clang-tidy -p build \
               --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
               --warnings-as-errors='-*,bugprone-*,performance-*' \
@@ -341,25 +372,26 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Configure CMake
+      # six_feat and six_feat_genius_gateway each build independently from
+      # their own services/<name>/CMakeLists.txt — there is no more shared
+      # root CMakeLists.txt. Both install into the same /install prefix (same
+      # CMAKE_INSTALL_PREFIX used by the build-and-test job above) so they
+      # land at the predictable /install/bin/<name> paths used below.
+      - name: Build & install six-feat
         run: |
-          cmake -S . -B build \
+          cmake -S services/six-feat -B build-six-feat \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-six-feat -j"$(nproc)"
+          cmake --install build-six-feat
 
-      - name: Build service
-        run: cmake --build build -j"$(nproc)"
-
-      # six_feat lands at build/six_feat (defined in the root CMakeLists.txt),
-      # but six_feat_genius_gateway is defined in services/genius-gateway's
-      # CMakeLists.txt via add_subdirectory, so CMake places its raw build
-      # output at build/services/genius-gateway/six_feat_genius_gateway, not
-      # build/six_feat_genius_gateway. Install both into the flat /install/bin
-      # layout (same CMAKE_INSTALL_PREFIX used by the build-and-test job
-      # above) so both binaries are found at predictable, subdirectory-
-      # independent paths below.
-      - name: Install
-        run: cmake --install build
+      - name: Build & install genius-gateway
+        run: |
+          cmake -S services/genius-gateway -B build-genius-gateway \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-genius-gateway -j"$(nproc)"
+          cmake --install build-genius-gateway
 
       - name: Install Python test dependencies
         run: |
@@ -415,6 +447,25 @@ jobs:
   docker-build-and-scan:
     runs-on: ubuntu-22.04
     needs: build-and-test
+    # Each service now has its own standalone Dockerfile (services/<name>/
+    # Dockerfile) instead of one multi-stage Dockerfile building all 4 —
+    # matrix over them so every one still gets built AND scanned in CI (the
+    # old single-Dockerfile job only ever scanned the six-feat image, even
+    # though `docker build` compiled all 4 stages together; this restores
+    # that same "all 4 get built" coverage and adds the Trivy gate to the
+    # other 3, which it never covered before).
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: six-feat
+            dockerfile: services/six-feat/Dockerfile
+          - name: six-feat-auth
+            dockerfile: services/auth/Dockerfile
+          - name: six-feat-enrichment
+            dockerfile: services/enrichment/Dockerfile
+          - name: six-feat-genius-gateway
+            dockerfile: services/genius-gateway/Dockerfile
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
@@ -425,13 +476,14 @@ jobs:
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
         with:
           context: .
+          file: ${{ matrix.service.dockerfile }}
           push: false
           load: true
-          tags: six-feat:ci
+          tags: ${{ matrix.service.name }}:ci
           build-args: |
             USERVER_IMAGE=${{ env.USERVER_IMAGE_REPO }}:${{ env.USERVER_IMAGE_TAG }}@${{ env.USERVER_IMAGE_DIGEST }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
 
       # Fails the job on HIGH/CRITICAL CVEs in system packages of the built
       # image. This is intentionally a hard gate (unlike clang-tidy above)
@@ -448,7 +500,7 @@ jobs:
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          image-ref: six-feat:ci
+          image-ref: ${{ matrix.service.name }}:ci
           format: table
           scanners: vuln
           vuln-type: os,library

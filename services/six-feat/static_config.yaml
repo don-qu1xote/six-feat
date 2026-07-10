@@ -54,11 +54,21 @@ components_manager:
     testsuite-support:
 
     # ── Postgres cluster (backs persistent-store below) ─────────────────────
+    # sync-start: false — a synchronous start makes components::Run throw and
+    # exit the whole process if the pool can't connect within its window
+    # (crash-loop, relying on Docker's blind container restart to eventually
+    # land after Postgres catches up — not a real fix). With this off, the
+    # component starts immediately and keeps retrying the connection in the
+    # background; readiness_handler.cpp already pings the DB and reports 503
+    # "not_ready" on /readyz until the pool is actually up, so the container
+    # correctly stays un-healthy (and out of nginx's rotation) instead of the
+    # process dying outright. See docker-entrypoint.sh's pg_isready wait for
+    # the complementary first-line defense.
     postgres-db-1:
       dbconnection: $db_connection_string
       blocking_task_processor: fs-task-processor
       dns_resolver: async
-      sync-start: true
+      sync-start: false
       connlimit_mode: manual
       min_pool_size: 4
       max_pool_size: 15

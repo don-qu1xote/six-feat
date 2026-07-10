@@ -76,7 +76,10 @@ CollabService::CollabService(const components::ComponentConfig&  config,
           config["path-max-expand-rounds"].As<int>(3))),
       path_max_frontier_size_(RequirePositive(
           "path-max-frontier-size",
-          config["path-max-frontier-size"].As<int>(20)))
+          config["path-max-frontier-size"].As<int>(20))),
+      fg_fanout_semaphore_(static_cast<std::size_t>(RequirePositive(
+          "fg-fanout-max-concurrent",
+          config["fg-fanout-max-concurrent"].As<int>(6))))
 {}
 
 yaml_config::Schema CollabService::GetStaticConfigSchema() {
@@ -93,6 +96,15 @@ properties:
         type: integer
         description: Maximum frontier nodes expanded per BFS round (caps Genius RPS)
         defaultDescription: '20'
+    fg-fanout-max-concurrent:
+        type: integer
+        description: >-
+            Maximum concurrent FetchSongDetail calls in flight to
+            six-feat-genius-gateway at once, shared across FetchFg and
+            CheckDirectPath. Should stay at or under the gateway's own
+            lane-fg-max-concurrent so this service never floods a lane
+            shared with other callers.
+        defaultDescription: '6'
 )");
 }
 
@@ -140,6 +152,7 @@ ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
         pending.push_back({sid, utils::Async(
             "fg-song-detail",
             [this, sid, &user_token] {
+                engine::SemaphoreLock lock{fg_fanout_semaphore_};
                 return gateway_.FetchSongDetail(sid, Lane::Foreground, user_token);
             }
         )});
@@ -298,6 +311,7 @@ PathContext CollabService::CheckDirectPath(const ArtistRef& from,
         detail_tasks.push_back({sid, utils::Async(
             "direct-song-detail",
             [this, sid, &user_token] {
+                engine::SemaphoreLock lock{fg_fanout_semaphore_};
                 return gateway_.FetchSongDetail(sid, Lane::Foreground, user_token);
             }
         )});

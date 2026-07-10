@@ -98,20 +98,23 @@ else
   echo "[entrypoint] Postgres target: ${DB_HOST}:${DB_PORT} (single instance, no replica), db=${DB_NAME}"
 fi
 
-# ── Wait for Postgres to actually be reachable ─────────────────────────────
+# ── Wait for Postgres to actually be ready ─────────────────────────────────
 # docker-compose's depends_on/healthcheck only gate this container's FIRST
 # start. Once it's up, "restart: unless-stopped" restarts it standalone on
 # every crash with no re-check that postgres is healthy — so a Postgres
 # restart that lands close to this container's own restart races
 # postgres-db-1's synchronous pool bootstrap (static_config.yaml's
-# sync-start: true). A couple of transient connection failures there are
-# enough to trip userver's connection-pool circuit breaker; persistent-store
-# then makes its own single-shot (non-retrying) connection attempt right
-# after and gets rejected outright ("No available connections found,
-# Connecting: 0, Active: 0"), throwing an unhandled exception that crashes
-# the whole process. Waiting here for the master to accept TCP connections,
-# plus a short settle delay, keeps postgres-db-1's bootstrap clean so the
-# breaker never trips in the first place.
+# sync-start: true). persistent-store makes a single-shot (non-retrying)
+# connection attempt at startup and gets rejected outright ("No available
+# connections found, Connecting: 0, Active: 0") if postgres isn't truly
+# ready yet, throwing an unhandled exception that crashes the whole process.
+#
+# A raw TCP check is NOT sufficient here: Postgres opens its TCP listener
+# well before it's actually ready to serve new sessions (e.g. during crash
+# recovery or replica-sync setup at boot), so a check that only waits for
+# the port to accept connections can pass while the server is still
+# rejecting real sessions — which is exactly what let this race happen.
+# pg_isready checks actual protocol-level readiness instead.
 #
 # The wait is capped well under the HEALTHCHECK's own budget (start-period +
 # retries*interval) so a slow/absent Postgres fails the container's
@@ -122,19 +125,20 @@ fi
 # never blocks startup the way the master does.
 wait_for_postgres() {
   local host="$1" port="$2" max="$3" waited=0
-  until (exec 3<>"/dev/tcp/${host}/${port}") 2>/dev/null; do
-    waited=$((waited + 1))
+  [[ -z "$host" ]] && return 0
+  until pg_isready -h "$host" -p "$port" -U "${DB_USER}" -d "${DB_NAME}" -t 3 >/dev/null 2>&1; do
     if (( waited >= max )); then
-      echo "[entrypoint] WARNING: gave up waiting for ${host}:${port} after ${max}s, starting anyway" >&2
+      echo "[entrypoint] WARNING: gave up waiting for ${host}:${port} to report ready after ${max}s, starting anyway" >&2
       return 0
     fi
-    sleep 1
+    sleep 2
+    waited=$((waited + 2))
   done
 }
 
-echo "[entrypoint] waiting for Postgres to accept TCP connections..."
-wait_for_postgres "${DB_HOST}" "${DB_PORT}" 20
-wait_for_postgres "${DB_REPLICA_HOST}" "${DB_REPLICA_PORT}" 5
+echo "[entrypoint] waiting for Postgres to be ready..."
+wait_for_postgres "${DB_HOST}" "${DB_PORT}" 120
+wait_for_postgres "${DB_REPLICA_HOST}" "${DB_REPLICA_PORT}" 10
 sleep 1
 
 cat > /tmp/config_vars.yaml <<EOF

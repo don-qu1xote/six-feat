@@ -49,6 +49,7 @@
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>
 #include <userver/engine/deadline.hpp>
+#include <userver/engine/semaphore.hpp>
 #include <userver/yaml_config/schema.hpp>
 
 namespace six_feat {
@@ -165,6 +166,19 @@ private:
     EnrichmentClient&     enrichment_;
     const int         path_max_expand_rounds_;
     const int         path_max_frontier_size_;  // [ТЗ-3 step 3] cap per BFS round
+
+    // Caps how many FetchSongDetail calls CollabService has in flight to
+    // six-feat-genius-gateway at once, shared across FetchFg, CheckDirectPath
+    // and (transitively, since it calls FetchFg) the FindPath frontier
+    // expansion fan-out. six-feat-genius-gateway's own Foreground lane has a
+    // concurrency cap (lane-fg-max-concurrent, default 8) shared across every
+    // caller — firing more than that at once just queues on the gateway side
+    // until this service's own client-side timeout expires, producing
+    // spurious timeouts that trip the shared circuit breaker and take down
+    // unrelated in-flight requests for cb-open-seconds. mutable: acquired
+    // from const methods, same as engine::Mutex/Semaphore members typically
+    // are — it's synchronization state, not externally-visible object state.
+    mutable userver::engine::Semaphore fg_fanout_semaphore_;
 };
 
 } // namespace six_feat

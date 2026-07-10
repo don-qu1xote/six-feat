@@ -439,6 +439,29 @@ std::string GeniusGateway::GeniusGet(const std::string& url,
                             << " — not counted as upstream failure";
                 throw GeniusHttpError{499, "client request cancelled"};
             }
+
+            // [FIX] userver's deadline propagation aborts this specific
+            // outbound call the instant the CURRENT TASK's inherited
+            // deadline is exhausted — that deadline is set by the FIRST
+            // outbound call of a large fan-out (GeniusGatewayClient's
+            // timeout-ms) and then shrinks across every subsequent call in
+            // the same request tree, including ones now serialized behind
+            // CollabService's fg-fanout-max-concurrent semaphore. A large
+            // graph build running past that budget is a latency problem for
+            // THIS request only — Genius was never actually unreachable.
+            // ShouldCancel() above does NOT catch this case (verified from
+            // production logs: it hits OnNetworkError() today), so it needs
+            // its own check — otherwise it poisons the shared CircuitBreaker
+            // off one slow fan-out and 503s every other concurrent user for
+            // cb-open-seconds.
+            if (std::string(ex.what()).find("deadline propagation") !=
+                std::string::npos) {
+                LOG_WARNING() << "[GW] request_id=" << request_id
+                              << " deadline budget exhausted for "
+                              << RedactUrl(url)
+                              << " — not counted as upstream failure";
+                throw GeniusHttpError{504, "deadline exhausted for this request"};
+            }
             pipeline_.OnNetworkError();
             failure_already_recorded_for_this_attempt = true;
             LOG_WARNING() << "[GW] request_id=" << request_id

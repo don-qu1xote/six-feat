@@ -30,7 +30,7 @@ services:
     pull_policy: build
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: services/six-feat/Dockerfile
       # Pass the version arg so you can override it without editing the file:
       #   USERVER_IMAGE=ghcr.io/.../ubuntu-22.04-userver:v2.8 docker compose build
       args:
@@ -141,8 +141,7 @@ services:
     pull_policy: build
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runtime-enrichment
+      dockerfile: services/enrichment/Dockerfile
       args:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-enrichment:latest
@@ -236,7 +235,7 @@ services:
   # Authorization Code Flow end-to-end (/auth/login, /auth/callback,
   # /auth/logout, /auth/me) and mints/clears the six_feat_session cookie.
   # Per-request session VALIDATION stays in six-feat itself, decrypting the
-  # cookie locally with the same APP_SECRET (src/auth/token_router.hpp) —
+  # cookie locally with the same APP_SECRET (services/six-feat/src/auth/token_router.hpp) —
   # six-feat never calls this service over HTTP, so there's no
   # per-request latency added by this split.
   #
@@ -253,8 +252,7 @@ services:
     pull_policy: build
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runtime-auth
+      dockerfile: services/auth/Dockerfile
       args:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-auth:latest
@@ -306,8 +304,7 @@ services:
     pull_policy: build
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runtime-genius-gateway
+      dockerfile: services/genius-gateway/Dockerfile
       args:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-genius-gateway:latest

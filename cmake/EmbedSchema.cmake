@@ -12,7 +12,7 @@
 # <out-var> in the caller's scope. Regenerates automatically whenever the
 # source .yaml file changes (see cmake/GenerateSchemaHeader.cmake).
 function(six_feat_embed_schema HANDLER_NAME CONST_NAME OUT_VAR)
-    set(schema_yaml "${CMAKE_SOURCE_DIR}/schemas/handlers/${HANDLER_NAME}.yaml")
+    set(schema_yaml "${SIX_FEAT_ROOT}/schemas/handlers/${HANDLER_NAME}.yaml")
     set(output_header "${CMAKE_BINARY_DIR}/generated/schemas/${HANDLER_NAME}_schema.hpp")
 
     add_custom_command(
@@ -21,11 +21,11 @@ function(six_feat_embed_schema HANDLER_NAME CONST_NAME OUT_VAR)
                 "-DSCHEMA_YAML=${schema_yaml}"
                 "-DOUTPUT_HEADER=${output_header}"
                 "-DCONST_NAME=${CONST_NAME}"
-                -P "${CMAKE_SOURCE_DIR}/cmake/GenerateSchemaHeader.cmake"
+                -P "${SIX_FEAT_ROOT}/cmake/GenerateSchemaHeader.cmake"
         DEPENDS
             "${schema_yaml}"
-            "${CMAKE_SOURCE_DIR}/cmake/GenerateSchemaHeader.cmake"
-            "${CMAKE_SOURCE_DIR}/cmake/schema_header.hpp.in"
+            "${SIX_FEAT_ROOT}/cmake/GenerateSchemaHeader.cmake"
+            "${SIX_FEAT_ROOT}/cmake/schema_header.hpp.in"
         COMMENT "Embedding schemas/handlers/${HANDLER_NAME}.yaml -> generated/schemas/${HANDLER_NAME}_schema.hpp"
         VERBATIM
     )

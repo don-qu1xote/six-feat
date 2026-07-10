@@ -9,6 +9,7 @@
 
 #include "storage/persistent_store.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -18,6 +19,7 @@
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
+#include <userver/engine/sleep.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/storages/postgres/cluster.hpp>
 #include <userver/storages/postgres/cluster_types.hpp>
@@ -136,6 +138,47 @@ void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
     trx.Commit();
 }
 
+// postgres-db-1 runs with sync-start: false (see static_config.yaml) so a
+// slow-to-connect Postgres doesn't crash the whole component system at
+// boot — but that just moves the risk here: this is the first real query
+// against the cluster, and it used to run once, uncaught, at component
+// construction time. If the pool hadn't finished its background connect
+// yet, Execute() would throw and PersistentStore's constructor would
+// propagate it straight into components::Run, killing the process exactly
+// as before, just a few components later. Retrying with backoff here is
+// what actually closes that gap: transient "pool not ready yet" failures
+// get absorbed instead of taking the whole service down, while a genuinely
+// unreachable Postgres still surfaces a clear fatal error once the budget
+// (~29s across kMigrationMaxAttempts) is exhausted, rather than hanging
+// forever.
+constexpr int kMigrationMaxAttempts = 10;
+constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
+constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
+
+void RunMigrationsWithRetry(const storages::postgres::ClusterPtr& cluster) {
+    for (int attempt = 1;; ++attempt) {
+        try {
+            RunMigrations(cluster);
+            return;
+        } catch (const std::exception& ex) {
+            if (attempt >= kMigrationMaxAttempts) {
+                LOG_ERROR() << "[PersistentStore] schema migration failed after "
+                            << attempt << " attempts, giving up: " << ex.what();
+                throw;
+            }
+            const auto delay = std::min(
+                kMigrationBackoffCap,
+                kMigrationBackoffBase * (1 << (attempt - 1)));
+            LOG_WARNING() << "[PersistentStore] schema migration attempt "
+                          << attempt << " failed (" << ex.what()
+                          << "), retrying in " << delay.count()
+                          << "ms — likely Postgres's connection pool is "
+                          << "still starting up";
+            engine::SleepFor(delay);
+        }
+    }
+}
+
 } // namespace
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -172,7 +215,7 @@ struct PersistentStore::Impl {
     storages::postgres::ClusterPtr cluster;
 
     explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
-        RunMigrations(cluster);
+        RunMigrationsWithRetry(cluster);
     }
 
     // ── Read helpers ─────────────────────────────────────────────────────
