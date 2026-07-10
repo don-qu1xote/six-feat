@@ -226,6 +226,10 @@ std::string PathHandler::HandleRequestThrow(
     return BuildPathJson(from_ref, to_ref, result.ctx);
 }
 
+// from_ref/to_ref are the path's fixed source and target endpoints; their
+// order is meaningful and pinned by the single call site above, so swapping
+// them is not a realistic mistake (same rationale as ErrorJson above).
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::string PathHandler::BuildPathJson(const ArtistRef&    from_ref,
                                         const ArtistRef&    to_ref,
                                         const PathContext&  ctx) const

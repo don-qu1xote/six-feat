@@ -117,7 +117,10 @@ std::string Base64UrlEncode(const unsigned char* data, std::size_t len) {
 // and within the spec's required 43-128 length range.
 std::string GenerateCodeVerifier() {
     std::array<unsigned char, 32> rand_bytes{};
-    if (RAND_bytes(rand_bytes.data(), rand_bytes.size()) != 1) {
+    // RAND_bytes takes an int count; the array size is a std::size_t, so cast
+    // explicitly (the fixed size 32 is well within int range) to avoid an
+    // implementation-defined narrowing conversion.
+    if (RAND_bytes(rand_bytes.data(), static_cast<int>(rand_bytes.size())) != 1) {
         throw std::runtime_error("RAND_bytes failed");
     }
     return Base64UrlEncode(rand_bytes.data(), rand_bytes.size());
