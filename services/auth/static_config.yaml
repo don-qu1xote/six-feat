@@ -17,7 +17,7 @@
 
 components_manager:
   task_processors:
-    &main_tp main-task-processor:
+    main-task-processor:
       worker_threads: 4
       thread_name: main-worker
 
@@ -27,23 +27,23 @@ components_manager:
 
     # [IDEA-27 pattern] Dedicated, low-concurrency TP for the internal
     # metrics endpoint so scraping never contends with OAuth handling.
-    &monitor_tp monitor-task-processor:
+    monitor-task-processor:
       worker_threads: 1
       thread_name: monitor-worker
 
-  default_task_processor: *main_tp
+  default_task_processor: main-task-processor
 
   components:
     server:
       listener:
         port: 8083
-        task_processor: *main_tp
+        task_processor: main-task-processor
       # Internal-only listener for handler-server-monitor below — separate
       # port, no host port mapping in docker-compose.yml, no auth-checker
       # of its own.
       listener-monitor:
         port: 8088
-        task_processor: *monitor_tp
+        task_processor: monitor-task-processor
 
     dns-client:
       fs-task-processor: fs-task-processor
@@ -82,32 +82,32 @@ components_manager:
     handler-auth-login:
       path: /auth/login
       method: GET
-      task_processor: *main_tp
+      task_processor: main-task-processor
 
     handler-auth-callback:
       path: /auth/callback
       method: GET
-      task_processor: *main_tp
+      task_processor: main-task-processor
 
     handler-auth-logout:
       path: /auth/logout
       # [F-38] POST-only — GET made logout triggerable cross-site by a bare
       # <img src="/auth/logout"> or a browser/proxy link prefetch.
       method: POST
-      task_processor: *main_tp
+      task_processor: main-task-processor
 
     handler-auth-me:
       path: /auth/me
       method: GET
-      task_processor: *main_tp
+      task_processor: main-task-processor
 
     handler-healthz:
       path: /healthz
       method: GET
-      task_processor: *main_tp
+      task_processor: main-task-processor
 
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     handler-server-monitor:
       path: /metrics
       method: GET
-      task_processor: *monitor_tp
+      task_processor: monitor-task-processor

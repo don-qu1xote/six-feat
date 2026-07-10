@@ -13,3 +13,4 @@ front/coverage/
 front/node_modules/
 front/dist/
 .DS_Store
+*.orig
