@@ -80,13 +80,15 @@ export function setupSeedCard() {
 
 // IDEA-22: seed-only "show more collaborations" action — re-fetches the
 // current seed's graph with a bumped ?limit= and merges it into the canvas.
+// SF-WEB-10: the trigger is the truncation-banner's own action button, built
+// dynamically by updateTruncationBanner — so this listens for clicks
+// delegated through the banner rather than binding to a static element.
 export function setupLoadMoreCollabs() {
-  if (!els.btnLoadMoreCollabs) return;
-  els.btnLoadMoreCollabs.addEventListener("click", () => {
-    showMoreCollaborations();
-  });
-  els.truncationBannerAction?.addEventListener("click", () => {
-    showMoreCollaborations();
+  if (!els.truncationBanner) return;
+  els.truncationBanner.addEventListener("click", e => {
+    if (e.target.closest("#truncation-banner-action")) {
+      showMoreCollaborations();
+    }
   });
 }
 
@@ -104,6 +106,7 @@ export function updateTruncationBanner() {
 
   if (!State.truncated) {
     els.truncationBanner.hidden = true;
+    els.truncationBanner.querySelector("#truncation-banner-action")?.remove();
     return;
   }
 
@@ -111,6 +114,18 @@ export function updateTruncationBanner() {
     els.truncationBannerText.textContent =
       `Showing top ${State.shownSongCount} collaborations — there may be more.`;
   }
+
+  let action = els.truncationBanner.querySelector("#truncation-banner-action");
+  if (!action) {
+    action = document.createElement("button");
+    action.type = "button";
+    action.id = "truncation-banner-action";
+    action.className = "truncation-banner-action";
+    els.truncationBanner.appendChild(action);
+  }
+  action.innerHTML =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg> Show ${State.shownSongCount} more`;
+
   els.truncationBanner.hidden = false;
 }
 

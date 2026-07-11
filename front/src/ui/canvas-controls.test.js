@@ -37,7 +37,8 @@ vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { updateTruncationBanner } from "./canvas-controls.js";
+import { showMoreCollaborations } from "../api/api.js";
+import { updateTruncationBanner, setupLoadMoreCollabs } from "./canvas-controls.js";
 
 beforeEach(() => {
   State.truncated = false;
@@ -48,6 +49,8 @@ beforeEach(() => {
   els.truncationBanner.hidden = true;
   els.truncationBannerText = document.createElement("span");
   els.truncationBanner.appendChild(els.truncationBannerText);
+
+  showMoreCollaborations.mockClear();
 });
 
 describe("updateTruncationBanner", () => {
@@ -84,5 +87,42 @@ describe("updateTruncationBanner", () => {
     els.truncationBanner = null;
     State.truncated = true;
     expect(() => updateTruncationBanner()).not.toThrow();
+  });
+
+  it("has no action control in the DOM while not truncated", () => {
+    State.truncated = false;
+    updateTruncationBanner();
+    expect(els.truncationBanner.querySelector("#truncation-banner-action")).toBeNull();
+  });
+
+  it("renders a single action control containing the shown count when truncated", () => {
+    State.truncated = true;
+    State.shownSongCount = 40;
+    updateTruncationBanner();
+    const actions = els.truncationBanner.querySelectorAll("#truncation-banner-action");
+    expect(actions.length).toBe(1);
+    expect(actions[0].textContent).toContain("40");
+  });
+
+  it("removes the action control again once no longer truncated", () => {
+    State.truncated = true;
+    State.shownSongCount = 40;
+    updateTruncationBanner();
+    expect(els.truncationBanner.querySelector("#truncation-banner-action")).not.toBeNull();
+
+    State.truncated = false;
+    updateTruncationBanner();
+    expect(els.truncationBanner.querySelector("#truncation-banner-action")).toBeNull();
+  });
+
+  it("triggers showMoreCollaborations exactly once per click on the action control", () => {
+    State.truncated = true;
+    State.shownSongCount = 40;
+    updateTruncationBanner();
+    setupLoadMoreCollabs();
+
+    els.truncationBanner.querySelector("#truncation-banner-action").click();
+
+    expect(showMoreCollaborations).toHaveBeenCalledTimes(1);
   });
 });

@@ -895,10 +895,12 @@
     }
     .truncation-banner[hidden] { display: none !important; }
     .truncation-banner-action {
+      display: inline-flex; align-items: center; gap: var(--space-1);
       font-family: inherit; font-size: inherit; font-weight: 600;
       color: var(--amber); background: none; border: none; padding: 0;
-      cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+      cursor: pointer;
     }
+    .truncation-banner-action svg { width: 14px; height: 14px; flex-shrink: 0; stroke: currentColor; fill: none; }
     .truncation-banner-action:hover { color: var(--paper); }
 
     .status-icon-btn {
@@ -1959,12 +1961,7 @@
 
       <span class="truncation-banner" id="truncation-banner" role="status" aria-live="polite" hidden>
         <span id="truncation-banner-text"></span>
-        <button class="truncation-banner-action" id="truncation-banner-action" type="button">Show more</button>
       </span>
-
-      <button class="status-icon-btn" id="btn-load-more-collabs" type="button" aria-label="Show more collaborations" data-tip="Show more collaborations" title="Show more collaborations">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
-      </button>
 
       <button class="status-icon-btn" id="info-btn" type="button" aria-label="Legend">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-info"/></svg>
