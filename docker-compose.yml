@@ -1,3 +1,17 @@
+x-hardening: &hardening
+  # Hardening (IDEA-29 / SF-INF-01): immutable rootfs, no Linux capabilities,
+  # no privilege escalation. Applied to every application service (six-feat,
+  # six-feat-enrichment, six-feat-genius-gateway, six-feat-auth) — never to
+  # postgres (needs to write its data dir / WAL) or nginx (its entrypoint
+  # writes envsubst'd config into /etc/nginx/conf.d at startup).
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - "no-new-privileges:true"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -129,13 +143,7 @@ services:
     # privilege escalation. The only path six_feat writes to at runtime is
     # /tmp/config_vars.yaml (see docker-entrypoint.sh) — everything else
     # under /app and /usr/share/six_feat is baked into the image read-only.
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - "no-new-privileges:true"
+    <<: *hardening
     # Limit resources so a runaway background worker doesn't starve the host
     deploy:
       resources:
@@ -195,6 +203,7 @@ services:
       # reported as a failed dependency before it's had the chance to.
       start_period: 120s
     restart: unless-stopped
+    <<: *hardening
     deploy:
       resources:
         limits:
@@ -294,13 +303,7 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - "no-new-privileges:true"
+    <<: *hardening
     deploy:
       resources:
         limits:
@@ -333,6 +336,7 @@ services:
       retries: 3
       start_period: 120s
     restart: unless-stopped
+    <<: *hardening
     deploy:
       resources:
         limits:
