@@ -72,6 +72,12 @@ SHARED_SONG_ID      = 70001
 BINARY      = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
 FRONT_DIST  = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
 FRONT_INDEX = Path(os.environ.get("E2E_FRONT_INDEX", REPO_ROOT / "front" / "index.html"))
+# [SF-SEC-02] The real vendored vis-network bundle — this env serves the
+# actual built front-end to a real browser, so (unlike tests/conftest.py's
+# /dev/null stub) it must be the genuine file or the graph never renders.
+VENDOR_VIS_NETWORK = Path(
+    os.environ.get("E2E_VENDOR_VIS_NETWORK", REPO_ROOT / "front" / "vendor" / "vis-network.min.js")
+)
 
 _STATIC_CONFIG_TEMPLATE = """\
 components_manager:
@@ -197,6 +203,16 @@ components_manager:
       file-path: {script_file_path}
       content-type: application/javascript; charset=utf-8
 
+    # [SF-SEC-02] Real vendored vis-network bundle (see VENDOR_VIS_NETWORK
+    # above) — a real browser loads this page, so unlike tests/conftest.py's
+    # /dev/null stub, this must be the genuine file or the graph never draws.
+    handler-vendor-vis-network:
+      path: /vendor/vis-network.min.js
+      method: GET
+      task_processor: main-task-processor
+      file-path: {vendor_vis_network_path}
+      content-type: application/javascript; charset=utf-8
+
     handler-healthz:
       path: /healthz
       method: GET
@@ -261,6 +277,11 @@ def cmd_up() -> None:
         )
     if not FRONT_INDEX.exists():
         sys.exit(f"[e2e_env] {FRONT_INDEX} not found.")
+    if not VENDOR_VIS_NETWORK.exists():
+        sys.exit(
+            f"[e2e_env] {VENDOR_VIS_NETWORK} not found — vis-network vendor "
+            f"bundle is missing (see DEVELOPMENT.md / front/vendor/)."
+        )
     script_name, script_path = _resolve_script_bundle()
 
     mock_state = it_conftest._MockState()
@@ -314,6 +335,7 @@ def cmd_up() -> None:
         front_index_path=str(FRONT_INDEX),
         script_url_path=f"/{script_name}",
         script_file_path=str(script_path),
+        vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
     ))
 
     proc = subprocess.Popen(

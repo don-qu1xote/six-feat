@@ -2083,8 +2083,13 @@
 
   <div class="toast" id="toast" role="alert" aria-live="polite"></div>
 
-  <!-- Alternative: self-host vis-network@9.1.9/standalone/umd/vis-network.min.js under /vendor/ and drop integrity/crossorigin -->
-  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js" integrity="sha384-yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ" crossorigin="anonymous"></script>
+  <!-- [SF-SEC-02] Self-hosted — vis-network@9.1.9/standalone/umd/vis-network.min.js,
+       vendored verbatim under front/vendor/ (see DEVELOPMENT.md for how to
+       bump the pinned version). Same-origin, so no integrity/crossorigin
+       needed — the whole point was to stop depending on unpkg.com being up
+       and byte-for-byte unchanged (see git history for the CDN+SRI version
+       this replaced). -->
+  <script src="/vendor/vis-network.min.js"></script>
   <script src="/script.js"></script>
 </body>
 </html>

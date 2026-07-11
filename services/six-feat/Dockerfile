@@ -165,8 +165,9 @@ COPY --from=builder /install/bin/six_feat                     ./six_feat
 COPY --from=builder /install/etc/six_feat/static_config.yaml ./static_config.yaml
 
 # Front-end files — paths must match static_config.yaml:
-#   handler-index  → /usr/share/six_feat/index.html
-#   handler-script → /usr/share/six_feat/<hashed script filename>
+#   handler-index              → /usr/share/six_feat/index.html
+#   handler-script             → /usr/share/six_feat/<hashed script filename>
+#   handler-vendor-vis-network → /usr/share/six_feat/vendor/vis-network.min.js
 #
 # The JS bundle keeps its content-hashed name (script.<hash>.js) all the way
 # into the runtime image — no renaming to a static "script.js" here. The
@@ -181,6 +182,12 @@ RUN SCRIPT_FILENAME="$(sed -n 's/.*"script": *"\([^"]*\)".*/\1/p' /tmp/manifest.
  && test -n "$SCRIPT_FILENAME" \
  && echo "$SCRIPT_FILENAME" > /usr/share/six_feat/.script-filename \
  && rm /tmp/manifest.json
+
+# [SF-SEC-02] Self-hosted vis-network vendor bundle (see front/vendor/ —
+# vis-network@9.1.9/standalone/umd/vis-network.min.js, pinned as a source
+# file rather than fetched at build time) — replaces the old unpkg.com CDN
+# <script src=...> tag in front/index.html.
+COPY front/vendor/vis-network.min.js /usr/share/six_feat/vendor/vis-network.min.js
 
 COPY services/six-feat/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

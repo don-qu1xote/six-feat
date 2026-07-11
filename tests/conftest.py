@@ -413,6 +413,18 @@ components_manager:
       file-path: /dev/null
       content-type: application/javascript; charset=utf-8
 
+    # [SF-SEC-02] Self-hosted vis-network vendor bundle — unconditionally
+    # registered by main.cpp, so every static config that boots this binary
+    # needs a matching section, same as every other handler here. The API
+    # integration suite never loads a real page, so /dev/null is fine (same
+    # stub pattern as handler-index/handler-script above).
+    handler-vendor-vis-network:
+      path: /vendor/vis-network.min.js
+      method: GET
+      task_processor: main-task-processor
+      file-path: /dev/null
+      content-type: application/javascript; charset=utf-8
+
     handler-healthz:
       path: /healthz
       method: GET

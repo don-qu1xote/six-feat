@@ -16,12 +16,11 @@ with a set of hardening headers:
     partial-update, each hover on one of those nodes re-triggers the blocked
     load, which is the flicker/stutter reported on hover) plus data: (the
     inline SVG placeholder avatars generated in front/src/helpers.js).
-    connect-src allows https://unpkg.com (vis-network's UMD bundle makes a
-    same-origin-relative fetch for its own assets at runtime). script-src
-    allows https://unpkg.com (the vis-network CDN bundle loaded by
-    index.html). style-src allows 'unsafe-inline' (index.html's inline
-    <style> block) and https://fonts.googleapis.com; font-src allows
-    https://fonts.gstatic.com.
+    style-src allows 'unsafe-inline' (index.html's inline <style> block) and
+    https://fonts.googleapis.com; font-src allows https://fonts.gstatic.com.
+    [SF-SEC-02] vis-network is self-hosted (front/vendor/vis-network.min.js,
+    served at /vendor/vis-network.min.js) instead of loaded from unpkg.com,
+    so script-src/connect-src no longer need — and must not — allow that host.
   - X-Content-Type-Options: nosniff
   - Referrer-Policy: strict-origin-when-cross-origin
   - X-Frame-Options: DENY
@@ -29,9 +28,11 @@ with a set of hardening headers:
 Scenarios covered:
   1.  GET / returns all four headers with the expected values
   2.  GET /script.js returns all four headers with the expected values
-  3.  Content-Security-Policy directives cover the external hosts the page
-      actually loads (images.genius.com, assets.genius.com, unpkg.com, fonts.*)
-  4.  Existing Content-Type headers are unaffected by the new headers
+  3.  GET /vendor/vis-network.min.js returns all four headers, plus content
+  4.  Content-Security-Policy directives cover the external hosts the page
+      actually loads (images.genius.com, assets.genius.com, fonts.*) and no
+      longer reference unpkg.com
+  5.  Existing Content-Type headers are unaffected by the new headers
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from conftest import SERVICE_BASE
 
 INDEX_URL = f"{SERVICE_BASE}/"
 SCRIPT_URL = f"{SERVICE_BASE}/script.js"
+VENDOR_VIS_NETWORK_URL = f"{SERVICE_BASE}/vendor/vis-network.min.js"
 
 pytestmark = pytest.mark.static_headers  # custom marker; see pytest.ini
 
@@ -118,7 +120,37 @@ class TestScriptSecurityHeaders:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. CSP directive contents — must cover every external host the front-end
+# 3. GET /vendor/vis-network.min.js — [SF-SEC-02] the self-hosted vendor
+#    bundle that replaced the unpkg.com CDN <script> tag.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestVendorVisNetworkSecurityHeaders:
+    def test_returns_200(self, anon_client: requests.Session):
+        resp = anon_client.get(VENDOR_VIS_NETWORK_URL)
+        _skip_if_not_implemented(resp)
+        assert resp.status_code == 200
+
+    @pytest.mark.parametrize("header,value", list(EXPECTED_STATIC_HEADERS.items()))
+    def test_header_present(self, anon_client: requests.Session, header: str, value: str):
+        resp = anon_client.get(VENDOR_VIS_NETWORK_URL)
+        _skip_if_not_implemented(resp)
+        assert resp.headers.get(header) == value, (
+            f"Expected {header}: {value}, got {resp.headers.get(header)!r}"
+        )
+
+    def test_csp_present(self, anon_client: requests.Session):
+        resp = anon_client.get(VENDOR_VIS_NETWORK_URL)
+        _skip_if_not_implemented(resp)
+        assert "content-security-policy" in resp.headers
+
+    def test_content_type_still_javascript(self, anon_client: requests.Session):
+        resp = anon_client.get(VENDOR_VIS_NETWORK_URL)
+        _skip_if_not_implemented(resp)
+        assert "javascript" in resp.headers.get("content-type", "")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. CSP directive contents — must cover every external host the front-end
 #    actually loads, otherwise the page breaks (blocked script/style/font/img).
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -152,23 +184,23 @@ class TestCspDirectiveContents:
         csp = resp.headers["content-security-policy"]
         assert "https://assets.genius.com" in csp
 
-    def test_connect_src_allows_unpkg(self, anon_client: requests.Session):
-        """vis-network's UMD bundle (loaded from unpkg.com, see script-src
-        below) issues its own fetch/XHR calls at runtime — without unpkg.com
-        in connect-src those are blocked."""
+    def test_connect_src_does_not_allow_unpkg(self, anon_client: requests.Session):
+        """[SF-SEC-02] vis-network is now self-hosted (front/vendor/), so
+        connect-src no longer needs — and must not grant — unpkg.com."""
         resp = anon_client.get(INDEX_URL)
         _skip_if_not_implemented(resp)
         csp = resp.headers["content-security-policy"]
         assert "connect-src" in csp
-        assert "https://unpkg.com" in csp
+        assert "unpkg.com" not in csp
 
-    def test_script_src_allows_visnetwork_cdn(self, anon_client: requests.Session):
-        """index.html loads vis-network from unpkg.com — must not be CSP-blocked."""
+    def test_script_src_does_not_allow_unpkg(self, anon_client: requests.Session):
+        """[SF-SEC-02] index.html now loads vis-network from
+        /vendor/vis-network.min.js (same-origin), not unpkg.com."""
         resp = anon_client.get(INDEX_URL)
         _skip_if_not_implemented(resp)
         csp = resp.headers["content-security-policy"]
         assert "script-src" in csp
-        assert "https://unpkg.com" in csp
+        assert "unpkg.com" not in csp
 
     def test_script_src_has_no_unsafe_inline(self, anon_client: requests.Session):
         """Inline onerror=... handlers were refactored out; script-src should stay strict."""

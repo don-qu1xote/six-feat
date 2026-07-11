@@ -24,13 +24,16 @@ namespace {
 // hover partial-update (structural fix for vis.js dropping avatars across
 // updates), each hover on one of those nodes re-triggers a blocked load ->
 // fallback swap instead of just rendering the cached placeholder, which is
-// the flicker reported on hover. Everything else the front-end loads is
-// either same-origin, Google Fonts, or the vis-network CDN bundle.
+// the flicker reported on hover. [SF-SEC-02] vis-network is now self-hosted
+// (front/vendor/vis-network.min.js, served same-origin at
+// handler-vendor-vis-network) instead of loaded from unpkg.com, so
+// script-src/connect-src no longer need to allow that host — everything the
+// front-end loads is now either same-origin or Google Fonts.
 constexpr std::string_view kContentSecurityPolicy =
     "default-src 'self'; "
     "img-src 'self' https://images.genius.com https://assets.genius.com data:; "
-    "connect-src 'self' https://unpkg.com; "
-    "script-src 'self' https://unpkg.com; "
+    "connect-src 'self'; "
+    "script-src 'self'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src https://fonts.gstatic.com; "
     "frame-ancestors 'none'";

@@ -15,6 +15,17 @@ const SEED_ARTIST   = process.env.E2E_SEED_ARTIST   || "Aurora Vale";
 const TARGET_ARTIST = process.env.E2E_TARGET_ARTIST || "Kessler Vane";
 
 test("search artist → graph → node click → sidebar, then path search → hop-chain", async ({ page }) => {
+  // [SF-SEC-02] vis-network must be self-hosted (front/vendor/) — regression
+  // test for the old CDN <script src="https://unpkg.com/..."> tag: if it
+  // ever comes back, this fails instead of silently depending on unpkg.com
+  // being reachable and byte-for-byte unchanged (see DEVELOPMENT.md).
+  const unpkgRequests = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).hostname === "unpkg.com") {
+      unpkgRequests.push(request.url());
+    }
+  });
+
   await page.goto("/");
 
   // ── Page loads ──────────────────────────────────────────────────────────
@@ -26,6 +37,10 @@ test("search artist → graph → node click → sidebar, then path search → h
 
   const graphNodeButtons = page.locator("#graph-a11y-node-list button[data-node-id]");
   await expect(graphNodeButtons).toHaveCount(2);
+
+  // vis-network has had its chance to load and draw the graph by now —
+  // assert it never reached out to the old CDN.
+  expect(unpkgRequests).toEqual([]);
 
   // ── Click a node → sidebar opens ────────────────────────────────────────
   // The canvas graph has no per-node DOM elements to click (vis.js draws it

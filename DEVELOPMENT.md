@@ -228,4 +228,11 @@ APP_SECRET env var is required for session encryption — generate with: openssl
 
 ### Граф не рендерится в браузере
 
-`front/index.html` подключает `vis-network` с CDN (`unpkg.com`) с зафиксированным SRI-хешем (`integrity="sha384-..."`). Если версия файла на CDN разойдётся с той, под которую посчитан хеш (`vis-network@9.1.9`), браузер молча заблокирует загрузку скрипта — в консоли будет ошибка вида `Failed to find a valid digest`, граф останется пустым. Исправление: убедиться, что версия в URL совпадает с версией, под которую считался хеш, пересчитать `integrity`, либо самостоятельно захостить `vis-network` под `/vendor/` и убрать `integrity`/`crossorigin` (см. комментарий рядом с этим тегом в `index.html`).
+[SF-SEC-02] `front/index.html` больше не грузит `vis-network` с CDN (`unpkg.com`) — файл захостен локально: `front/vendor/vis-network.min.js` (пин версии `vis-network@9.1.9/standalone/umd/vis-network.min.js`), раздаётся сервисом `six-feat` по пути `/vendor/vis-network.min.js` (`handler-vendor-vis-network`, `services/six-feat/src/http/static_handler.hpp` — `StaticFileHandler`, тот же механизм, что и для `index.html`/`script.js`) и копируется в рантайм-образ отдельным `COPY` в `services/six-feat/Dockerfile`. Тег в `index.html` — простой same-origin `<script src="/vendor/vis-network.min.js"></script>`, без `integrity`/`crossorigin` (раньше — CDN с зафиксированным SRI-хешем; при расхождении версии на CDN с той, под которую посчитан хеш, браузер молча блокировал скрипт — `Failed to find a valid digest`, граф оставался пустым; теперь эта категория отказа исключена, версия зафиксирована самим содержимым файла в репозитории).
+
+Если граф всё равно не рендерится — проверьте:
+- Файл `front/vendor/vis-network.min.js` присутствует и не пуст (`git lfs`/чекаут не сломан).
+- В образе он лежит по `/usr/share/six_feat/vendor/vis-network.min.js` (см. `Dockerfile`) и путь совпадает с `file-path` в `static_config.yaml`'s `handler-vendor-vis-network`.
+- Консоль браузера не показывает 404 на `/vendor/vis-network.min.js` — значит либо `Dockerfile`'ный `COPY` не отработал, либо в `static_config.yaml` разъехались `path`.
+
+Обновление версии: заменить `front/vendor/vis-network.min.js` на новый `standalone/umd/vis-network.min.js` из релиза `vis-network`, обновить версию в комментариях (`index.html`, `static_handler.hpp`) и пересобрать образ — никакого пересчёта `integrity`/SRI больше не требуется.

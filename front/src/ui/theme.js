@@ -7,7 +7,7 @@
 // prefers-color-scheme instead of remembering the last click. This has to
 // run from here (main.js's init(), called on DOMContentLoaded) rather than
 // an inline <head> script — the page's Content-Security-Policy is
-// script-src 'self' https://unpkg.com with no 'unsafe-inline', so an inline
+// script-src 'self' with no 'unsafe-inline', so an inline
 // script is simply never executed (silently blocked, no console throw to
 // even notice). init() calls setupThemeToggle() first, before any other
 // setup, to keep the unstyled/wrong-theme window as short as possible.

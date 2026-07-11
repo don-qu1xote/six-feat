@@ -54,4 +54,17 @@ public:
   using StaticFileHandler::StaticFileHandler;
 };
 
+// [SF-SEC-02] Serves the self-hosted vis-network vendor bundle (see
+// front/vendor/vis-network.min.js) at /vendor/vis-network.min.js — replaces
+// the old https://unpkg.com/vis-network@.../standalone/umd/vis-network.min.js
+// CDN <script> tag (integrity/crossorigin dropped: same-origin now, and no
+// longer depends on unpkg.com serving byte-for-byte the same file the SRI
+// hash was computed against). Version-pinned like the CDN URL was, just
+// tracked as a vendored file instead — see DEVELOPMENT.md for how to bump it.
+class VendorVisNetworkHandler final : public StaticFileHandler {
+public:
+  static constexpr std::string_view kName = "handler-vendor-vis-network";
+  using StaticFileHandler::StaticFileHandler;
+};
+
 } // namespace six_feat

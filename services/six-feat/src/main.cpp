@@ -58,6 +58,9 @@ int main(int argc, char *argv[]) {
             .Append<six_feat::SseStatusHandler>()
             .Append<six_feat::IndexHandler>()
             .Append<six_feat::ScriptHandler>()
+            // [SF-SEC-02] Self-hosted vis-network vendor bundle — see
+            // static_handler.hpp.
+            .Append<six_feat::VendorVisNetworkHandler>()
             // [IDEA-27] Internal metrics endpoint — bound to listener-monitor
             // (see static_config.yaml), not the public listener.
             .Append<server::handlers::ServerMonitor>();
