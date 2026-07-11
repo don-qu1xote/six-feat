@@ -6,8 +6,6 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "http/status_handler.hpp"
-#include "core/request_id.hpp"
-#include "core/security_headers.hpp"
 #include "schemas/six-feat/status_handler_schema.hpp"
 
 #include <stdexcept>
@@ -27,22 +25,19 @@ using namespace userver;
 
 StatusHandler::StatusHandler(const components::ComponentConfig&  config,
                               const components::ComponentContext& context)
-    : HttpHandlerBase(config, context)
+    : AuthenticatedHandlerBase(config, context,
+                                context.FindComponent<auth::OAuthConfig>())
     , store_(context.FindComponent<PersistentStore>())
     , enrichment_(context.FindComponent<EnrichmentClient>())
-    , oauth_(context.FindComponent<auth::OAuthConfig>())
 {}
 
 std::string StatusHandler::HandleRequestThrow(
     const server::http::HttpRequest&  request,
     server::request::RequestContext& /*ctx*/) const
 {
-    EnsureRequestId(request);
-    ApplySecurityHeaders(request);
-
     // [F-29] Same policy as graph/path: no session, no data. Anonymous
     // callers were previously able to enumerate artist_id via this endpoint.
-    if (!auth::RequireSession(request, oauth_)) {
+    if (!Prologue(request)) {
         return R"({"error":"not_authenticated"})";
     }
 

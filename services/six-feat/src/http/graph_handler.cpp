@@ -142,7 +142,8 @@ bool ETagMatches(const std::string& if_none_match, const std::string& etag) {
 
 GraphHandler::GraphHandler(const components::ComponentConfig&  config,
                             const components::ComponentContext& context)
-    : HttpHandlerBase(config, context),
+    : AuthenticatedHandlerBase(config, context,
+                                context.FindComponent<auth::OAuthConfig>()),
       service_(context.FindComponent<CollabService>()),
       store_(context.FindComponent<PersistentStore>()),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
@@ -180,11 +181,11 @@ std::string GraphHandler::HandleRequestThrow(
     // [ТЗ-6] No more server-level fallback token — every request must carry a
     // valid Genius session. Anonymous requests are rejected outright instead
     // of silently riding a shared config-supplied token.
-    const auto session = auth::RequireSession(request, oauth_);
-    if (!session) {
+    const auto token = Prologue(request);
+    if (!token) {
         return ErrorGraph("not_authenticated");
     }
-    const std::string& user_token = *session;
+    const std::string& user_token = *token;
 
     const RoleMask mask = ParseRoleMask(request.GetArg("roles"));
 

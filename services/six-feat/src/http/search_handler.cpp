@@ -63,7 +63,8 @@ std::string RateLimitKey(const server::http::HttpRequest& request,
 
 SearchHandler::SearchHandler(const components::ComponentConfig&  config,
                               const components::ComponentContext& context)
-    : HttpHandlerBase(config, context),
+    : AuthenticatedHandlerBase(config, context,
+                                context.FindComponent<auth::OAuthConfig>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
       oauth_(context.FindComponent<auth::OAuthConfig>())
 {}
@@ -90,12 +91,12 @@ std::string SearchHandler::HandleRequestThrow(
     response.SetHeader(std::string{"X-RateLimit-Remaining"},
                          std::to_string(rate_limit_.Remaining(limit_key)));
 
-    const auto session = auth::RequireSession(request, oauth_);
-    if (!session) {
+    const auto token = Prologue(request);
+    if (!token) {
         return ErrorJson("not_authenticated",
             "Login with Genius to search for artists.");
     }
-    const std::string& user_token = *session;
+    const std::string& user_token = *token;
 
     const std::string& query = request.GetArg("q");
     if (query.empty()) {

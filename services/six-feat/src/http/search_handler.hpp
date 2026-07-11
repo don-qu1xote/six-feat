@@ -24,17 +24,17 @@
 #include "auth/token_router.hpp"
 #include "genius/genius_gateway_client.hpp"
 #include "core/rate_limiter.hpp"
+#include "http/authenticated_handler_base.hpp"
 
 #include <string>
 #include <string_view>
 
 #include <userver/components/component_fwd.hpp>
-#include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/yaml_config/schema.hpp>
 
 namespace six_feat {
 
-class SearchHandler final : public userver::server::handlers::HttpHandlerBase {
+class SearchHandler final : public AuthenticatedHandlerBase {
 public:
     static constexpr std::string_view kName = "handler-search";
 

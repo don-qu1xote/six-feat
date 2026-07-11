@@ -28,19 +28,18 @@
 #include "auth/token_router.hpp"
 #include "enrichment/enrichment_client.hpp"
 #include "storage/persistent_store.hpp"
+#include "http/authenticated_handler_base.hpp"
 
 #include <string>
 #include <string_view>
 
 #include <userver/components/component_fwd.hpp>
-#include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/server/http/http_response_body_stream_fwd.hpp>
 #include <userver/yaml_config/schema.hpp>
 
 namespace six_feat {
 
-class SseStatusHandler final
-    : public userver::server::handlers::HttpHandlerBase {
+class SseStatusHandler final : public AuthenticatedHandlerBase {
 public:
     static constexpr std::string_view kName = "handler-status-stream";
 
@@ -55,9 +54,8 @@ public:
     static userver::yaml_config::Schema GetStaticConfigSchema();
 
 private:
-    PersistentStore&         store_;
-    EnrichmentClient&        enrichment_;
-    const auth::OAuthConfig& oauth_;
+    PersistentStore&  store_;
+    EnrichmentClient& enrichment_;
 };
 
 } // namespace six_feat

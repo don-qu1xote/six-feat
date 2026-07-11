@@ -115,7 +115,8 @@ ResolveEndpoint(CollabService& svc, const std::string& param,
 
 PathHandler::PathHandler(const components::ComponentConfig&  config,
                           const components::ComponentContext& context)
-    : HttpHandlerBase(config, context),
+    : AuthenticatedHandlerBase(config, context,
+                                context.FindComponent<auth::OAuthConfig>()),
       service_(context.FindComponent<CollabService>()),
       oauth_(context.FindComponent<auth::OAuthConfig>())
 {}
@@ -142,12 +143,12 @@ std::string PathHandler::HandleRequestThrow(
     resp.SetHeader(std::string{"X-RateLimit-Remaining"},
                     std::to_string(rate_limit_.Remaining(limit_key)));
 
-    const auto session = auth::RequireSession(request, oauth_);
-    if (!session) {
+    const auto token = Prologue(request);
+    if (!token) {
         return ErrorJson("not_authenticated",
             "Login with Genius to search for collaboration paths.");
     }
-    const std::string& user_token = *session;
+    const std::string& user_token = *token;
 
     const std::string& from_param = request.GetArg("from");
     const std::string& to_param   = request.GetArg("to");

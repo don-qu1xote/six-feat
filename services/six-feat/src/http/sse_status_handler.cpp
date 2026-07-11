@@ -18,8 +18,6 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "http/sse_status_handler.hpp"
-#include "core/request_id.hpp"
-#include "core/security_headers.hpp"
 #include "schemas/six-feat/sse_status_handler_schema.hpp"
 
 #include <chrono>
@@ -64,10 +62,10 @@ std::string MakeSseEvent(std::int64_t depth, int song_count, bool enriching) {
 SseStatusHandler::SseStatusHandler(
     const components::ComponentConfig&  config,
     const components::ComponentContext& context)
-    : HttpHandlerBase(config, context)
+    : AuthenticatedHandlerBase(config, context,
+                                context.FindComponent<auth::OAuthConfig>())
     , store_(context.FindComponent<PersistentStore>())
     , enrichment_(context.FindComponent<EnrichmentClient>())
-    , oauth_(context.FindComponent<auth::OAuthConfig>())
 {}
 
 void SseStatusHandler::HandleStreamRequest(
@@ -75,13 +73,10 @@ void SseStatusHandler::HandleStreamRequest(
     server::request::RequestContext& /*ctx*/,
     server::http::ResponseBodyStream& response_body_stream) const
 {
-    EnsureRequestId(request);
-    ApplySecurityHeaders(request);
-
     auto& response = request.GetHttpResponse();
 
     // [F-29] Same policy as graph/path: no session, no data.
-    if (!auth::RequireSession(request, oauth_)) {
+    if (!PrologueStream(request)) {
         response_body_stream.SetEndOfHeaders();
         response_body_stream.PushBodyChunk(
             std::string{R"({"error":"not_authenticated"})"}, engine::Deadline());
