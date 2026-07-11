@@ -1,12 +1,15 @@
-name: Checkout + toolchain setup
+name: Toolchain setup
 description: >-
-  SF-CI-01: composite prefix shared by six-feat CI jobs — pinned checkout
-  plus the optional apt/node/python setup each job used to duplicate
-  inline. Every input defaults to "off" (skipped step) so a caller only
-  pays for what it asks for; combining inputs reproduces each job's former
-  duplicated prefix exactly. GitHub Actions has no YAML-anchor support, so
-  this composite action is the mechanism for de-duplicating job prefixes
-  instead.
+  SF-CI-01: composite suffix shared by six-feat CI jobs — the optional
+  apt/node/python setup each job used to duplicate inline. Every input
+  defaults to "off" (skipped step) so a caller only pays for what it asks
+  for; combining inputs reproduces each job's former duplicated prefix
+  exactly. GitHub Actions has no YAML-anchor support, so this composite
+  action is the mechanism for de-duplicating job prefixes instead.
+  NOTE: a local composite action can't checkout the repository as its own
+  bootstrap step — the runner has to already have the repo (and this
+  action.yml) on disk before it can resolve `uses: ./...` at all — so
+  callers must run actions/checkout themselves before calling this action.
 
 inputs:
   apt-packages:
@@ -32,9 +35,6 @@ inputs:
 runs:
   using: composite
   steps:
-    # ── Checkout ────────────────────────────────────────────────────────────
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
     # ── System deps ─────────────────────────────────────────────────────────
     - name: Install system deps
       if: inputs.apt-packages != ''

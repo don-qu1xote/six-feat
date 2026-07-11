@@ -84,7 +84,13 @@ jobs:
       DB_PASSWORD: six_feat_test_password
 
     steps:
-      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      # ── Checkout ────────────────────────────────────────────────────────────
+      # A local composite action can't check itself out, so this has to stay
+      # a separate step ahead of the composite call below (see the NOTE in
+      # .github/actions/setup/action.yml).
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
@@ -221,7 +227,10 @@ jobs:
       options: --user root
     needs: build-and-test
     steps:
-      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev clang-tidy
@@ -254,12 +263,34 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════════════════
+  # SF-CI-02: verify-yaml-anchors.py (SF-SCH-03) — pure-YAML static check
+  # (static_config.yaml anchor/alias expansion + docker-compose.yml
+  # hardening symmetry). No Docker/Postgres/userver container needed, so
+  # this runs directly on the bare runner instead of inside build-and-test's
+  # container+services.
+  # ══════════════════════════════════════════════════════════════════════════
+  verify-yaml-anchors:
+    runs-on: ubuntu-22.04
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Run verify-yaml-anchors.py
+        run: python3 scripts/verify-yaml-anchors.py
+
+  # ══════════════════════════════════════════════════════════════════════════
   # ESLint for front/
   # ══════════════════════════════════════════════════════════════════════════
   eslint:
     runs-on: ubuntu-22.04
     steps:
-      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
         with:
           node-version: "20"
@@ -286,7 +317,10 @@ jobs:
   frontend-coverage:
     runs-on: ubuntu-22.04
     steps:
-      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
         with:
           node-version: "20"
@@ -347,7 +381,10 @@ jobs:
       E2E_ENV_FILE: /tmp/six_feat_e2e_env.json
 
     steps:
-      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
@@ -443,8 +480,10 @@ jobs:
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
     steps:
-      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
-      - uses: ./.github/actions/setup
+      # ── Checkout ────────────────────────────────────────────────────────────
+      # No apt/node/python setup needed here, so no composite call — just
+      # the checkout that the composite action in other jobs also requires.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
