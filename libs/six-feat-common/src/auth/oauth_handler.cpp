@@ -2,7 +2,7 @@
 #include "auth/session_crypto.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
-#include "schemas/shared/oauth_handler_schema.hpp"
+#include "schemas/handlers/shared/oauth_handler_schema.hpp"
 
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
