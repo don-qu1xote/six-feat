@@ -10,7 +10,7 @@ import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar, showToast } from
 import { searchArtist } from "../api/api.js";
 import {
   highlightNeighborhood, highlightEdgePair, restoreDefaultColors, clearHoverHighlight,
-  cancelPendingHover
+  cancelPendingHover, selectNode, clearSelectedNode
 } from "./highlight.js";
 import { nudgePhysics } from "./physics.js";
 
@@ -53,6 +53,9 @@ export function attachNetworkEvents(nameById) {
     State._clickTimer = setTimeout(() => {
       State._clickTimer    = null;
       State._lastClickNode = null;
+      // SF-WEB-15: exactly one node carries the persistent "selected" marker
+      // at a time — selectNode() reverts whichever node was selected before.
+      selectNode(nodeId);
       setFocus(nodeId);
       showArtistSidebar(nodeId);
     }, 260);
@@ -152,4 +155,5 @@ export function clearFocus() {
   State.focusedNodeId = null;
   hideArtistSidebar();
   restoreDefaultColors();
+  clearSelectedNode();
 }

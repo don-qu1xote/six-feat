@@ -84,6 +84,8 @@ export {
   restoreDefaultColors,
   selectEdge,
   clearSelectedEdge,
+  selectNode,
+  clearSelectedNode,
   recolorInPlace,
 } from "./highlight.js";
 

@@ -171,6 +171,11 @@ const graphSlice = {
 const interactionSlice = {
   focusedNodeId:  null,
   selectedEdgeId: null,
+  // SF-WEB-15: persistent single-node selection marker, analogous to
+  // selectedEdgeId — set by selectNode()/cleared by clearSelectedNode()
+  // (vis-adapter/highlight.js), independent of the hover-neighborhood
+  // highlight driven by focusedNodeId/highlightNeighborhood.
+  selectedNodeId: null,
   pathHighlight:  null,
 
   // Баг "тряска графа подвисает": флаг активного перетаскивания ноды —
@@ -265,6 +270,7 @@ bridge("songLimit",      graphSlice);
 
 bridge("focusedNodeId",  interactionSlice);
 bridge("selectedEdgeId", interactionSlice);
+bridge("selectedNodeId", interactionSlice);
 bridge("pathHighlight",  interactionSlice);
 bridge("_isDragging",    interactionSlice);
 bridge("_clickTimer",    interactionSlice);

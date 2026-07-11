@@ -164,6 +164,10 @@ export function resetHoverState() {
   _pendingHoverEdgeIds.clear();
   if (_hoverNodeRafId) { cancelAnimationFrame(_hoverNodeRafId); _hoverNodeRafId = null; }
   if (_hoverEdgeRafId) { cancelAnimationFrame(_hoverEdgeRafId); _hoverEdgeRafId = null; }
+  // SF-WEB-15: a full network teardown (destroyNetwork/clearGraphForPathSearch)
+  // also invalidates whatever edges the persistent node-selection marker had
+  // lit up — the DataSet they were painted on is about to be destroyed.
+  _selectedNodeEdgeIds.clear();
 }
 
 // Used by events.js dragStart: cancels any not-yet-applied hover rAF without
@@ -182,6 +186,13 @@ function _applyHoverNode(nodeId) {
   _hoverNodeRafId = requestAnimationFrame(() => {
     _hoverNodeRafId = null;
     if (!State.nodesDS) return;
+
+    // SF-WEB-15: the persistently selected node (selectNode below) owns its
+    // own marker — mirrors the State.selectedEdgeId guard in
+    // _hoverEdgeUpdate. Without this, hovering the selected node would
+    // repaint it with hover styling, and the later blur would revert it to
+    // the plain default look instead of back to the selection marker.
+    if (nodeId === State.selectedNodeId) return;
 
     // _accent берём из State.graphNodes, а НЕ из nodesDS.get() —
     // vis.js DataSet не сохраняет кастомные поля (_accent, _dimBorder)
@@ -292,6 +303,11 @@ function _hoverEdgeUpdate(edgeId) {
   // его нод) не должен её временно перекрашивать/утончать, иначе на blur
   // пришлось бы отличать "откатить hover" от "откатить выбор".
   if (edgeId === State.selectedEdgeId) return null;
+  // SF-WEB-15: same reasoning — an edge already lit up by the persistently
+  // selected node's marker (_selectedNodeEdgeIds) keeps that look; hovering
+  // a neighboring node that shares this edge shouldn't temporarily swap it
+  // to hover styling only to revert it back on blur.
+  if (_selectedNodeEdgeIds.has(edgeId)) return null;
   const ed = State.edgesDS.get(edgeId);
   if (!ed) return null;
   const edgeColor = ed._brightColor || ed._color || COLOR.pulse;
@@ -445,6 +461,150 @@ export function clearSelectedEdge() {
   }
 }
 
+// ─── Persistent node selection (SF-WEB-15) ─────────────────────────────────
+// Same shape as selectEdge/clearSelectedEdge above, but for nodes. Before
+// this, a clicked node's only visual trace was the hover-style neighborhood
+// highlight applied by setFocus()/highlightNeighborhood() (see events.js) —
+// that path re-paints whatever node is passed in without ever reverting the
+// PREVIOUSLY clicked node's border/shadow first, so clicking A then B left
+// both A and B looking "selected". selectNode/clearSelectedNode are a
+// separate, single-slot marker (State.selectedNodeId, distinct from
+// State.focusedNodeId) that always reverts the previous pick before
+// painting the new one — not to be confused with highlightNeighborhood's
+// hover-style dimming of the rest of the graph, which is unaffected.
+//
+// Правка: маркер выбора должен вести себя как hover-подсветка соседства
+// (_applyHoverNode/_applyHoverNodeEdges) — подсвечивать ВСЕ инцидентные
+// выбранной ноде рёбра, а не только саму ноду — но персистентно и тем же
+// акцентным цветом (COLOR.neon), что и ободок самой ноды/рёбер, вместо
+// hover-акцента ноды. _selectedNodeEdgeIds — набор id рёбер, подсвеченных
+// текущим выбором (аналог _hoveredEdgeIds), чтобы при смене/снятии выбора
+// откатить ровно их, ни больше ни меньше.
+const SELECTED_NODE_BORDER_WIDTH = 4;
+const SELECTED_NODE_SHADOW_COLOR = "rgba(255,45,120,0.55)";
+const SELECTED_NODE_SHADOW_SIZE  = 18;
+
+let _selectedNodeEdgeIds = new Set();
+
+function _selectedNodeUpdate(nodeId) {
+  if (!State.nodesDS) return null;
+  const graphNode = _getNode(nodeId);
+  if (!graphNode) return null;
+  return {
+    id: nodeId,
+    ..._imageFieldsFor(graphNode),
+    color: { border: COLOR.neon, background: COLOR.panel },
+    borderWidth: SELECTED_NODE_BORDER_WIDTH,
+    shadow: { enabled: true, color: SELECTED_NODE_SHADOW_COLOR, size: SELECTED_NODE_SHADOW_SIZE, x: 0, y: 0 }
+  };
+}
+
+// Инцидентное выбранной ноде ребро красится тем же COLOR.neon, что и
+// ободок самой ноды — единый акцент для "это выбрано", а не отдельный
+// hover-акцент ребра (_hoverEdgeUpdate использует ed._brightColor).
+function _selectedNodeEdgeUpdate(edgeId) {
+  if (!State.edgesDS) return null;
+  if (edgeId === State.selectedEdgeId) return null; // персистентный выбор ребра приоритетнее
+  const ed = State.edgesDS.get(edgeId);
+  if (!ed) return null;
+  const graphEdge = _getEdge(edgeId);
+  const weight = graphEdge && Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1;
+  return {
+    id: edgeId,
+    color: { color: COLOR.neon, opacity: 1 },
+    width: edgeWidthForWeight(weight) + SELECTED_EDGE_WIDTH_DELTA
+  };
+}
+
+// Reverts a node to its resting (non-selected, non-hover) look — same
+// border-width formula _clearHoveredNode uses (seed > expanded > leaf).
+function _defaultNodeUpdate(nodeId) {
+  if (!State.nodesDS) return null;
+  const graphNode = _getNode(nodeId);
+  if (!graphNode) return null;
+  const isExpanded = State.expandedNodes.has(graphNode.id);
+  const borderWidth = graphNode.isSeed ? 5 : (isExpanded ? 4 : 2);
+  const shadow = graphNode.isSeed ? seedShadow() : { enabled: false };
+  const border = graphNode._dimBorder || "rgba(143,166,201,0.25)";
+  return {
+    id: nodeId,
+    ..._imageFieldsFor(graphNode),
+    color: { border, background: COLOR.panel },
+    borderWidth,
+    shadow
+  };
+}
+
+// Applies the persistent marker to nodeId + all its incident edges (mirrors
+// _applyHoverNode + _applyHoverNodeEdges, but with the selection's own neon
+// accent instead of the hovered node's role accent).
+function _applySelectedNode(nodeId) {
+  const nodeUpd = _selectedNodeUpdate(nodeId);
+  if (nodeUpd && State.nodesDS) {
+    try { State.nodesDS.update(nodeUpd); }
+    catch (err) { console.warn("select node update failed", err); }
+  }
+
+  if (!State.edgesDS) return;
+  const edgeUpd = [];
+  for (const edgeId of _getEdgeIdsForNode(nodeId)) {
+    const u = _selectedNodeEdgeUpdate(edgeId);
+    if (!u) continue;
+    _selectedNodeEdgeIds.add(edgeId);
+    edgeUpd.push(u);
+  }
+  if (edgeUpd.length) {
+    try { State.edgesDS.update(edgeUpd); }
+    catch (err) { console.warn("select node edges update failed", err); }
+  }
+}
+
+// Reverts the currently selected node AND every edge it lit up back to
+// their default look, then clears State.selectedNodeId. No-op if nothing
+// is selected.
+function _revertSelectedNode() {
+  if (State.selectedNodeId == null) return;
+
+  const prevUpd = _defaultNodeUpdate(State.selectedNodeId);
+  State.selectedNodeId = null;
+  if (prevUpd && State.nodesDS) {
+    try { State.nodesDS.update(prevUpd); }
+    catch (err) { console.warn("selected node revert failed", err); }
+  }
+
+  if (_selectedNodeEdgeIds.size > 0 && State.edgesDS) {
+    const edgeUpd = [];
+    for (const edgeId of _selectedNodeEdgeIds) {
+      const u = _defaultEdgeUpdate(edgeId);
+      if (u) edgeUpd.push(u);
+    }
+    if (edgeUpd.length) {
+      try { State.edgesDS.update(edgeUpd); }
+      catch (err) { console.warn("selected node edges revert failed", err); }
+    }
+  }
+  _selectedNodeEdgeIds.clear();
+}
+
+// Marks nodeId (+ its incident edges) as the persistently selected node,
+// reverting whichever node was selected before (if any) — node and edges
+// both — first. At most one node's selection is ever visible at a time.
+export function selectNode(nodeId) {
+  if (State.selectedNodeId != null && State.selectedNodeId !== nodeId) {
+    _revertSelectedNode();
+  }
+
+  State.selectedNodeId = nodeId;
+  _applySelectedNode(nodeId);
+}
+
+// Clears the selection (if any) and returns the node + its edges to their
+// default look. Called from clearFocus() (events.js) — background click,
+// Escape/focusSeed, sidebar close.
+export function clearSelectedNode() {
+  _revertSelectedNode();
+}
+
 // Вызывается из blurNode/blurEdge — это НЕ то же самое, что "снять всю
 // подсветку и вернуть граф к дефолту" (см. _applyDefault ниже, mode=
 // "default", всё ещё используется clearFocus()/новым setFocus()/сбросом
@@ -515,6 +675,11 @@ function _applyDefault() {
 
   const nU = [], eU = [];
   _defaultNodeColors.forEach(({ border, shadow }, id) => {
+    // SF-WEB-15: mirrors the selectedEdgeId skip below — a full batch reset
+    // must not stomp the persistently selected node's marker; that's only
+    // ever cleared via clearSelectedNode (background click, clearFocus/Escape,
+    // selecting another node).
+    if (id === State.selectedNodeId) return;
     const graphNode = _getNode(id);
     nU.push({ id, ..._imageFieldsFor(graphNode), color: { border, background: COLOR.panel }, opacity: DIM_LEVELS.off, shadow });
   });
@@ -525,6 +690,9 @@ function _applyDefault() {
     // сайдбара, выбор другого ребра/ноды), не как побочный эффект пути,
     // изначально не связанного с выбором ребра.
     if (id === State.selectedEdgeId) return;
+    // SF-WEB-15: same treatment for edges lit up by the persistently
+    // selected node's marker — only clearSelectedNode reverts these.
+    if (_selectedNodeEdgeIds.has(id)) return;
     eU.push({ id, color: { color, opacity: 0.45 } });
   });
   if (nU.length) State.nodesDS.update(nU);

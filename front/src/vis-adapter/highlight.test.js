@@ -16,6 +16,8 @@ import {
   applyDimState,
   resetHoverState,
   clearHoverHighlight,
+  selectNode,
+  clearSelectedNode,
 } from "./highlight.js";
 
 function mockDataSet() {
@@ -33,6 +35,7 @@ beforeEach(() => {
   State.nodesDS = mockDataSet();
   State.edgesDS = mockDataSet();
   State.expandedNodes = new Set();
+  State.selectedNodeId = null;
 });
 
 describe("buildDefaultColorCache + applyDimState('default')", () => {
@@ -226,5 +229,100 @@ describe("clearHoverHighlight(blurredNodeId) — stale blur guard", () => {
 
     clearHoverHighlight();
     expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }));
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// SF-WEB-15: selectNode/clearSelectedNode — persistent single-node selection.
+// Regression guard for "clicking different nodes accumulates highlighting":
+// exactly one node (+ its incident edges) must carry the selection marker at
+// a time — mirroring hover-neighborhood's node+edges reach, but persistent
+// and painted in the marker's own neon accent — and clicking background
+// (clearSelectedNode) must return the graph to no selection at all.
+// ════════════════════════════════════════════════════════════════════════════
+describe("selectNode/clearSelectedNode — persistent single-node selection", () => {
+  function graphWithChain() {
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },
+      { id: 3, isSeed: false, _dimBorder: "#222222" },
+      { id: 4, isSeed: false, _dimBorder: "#333333" },
+    ];
+    // Chain 1-2-3-4: node 2's edges are "1_2"/"2_3", node 3's are "2_3"/"3_4".
+    State.graphEdges = [
+      { id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 },
+      { id: "2_3", from: 2, to: 3, dominantRole: "primary",  weight: 1 },
+      { id: "3_4", from: 3, to: 4, dominantRole: "primary",  weight: 1 },
+    ];
+    invalidateColorCache();
+    State.nodesDS = mockDataSet();
+    State.edgesDS = { update: vi.fn(), get: id => ({ id, _brightColor: "#fff" }) };
+  }
+
+  it("selecting a node also highlights its incident edges in the same neon accent as the node border", () => {
+    graphWithChain();
+
+    selectNode(2); // click A
+
+    const nodeUpd = State.nodesDS.update.mock.calls.find(c => c[0].id === 2)[0];
+    expect(nodeUpd.color.border).toBe(COLOR.neon);
+
+    const [edgeUpd] = State.edgesDS.update.mock.calls[0];
+    expect(edgeUpd.map(u => u.id).sort()).toEqual(["1_2", "2_3"]); // only A's own edges
+    expect(edgeUpd.every(u => u.color.color === COLOR.neon)).toBe(true);
+  });
+
+  it("clicking node A then node B leaves exactly B (+ its edges) selected — no accumulation", () => {
+    graphWithChain();
+
+    selectNode(2); // click A
+    expect(State.selectedNodeId).toBe(2);
+
+    State.nodesDS.update.mockClear();
+    State.edgesDS.update.mockClear();
+    selectNode(3); // click B
+
+    expect(State.selectedNodeId).toBe(3);
+
+    // Node: A reverted to its default border, B marked selected — never both.
+    const nodeCalls = State.nodesDS.update.mock.calls.map(c => c[0]);
+    const revertA = nodeCalls.find(u => u.id === 2);
+    const markB   = nodeCalls.find(u => u.id === 3);
+    expect(revertA.color.border).toBe("#111111");
+    expect(markB.color.border).toBe(COLOR.neon);
+
+    // Edges: "1_2" (only A's) reverted to default; "2_3" (shared) and "3_4"
+    // (only B's) end up marked — last write per id is the final canvas state.
+    const edgeUpdates = {};
+    for (const [batch] of State.edgesDS.update.mock.calls) {
+      for (const u of batch) edgeUpdates[u.id] = u;
+    }
+    expect(edgeUpdates["1_2"].color.color).not.toBe(COLOR.neon);
+    expect(edgeUpdates["2_3"].color.color).toBe(COLOR.neon);
+    expect(edgeUpdates["3_4"].color.color).toBe(COLOR.neon);
+  });
+
+  it("clicking the background (clearSelectedNode) removes both the node marker and its edge highlights", () => {
+    graphWithChain();
+
+    selectNode(2);
+    State.nodesDS.update.mockClear();
+    State.edgesDS.update.mockClear();
+
+    clearSelectedNode();
+
+    expect(State.selectedNodeId).toBe(null);
+    const [nodeUpd] = State.nodesDS.update.mock.calls[0];
+    expect(nodeUpd).toMatchObject({ id: 2, color: { border: "#111111" } });
+
+    const [edgeUpd] = State.edgesDS.update.mock.calls[0];
+    expect(edgeUpd.map(u => u.id).sort()).toEqual(["1_2", "2_3"]);
+    expect(edgeUpd.every(u => u.color.color !== COLOR.neon)).toBe(true);
+  });
+
+  it("clearSelectedNode is a no-op when nothing is selected", () => {
+    clearSelectedNode();
+    expect(State.selectedNodeId).toBe(null);
+    expect(State.nodesDS.update).not.toHaveBeenCalled();
   });
 });
