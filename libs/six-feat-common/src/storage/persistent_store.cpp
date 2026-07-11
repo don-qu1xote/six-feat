@@ -30,6 +30,8 @@
 #include <userver/storages/postgres/transaction.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
+#include "schemas/components/persistent_store_schema.hpp"
+
 namespace six_feat {
 
 using namespace userver;
@@ -431,16 +433,7 @@ PersistentStore::PersistentStore(
 PersistentStore::~PersistentStore() = default;
 
 yaml_config::Schema PersistentStore::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<components::ComponentBase>(R"(
-type: object
-description: Durable L1 store for artist/song/credit data
-additionalProperties: false
-properties:
-    dbname:
-        type: string
-        description: Name of the components::Postgres component whose cluster backs this store
-        defaultDescription: postgres-db-1
-)");
+    return yaml_config::MergeSchemas<components::ComponentBase>(kPersistentStoreComponentSchema);
 }
 
 std::optional<ArtistSongs>

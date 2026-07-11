@@ -29,6 +29,8 @@
 #include <userver/utils/async.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
+#include "schemas/components/collab_service_schema.hpp"
+
 namespace six_feat {
 
 using namespace userver;
@@ -83,29 +85,7 @@ CollabService::CollabService(const components::ComponentConfig&  config,
 {}
 
 yaml_config::Schema CollabService::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<components::ComponentBase>(R"(
-type: object
-description: Orchestration layer — graph and path assembly
-additionalProperties: false
-properties:
-    path-max-expand-rounds:
-        type: integer
-        description: Maximum BFS expansion rounds for FindPath
-        defaultDescription: '3'
-    path-max-frontier-size:
-        type: integer
-        description: Maximum frontier nodes expanded per BFS round (caps Genius RPS)
-        defaultDescription: '20'
-    fg-fanout-max-concurrent:
-        type: integer
-        description: >-
-            Maximum concurrent FetchSongDetail calls in flight to
-            six-feat-genius-gateway at once, shared across FetchFg and
-            CheckDirectPath. Should stay at or under the gateway's own
-            lane-fg-max-concurrent so this service never floods a lane
-            shared with other callers.
-        defaultDescription: '6'
-)");
+    return yaml_config::MergeSchemas<components::ComponentBase>(kCollabServiceComponentSchema);
 }
 
 std::optional<ArtistRef> CollabService::ResolveById(

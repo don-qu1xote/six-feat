@@ -30,6 +30,8 @@
 #include <userver/utils/statistics/writer.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
+#include "schemas/components/enrichment_worker_schema.hpp"
+
 namespace six_feat {
 
 using namespace userver;
@@ -164,22 +166,7 @@ void EnrichmentWorker::RecoverPendingArtists() {
 }
 
 yaml_config::Schema EnrichmentWorker::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<components::ComponentBase>(R"(
-type: object
-description: Background artist deep-scan worker
-additionalProperties: false
-properties:
-    queue-capacity:
-        type: integer
-        description: Maximum pending enrichment jobs
-        defaultDescription: '1024'
-    drain-timeout-ms:
-        type: integer
-        description: >-
-            How long to wait for already-queued jobs to finish processing on
-            shutdown before cancelling the worker task
-        defaultDescription: '5000'
-)");
+    return yaml_config::MergeSchemas<components::ComponentBase>(kEnrichmentWorkerComponentSchema);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

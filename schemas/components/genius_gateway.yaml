@@ -1,0 +1,64 @@
+type: object
+description: Network-only Genius API client with lane-aware resilience
+additionalProperties: false
+properties:
+    genius-base-url:
+        type: string
+        description: Base URL
+        defaultDescription: https://api.genius.com
+    songs-limit-fg:
+        type: integer
+        description: Songs per FG request
+        defaultDescription: '40'
+    songs-limit-bg:
+        type: integer
+        description: Songs per BG deep scan
+        defaultDescription: '80'
+    match-threshold:
+        type: number
+        description: Fuzzy match threshold
+        defaultDescription: '0.9'
+    backoff-max-attempts:
+        type: integer
+        description: Maximum retry attempts for transient failures
+        defaultDescription: '4'
+    backoff-base-ms:
+        type: integer
+        description: Initial backoff interval in milliseconds
+        defaultDescription: '200'
+    backoff-cap-ms:
+        type: integer
+        description: Maximum backoff interval in milliseconds
+        defaultDescription: '10000'
+    lane-fg-tokens-per-sec:
+        type: number
+        description: Rate limit for foreground requests in tokens per second
+        defaultDescription: '8.0'
+    lane-fg-burst:
+        type: integer
+        description: Token bucket burst size for foreground lane
+        defaultDescription: '8'
+    lane-fg-max-concurrent:
+        type: integer
+        description: Maximum concurrent foreground requests
+        defaultDescription: '8'
+    lane-bg-tokens-per-sec:
+        type: number
+        description: Rate limit for background requests in tokens per second
+        defaultDescription: '2.0'
+    lane-bg-burst:
+        type: integer
+        description: Token bucket burst size for background lane
+        defaultDescription: '2'
+    lane-bg-max-concurrent:
+        type: integer
+        description: Maximum concurrent background requests
+        defaultDescription: '1'
+    cb-failure-threshold:
+        type: integer
+        description: Number of failures before circuit opens
+        defaultDescription: '5'
+    cb-open-seconds:
+        type: integer
+        description: Duration to keep circuit open in seconds
+        defaultDescription: '30'

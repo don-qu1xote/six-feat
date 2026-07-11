@@ -19,6 +19,8 @@
 #include <userver/utils/statistics/writer.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
+#include "schemas/components/enrichment_client_schema.hpp"
+
 namespace six_feat {
 
 using namespace userver;
@@ -84,42 +86,7 @@ void EnrichmentClient::OnAllComponentsLoaded() {
 }
 
 yaml_config::Schema EnrichmentClient::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<components::ComponentBase>(R"(
-type: object
-description: HTTP client for the standalone six-feat-enrichment service
-additionalProperties: false
-properties:
-    enrichment-base-url:
-        type: string
-        description: Base URL of the six-feat-enrichment service, e.g. http://six-feat-enrichment:8081
-    timeout-ms:
-        type: integer
-        description: Per-request timeout for calls to the enrichment service
-        defaultDescription: '3000'
-    retry-queue-capacity:
-        type: integer
-        description: Maximum number of jobs held in the in-memory retry queue
-        defaultDescription: '256'
-    retry-interval-ms:
-        type: integer
-        description: How often the retry-queue flusher re-attempts pending jobs
-        defaultDescription: '15000'
-    max-retry-age-seconds:
-        type: integer
-        description: >-
-            Maximum age of a job in the retry queue before it is dropped
-            (its user token would have expired anyway; durable recovery
-            on the enrichment side picks it up later)
-        defaultDescription: '900'
-    enriching-cache-ttl-ms:
-        type: integer
-        description: >-
-            [IDEA-49] TTL for the in-memory IsEnriching() cache shared by
-            every open SSE stream and the status handler, so N concurrently
-            open streams for the same artist don't each poll
-            /internal/status on every ~2s tick
-        defaultDescription: '3000'
-)");
+    return yaml_config::MergeSchemas<components::ComponentBase>(kEnrichmentClientComponentSchema);
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) - matches the

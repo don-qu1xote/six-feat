@@ -13,6 +13,8 @@
 #include <userver/logging/log.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
+#include "schemas/components/artist_repository_schema.hpp"
+
 namespace six_feat {
 
 using namespace userver;
@@ -25,12 +27,7 @@ ArtistRepository::ArtistRepository(
 {}
 
 yaml_config::Schema ArtistRepository::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<components::ComponentBase>(R"(
-type: object
-description: Read-through artist data repository backed by PersistentStore (Postgres)
-additionalProperties: false
-properties: {}
-)");
+    return yaml_config::MergeSchemas<components::ComponentBase>(kArtistRepositoryComponentSchema);
 }
 
 // ── GetArtistSongs ───────────────────────────────────────────────────────────

@@ -20,13 +20,16 @@ endif()
 
 include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
-six_feat_embed_schema(six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(six-feat/status_handler     kStatusHandlerSchema    STATUS_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(six-feat/sse_status_handler kSseStatusHandlerSchema SSE_STATUS_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(six-feat/readiness_handler  kReadinessHandlerSchema READINESS_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(six-feat/static_handler     kStaticHandlerSchema    STATIC_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/status_handler     kStatusHandlerSchema    STATUS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/sse_status_handler kSseStatusHandlerSchema SSE_STATUS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/readiness_handler  kReadinessHandlerSchema READINESS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/static_handler     kStaticHandlerSchema    STATIC_HANDLER_SCHEMA_HEADER)
+
+six_feat_embed_schema(components/enrichment_client kEnrichmentClientComponentSchema ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/collab_service    kCollabServiceComponentSchema    COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${GRAPH_HANDLER_SCHEMA_HEADER}
@@ -36,6 +39,8 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${SSE_STATUS_HANDLER_SCHEMA_HEADER}
     ${READINESS_HANDLER_SCHEMA_HEADER}
     ${STATIC_HANDLER_SCHEMA_HEADER}
+    ${ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER}
+    ${COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER}
 )
 
 add_executable(six_feat

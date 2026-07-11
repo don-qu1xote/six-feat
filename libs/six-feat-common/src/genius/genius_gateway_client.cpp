@@ -13,6 +13,8 @@
 #include <userver/logging/log.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
+#include "schemas/components/genius_gateway_client_schema.hpp"
+
 namespace six_feat {
 
 using namespace userver;
@@ -62,31 +64,7 @@ GeniusGatewayClient::GeniusGatewayClient(
 {}
 
 yaml_config::Schema GeniusGatewayClient::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<components::ComponentBase>(R"(
-type: object
-description: HTTP client for the standalone six-feat-genius-gateway service
-additionalProperties: false
-properties:
-    genius-gateway-base-url:
-        type: string
-        description: Base URL of the six-feat-genius-gateway service, e.g. http://six-feat-genius-gateway:8082
-    timeout-ms:
-        type: integer
-        description: Per-request timeout for calls to the genius-gateway service
-        defaultDescription: '5000'
-    songs-limit-fg:
-        type: integer
-        description: Songs per FG request
-        defaultDescription: '40'
-    songs-limit-bg:
-        type: integer
-        description: Songs per BG deep scan
-        defaultDescription: '80'
-    match-threshold:
-        type: number
-        description: Fuzzy match threshold used by CollabService::ResolveByName
-        defaultDescription: '0.75'
-)");
+    return yaml_config::MergeSchemas<components::ComponentBase>(kGeniusGatewayClientComponentSchema);
 }
 
 formats::json::Value

@@ -26,11 +26,11 @@ endif()
 
 include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
-six_feat_embed_schema(genius-gateway/artist_handler     kArtistHandlerSchema             GENIUS_GATEWAY_ARTIST_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(genius-gateway/song_list_handler   kSongListHandlerSchema           GENIUS_GATEWAY_SONG_LIST_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(genius-gateway/song_handler        kSongHandlerSchema               GENIUS_GATEWAY_SONG_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(genius-gateway/candidates_handler  kCandidatesHandlerSchema         GENIUS_GATEWAY_CANDIDATES_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(genius-gateway/health_handler      kGeniusGatewayHealthHandlerSchema GENIUS_GATEWAY_HEALTH_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/genius-gateway/artist_handler     kArtistHandlerSchema             GENIUS_GATEWAY_ARTIST_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/genius-gateway/song_list_handler   kSongListHandlerSchema           GENIUS_GATEWAY_SONG_LIST_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/genius-gateway/song_handler        kSongHandlerSchema               GENIUS_GATEWAY_SONG_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/genius-gateway/candidates_handler  kCandidatesHandlerSchema         GENIUS_GATEWAY_CANDIDATES_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/genius-gateway/health_handler      kGeniusGatewayHealthHandlerSchema GENIUS_GATEWAY_HEALTH_HANDLER_SCHEMA_HEADER)
 
 add_custom_target(six_feat_genius_gateway_schema_headers DEPENDS
     ${GENIUS_GATEWAY_ARTIST_HANDLER_SCHEMA_HEADER}

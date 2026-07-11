@@ -22,9 +22,9 @@ endif()
 
 include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
-six_feat_embed_schema(enrichment/enqueue_handler         kEnqueueHandlerSchema          ENRICHMENT_ENQUEUE_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(enrichment/internal_status_handler kInternalStatusHandlerSchema   ENRICHMENT_INTERNAL_STATUS_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(enrichment/health_handler          kEnrichmentHealthHandlerSchema ENRICHMENT_HEALTH_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/enrichment/enqueue_handler         kEnqueueHandlerSchema          ENRICHMENT_ENQUEUE_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/enrichment/internal_status_handler kInternalStatusHandlerSchema   ENRICHMENT_INTERNAL_STATUS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/enrichment/health_handler          kEnrichmentHealthHandlerSchema ENRICHMENT_HEALTH_HANDLER_SCHEMA_HEADER)
 
 add_custom_target(six_feat_enrichment_schema_headers DEPENDS
     ${ENRICHMENT_ENQUEUE_HANDLER_SCHEMA_HEADER}

@@ -1,0 +1,4 @@
+type: object
+description: Read-through artist data repository backed by PersistentStore (Postgres)
+additionalProperties: false
+properties: {}

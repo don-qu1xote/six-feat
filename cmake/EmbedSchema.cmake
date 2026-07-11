@@ -1,10 +1,10 @@
-# six_feat_embed_schema(<handler-name> <const-name> <out-var>)
+# six_feat_embed_schema(<schema-path> <const-name> <out-var>)
 #
-# Embeds schemas/handlers/<handler-name>.yaml (relative to the repo root,
-# shared between the root CMakeLists.txt and services/enrichment/CMakeLists.txt)
-# as a generated C++ header at build time:
+# Embeds schemas/<schema-path>.yaml (relative to the repo root, e.g.
+# "handlers/six-feat/graph_handler" or "components/persistent_store") as a
+# generated C++ header at build time:
 #
-#   generated/schemas/<handler-name>_schema.hpp
+#   generated/schemas/<schema-path>_schema.hpp
 #   constexpr const char* <const-name> = R"(...)";
 #
 # so GetStaticConfigSchema() implementations can #include the header instead
@@ -12,7 +12,7 @@
 # <out-var> in the caller's scope. Regenerates automatically whenever the
 # source .yaml file changes (see cmake/GenerateSchemaHeader.cmake).
 function(six_feat_embed_schema HANDLER_NAME CONST_NAME OUT_VAR)
-    set(schema_yaml "${SIX_FEAT_ROOT}/schemas/handlers/${HANDLER_NAME}.yaml")
+    set(schema_yaml "${SIX_FEAT_ROOT}/schemas/${HANDLER_NAME}.yaml")
     set(output_header "${CMAKE_BINARY_DIR}/generated/schemas/${HANDLER_NAME}_schema.hpp")
 
     # Generate the header eagerly at configure time as well, not only at build
@@ -52,7 +52,7 @@ function(six_feat_embed_schema HANDLER_NAME CONST_NAME OUT_VAR)
             "${schema_yaml}"
             "${SIX_FEAT_ROOT}/cmake/GenerateSchemaHeader.cmake"
             "${SIX_FEAT_ROOT}/cmake/schema_header.hpp.in"
-        COMMENT "Embedding schemas/handlers/${HANDLER_NAME}.yaml -> generated/schemas/${HANDLER_NAME}_schema.hpp"
+        COMMENT "Embedding schemas/${HANDLER_NAME}.yaml -> generated/schemas/${HANDLER_NAME}_schema.hpp"
         VERBATIM
     )
 
