@@ -15,6 +15,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <userver/components/component_config.hpp>
@@ -333,23 +334,64 @@ struct PersistentStore::Impl {
             "  name = excluded.name, image_url = excluded.image_url, url = excluded.url",
             data.seed.id, data.seed.name, data.seed.image, data.seed.url);
 
+        // De-dup credit artists by id before sending — the same collaborator
+        // can appear on many songs, and UNNEST would otherwise ship (and the
+        // planner scan) duplicate rows for no benefit under ON CONFLICT DO
+        // NOTHING.
+        std::vector<std::int64_t>                     artist_ids;
+        std::vector<std::string>                       artist_names;
+        std::vector<std::string>                       artist_images;
+        std::vector<std::string>                       artist_urls;
+        std::unordered_map<std::int64_t, std::size_t>  seen_artists;
+
+        std::vector<std::int64_t> song_ids;
+        std::vector<std::string>  song_titles;
+
+        std::vector<std::int64_t> credit_song_ids;
+        std::vector<std::int64_t> credit_artist_ids;
+        std::vector<std::int16_t> credit_roles;
+
         for (const auto& song : data.songs) {
-            trx.Execute(
-                "INSERT INTO songs(id, title) VALUES($1, $2) "
-                "ON CONFLICT (id) DO NOTHING",
-                song.id, song.title);
+            song_ids.push_back(song.id);
+            song_titles.push_back(song.title);
 
             for (const auto& tc : song.credits) {
-                trx.Execute(
-                    "INSERT INTO artists(id, name, image_url, url) VALUES($1, $2, $3, $4) "
-                    "ON CONFLICT (id) DO NOTHING",
-                    tc.artist.id, tc.artist.name, tc.artist.image, tc.artist.url);
-
-                trx.Execute(
-                    "INSERT INTO credits(song_id, artist_id, role) VALUES($1, $2, $3) "
-                    "ON CONFLICT (song_id, artist_id, role) DO NOTHING",
-                    song.id, tc.artist.id, RoleToInt(tc.role));
+                if (seen_artists.emplace(tc.artist.id, artist_ids.size()).second) {
+                    artist_ids.push_back(tc.artist.id);
+                    artist_names.push_back(tc.artist.name);
+                    artist_images.push_back(tc.artist.image);
+                    artist_urls.push_back(tc.artist.url);
+                }
+                credit_song_ids.push_back(song.id);
+                credit_artist_ids.push_back(tc.artist.id);
+                credit_roles.push_back(RoleToInt(tc.role));
             }
+        }
+
+        // artists and songs must land before credits — credits(song_id,
+        // artist_id) both carry FK references (V1 schema).
+        if (!artist_ids.empty()) {
+            trx.Execute(
+                "INSERT INTO artists(id, name, image_url, url) "
+                "SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::text[], $4::text[]) "
+                "ON CONFLICT (id) DO NOTHING",
+                artist_ids, artist_names, artist_images, artist_urls);
+        }
+
+        if (!song_ids.empty()) {
+            trx.Execute(
+                "INSERT INTO songs(id, title) "
+                "SELECT * FROM UNNEST($1::bigint[], $2::text[]) "
+                "ON CONFLICT (id) DO NOTHING",
+                song_ids, song_titles);
+        }
+
+        if (!credit_song_ids.empty()) {
+            trx.Execute(
+                "INSERT INTO credits(song_id, artist_id, role) "
+                "SELECT * FROM UNNEST($1::bigint[], $2::bigint[], $3::smallint[]) "
+                "ON CONFLICT (song_id, artist_id, role) DO NOTHING",
+                credit_song_ids, credit_artist_ids, credit_roles);
         }
 
         const auto now_ts = static_cast<std::int64_t>(
