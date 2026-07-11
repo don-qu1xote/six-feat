@@ -54,8 +54,8 @@
 //     вместо O(E) на каждый hover.
 // ════════════════════════════════════════════════════════════════════════════
 import { State, COLOR, PATH_HIGHLIGHT_LEVELS, DIM_LEVELS } from "../state/state.js";
-import { roleStyle } from "../state/helpers.js";
-import { edgeWidthForWeight, seedShadow, _imageFieldsFor } from "./visuals.js";
+import { roleStyle, placeholderFor } from "../state/helpers.js";
+import { edgeWidthForWeight, seedShadow, _imageFieldsFor, resolveEdgeDominantRole, lightenHexColor } from "./visuals.js";
 
 // Кэш «дефолтного» состояния нод и рёбер для быстрого mode="default".
 // Заполняется в buildDefaultColorCache() при каждом изменении графа.
@@ -527,6 +527,74 @@ function _applyDefault() {
     if (id === State.selectedEdgeId) return;
     eU.push({ id, color: { color, opacity: 0.45 } });
   });
+  if (nU.length) State.nodesDS.update(nU);
+  if (eU.length) State.edgesDS.update(eU);
+}
+
+// ─── Theme recolor in place (SF-WEB-13) ────────────────────────────────────
+// setTheme (ui/theme.js) used to reuse refreshNetwork() (render.js) to
+// repaint an already-drawn graph after a dark/light flip — but refreshNetwork
+// ends with nodesDS/edgesDS.clear()+add() followed by nudgePhysics(), so a
+// plain theme toggle re-enabled physics and let expanded clusters/leaves
+// drift from wherever the user had settled them, just to repaint colours.
+// recolorInPlace instead patches only the colour-bearing fields of the
+// nodes/edges that already exist via nodesDS.update()/edgesDS.update() — no
+// clear()/add(), no moveNode/nudgePhysics — so positions and physics state
+// are left exactly as they were.
+//
+// Mirrors the same border/shadow formula nodeVisual (visuals.js) uses for a
+// node's resting (non-hover/non-path) appearance. theme.js calls
+// refreshNodeDimBorders() (graph.js) right before this, which already
+// refreshed n._accent/n._dimBorder for the new theme — read here from
+// State.graphNodes rather than recomputed a second time.
+export function recolorInPlace(nameById) {
+  if (!State.nodesDS || !State.edgesDS) return;
+
+  const nU = State.graphNodes.map(n => {
+    const isExpanded = State.expandedNodes.has(n.id);
+    const accent      = n._accent;
+    const dimBorder   = n._dimBorder || "rgba(143,166,201,0.25)";
+    const borderColor = isExpanded ? accent : dimBorder;
+
+    let shadow;
+    if (n.isSeed)        shadow = seedShadow();
+    else if (isExpanded) shadow = { enabled: true, color: `${accent}30`, size: 12, x: 0, y: 0 };
+    else                  shadow = { enabled: false };
+
+    // ТЗ-16 (спринт 3 — placeholderFor станет тема-зависимым): узлы без
+    // настоящего Genius-фото рисуют placeholderFor(), чей accent-цвет
+    // берётся из COLOR.signal/COLOR.pulse — перекрашиваем аватар под новую
+    // тему. Узлы с реальным imageUrl не трогаем.
+    const imageUpdate = n.imageUrl ? {} : {
+      image:       placeholderFor(n.name, n.isSeed),
+      brokenImage: placeholderFor(n.name, n.isSeed)
+    };
+
+    return {
+      id: n.id,
+      _accent:    accent,
+      _dimBorder: dimBorder,
+      color: {
+        border:     borderColor,
+        background: COLOR.panel,
+        hover:      { border: accent, background: COLOR.panel }
+      },
+      shadow,
+      ...imageUpdate
+    };
+  });
+
+  const eU = State.graphEdges.map(e => {
+    const color       = roleStyle(resolveEdgeDominantRole(e)).color;
+    const brightColor = lightenHexColor(color, 0.35);
+    return {
+      id: e.id,
+      color: { color, opacity: 0.40 },
+      _color:       color,
+      _brightColor: brightColor
+    };
+  });
+
   if (nU.length) State.nodesDS.update(nU);
   if (eU.length) State.edgesDS.update(eU);
 }

@@ -20,7 +20,7 @@ export function seedShadow() {
 // ════════════════════════════════════════════════════════════════════════════
 // FIX #2: Helper to brighten hex colors for edge highlights
 // ════════════════════════════════════════════════════════════════════════════
-function lightenHexColor(hex, factor = 0.4) {
+export function lightenHexColor(hex, factor = 0.4) {
   hex = hex.replace("#", "");
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);

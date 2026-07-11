@@ -20,7 +20,7 @@
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { refreshNodeDimBorders } from "../graph.js";
-import { invalidateColorCache, refreshNetwork } from "../vis-adapter/index.js";
+import { invalidateColorCache, recolorInPlace } from "../vis-adapter/index.js";
 
 function applyThemeToButton(theme) {
   if (!els.themeToggle) return;
@@ -32,17 +32,21 @@ function applyThemeToButton(theme) {
 }
 
 // A graph already drawn has its node/edge colours baked into vis.js's
-// DataSet — flipping the CSS variables alone won't repaint it. Reuses the
-// same recolor path finalizeGraphState() takes after a role/graph change
-// (refreshNodeDimBorders → invalidateColorCache → refreshNetwork) instead of
-// duplicating that sequence.
+// DataSet — flipping the CSS variables alone won't repaint it. SF-WEB-13:
+// used to reuse refreshNetwork() (clear()+add() on both DataSets, then
+// nudgePhysics) for this, but that re-enables physics and lets expanded
+// clusters/leaves drift, just to repaint colours on what should be a purely
+// cosmetic toggle. recolorInPlace (vis-adapter/highlight.js) only patches
+// colour fields of the already-drawn nodes/edges — no clear()/add(), no
+// physics — so positions stay exactly where the user left them.
+// refreshNetwork itself is untouched — still used for real new searches.
 function recolorRenderedGraph() {
   if (!State.network || !State.graphNodes.length) return;
   refreshNodeDimBorders();
   invalidateColorCache();
   const nameById = {};
   State.graphNodes.forEach(n => { nameById[n.id] = n.name; });
-  refreshNetwork(nameById, State.network.getPositions());
+  recolorInPlace(nameById);
 }
 
 export function setTheme(theme) {

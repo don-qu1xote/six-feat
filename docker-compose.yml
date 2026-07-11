@@ -112,7 +112,7 @@ services:
       # the comment on wait_for_postgres in docker-entrypoint.sh) — so a
       # container that self-heals via "restart: unless-stopped" isn't
       # reported as a failed dependency before it's had the chance to.
-      start_period: 90s
+      start_period: 120s
     restart: unless-stopped
     # Hardening (IDEA-29): immutable rootfs, no Linux capabilities, no
     # privilege escalation. The only path six_feat writes to at runtime is
@@ -182,7 +182,7 @@ services:
       # the comment on wait_for_postgres in docker-entrypoint.sh) — so a
       # container that self-heals via "restart: unless-stopped" isn't
       # reported as a failed dependency before it's had the chance to.
-      start_period: 60s
+      start_period: 120s
     restart: unless-stopped
     deploy:
       resources:
@@ -317,7 +317,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 120s
     restart: unless-stopped
     deploy:
       resources:
