@@ -30,13 +30,13 @@ components_manager:
     server:
       listener:
         port: 8082
-        task_processor: main-task-processor
+        task_processor: &main_tp main-task-processor
       # Internal-only listener for handler-server-monitor below — separate
       # port, no host port mapping in docker-compose.yml (this service has
       # none), no auth-checker of its own.
       listener-monitor:
         port: 8087
-        task_processor: monitor-task-processor
+        task_processor: &monitor_tp monitor-task-processor
 
     dns-client:
       fs-task-processor: fs-task-processor
@@ -72,27 +72,27 @@ components_manager:
     handler-internal-genius-artist:
       path: /internal/genius/artist
       method: POST
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-internal-genius-song-list:
       path: /internal/genius/song-list
       method: POST
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-internal-genius-song:
       path: /internal/genius/song
       method: POST
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-internal-genius-candidates:
       path: /internal/genius/candidates
       method: POST
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-internal-healthz:
       path: /healthz
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     # Metrics: CB state and FG/BG lane token+slot availability (genius-gateway),
@@ -100,4 +100,4 @@ components_manager:
     handler-server-monitor:
       path: /metrics
       method: GET
-      task_processor: monitor-task-processor
+      task_processor: *monitor_tp

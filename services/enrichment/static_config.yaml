@@ -30,13 +30,13 @@ components_manager:
     server:
       listener:
         port: 8081
-        task_processor: main-task-processor
+        task_processor: &main_tp main-task-processor
       # [IDEA-27] Internal-only listener for handler-server-monitor below —
       # separate port, no host port mapping in docker-compose.yml (this
       # service already has none), no auth-checker of its own.
       listener-monitor:
         port: 8086
-        task_processor: monitor-task-processor
+        task_processor: &monitor_tp monitor-task-processor
 
     dns-client:
       fs-task-processor: fs-task-processor
@@ -96,17 +96,17 @@ components_manager:
     handler-internal-enqueue:
       path: /internal/enqueue
       method: POST
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-internal-status:
       path: /internal/status
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-internal-healthz:
       path: /healthz
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     # ── Observability (IDEA-27) ─────────────────────────────────────────────
     # Metrics: enrichment_queue depth, pending_ count (enrichment-worker).
@@ -115,4 +115,4 @@ components_manager:
     handler-server-monitor:
       path: /metrics
       method: GET
-      task_processor: monitor-task-processor
+      task_processor: *monitor_tp
