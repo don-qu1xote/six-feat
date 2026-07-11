@@ -42,6 +42,14 @@ jobs:
     # service is reachable by its service id ("postgres") as hostname — same
     # DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD scheme docker-entrypoint.sh
     # uses locally to assemble db_connection_string.
+    # [SF-CI-01] This block is duplicated (identically, image aside) in
+    # e2e-smoke below rather than factored into a reusable workflow:
+    # `services:`/`container:` are per-job, so a workflow_call target would
+    # have to own the entire job body (steps included), not just this block
+    # — build-and-test and e2e-smoke's steps differ too much for that to be
+    # a real de-dup. `env` context isn't available here either (see the
+    # NOTE at the top of this file), so the image ref below is a literal
+    # copy of env.POSTGRES_IMAGE — keep both in sync when bumping it.
     services:
       postgres:
         image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
@@ -76,20 +84,11 @@ jobs:
       DB_PASSWORD: six_feat_test_password
 
     steps:
-      # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
-      # ── System deps ─────────────────────────────────────────────────────────
-      - name: Install system deps
-        run: |
-          apt-get update -q
-          apt-get install -y --no-install-recommends \
-            libssl-dev \
-            python3 \
-            python3-pip \
-            python3-venv \
-            curl
-          rm -rf /var/lib/apt/lists/*
+      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          python-testenv: "true"
 
       # ── Build services ──────────────────────────────────────────────────────
       # Each service now builds independently from its own CMakeLists.txt
@@ -132,13 +131,6 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/install
           cmake --build build-auth -j"$(nproc)"
           cmake --install build-auth
-
-      # ── Python test env ──────────────────────────────────────────────────────
-      - name: Install Python test dependencies
-        run: |
-          python3 -m venv /opt/testenv
-          /opt/testenv/bin/pip install --upgrade pip
-          /opt/testenv/bin/pip install -r requirements-test.txt
 
       # ── Unit tests (no binary needed) ────────────────────────────────────────
       # Pure-Python / pure-algorithm coverage that doesn't require the
@@ -229,15 +221,10 @@ jobs:
       options: --user root
     needs: build-and-test
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
-      - name: Install system deps
-        run: |
-          apt-get update -q
-          apt-get install -y --no-install-recommends \
-            libssl-dev \
-            clang-tidy
-          rm -rf /var/lib/apt/lists/*
+      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev clang-tidy
 
       # services/six-feat's own build tree covers both libs/six-feat-common/src
       # (pulled in via add_subdirectory) and services/six-feat/src — the same
@@ -272,9 +259,8 @@ jobs:
   eslint:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      - uses: ./.github/actions/setup
         with:
           node-version: "20"
 
@@ -300,9 +286,8 @@ jobs:
   frontend-coverage:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      - uses: ./.github/actions/setup
         with:
           node-version: "20"
 
@@ -337,6 +322,9 @@ jobs:
       options: --user root
     continue-on-error: true
 
+    # [SF-CI-01] Duplicated from build-and-test's `services.postgres` above
+    # (same image, different DB name/password) — see the comment there for
+    # why this isn't factored into a reusable workflow.
     services:
       postgres:
         image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
@@ -359,18 +347,12 @@ jobs:
       E2E_ENV_FILE: /tmp/six_feat_e2e_env.json
 
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
-      - name: Install system deps
-        run: |
-          apt-get update -q
-          apt-get install -y --no-install-recommends \
-            libssl-dev python3 python3-pip python3-venv curl
-          rm -rf /var/lib/apt/lists/*
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      - uses: ./.github/actions/setup
         with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
           node-version: "20"
+          python-testenv: "true"
 
       # six_feat and six_feat_genius_gateway each build independently from
       # their own services/<name>/CMakeLists.txt — there is no more shared
@@ -392,12 +374,6 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/install
           cmake --build build-genius-gateway -j"$(nproc)"
           cmake --install build-genius-gateway
-
-      - name: Install Python test dependencies
-        run: |
-          python3 -m venv /opt/testenv
-          /opt/testenv/bin/pip install --upgrade pip
-          /opt/testenv/bin/pip install -r requirements-test.txt
 
       - name: Install front/ dependencies
         working-directory: front
@@ -467,7 +443,8 @@ jobs:
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      # ── Checkout + toolchain setup (composite, SF-CI-01) ────────────────────
+      - uses: ./.github/actions/setup
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
