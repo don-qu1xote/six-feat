@@ -1,6 +1,6 @@
 #include "http/static_handler.hpp"
 #include "core/request_id.hpp"
-#include "schemas/six-feat/static_handler_schema.hpp"
+#include "schemas/handlers/six-feat/static_handler_schema.hpp"
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

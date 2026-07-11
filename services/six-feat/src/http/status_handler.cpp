@@ -6,7 +6,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "http/status_handler.hpp"
-#include "schemas/six-feat/status_handler_schema.hpp"
+#include "schemas/handlers/six-feat/status_handler_schema.hpp"
 
 #include <stdexcept>
 #include <string>

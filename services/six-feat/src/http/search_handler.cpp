@@ -8,7 +8,7 @@
 #include "genius/genius_error_mapping.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
-#include "schemas/six-feat/search_handler_schema.hpp"
+#include "schemas/handlers/six-feat/search_handler_schema.hpp"
 
 #include <string>
 

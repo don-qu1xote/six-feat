@@ -4,7 +4,7 @@
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "domain/role_mask.hpp"
-#include "schemas/six-feat/path_handler_schema.hpp"
+#include "schemas/handlers/six-feat/path_handler_schema.hpp"
 
 #include <algorithm>
 #include <charconv>

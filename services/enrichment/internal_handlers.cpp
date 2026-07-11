@@ -1,9 +1,9 @@
 #include "internal_handlers.hpp"
 #include "core/internal_auth.hpp"
 #include "core/request_id.hpp"
-#include "schemas/enrichment/enqueue_handler_schema.hpp"
-#include "schemas/enrichment/internal_status_handler_schema.hpp"
-#include "schemas/enrichment/health_handler_schema.hpp"
+#include "schemas/handlers/enrichment/enqueue_handler_schema.hpp"
+#include "schemas/handlers/enrichment/internal_status_handler_schema.hpp"
+#include "schemas/handlers/enrichment/health_handler_schema.hpp"
 
 #include <stdexcept>
 #include <string>

@@ -2,11 +2,11 @@
 #include "core/internal_auth.hpp"
 #include "core/request_id.hpp"
 #include "core/resilience.hpp"
-#include "schemas/genius-gateway/artist_handler_schema.hpp"
-#include "schemas/genius-gateway/song_list_handler_schema.hpp"
-#include "schemas/genius-gateway/song_handler_schema.hpp"
-#include "schemas/genius-gateway/candidates_handler_schema.hpp"
-#include "schemas/genius-gateway/health_handler_schema.hpp"
+#include "schemas/handlers/genius-gateway/artist_handler_schema.hpp"
+#include "schemas/handlers/genius-gateway/song_list_handler_schema.hpp"
+#include "schemas/handlers/genius-gateway/song_handler_schema.hpp"
+#include "schemas/handlers/genius-gateway/candidates_handler_schema.hpp"
+#include "schemas/handlers/genius-gateway/health_handler_schema.hpp"
 
 #include <optional>
 #include <string>

@@ -18,7 +18,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "http/sse_status_handler.hpp"
-#include "schemas/six-feat/sse_status_handler_schema.hpp"
+#include "schemas/handlers/six-feat/sse_status_handler_schema.hpp"
 
 #include <chrono>
 #include <string>
