@@ -1,6 +1,7 @@
 #include "enrichment/enrichment_client.hpp"
 #include "core/internal_auth.hpp"
 #include "core/internal_http.hpp"
+#include "core/request_id.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -109,7 +110,8 @@ bool EnrichmentClient::SendEnqueueRequest(std::int64_t        artist_id,
 
         const auto resp = internal_http::Post(
             http_client_, base_url_ + "/internal/enqueue", shared_secret_,
-            formats::json::ToString(b.ExtractValue()), timeout_);
+            formats::json::ToString(b.ExtractValue()), timeout_,
+            CurrentRequestId());
 
         const int status = resp.status_code;
         if (status < 200 || status >= 300) {
@@ -180,7 +182,7 @@ bool EnrichmentClient::FetchEnriching(std::int64_t artist_id) const {
         const auto resp = internal_http::Get(
             http_client_,
             base_url_ + "/internal/status?id=" + std::to_string(artist_id),
-            shared_secret_, timeout_);
+            shared_secret_, timeout_, CurrentRequestId());
 
         if (resp.status_code < 200 || resp.status_code >= 300) {
             LOG_WARNING() << "[EnrichmentClient] status artist " << artist_id

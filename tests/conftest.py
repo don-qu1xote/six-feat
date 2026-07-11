@@ -193,7 +193,12 @@ class _MockState:
             self._handlers.clear()
             self.calls.clear()
 
-    def dispatch(self, path: str, params: Dict[str, List[str]]) -> tuple[int, Any]:
+    def dispatch(
+        self,
+        path: str,
+        params: Dict[str, List[str]],
+        request_id: Optional[str] = None,
+    ) -> tuple[int, Any]:
         with self._lock:
             matched = None
             for prefix, fn in self._handlers.items():
@@ -202,9 +207,9 @@ class _MockState:
                         matched = (prefix, fn)
             if matched:
                 result = matched[1](path, params)
-                self.calls.append({"path": path, "params": params})
+                self.calls.append({"path": path, "params": params, "request_id": request_id})
                 return result
-            self.calls.append({"path": path, "params": params})
+            self.calls.append({"path": path, "params": params, "request_id": request_id})
             return 404, {"error": {"message": "Not found"}}
 
 
@@ -221,7 +226,12 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
-            status, body = _mock_state.dispatch(parsed.path, params)
+            # [SF-OBS-02] Forwarded by GeniusGateway::GeniusGet as
+            # X-Request-Id on every outbound call to Genius — recorded per
+            # call so tests can assert the same id survives the
+            # six-feat -> genius-gateway -> Genius hop (see test_trace_id.py).
+            status, body = _mock_state.dispatch(
+                parsed.path, params, self.headers.get("X-Request-Id"))
             payload = json.dumps(body).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -891,7 +901,8 @@ def _make_mock_handler(state: _MockState):
             try:
                 parsed = urlparse(self.path)
                 params = parse_qs(parsed.query)
-                status, body = state.dispatch(parsed.path, params)
+                status, body = state.dispatch(
+                    parsed.path, params, self.headers.get("X-Request-Id"))
                 payload = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")

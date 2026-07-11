@@ -9,7 +9,14 @@ namespace six_feat {
 std::string EnsureRequestId(const userver::server::http::HttpRequest& request) {
     auto& span = userver::tracing::Span::CurrentSpan();
 
-    std::string id{span.GetTraceId()};
+    // [SF-OBS-02] An incoming X-Request-Id (set by GeniusGatewayClient /
+    // EnrichmentClient / internal_http on the calling service) takes
+    // priority over this service's own span trace id, so the same id
+    // survives every hop of the chain instead of resetting at each one.
+    std::string id = request.GetHeader(std::string{kRequestIdHeader});
+    if (id.empty()) {
+        id = std::string{span.GetTraceId()};
+    }
     if (id.empty()) {
         id = userver::utils::generators::GenerateUuid();
     }
