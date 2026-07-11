@@ -219,11 +219,34 @@ std::int64_t ParseInt64Header(const Response& resp, std::string_view name) {
     try { return std::stoll(it->second); } catch (...) { return 0; }
 }
 
+// [SF-API-07] Genius's own fallback avatar for an artist with no uploaded
+// photo is a real, resolvable image URL (not a 404 or empty string), so it
+// can't be told apart from a real photo by validity alone — every variant
+// Genius serves (regardless of host/size, e.g.
+// https://assets.genius.com/images/default_avatar_300.png) contains this
+// path segment. Matched as a substring rather than a full-URL comparison so
+// we don't have to track every size Genius happens to serve.
+constexpr std::string_view kGeniusDefaultAvatarMarker = "default_avatar";
+
+// Normalizes Genius's default-avatar placeholder to "" so ArtistRef::image
+// faithfully means "no real photo" for every downstream consumer — the
+// front end already treats an empty image as "show my own placeholder"
+// (front/src/state/helpers.js placeholderFor, used as `imageUrl ||
+// placeholderFor(...)` throughout front/src/ui and vis-adapter), it just
+// never got the chance to because Genius's placeholder URL is valid and
+// non-empty. Real photos are returned unchanged.
+std::string NormalizeArtistImageUrl(std::string image_url) {
+    if (image_url.find(kGeniusDefaultAvatarMarker) != std::string::npos) {
+        return {};
+    }
+    return image_url;
+}
+
 ArtistRef ParseArtistObject(const formats::json::Value& obj) {
     return {
         obj["id"].As<std::int64_t>(0),
         obj["name"].As<std::string>(""),
-        obj["image_url"].As<std::string>(""),
+        NormalizeArtistImageUrl(obj["image_url"].As<std::string>("")),
         obj["url"].As<std::string>("")
     };
 }
@@ -517,7 +540,7 @@ GeniusGateway::ResolveCandidates(const std::string& query,
             Candidate c;
             c.id    = id;
             c.name  = p["name"].As<std::string>("");
-            c.image = p["image_url"].As<std::string>("");
+            c.image = NormalizeArtistImageUrl(p["image_url"].As<std::string>(""));
             c.url   = p["url"].As<std::string>("");
             c.score = Similarity(q, NormalizeStr(c.name));
             out.push_back(std::move(c));
@@ -543,7 +566,7 @@ GeniusGateway::FetchArtistById(std::int64_t id, Lane lane,
         return ArtistRef{
             a["id"].As<std::int64_t>(id),
             a["name"].As<std::string>(""),
-            a["image_url"].As<std::string>(""),
+            NormalizeArtistImageUrl(a["image_url"].As<std::string>("")),
             a["url"].As<std::string>("")
         };
     } catch (const GeniusHttpError& e) {
