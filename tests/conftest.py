@@ -349,6 +349,15 @@ components_manager:
 
     artist-repository: {{}}
 
+    # [SF-SEC-01] Compares this process's APP_SECRET fingerprint against
+    # six-feat-auth's (auth_service_proc) — see test_app_secret_parity.py.
+    # Short timeout/interval so the suite doesn't wait on the default
+    # production values.
+    app-secret-parity-checker:
+      auth-base-url: {auth_base_url}
+      timeout-ms: 2000
+      check-interval-ms: 500
+
     # [IDEA-25/26] HTTP client for the standalone six-feat-enrichment
     # service — see ENRICHMENT_PORT / enrichment_proc_bg above.
     enrichment-client:
@@ -504,6 +513,13 @@ components_manager:
 
     handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # [SF-SEC-01] Publishes this process's APP_SECRET fingerprint — see
+    # test_app_secret_parity.py.
+    handler-internal-key-fingerprint:
+      path: /internal/key-fingerprint
       method: GET
       task_processor: main-task-processor
 
@@ -739,10 +755,18 @@ def service_proc(
     tmp_db_dir: Path,
     mock_server: _MockState,
     genius_gateway_proc: subprocess.Popen,
+    auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
     """
     Start the service binary with a test config.
     Skip the whole session gracefully if the binary is not present.
+
+    [SF-SEC-01] Now also depends on auth_service_proc — AppSecretParityChecker
+    checks against it at startup, and both are launched with the same
+    TEST_APP_SECRET (see auth_service_proc below), so the parity check
+    passes deterministically for every test that doesn't deliberately use
+    a mismatched secret (see service_proc_badsecret / auth_service_proc_badsecret
+    in test_app_secret_parity.py).
     """
     if not BINARY.exists():
         pytest.skip(
@@ -759,6 +783,7 @@ def service_proc(
             genius_gateway_port=GENIUS_GATEWAY_PORT,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
+            auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
         )
     )
 
@@ -830,9 +855,13 @@ def auth_service_proc(
             **os.environ,
             # Same TEST_APP_SECRET as service_proc — a cookie minted by this
             # process is exactly what the six_feat instance's
-            # RequireSession/ExtractToken decrypt successfully.
+            # RequireSession/ExtractToken decrypt successfully, and its
+            # AppSecretParityChecker (SF-SEC-01) reports "ok" against it.
             "APP_SECRET": TEST_APP_SECRET,
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
+            # [SF-SEC-01] Gates GET /internal/key-fingerprint — same shared
+            # secret as the rest of the internal mesh.
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
         },
     )
 
@@ -840,6 +869,132 @@ def auth_service_proc(
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(f"Auth service did not start within timeout.\nstderr:\n{stderr}")
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [SF-SEC-01] Third, independent six-feat + six-feat-auth pair, deliberately
+# started with MISMATCHED APP_SECRET values — see test_app_secret_parity.py.
+# Reuses the session-scoped mock_server/genius_gateway_proc (never actually
+# exercised by these tests) so only two new processes are spun up.
+# ─────────────────────────────────────────────────────────────────────────────
+
+AUTH_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_AUTH_PORT_BADSECRET", "18098"))
+AUTH_MONITOR_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_AUTH_MONITOR_PORT_BADSECRET", "18099"))
+SERVICE_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_PORT_BADSECRET", "18100"))
+MONITOR_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_MONITOR_PORT_BADSECRET", "18101"))
+SERVICE_BASE_BADSECRET = f"http://localhost:{SERVICE_PORT_BADSECRET}"
+
+# Any value that differs from TEST_APP_SECRET — deliberately mismatched.
+TEST_APP_SECRET_WRONG = "e" * 64
+
+
+@pytest.fixture(scope="session")
+def auth_service_proc_badsecret(
+    tmp_db_dir: Path, mock_server: _MockState
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-SEC-01] A second six-feat-auth instance started with a deliberately
+    different APP_SECRET than service_proc_badsecret below — proves
+    AppSecretParityChecker actually detects the mismatch instead of
+    six-feat silently 401-ing every session.
+    """
+    if not AUTH_BINARY.exists():
+        pytest.skip(
+            f"Auth service binary not found at {AUTH_BINARY}. "
+            "Build the project first or set SIX_FEAT_AUTH_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir / "auth_static_config_badsecret.yaml"
+    cfg_path.write_text(
+        _AUTH_TEST_CONFIG_TEMPLATE.format(
+            auth_port=AUTH_PORT_BADSECRET,
+            auth_monitor_port=AUTH_MONITOR_PORT_BADSECRET,
+            mock_port=MOCK_PORT,
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(AUTH_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "APP_SECRET": TEST_APP_SECRET_WRONG,
+            "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(AUTH_PORT_BADSECRET):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Auth (badsecret) service did not start within timeout.\nstderr:\n{stderr}")
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+@pytest.fixture(scope="session")
+def service_proc_badsecret(
+    tmp_db_dir: Path,
+    mock_server: _MockState,
+    genius_gateway_proc: subprocess.Popen,
+    auth_service_proc_badsecret: subprocess.Popen,
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-SEC-01] A six-feat instance using the SAME TEST_APP_SECRET as
+    service_proc, but pointed at auth_service_proc_badsecret (a DIFFERENT
+    APP_SECRET) — its AppSecretParityChecker must observe and report the
+    mismatch via /readyz instead of silently 401-ing sessions.
+    """
+    if not BINARY.exists():
+        pytest.skip(
+            f"Service binary not found at {BINARY}. "
+            "Build the project first or set SIX_FEAT_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir / "static_config_badsecret.yaml"
+    cfg_path.write_text(
+        _TEST_CONFIG_TEMPLATE.format(
+            service_port=SERVICE_PORT_BADSECRET,
+            monitor_port=MONITOR_PORT_BADSECRET,
+            mock_port=MOCK_PORT,
+            genius_gateway_port=GENIUS_GATEWAY_PORT,
+            db_connection_string=DB_CONNECTION_STRING,
+            enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
+            auth_base_url=f"http://127.0.0.1:{AUTH_PORT_BADSECRET}",
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "APP_SECRET": TEST_APP_SECRET,
+            "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(SERVICE_PORT_BADSECRET):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Service (badsecret) did not start within timeout.\nstderr:\n{stderr}")
 
     yield proc
 
@@ -1163,6 +1318,7 @@ def service_proc_bg(
     mock_server_bg: _MockState,
     genius_gateway_proc_bg: subprocess.Popen,
     enrichment_proc_bg: subprocess.Popen,
+    auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
     """
     Second service binary instance, config'd with:
@@ -1171,6 +1327,9 @@ def service_proc_bg(
       * genius-gateway-client pointed at genius_gateway_proc_bg, which has
         cb-failure-threshold low (3) and backoff-max-attempts > 1 so the
         CircuitBreaker/retry-backoff paths actually execute there.
+      * [SF-SEC-01] auth-base-url pointed at the same session-scoped
+        auth_service_proc as service_proc — this instance is also launched
+        with TEST_APP_SECRET below, so parity holds.
     Skips gracefully (same as service_proc) if the binary isn't built.
     """
     if not BINARY.exists():
@@ -1188,6 +1347,7 @@ def service_proc_bg(
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_SERVICE_PORT_BG}",
+            auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
         )
     )
 

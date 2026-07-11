@@ -16,3 +16,7 @@ db_connection_string: postgresql://CHANGEME_user:CHANGEME_password@localhost:543
 # Base URL of the six-feat-enrichment service (see services/enrichment/).
 # In Docker this is overwritten by docker-entrypoint.sh from ENRICHMENT_BASE_URL.
 enrichment_base_url: http://localhost:8081
+# [SF-SEC-01] Base URL of the six-feat-auth service, used only by
+# AppSecretParityChecker's GET /internal/key-fingerprint call. In Docker
+# this is overwritten by docker-entrypoint.sh from AUTH_BASE_URL.
+auth_base_url: http://localhost:8083

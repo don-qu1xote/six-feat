@@ -28,8 +28,9 @@ six_feat_embed_schema(handlers/six-feat/sse_status_handler kSseStatusHandlerSche
 six_feat_embed_schema(handlers/six-feat/readiness_handler  kReadinessHandlerSchema READINESS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/static_handler     kStaticHandlerSchema    STATIC_HANDLER_SCHEMA_HEADER)
 
-six_feat_embed_schema(components/enrichment_client kEnrichmentClientComponentSchema ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER)
-six_feat_embed_schema(components/collab_service    kCollabServiceComponentSchema    COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/enrichment_client         kEnrichmentClientComponentSchema         ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/collab_service            kCollabServiceComponentSchema            COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/app_secret_parity_checker kAppSecretParityCheckerComponentSchema   APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${GRAPH_HANDLER_SCHEMA_HEADER}
@@ -41,6 +42,7 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${STATIC_HANDLER_SCHEMA_HEADER}
     ${ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER}
     ${COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER}
+    ${APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER}
 )
 
 add_executable(six_feat
@@ -48,6 +50,7 @@ add_executable(six_feat
     src/genius/genius_error_mapping.cpp
     src/enrichment/enrichment_client.cpp
     src/core/collab_service.cpp
+    src/auth/app_secret_parity_checker.cpp
     src/http/graph_handler.cpp
     src/http/path_handler.cpp
     src/http/search_handler.cpp

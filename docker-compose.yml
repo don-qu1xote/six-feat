@@ -88,6 +88,10 @@ services:
       # of talking to Genius directly — reached over the compose network by
       # service name, same shared secret as the enrichment mesh.
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
+      # [SF-SEC-01] AppSecretParityChecker's target — compares this
+      # container's APP_SECRET fingerprint against six-feat-auth's over
+      # this URL, never the secret itself.
+      AUTH_BASE_URL: ${AUTH_BASE_URL:-http://six-feat-auth:${SIX_FEAT_AUTH_PORT:-8083}}
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,6 +103,13 @@ services:
       # in GeniusGatewayClient), so blocking start on service_healthy would
       # just make genius-gateway a single point of failure for startup too.
       six-feat-genius-gateway:
+        condition: service_started
+      # [SF-SEC-01] Soft dependency too — AppSecretParityChecker's own
+      # ReadinessHandler check only fails on a confirmed fingerprint
+      # MISMATCH, never on six-feat-auth being briefly unavailable, so
+      # gating on service_healthy here would just make auth a second
+      # single point of failure for six-feat's own startup.
+      six-feat-auth:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_PORT:-8080}/healthz"]
@@ -273,6 +284,9 @@ services:
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [SF-SEC-01] Gates GET /internal/key-fingerprint — same shared secret
+      # as the rest of the internal mesh (six-feat/six-feat-enrichment).
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_AUTH_PORT:-8083}/healthz"]
       interval: 15s

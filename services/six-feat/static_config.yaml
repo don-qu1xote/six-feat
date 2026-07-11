@@ -116,6 +116,17 @@ components_manager:
       # логин всем пользователям).
       pkce-enabled: false
 
+    # ── APP_SECRET fail-fast parity (SF-SEC-01) ─────────────────────────────
+    # Periodically compares this process's APP_SECRET fingerprint against
+    # six-feat-auth's (GET /internal/key-fingerprint) — never the secret
+    # itself — so a rotated/misconfigured APP_SECRET on either side surfaces
+    # as an explicit /readyz degradation + log line instead of every session
+    # silently 401-ing (see ReadinessHandler's "app_secret_parity" check).
+    app-secret-parity-checker:
+      auth-base-url: $auth_base_url
+      timeout-ms: 3000
+      check-interval-ms: 30000
+
     # ── L1 read-through repository (Postgres buffer cache + replica) ──────
     artist-repository: {}
 

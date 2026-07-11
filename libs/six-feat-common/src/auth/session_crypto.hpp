@@ -46,4 +46,14 @@ std::optional<SessionData> Decrypt(
 // Бросает std::runtime_error если APP_SECRET не задан или пустой.
 std::array<unsigned char, 32> KeyFromEnv();
 
+// [SF-SEC-01] Non-invertible fingerprint of the session-encryption key:
+// hex(SHA-256(kFingerprintSalt || key)). Safe to publish over HTTP/logs —
+// the fixed salt plus one-way SHA-256 mean it cannot be reversed to recover
+// APP_SECRET or `key` itself — used to detect an APP_SECRET mismatch
+// between six_feat and six-feat-auth (see
+// services/six-feat/src/auth/app_secret_parity_checker.hpp and
+// services/auth/internal_handlers.hpp) without ever transmitting the
+// secret across the internal mesh.
+std::string KeyFingerprint(const std::array<unsigned char, 32>& key);
+
 } // namespace six_feat::auth

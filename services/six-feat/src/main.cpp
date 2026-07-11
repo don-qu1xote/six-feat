@@ -7,6 +7,7 @@
 #include <userver/utils/daemon_run.hpp>
 
 #include "storage/artist_repository.hpp"
+#include "auth/app_secret_parity_checker.hpp"
 #include "auth/oauth_handler.hpp"
 #include "core/collab_service.hpp"
 #include "enrichment/enrichment_client.hpp"
@@ -40,6 +41,11 @@ int main(int argc, char *argv[]) {
             // LogoutHandler/MeHandler) has moved to services/auth/ — see
             // that service's main.cpp.
             .Append<six_feat::auth::OAuthConfig>()
+            // [SF-SEC-01] Periodically verifies this process's APP_SECRET
+            // matches six-feat-auth's, over the internal mesh, without ever
+            // transmitting the secret — see ReadinessHandler's
+            // "app_secret_parity" check below.
+            .Append<six_feat::AppSecretParityChecker>()
             .Append<six_feat::ArtistRepository>()
             .Append<six_feat::EnrichmentClient>()
             .Append<six_feat::CollabService>()

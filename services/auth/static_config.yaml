@@ -106,6 +106,17 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
+    # ── APP_SECRET fail-fast parity (SF-SEC-01) ─────────────────────────────
+    # Publishes a non-invertible fingerprint of this process's APP_SECRET
+    # (session_crypto::KeyFingerprint) so six-feat's AppSecretParityChecker
+    # can detect a mismatch instead of every session silently 401-ing.
+    # Gated by X-Internal-Secret (ENRICHMENT_INTERNAL_SECRET), same shared
+    # secret as the rest of the internal mesh — never the public listener.
+    handler-internal-key-fingerprint:
+      path: /internal/key-fingerprint
+      method: GET
+      task_processor: *main_tp
+
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     handler-server-monitor:
       path: /metrics

@@ -22,8 +22,17 @@ if(NOT TARGET six_feat_common)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-common" "${CMAKE_BINARY_DIR}/six-feat-common")
 endif()
 
+include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
+
+six_feat_embed_schema(handlers/auth/key_fingerprint_handler kKeyFingerprintHandlerSchema AUTH_KEY_FINGERPRINT_HANDLER_SCHEMA_HEADER)
+
+add_custom_target(six_feat_auth_schema_headers DEPENDS
+    ${AUTH_KEY_FINGERPRINT_HANDLER_SCHEMA_HEADER}
+)
+
 add_executable(six_feat_auth
     main.cpp
+    internal_handlers.cpp
 )
 
 target_link_libraries(six_feat_auth
@@ -31,6 +40,8 @@ target_link_libraries(six_feat_auth
         six_feat_common
         OpenSSL::Crypto
 )
+
+add_dependencies(six_feat_auth six_feat_auth_schema_headers)
 
 install(TARGETS six_feat_auth DESTINATION bin)
 install(FILES static_config.yaml DESTINATION etc/six_feat_auth)

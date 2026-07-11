@@ -26,6 +26,7 @@ ReadinessHandler::ReadinessHandler(
     const components::ComponentContext& context)
     : HttpHandlerBase(config, context)
     , store_(context.FindComponent<PersistentStore>())
+    , parity_checker_(context.FindComponent<AppSecretParityChecker>())
 {}
 
 std::string ReadinessHandler::HandleRequestThrow(
@@ -43,14 +44,28 @@ std::string ReadinessHandler::HandleRequestThrow(
     formats::json::ValueBuilder db_check(formats::json::Type::kObject);
     db_check["ok"] = db_ok;
 
+    // [SF-SEC-01] Only a confirmed mismatch degrades readiness — kUnreachable
+    // /kUnknown mean "six-feat-auth hasn't answered yet", a soft dependency
+    // (same posture as genius-gateway/enrichment), not a config bug in this
+    // process.
+    const auto parity_status = parity_checker_.GetStatus();
+    const bool parity_ok = parity_status != AppSecretParityChecker::Status::kMismatch;
+
+    formats::json::ValueBuilder parity_check(formats::json::Type::kObject);
+    parity_check["ok"]     = parity_ok;
+    parity_check["status"] = std::string{AppSecretParityChecker::ToString(parity_status)};
+
     formats::json::ValueBuilder checks(formats::json::Type::kObject);
-    checks["database"] = std::move(db_check);
+    checks["database"]          = std::move(db_check);
+    checks["app_secret_parity"] = std::move(parity_check);
+
+    const bool ready = db_ok && parity_ok;
 
     formats::json::ValueBuilder b(formats::json::Type::kObject);
-    b["status"] = db_ok ? std::string{"ready"} : std::string{"not_ready"};
+    b["status"] = ready ? std::string{"ready"} : std::string{"not_ready"};
     b["checks"] = std::move(checks);
 
-    if (!db_ok) {
+    if (!ready) {
         request.GetHttpResponse().SetStatus(
             server::http::HttpStatus::kServiceUnavailable);
     }

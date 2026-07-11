@@ -21,10 +21,16 @@
 //     serving reads while Genius itself is unreachable (see
 //     persistent_store.hpp), so an upstream Genius outage is not a reason to
 //     fail Docker's HEALTHCHECK either way.
+//   • [SF-SEC-01] app_secret_parity: AppSecretParityChecker's last-known
+//     comparison of this process's APP_SECRET fingerprint against
+//     six-feat-auth's. Only a confirmed MISMATCH flips the probe to 503 —
+//     six-feat-auth being merely unreachable does not, matching the
+//     soft-dependency posture already used for genius-gateway/enrichment.
 //
 // No authentication — matches handler-healthz.
 // ════════════════════════════════════════════════════════════════════════════
 
+#include "auth/app_secret_parity_checker.hpp"
 #include "storage/persistent_store.hpp"
 
 #include <string_view>
@@ -49,7 +55,8 @@ public:
     static userver::yaml_config::Schema GetStaticConfigSchema();
 
 private:
-    PersistentStore& store_;
+    PersistentStore&          store_;
+    AppSecretParityChecker&   parity_checker_;
 };
 
 } // namespace six_feat

@@ -314,6 +314,34 @@ std::optional<SessionData> Decrypt(
     return data;
 }
 
+std::string KeyFingerprint(const std::array<unsigned char, 32>& key) {
+    // Fixed, non-secret salt: domain-separates this fingerprint from any
+    // other SHA-256(key)-shaped value and keeps it stable across processes
+    // as long as the underlying key is the same. Not a substitute for
+    // secrecy (the input is only 32 bytes and hex-decodable APP_SECRETs are
+    // guessable) — that's why this is a comparison aid, never treated as a
+    // credential.
+    static constexpr std::string_view kFingerprintSalt =
+        "six-feat-app-secret-fingerprint-v1";
+
+    std::vector<unsigned char> salted;
+    salted.reserve(kFingerprintSalt.size() + key.size());
+    salted.insert(salted.end(), kFingerprintSalt.begin(), kFingerprintSalt.end());
+    salted.insert(salted.end(), key.begin(), key.end());
+
+    std::array<unsigned char, 32> digest{};
+    SHA256(salted.data(), salted.size(), digest.data());
+
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(64);
+    for (unsigned char b : digest) {
+        out += kHex[(b >> 4) & 0xF];
+        out += kHex[b & 0xF];
+    }
+    return out;
+}
+
 std::array<unsigned char, 32> KeyFromEnv() {
     const char* secret = std::getenv("APP_SECRET");
     if (!secret || !*secret)

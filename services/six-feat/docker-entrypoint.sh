@@ -32,6 +32,11 @@ ENRICHMENT_BASE_URL="${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}"
 # ENRICHMENT_INTERNAL_SECRET checked above.
 GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}"
 
+# [SF-SEC-01] AppSecretParityChecker's target — compares this process's
+# APP_SECRET fingerprint against six-feat-auth's, over HTTP, never the
+# secret itself.
+AUTH_BASE_URL="${AUTH_BASE_URL:-http://six-feat-auth:8083}"
+
 # ── PostgreSQL ────────────────────────────────────────────────────────────────
 # host/port have Docker-Compose-friendly defaults; db/user/password are always
 # required (docker-compose's postgres service and this container must agree
@@ -153,6 +158,7 @@ script_file_path: ${SCRIPT_FILE_PATH}
 db_connection_string: "${DB_CONNECTION_STRING}"
 enrichment_base_url: ${ENRICHMENT_BASE_URL}
 genius_gateway_base_url: ${GENIUS_GATEWAY_BASE_URL}
+auth_base_url: ${AUTH_BASE_URL}
 EOF
 
 exec /app/six_feat \
