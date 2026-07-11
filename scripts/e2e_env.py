@@ -50,6 +50,12 @@ ENRICHMENT_PORT = int(os.environ.get("E2E_ENRICHMENT_PORT", "18182"))
 # talks to it instead.
 GATEWAY_PORT         = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
 GATEWAY_MONITOR_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_MONITOR_PORT", "18186"))
+# [SF-SEC-01] AppSecretParityChecker's target. Like ENRICHMENT_PORT above,
+# nothing actually listens here for this smoke test — the checker degrades
+# to "unreachable" (a soft dependency, never fails /readyz on its own) and
+# just logs a warning, same as EnqueueIfNeeded()/IsEnriching() degrade when
+# nothing listens on ENRICHMENT_PORT.
+AUTH_PORT = int(os.environ.get("E2E_AUTH_PORT", "18184"))
 
 APP_SECRET                  = "e" * 64
 GENIUS_CLIENT_SECRET        = "e2e-genius-client-secret"
@@ -133,6 +139,15 @@ components_manager:
       match-threshold: 0.75
 
     artist-repository: {{}}
+
+    # [SF-SEC-01] Nothing listens on {auth_port} in this smoke-test env —
+    # AppSecretParityChecker degrades to "unreachable" (soft dependency,
+    # never fails /readyz on its own), same posture as enrichment-client
+    # below with nothing on enrichment_port.
+    app-secret-parity-checker:
+      auth-base-url: http://127.0.0.1:{auth_port}
+      timeout-ms: 2000
+      check-interval-ms: 30000
 
     enrichment-client:
       enrichment-base-url: http://127.0.0.1:{enrichment_port}
@@ -294,6 +309,7 @@ def cmd_up() -> None:
         mock_port=MOCK_PORT,
         gateway_port=GATEWAY_PORT,
         enrichment_port=ENRICHMENT_PORT,
+        auth_port=AUTH_PORT,
         db_connection_string=it_conftest.DB_CONNECTION_STRING,
         front_index_path=str(FRONT_INDEX),
         script_url_path=f"/{script_name}",
