@@ -9,7 +9,7 @@
 #include "http/health_handler.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
-#include "schemas/shared/health_handler_schema.hpp"
+#include "schemas/handlers/shared/health_handler_schema.hpp"
 
 #include <chrono>
 #include <string>
