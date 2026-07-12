@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import requests
 
-from conftest import SERVICE_BASE, GeniusMock
+from conftest import SERVICE_BASE, GeniusMock, _build_song_detail
 
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
@@ -51,7 +51,16 @@ class TestDefaultAvatarNormalization:
             "id": unique_artist_id, "name": "No Photo Artist",
             "image": DEFAULT_AVATAR_URL,
         })
-        genius_mock.songs(unique_artist_id, [])
+        # A seed with zero songs never gets a node in the response graph
+        # (same "nothing to build" path as an unregistered artist) — give it
+        # one self-credited song, no collaborators needed, purely so the
+        # seed node actually appears for the assertions below to check.
+        song_id = unique_artist_id * 10 + 1
+        genius_mock.songs(unique_artist_id, [song_id])
+        genius_mock.song_detail(
+            song_id,
+            _build_song_detail(song_id, "Solo Track", unique_artist_id, "No Photo Artist"),
+        )
 
         resp = client.get(GRAPH_URL, params={"id": str(unique_artist_id)})
         assert resp.status_code == 200
@@ -73,7 +82,14 @@ class TestDefaultAvatarNormalization:
             "id": unique_artist_id, "name": "Real Photo Artist",
             "image": REAL_PHOTO_URL,
         })
-        genius_mock.songs(unique_artist_id, [])
+        # See the matching comment in test_default_avatar_yields_empty_image
+        # above — a seed needs at least one song to appear as a node at all.
+        song_id = unique_artist_id * 10 + 1
+        genius_mock.songs(unique_artist_id, [song_id])
+        genius_mock.song_detail(
+            song_id,
+            _build_song_detail(song_id, "Solo Track", unique_artist_id, "Real Photo Artist"),
+        )
 
         resp = client.get(GRAPH_URL, params={"id": str(unique_artist_id)})
         assert resp.status_code == 200
