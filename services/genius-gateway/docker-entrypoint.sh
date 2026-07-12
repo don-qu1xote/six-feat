@@ -10,10 +10,10 @@ set -euo pipefail
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
 
-cat > /app/config_vars.yaml <<EOF
+cat > /tmp/config_vars.yaml <<EOF
 logging_level: ${LOGGING_LEVEL}
 EOF
 
 exec /app/six_feat_genius_gateway \
   --config /app/static_config.yaml \
-  --config_vars /app/config_vars.yaml
+  --config_vars /tmp/config_vars.yaml

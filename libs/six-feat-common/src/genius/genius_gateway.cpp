@@ -221,12 +221,14 @@ std::int64_t ParseInt64Header(const Response& resp, std::string_view name) {
 
 // [SF-API-07] Genius's own fallback avatar for an artist with no uploaded
 // photo is a real, resolvable image URL (not a 404 or empty string), so it
-// can't be told apart from a real photo by validity alone — every variant
-// Genius serves (regardless of host/size, e.g.
-// https://assets.genius.com/images/default_avatar_300.png) contains this
-// path segment. Matched as a substring rather than a full-URL comparison so
-// we don't have to track every size Genius happens to serve.
-constexpr std::string_view kGeniusDefaultAvatarMarker = "default_avatar";
+// can't be told apart from a real photo by validity alone. The actual
+// filename Genius serves is `default_cover_image.png` with a cache-busting
+// query string appended (confirmed against a live response —
+// https://assets.genius.com/images/default_cover_image.png?1783625229 —
+// NOT `default_avatar_*.png`, despite the API field being named
+// `image_url`). Matched as a substring rather than a full-URL comparison so
+// the cache-buster / host / size don't matter.
+constexpr std::string_view kGeniusDefaultAvatarMarker = "default_cover_image";
 
 // Normalizes Genius's default-avatar placeholder to "" so ArtistRef::image
 // faithfully means "no real photo" for every downstream consumer — the

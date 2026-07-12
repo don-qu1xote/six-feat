@@ -12,8 +12,9 @@ import {
   roleStyle,
   brighten,
   placeholderFor,
+  isGeniusDefaultAvatar,
 } from "./helpers.js";
-import { COLOR } from "./state.js";
+import { State, COLOR } from "./state.js";
 
 describe("escapeHtml", () => {
   it("escapes all five special characters", () => {
@@ -224,5 +225,45 @@ describe("placeholderFor", () => {
     const seed    = placeholderFor("Radiohead", true);
     const nonSeed = placeholderFor("Radiohead", false);
     expect(seed).not.toBe(nonSeed);
+  });
+
+  describe("[SF-WEB-16] theme-dependent background", () => {
+    const originalTheme = State.theme;
+
+    afterEach(() => {
+      document.documentElement.style.removeProperty("--panel");
+      State.theme = originalTheme;
+    });
+
+    it("uses a different background fill in light vs dark theme", () => {
+      document.documentElement.style.setProperty("--panel", "#141A28");
+      State.theme = "dark";
+      const darkSvg = decodeURIComponent(placeholderFor("Theme Test Artist", false));
+
+      document.documentElement.style.setProperty("--panel", "#FFFFFF");
+      State.theme = "light";
+      const lightSvg = decodeURIComponent(placeholderFor("Theme Test Artist", false));
+
+      expect(darkSvg).toContain("fill='#141A28'");
+      expect(lightSvg).toContain("fill='#FFFFFF'");
+      expect(darkSvg).not.toBe(lightSvg);
+    });
+  });
+});
+
+describe("isGeniusDefaultAvatar", () => {
+  it("recognizes Genius's real default-image URL, cache-buster query string included", () => {
+    expect(isGeniusDefaultAvatar("https://assets.genius.com/images/default_cover_image.png?1783625229")).toBe(true);
+    expect(isGeniusDefaultAvatar("https://assets.genius.com/images/default_cover_image.png")).toBe(true);
+  });
+
+  it("does not flag a real photo URL", () => {
+    expect(isGeniusDefaultAvatar("https://images.genius.com/1234567890abcdef.1000x1000x1.jpg")).toBe(false);
+  });
+
+  it("treats non-string/empty input as not a default avatar", () => {
+    expect(isGeniusDefaultAvatar("")).toBe(false);
+    expect(isGeniusDefaultAvatar(undefined)).toBe(false);
+    expect(isGeniusDefaultAvatar(null)).toBe(false);
   });
 });

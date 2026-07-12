@@ -49,6 +49,22 @@ describe("buildNodeState", () => {
     expect(n.geniusUrl).toBe(null);
     expect(n.genres).toEqual([]);
   });
+
+  it("[SF-WEB-16] normalizes Genius's real default-image URL to an empty imageUrl", () => {
+    const n = buildNodeState(
+      { id: 1, name: "No Photo Artist", image: "https://assets.genius.com/images/default_cover_image.png?1783625229" },
+      null, new Set(),
+    );
+    expect(n.imageUrl).toBe("");
+  });
+
+  it("[SF-WEB-16] keeps a real photo URL untouched", () => {
+    const n = buildNodeState(
+      { id: 1, name: "Real Photo Artist", image: "https://images.genius.com/real.jpg" },
+      null, new Set(),
+    );
+    expect(n.imageUrl).toBe("https://images.genius.com/real.jpg");
+  });
 });
 
 describe("buildEdgeState", () => {

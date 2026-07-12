@@ -4,7 +4,7 @@
 //            computeNodeSizes, computeNodeDominantRoles, cacheNodeCollaborations
 // ════════════════════════════════════════════════════════════════════════════
 import { State, COLOR, setSeed, setNodes, setEdges, addNodes, addEdges, resetExpansionState, setTruncation } from "./state/state.js";
-import { roleStyle, allRolesFromCollabs, sortByPopularity } from "./state/helpers.js";
+import { roleStyle, allRolesFromCollabs, sortByPopularity, isGeniusDefaultAvatar } from "./state/helpers.js";
 import { resolveEdgeDominantRole, computeNodeSizes, initGraphOnCanvas, initNetwork, refreshNetwork, mergeNetwork, nodeVisual, edgeVisual, invalidateColorCache } from "./vis-adapter/index.js";
 import { els } from "./dom/dom.js";
 import { hideArtistSidebar } from "./ui/sidebar.js";
@@ -79,10 +79,15 @@ export function buildNodeState(n, seedId, existingIds, graph) {
   const accent   = isSeed ? COLOR.signal : rs.color;
   const dimBorder = isSeed ? "rgba(94,230,197,0.45)" : `${accent}40`;
 
+  // [SF-WEB-16] Front-guard: SF-API-07 already filters Genius's default
+  // image server-side, but treat it as "no photo" here too in case an
+  // unfiltered URL like it ever arrives — see isGeniusDefaultAvatar.
+  const imageUrl = (n.image && !isGeniusDefaultAvatar(n.image)) ? n.image : "";
+
   return {
     id:               n.id,
     name:             n.name || "",
-    imageUrl:         n.image || "",
+    imageUrl,
     geniusUrl:        n.url   || null,
     genres:           [],
     isSeed:           isSeed,

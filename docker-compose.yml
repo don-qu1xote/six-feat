@@ -203,6 +203,13 @@ services:
       # reported as a failed dependency before it's had the chance to.
       start_period: 120s
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
     <<: *hardening
     deploy:
       resources:
@@ -336,6 +343,13 @@ services:
       retries: 3
       start_period: 120s
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
     <<: *hardening
     deploy:
       resources:

@@ -2,9 +2,11 @@
 test_image_normalization.py — SF-API-07 regression.
 
 Genius's own fallback avatar for an artist with no uploaded photo is a
-real, resolvable image URL (not a 404 or empty string) — e.g.
-https://assets.genius.com/images/default_avatar_300.png — so it can't be
-told apart from a real photo by validity alone. Before this fix,
+real, resolvable image URL (not a 404 or empty string) — confirmed against
+a live response: https://assets.genius.com/images/default_cover_image.png
+?1783625229 (filename is `default_cover_image.png` with a cache-busting
+query string, NOT `default_avatar_*.png`) — so it can't be told apart
+from a real photo by validity alone. Before this fix,
 GeniusGateway (libs/six-feat-common/src/genius/genius_gateway.cpp) passed
 that URL straight through into ArtistRef::image, so the front end rendered
 Genius's grey placeholder instead of its own themed one (front/src/state/
@@ -32,9 +34,10 @@ GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 REAL_PHOTO_URL = "https://images.genius.com/1234567890abcdef.1000x1000x1.jpg"
 
 # Genius's actual fallback avatar for artists with no photo — matches
-# GeniusGateway's kGeniusDefaultAvatarMarker ("default_avatar") regardless
-# of host/size.
-DEFAULT_AVATAR_URL = "https://assets.genius.com/images/default_avatar_300.png"
+# GeniusGateway's kGeniusDefaultAvatarMarker ("default_cover_image")
+# regardless of host/query-string. This is the real filename Genius serves,
+# confirmed against a live response — NOT "default_avatar_*.png".
+DEFAULT_AVATAR_URL = "https://assets.genius.com/images/default_cover_image.png?1783625229"
 
 
 class TestDefaultAvatarNormalization:
