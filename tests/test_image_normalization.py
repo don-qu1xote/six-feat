@@ -51,15 +51,22 @@ class TestDefaultAvatarNormalization:
             "id": unique_artist_id, "name": "No Photo Artist",
             "image": DEFAULT_AVATAR_URL,
         })
-        # A seed with zero songs never gets a node in the response graph
-        # (same "nothing to build" path as an unregistered artist) — give it
-        # one self-credited song, no collaborators needed, purely so the
-        # seed node actually appears for the assertions below to check.
+        # GraphHandler::BuildGraphJson (graph_handler.cpp) builds `order`
+        # only from the OTHER artists credited on each song — the seed's own
+        # credit entries are explicitly skipped — and returns EmptyGraph()
+        # outright when `order` ends up empty. A song crediting only the
+        # seed (no collaborators) therefore never produces a seed node
+        # either, same as a seed with zero songs; give it one collaborator,
+        # purely so the seed node actually appears for the assertions below.
         song_id = unique_artist_id * 10 + 1
+        collab_id = unique_artist_id * 10 + 2
         genius_mock.songs(unique_artist_id, [song_id])
         genius_mock.song_detail(
             song_id,
-            _build_song_detail(song_id, "Solo Track", unique_artist_id, "No Photo Artist"),
+            _build_song_detail(
+                song_id, "Solo Track", unique_artist_id, "No Photo Artist",
+                collaborators=[{"id": collab_id, "name": "Featured Guest", "role": "featured"}],
+            ),
         )
 
         resp = client.get(GRAPH_URL, params={"id": str(unique_artist_id)})
@@ -83,12 +90,17 @@ class TestDefaultAvatarNormalization:
             "image": REAL_PHOTO_URL,
         })
         # See the matching comment in test_default_avatar_yields_empty_image
-        # above — a seed needs at least one song to appear as a node at all.
+        # above — a seed with a song credited to nobody but itself still
+        # yields EmptyGraph(), so it needs a collaborator to appear as a node.
         song_id = unique_artist_id * 10 + 1
+        collab_id = unique_artist_id * 10 + 2
         genius_mock.songs(unique_artist_id, [song_id])
         genius_mock.song_detail(
             song_id,
-            _build_song_detail(song_id, "Solo Track", unique_artist_id, "Real Photo Artist"),
+            _build_song_detail(
+                song_id, "Solo Track", unique_artist_id, "Real Photo Artist",
+                collaborators=[{"id": collab_id, "name": "Featured Guest", "role": "featured"}],
+            ),
         )
 
         resp = client.get(GRAPH_URL, params={"id": str(unique_artist_id)})

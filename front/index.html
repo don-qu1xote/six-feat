@@ -89,6 +89,30 @@
       --space-10:   40px;
       --space-11:   44px;
       --space-12:   48px;
+
+      /* ─ Motion (SF-WEB-11) — durations/easing were previously repeated as
+         bare literals at every transition: site (.12s/.15s/.18s/.2s/.26s/
+         .28s/.32s scattered across .rail/.hero-mode-thumb/.search button/
+         .rail-btn[data-tip] etc.). Three buckets covering the values already
+         in use, so new + existing transitions can converge on one scale
+         instead of each picking its own number. ─ */
+      --ease-standard: cubic-bezier(.4,0,.2,1); /* already used by .hero-mode-thumb */
+      --duration-fast:  120ms; /* press feedback — .search button:active, .rail-btn[data-tip] */
+      --duration-base:  160ms; /* hover states — the most common transition length here */
+      --duration-slow:  280ms; /* panel/rail expand-style transitions */
+
+      /* ─ Elevation scale (SF-WEB-11) — previously a single --shadow used
+         everywhere from a 26px status-icon-btn to a full bento-tile panel.
+         A 3-step scale gives floating chip-scale controls, panels/tiles,
+         and (future) modals each their own weight instead of sharing one
+         value by coincidence. --elevation-1 reuses the exact shadow already
+         used ad hoc for rail-btn/.brand's hover-expand state (line ~805);
+         --elevation-2 is --shadow unchanged (bento-tile/rail/status-icon-btn
+         keep their current look); --elevation-3 is new headroom for
+         full-screen overlays, not yet consumed here. ─ */
+      --elevation-1: 0 4px 14px rgba(0,0,0,.35);
+      --elevation-2: var(--shadow);
+      --elevation-3: 0 24px 64px rgba(0,0,0,.5);
     }
     :root[data-theme="light"] {
       --ink:      #F2F4F9;
@@ -148,6 +172,137 @@
     .bento-tile--flat {
       background: rgba(var(--panel-rgb),.4);
       box-shadow: none;
+    }
+
+    /* ─── SF-WEB-11: component kit ──────────────────────────────────────
+       Sprint 4 foundation — one small, token-driven vocabulary (button /
+       chip / segment / panel / tile / pill) so controls stop each inventing
+       their own padding/radius/hover recipe (see .rail-btn/.chip/
+       .role-filter-btn/.dock-btn/.bento-tile above — same intent, several
+       parallel implementations). This step only ADDS these classes
+       alongside the existing ones on rail buttons / hero buttons / chips /
+       sidebar tiles — nothing moves, nothing is hidden, no JS/behaviour
+       changes. Deliberately placed early in the cascade (same position as
+       .bento-tile above): every component-specific rule further down this
+       stylesheet keeps full authority to override anything it customizes
+       (e.g. .rail-btn's own width/padding driving its hover-expand
+       animation) — this block only fills in the parts a specific rule
+       *doesn't* already set (focus ring, base transition, default
+       hover/active feel), so applying it can't regress an existing control. */
+    .ui-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: var(--space-2);
+      font: inherit; font-size: var(--text-sm); font-weight: 600;
+      border: 1px solid var(--line); border-radius: var(--r-sm);
+      background: rgba(var(--panel-rgb),.8); color: var(--mist);
+      padding: var(--space-2) var(--space-4);
+      cursor: pointer; white-space: nowrap;
+      transition: color var(--duration-fast) var(--ease-standard),
+                  border-color var(--duration-fast) var(--ease-standard),
+                  background var(--duration-fast) var(--ease-standard),
+                  box-shadow var(--duration-fast) var(--ease-standard);
+    }
+    .ui-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
+    .ui-btn:focus-visible {
+      outline: none; border-color: var(--signal);
+      box-shadow: 0 0 0 3px rgba(94,230,197,.35);
+    }
+    .ui-btn:active { transform: translateY(1px); }
+    .ui-btn.active,
+    .ui-btn[aria-pressed="true"],
+    .ui-btn[aria-selected="true"] {
+      color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12);
+    }
+    .ui-btn:disabled { opacity: .55; cursor: progress; }
+
+    /* Primary — the one bright accent-gradient CTA per screen (hero "Map
+       it"/"Trace the path"). --on-accent stays fixed across themes — see
+       the token comment above. */
+    .ui-btn--primary {
+      border-color: transparent; color: var(--on-accent);
+      background: linear-gradient(100deg, var(--signal), var(--pulse));
+    }
+    .ui-btn--primary:hover {
+      color: var(--on-accent); border-color: transparent; filter: brightness(1.06);
+      background: linear-gradient(100deg, var(--signal), var(--pulse));
+    }
+    .ui-btn--primary:focus-visible { box-shadow: 0 0 0 3px rgba(94,230,197,.45); }
+
+    /* Ghost — chromeless until interacted with (rail buttons, in-panel
+       secondary actions). */
+    .ui-btn--ghost { border-color: transparent; background: transparent; }
+    .ui-btn--ghost:hover { background: rgba(255,255,255,.05); border-color: var(--line); }
+
+    /* Icon-only — fixed square footprint, no label. */
+    .ui-btn--icon { padding: 0; width: var(--space-10); height: var(--space-10); }
+
+    /* Chip — small pill-shaped toggle/suggestion (autocomplete suggestions,
+       filter pills). Mirrors .chip's existing recipe so adopting it is a
+       no-op for controls that already look right, while giving them the
+       shared focus ring for free. */
+    .ui-chip {
+      display: inline-flex; align-items: center; gap: var(--space-1);
+      font-family: "Space Mono", monospace; font-size: var(--text-xs);
+      color: var(--mist); background: transparent;
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: var(--space-1) var(--space-3);
+      cursor: pointer;
+      transition: color var(--duration-base) var(--ease-standard),
+                  border-color var(--duration-base) var(--ease-standard),
+                  background var(--duration-base) var(--ease-standard);
+    }
+    .ui-chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
+    .ui-chip:focus-visible {
+      outline: none; border-color: var(--signal);
+      box-shadow: 0 0 0 3px rgba(94,230,197,.35);
+    }
+    .ui-chip.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
+
+    /* Pill — floating read-only badge (status/rate-limit/truncation style
+       chrome). Not yet applied to existing controls in this step. */
+    .ui-pill {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      font-family: "Inter", sans-serif; font-size: var(--text-xs);
+      color: var(--paper); background: var(--chip-bg);
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: var(--space-1) var(--space-3);
+      backdrop-filter: blur(var(--blur-chip));
+      box-shadow: var(--elevation-1);
+    }
+
+    /* Segment — pill-shaped group container for a small, FIXED, single-row
+       set of mutually exclusive choices (hero Explore/Connect switch).
+       Deliberately styles only the container: each consumer keeps its own
+       selected-state treatment (e.g. .hero-mode-thumb's sliding indicator)
+       rather than this block guessing at one — avoids a double-indicator
+       conflict. Not applied to .role-filter-group even though it's visually
+       similar: that group has `flex-wrap: wrap` (drops to a second row on
+       narrow viewports/long labels) — wrapped content inside a
+       border-radius:999px pill visually breaks out of the rounded edges and
+       overlaps whatever sits above/below it (regression found in review).
+       A segment control is a single-row-only pattern; a wrapping group
+       isn't one, no matter how similar the buttons inside look. */
+    .ui-segment {
+      display: inline-flex; position: relative;
+      border: 1px solid var(--line); border-radius: 999px;
+      background: rgba(var(--panel-rgb),.8); padding: 3px; gap: var(--space-1);
+    }
+
+    /* Panel / tile — the .bento-tile "material" under new names ahead of a
+       later step consolidating the two; both are additive alongside
+       .bento-tile for now, not a replacement. */
+    .ui-panel {
+      border-radius: var(--r-lg);
+      background: var(--panel-2); border: 1px solid var(--line);
+      box-shadow: var(--elevation-2);
+      padding: var(--space-4);
+      min-width: 0;
+    }
+    .ui-tile {
+      border-radius: var(--r-md);
+      background: rgba(var(--panel-rgb),.4);
+      padding: var(--space-3);
+      min-width: 0;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1775,7 +1930,7 @@
            panel. Only this landing presentation/trigger changes — the
            path search call (runServerPath) and the in-graph path finder
            (rail/⌘K) are untouched. -->
-      <div class="hero-mode-switch" id="hero-mode-switch" role="tablist" aria-label="Search mode" data-mode="explore">
+      <div class="hero-mode-switch ui-segment" id="hero-mode-switch" role="tablist" aria-label="Search mode" data-mode="explore">
         <button type="button" class="hero-mode-tab" id="hero-mode-tab-explore" role="tab"
           aria-selected="true" aria-controls="hero-mode-panel-explore" tabindex="0">
           <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg>
@@ -1797,7 +1952,7 @@
               <input id="hero-input" type="text" autocomplete="off"
                 placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
                 aria-autocomplete="list" aria-controls="hero-ac" />
-              <button type="submit">Map it</button>
+              <button type="submit" class="ui-btn ui-btn--primary">Map it</button>
             </form>
             <div class="ac-dropdown" id="hero-ac" role="listbox"></div>
           </div>
@@ -1807,13 +1962,13 @@
           <div class="include-roles-row">
             <span class="include-roles-label">Include roles</span>
             <div class="role-filter-group">
-              <button type="button" class="role-filter-btn active" id="hero-filter-featured" data-role="featured">
+              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-featured" data-role="featured">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg><span>Featured</span>
               </button>
-              <button type="button" class="role-filter-btn active" id="hero-filter-producer" data-role="producer">
+              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-producer" data-role="producer">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg><span>Producer</span>
               </button>
-              <button type="button" class="role-filter-btn active" id="hero-filter-writer" data-role="writer">
+              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-writer" data-role="writer">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg><span>Writer</span>
               </button>
             </div>
@@ -1821,11 +1976,11 @@
 
           <div class="chips-label" id="chips-label">Try one of these</div>
           <div class="chips" id="chips">
-            <button class="chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
-            <button class="chip" data-artist="Gorillaz">Gorillaz</button>
-            <button class="chip" data-artist="Rosalía">Rosalía</button>
-            <button class="chip" data-artist="Calvin Harris">Calvin Harris</button>
-            <button class="chip" data-artist="Tyler, the Creator">Tyler, the Creator</button>
+            <button class="chip ui-chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
+            <button class="chip ui-chip" data-artist="Gorillaz">Gorillaz</button>
+            <button class="chip ui-chip" data-artist="Rosalía">Rosalía</button>
+            <button class="chip ui-chip" data-artist="Calvin Harris">Calvin Harris</button>
+            <button class="chip ui-chip" data-artist="Tyler, the Creator">Tyler, the Creator</button>
           </div>
         </div>
 
@@ -1851,7 +2006,7 @@
           </div>
 
           <div class="hero-connect-actions">
-            <button type="button" class="hero-connect-run" id="btn-hero-run-path">
+            <button type="button" class="hero-connect-run ui-btn ui-btn--primary" id="btn-hero-run-path">
               <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
               <span>Trace the path</span>
             </button>
@@ -1901,43 +2056,43 @@
         <span class="rl">Six Feet</span>
       </button>
 
-      <button class="rail-btn" id="btn-search-open" data-tip="Search artist">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-search-open" data-tip="Search artist">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg><span class="rl">Search</span>
       </button>
-      <button class="rail-btn" id="btn-node-search" data-tip="Search loaded nodes (⌘K)">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-node-search" data-tip="Search loaded nodes (⌘K)">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg><span class="rl">Find on map</span>
       </button>
-      <button class="rail-btn" id="btn-find-path" data-tip="Find path">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-find-path" data-tip="Find path">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg><span class="rl">Find path</span>
       </button>
 
       <div class="rail-sep"></div>
 
-      <button class="rail-btn" id="filter-featured" data-tip="Role: featured" data-role="featured">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="filter-featured" data-tip="Role: featured" data-role="featured">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg><span class="rl">Featured</span>
       </button>
-      <button class="rail-btn" id="filter-producer" data-tip="Role: producer" data-role="producer">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="filter-producer" data-tip="Role: producer" data-role="producer">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg><span class="rl">Producer</span>
       </button>
-      <button class="rail-btn" id="filter-writer" data-tip="Role: writer" data-role="writer">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="filter-writer" data-tip="Role: writer" data-role="writer">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg><span class="rl">Writer</span>
       </button>
 
       <div class="rail-sep"></div>
 
-      <button class="rail-btn" id="btn-fit-view" data-tip="Fit view (F)">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-fit-view" data-tip="Fit view (F)">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-frame"/></svg><span class="rl">Fit view</span>
       </button>
-      <button class="rail-btn" id="btn-copy-link" data-tip="Copy shareable link">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-copy-link" data-tip="Copy shareable link">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg><span class="rl">Share link</span>
       </button>
-      <button class="rail-btn" id="btn-export-png" data-tip="Download PNG" aria-label="Download graph as PNG image">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-export-png" data-tip="Download PNG" aria-label="Download graph as PNG image">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-download"/></svg><span class="rl">Download PNG</span>
       </button>
 
       <div class="rail-sep"></div>
 
-      <button class="rail-btn" id="btn-clear-graph" data-tip="Clear graph" style="color:var(--warn);">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-clear-graph" data-tip="Clear graph" style="color:var(--warn);">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-close"/></svg><span class="rl">Clear</span>
       </button>
 
@@ -2003,7 +2158,7 @@
     <div class="context-panel" id="context-panel">
 
       <div class="artist-sidebar" id="artist-sidebar">
-        <div class="sidebar-header bento-tile bento-tile--md">
+        <div class="sidebar-header bento-tile bento-tile--md ui-panel">
           <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
           <div class="sidebar-info">
             <div class="sidebar-name truncate" id="sidebar-name">—</div>
@@ -2012,7 +2167,7 @@
           <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">×</button>
         </div>
         <div class="sidebar-body">
-          <div class="bento-tile bento-tile--md" id="sidebar-tracks-tile">
+          <div class="bento-tile bento-tile--md ui-panel" id="sidebar-tracks-tile">
             <div class="sidebar-section-label">Tracks</div>
             <div id="sidebar-tracks"></div>
           </div>
