@@ -73,11 +73,22 @@ export const els = {
   btnFitView:    $("btn-fit-view"),
   btnSearchOpen: $("btn-search-open"),
 
+  // [SF-WEB-12] companionPanel is the one shared card — #artist-sidebar and
+  // #path-panel (below) are now plain content sections inside it, shown one
+  // at a time, instead of two independently-styled floating panels.
+  companionPanel: $("companion-panel"),
+
   artistSidebar:  $("artist-sidebar"),
   sidebarAvatar:  $("sidebar-avatar"),
   sidebarName:    $("sidebar-name"),
   sidebarMeta:    $("sidebar-meta"),
   sidebarTracks:  $("sidebar-tracks"),
+  // [SF-WEB-12] Static tiles (index.html) — sidebar.js used to create these
+  // on the fly via ensureTile(); now they always exist, just hidden/shown.
+  sidebarRoleBreakdownTile: $("sidebar-rolebreakdown-tile"),
+  sidebarRoleChips:         $("sidebar-role-chips"),
+  sidebarPathTile:          $("sidebar-path-tile"),
+  sidebarPathTrack:         $("sidebar-path-track"),
   sidebarGenius:  $("sidebar-genius-btn"),
   sidebarClose:   $("sidebar-close"),
 

@@ -1166,17 +1166,46 @@
        openSearchModal(). */
     .app-canvas.search-open .context-panel > * { pointer-events: none; }
 
-    /* ТЗ-206: path panel is itself a bento tile — reuses --r-lg/--shadow
-       instead of the old bespoke --r-md/rgba(14,19,32,.92) treatment, so it
-       reads as part of the same composition as the sidebar tiles. */
+    /* [SF-WEB-12] One companion panel replacing the two independently
+       shown/styled floating cards (#artist-sidebar, #path-panel) that used
+       to compete for the same screen anchor and could both be visible at
+       once — now both are plain content sections of ONE .ui-panel card,
+       and exactly one section is visible at a time (see
+       ui/sidebar.js::showArtistSidebar/showEdgeSidebar/hideArtistSidebar,
+       ui/modals.js::openPathPanel/closePathPanel — each closes the other
+       section before showing its own, toggling .companion-panel's own
+       `.show` alongside its section's). max-height moved here from
+       #artist-sidebar's own rule below — the whole card is capped once
+       instead of each section capping itself separately. */
+    .companion-panel {
+      display: none;
+      max-height: min(70vh, 100%);
+      overflow: hidden;
+    }
+    .companion-panel.show { display: flex; flex-direction: column; }
+
+    /* Idle/empty state — reserved for SF-WEB-21 (command palette): nothing
+       currently sets `.show` on this section, so it's present in the DOM
+       (satisfying "static markup for every context" up front) but not yet
+       reachable. SF-WEB-21 is the ticket that decides what populates/opens
+       it, to avoid duplicating the rail/hero search this step didn't touch. */
+    .companion-empty {
+      display: none;
+      flex-direction: column; align-items: center; text-align: center;
+      gap: var(--space-2); padding: var(--space-6) var(--space-3);
+      color: var(--mist); font-size: var(--text-sm);
+    }
+    .companion-empty.show { display: flex; }
+    .companion-empty-title { font-weight: 600; color: var(--paper); }
+
+    /* [SF-WEB-12] .path-panel is now a plain content section inside the one
+       shared .companion-panel card (see below) instead of its own
+       independently-styled floating panel — card chrome (background/
+       border/radius/shadow/blur/padding) lives once on .companion-panel. */
     .path-panel {
       display: none;
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
-      padding: var(--space-4);
-      backdrop-filter: blur(var(--blur-scrim));
       flex-direction: column; gap: var(--space-3);
       max-height: 60%; overflow-y: auto; flex-shrink: 0;
-      box-shadow: var(--shadow);
     }
     .path-panel.show { display: flex; }
     .path-panel-header {
@@ -1546,12 +1575,15 @@
     }
     .sidebar-close:hover { color: var(--paper); }
 
-    /* .sidebar-body is now the bento grid container — explicit
+    /* .sidebar-body is the bento grid container — explicit
        grid-template-areas instead of a plain vertical flex column.
-       Header is its own tile outside the grid (see .sidebar-header).
-       Height: no more fixed max-height:calc(100vh-200px) scroll area —
-       body sizes to its own content, ancestor .artist-sidebar caps total
-       height instead. */
+       Header is its own row outside the grid (see .sidebar-header).
+       Height: no fixed max-height scroll area — body sizes to its own
+       content, ancestor .companion-panel caps total height instead.
+       [SF-WEB-12] padding → margin-top: this used to be its own inset
+       inside a separately-chromed .artist-sidebar; now .artist-sidebar has
+       no chrome of its own, so a side/bottom padding here would double up
+       against .companion-panel's — keep only the gap from the header. */
     .sidebar-body {
       display: grid;
       grid-template-columns: 1fr;
@@ -1561,7 +1593,7 @@
         "path"
         "genius";
       gap: var(--space-3);
-      padding: var(--space-3);
+      margin-top: var(--space-3);
       overflow-y: auto;
     }
     #sidebar-tracks-tile              { grid-area: tracks;       }
@@ -2157,47 +2189,79 @@
 
     <div class="context-panel" id="context-panel">
 
-      <div class="artist-sidebar" id="artist-sidebar">
-        <div class="sidebar-header bento-tile bento-tile--md ui-panel">
-          <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
-          <div class="sidebar-info">
-            <div class="sidebar-name truncate" id="sidebar-name">—</div>
-            <div class="sidebar-meta" id="sidebar-meta">—</div>
-          </div>
-          <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">×</button>
-        </div>
-        <div class="sidebar-body">
-          <div class="bento-tile bento-tile--md ui-panel" id="sidebar-tracks-tile">
-            <div class="sidebar-section-label">Tracks</div>
-            <div id="sidebar-tracks"></div>
-          </div>
-          <button class="sidebar-genius-btn" id="sidebar-genius-btn">Open on Genius ↗</button>
-        </div>
-      </div>
+      <!-- [SF-WEB-12] One companion panel: #artist-sidebar (node/edge
+           context) and #path-panel (path context) are now plain sections
+           of this single .ui-panel card, mutually exclusive — see
+           ui/sidebar.js and ui/modals.js::openPathPanel/closePathPanel. -->
+      <div class="companion-panel ui-panel" id="companion-panel">
 
-      <div class="path-panel" id="path-panel">
-        <div class="path-panel-header">
-          <div class="path-title">Six degrees of separation</div>
-          <button class="path-close" id="path-panel-close" title="Close" aria-label="Close">×</button>
+        <!-- Reserved for SF-WEB-21 (command palette) — not yet reachable. -->
+        <div class="companion-empty" id="companion-empty">
+          <div class="companion-empty-title">Nothing selected</div>
+          <div>Click a node or an edge on the graph.</div>
         </div>
-        <div class="path-input-wrap">
-          <label class="sr-only" for="path-from-input">From artist</label>
-          <input class="path-input" id="path-from-input" type="text"
-            placeholder="From artist…" autocomplete="off" />
-          <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
+
+        <div class="artist-sidebar" id="artist-sidebar">
+          <div class="sidebar-header">
+            <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
+            <div class="sidebar-info">
+              <div class="sidebar-name truncate" id="sidebar-name">—</div>
+              <div class="sidebar-meta" id="sidebar-meta">—</div>
+            </div>
+            <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">×</button>
+          </div>
+          <div class="sidebar-body">
+            <div class="ui-tile" id="sidebar-tracks-tile">
+              <div class="sidebar-section-label">Tracks</div>
+              <div id="sidebar-tracks"></div>
+            </div>
+            <!-- [SF-WEB-12] Static now — sidebar.js used to create this tile
+                 on the fly via ensureTile() (the "наложение" bug from
+                 dynamic grid-tile insertion the ticket calls out). -->
+            <div class="ui-tile" id="sidebar-rolebreakdown-tile">
+              <div class="sidebar-section-label">Role breakdown</div>
+              <div class="sidebar-role-chips" id="sidebar-role-chips"></div>
+            </div>
+            <!-- [SF-WEB-12] Same — was ensureTile()-created; label +
+                 .path-chain-container/-fade wrapper are static, only
+                 #sidebar-path-track's contents are written by JS. -->
+            <div class="ui-tile" id="sidebar-path-tile">
+              <div class="sidebar-section-label">1 hop from seed</div>
+              <div class="path-chain-container">
+                <div class="path-chain-fade path-chain-fade--left"></div>
+                <div class="path-chain-track" id="sidebar-path-track"></div>
+                <div class="path-chain-fade path-chain-fade--right"></div>
+              </div>
+            </div>
+            <button class="sidebar-genius-btn" id="sidebar-genius-btn">Open on Genius ↗</button>
+          </div>
         </div>
-        <div class="path-input-wrap">
-          <label class="sr-only" for="path-to-input">To artist</label>
-          <input class="path-input" id="path-to-input" type="text"
-            placeholder="To artist…" autocomplete="off" />
-          <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+
+        <div class="path-panel" id="path-panel">
+          <div class="path-panel-header">
+            <div class="path-title">Six degrees of separation</div>
+            <button class="path-close" id="path-panel-close" title="Close" aria-label="Close">×</button>
+          </div>
+          <div class="path-input-wrap">
+            <label class="sr-only" for="path-from-input">From artist</label>
+            <input class="path-input" id="path-from-input" type="text"
+              placeholder="From artist…" autocomplete="off" />
+            <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
+          </div>
+          <div class="path-input-wrap">
+            <label class="sr-only" for="path-to-input">To artist</label>
+            <input class="path-input" id="path-to-input" type="text"
+              placeholder="To artist…" autocomplete="off" />
+            <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+          </div>
+          <div class="path-actions">
+            <button class="dock-btn" id="btn-run-path" style="flex:1">Find path</button>
+            <button class="dock-btn" id="btn-clear-path">Clear</button>
+          </div>
+          <div class="path-result" id="path-result"></div>
+          <div class="hop-chain" id="hop-chain"></div>
         </div>
-        <div class="path-actions">
-          <button class="dock-btn" id="btn-run-path" style="flex:1">Find path</button>
-          <button class="dock-btn" id="btn-clear-path">Clear</button>
-        </div>
-        <div class="path-result" id="path-result"></div>
-        <div class="hop-chain" id="hop-chain"></div>
+
       </div>
 
     </div>

@@ -10,7 +10,7 @@ import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { openGeniusPage, highlightEdgePair, selectEdge, clearSelectedEdge } from "../vis-adapter/index.js";
 import { bfsPath } from "../api/analytics-client.js";
-import { isSearchModalOpen, closeSearchModal, closeNodeSearch } from "./modals.js";
+import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Helpers: Wrap ROLE_ICON's <use> element in proper <svg> containers
@@ -99,8 +99,13 @@ function getPathToSeed(nodeId) {
  * (ТЗ-205) instead of a plain "→" text arrow — one visual language for
  * "path" across hop-chain, sidebar path-to-seed, and (eventually) the
  * canvas itself, all keyed off the same role-chip-- colour system.
+ *
+ * [SF-WEB-12] Returns just the row of cards now — the "1 hop from seed"
+ * label and .path-chain-container/-fade wrapper are static markup in
+ * index.html's #sidebar-path-tile (was inlined here as part of the string
+ * ensureTile() inserted; renamed from buildPathToSeedHTML accordingly).
  */
-function buildPathToSeedHTML(nodeId, pathInfo) {
+function buildPathTrackHTML(nodeId, pathInfo) {
   if (!pathInfo) return "";
   const { path } = pathInfo;
 
@@ -146,18 +151,7 @@ function buildPathToSeedHTML(nodeId, pathInfo) {
       );
     }
   }
-  const cards = parts.join("");
-
-  return `
-    <div>
-      <div class="sidebar-section-label">1 hop from seed</div>
-      <div class="path-chain-container">
-        <div class="path-chain-fade path-chain-fade--left"></div>
-        <div class="path-chain-track">${cards}</div>
-        <div class="path-chain-fade path-chain-fade--right"></div>
-      </div>
-    </div>
-  `;
+  return parts.join("");
 }
 
 // Централити убрана по запросу — buildCentralityIndicator() и "Network
@@ -174,12 +168,16 @@ export function showArtistSidebar(nodeId) {
 
   // Докнутый быстрый поиск/"Find on map" и сайдбар претендуют на один и
   // тот же правый верхний угол канвы (см. .search-modal.docked/
-  // .node-search-overlay) — в отличие от path-panel (который намеренно
-  // остаётся открытым, см. ниже), закрываем их при открытии сайдбара.
+  // .node-search-overlay) — закрываем их при открытии сайдбара.
   if (isSearchModalOpen() && els.searchModal?.classList.contains("docked")) closeSearchModal();
   closeNodeSearch();
 
-  // Task 4: path panel stays open (no longer force-closes it)
+  // [SF-WEB-12] The companion panel shows exactly one context at a time —
+  // opening node/edge context replaces whatever the path section was
+  // showing (supersedes "Task 4: path panel stays open", from when
+  // #artist-sidebar/#path-panel were two independently-shown floating
+  // cards instead of sections of one companion panel).
+  closePathPanel();
   clearSelectedEdge();
 
   els.sidebarAvatar.src = node.imageUrl || placeholderFor(node.name, node.isSeed);
@@ -214,81 +212,63 @@ export function showArtistSidebar(nodeId) {
   // breakdown / "1 hop from seed" only (см. ниже). els.sidebarRoles больше
   // не заполняется; сама плитка скрыта в разметке (index.html).
 
-  // ---- ТЗ-F / ТЗ-206 / ТЗ-207: Role breakdown / Path to seed — each
-  // rendered as its own .bento-tile occupying a named grid area in
-  // .sidebar-body (rolebreakdown / path). Tiles are created once and
-  // reused across calls (matches the tracks tile, which is static markup)
-  // so repeated showArtistSidebar() calls don't thrash the DOM.
-  const sidebarBody = els.artistSidebar.querySelector(".sidebar-body");
-  if (sidebarBody) {
-    const geniusBtn = sidebarBody.querySelector(".sidebar-genius-btn");
+  // ---- ТЗ-F / ТЗ-206 / ТЗ-207 / [SF-WEB-12]: Role breakdown / Path to
+  // seed — static tiles in index.html now (#sidebar-rolebreakdown-tile /
+  // #sidebar-path-tile), no more ensureTile()-style DOM insertion; this
+  // just fills/hides the two tiles that already exist.
+  els.sidebarRoleBreakdownTile.style.display = "";
+  els.sidebarRoleChips.innerHTML = buildRoleBreakdownHTML(nodeId);
 
-    function ensureTile(id) {
-      let tile = sidebarBody.querySelector(`#${id}`);
-      if (!tile) {
-        tile = document.createElement("div");
-        tile.id = id;
-        tile.className = "bento-tile bento-tile--md";
-        if (geniusBtn) geniusBtn.parentNode.insertBefore(tile, geniusBtn);
-        else sidebarBody.appendChild(tile);
-      }
-      return tile;
-    }
+  const pathInfo = getPathToSeed(nodeId);
+  els.sidebarPathTile.style.display = pathInfo ? "" : "none";
+  els.sidebarPathTrack.innerHTML = buildPathTrackHTML(nodeId, pathInfo);
 
-    const roleBreakdownTile = ensureTile("sidebar-rolebreakdown-tile");
-    roleBreakdownTile.style.display = "";
-    roleBreakdownTile.innerHTML =
-      `<div class="sidebar-section-label">Role breakdown</div>` +
-      `<div class="sidebar-role-chips">${buildRoleBreakdownHTML(nodeId)}</div>`;
-
-    const pathInfo = getPathToSeed(nodeId);
-    const pathTile = ensureTile("sidebar-path-tile");
-    const pathToSeedHtml = buildPathToSeedHTML(nodeId, pathInfo);
-    pathTile.innerHTML = pathToSeedHtml;
-    pathTile.style.display = pathInfo ? "" : "none";
-
-    // Path-chain cards are clickable (except the current node) — jump the
-    // sidebar to whichever artist was clicked, same interaction as
-    // node-search results.
-    if (pathInfo) {
-      pathTile.querySelectorAll(".path-node-card").forEach(card => {
-        const targetId = card.getAttribute("data-node-id");
-        if (targetId == null || String(targetId) === String(nodeId)) return;
-        card.addEventListener("click", () => {
-          if (State.network) {
-            State.network.focus(targetId, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
-          }
-          showArtistSidebar(targetId);
-        });
+  // Path-chain cards are clickable (except the current node) — jump the
+  // sidebar to whichever artist was clicked, same interaction as
+  // node-search results.
+  if (pathInfo) {
+    els.sidebarPathTrack.querySelectorAll(".path-node-card").forEach(card => {
+      const targetId = card.getAttribute("data-node-id");
+      if (targetId == null || String(targetId) === String(nodeId)) return;
+      card.addEventListener("click", () => {
+        if (State.network) {
+          State.network.focus(targetId, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+        }
+        showArtistSidebar(targetId);
       });
+    });
 
-      // ТЗ-207: connector pills (role/track-count) between path cards open
-      // the edge sidebar for that hop, same interaction as the hop-chain's
-      // connector pills (ТЗ-205) — one shared behaviour for "path" UI.
-      pathTile.querySelectorAll(".path-edge-connector[data-edge-id]").forEach(el => {
-        const onActivate = () => {
-          const edgeId = el.getAttribute("data-edge-id");
-          if (edgeId == null) return;
-          highlightEdgePair(edgeId);
-          showEdgeSidebarByPathEdgeId(edgeId, {});
-        };
-        el.addEventListener("click", onActivate);
-        el.addEventListener("keydown", e => {
-          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(); }
-        });
+    // ТЗ-207: connector pills (role/track-count) between path cards open
+    // the edge sidebar for that hop, same interaction as the hop-chain's
+    // connector pills (ТЗ-205) — one shared behaviour for "path" UI.
+    els.sidebarPathTrack.querySelectorAll(".path-edge-connector[data-edge-id]").forEach(el => {
+      const onActivate = () => {
+        const edgeId = el.getAttribute("data-edge-id");
+        if (edgeId == null) return;
+        highlightEdgePair(edgeId);
+        showEdgeSidebarByPathEdgeId(edgeId, {});
+      };
+      el.addEventListener("click", onActivate);
+      el.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(); }
       });
-    }
+    });
   }
 
   // ---- Genius button (unchanged) ----
   els.sidebarGenius.style.display = "";
   els.sidebarGenius.onclick = () => openGeniusPage(nodeId);
   els.artistSidebar.classList.add("show");
+  els.companionPanel?.classList.add("show");
 }
 
 export function showEdgeSidebar(edgeId, nameById) {
   const edge = State.graphEdges.find(e => e.id === edgeId);
   if (!edge) return;
+
+  // [SF-WEB-12] Same mutual-exclusivity as showArtistSidebar — see the
+  // comment there.
+  closePathPanel();
 
   const fromName = nameById[edge.from] || State.graphNodes.find(n => n.id === edge.from)?.name || "?";
   const toName   = nameById[edge.to]   || State.graphNodes.find(n => n.id === edge.to)?.name   || "?";
@@ -322,16 +302,15 @@ export function showEdgeSidebar(edgeId, nameById) {
     els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">No track data.</div>`;
   }
 
-  // ТЗ-206/207: hide the role-breakdown/path bento tiles for edge view —
-  // they only make sense for a single artist, not an edge. (Centrality
-  // tile removed entirely, see above.)
-  ["sidebar-rolebreakdown-tile", "sidebar-path-tile"].forEach(id => {
-    const tile = els.artistSidebar.querySelector(`#${id}`);
-    if (tile) tile.style.display = "none";
-  });
+  // ТЗ-206/207: hide the role-breakdown/path tiles for edge view — they
+  // only make sense for a single artist, not an edge. (Centrality tile
+  // removed entirely, see above.)
+  els.sidebarRoleBreakdownTile.style.display = "none";
+  els.sidebarPathTile.style.display = "none";
 
   els.sidebarGenius.style.display = "none";
   els.artistSidebar.classList.add("show");
+  els.companionPanel?.classList.add("show");
   // IDEA-40: клик по ребру закрепляет выбор (persistent), а не только
   // временную hover-подсветку — иначе уход курсора с ребра откатывал бы
   // подсветку кликнутого ребра (см. selectEdge в vis-adapter/highlight.js).
@@ -340,6 +319,7 @@ export function showEdgeSidebar(edgeId, nameById) {
 
 export function hideArtistSidebar() {
   els.artistSidebar.classList.remove("show");
+  els.companionPanel?.classList.remove("show");
   clearSelectedEdge();
 }
 

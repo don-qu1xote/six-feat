@@ -36,12 +36,17 @@ export function openPathPanel() {
   if (isSearchModalOpen()) closeSearchModal();
   closeNodeSearch();
   hideCandidatePicker();
+  // [SF-WEB-12] The companion panel shows exactly one context at a time —
+  // opening the path section replaces whatever node/edge context was shown.
+  hideArtistSidebar();
   els.pathPanel.classList.add("show");
+  els.companionPanel?.classList.add("show");
   els.pathFromInput?.focus();
 }
 
 export function closePathPanel() {
   els.pathPanel?.classList.remove("show");
+  els.companionPanel?.classList.remove("show");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
