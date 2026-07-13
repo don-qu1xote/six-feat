@@ -2,6 +2,10 @@
 
 Полная техническая документация архитектуры, переменных окружения, тестирования и troubleshooting.
 
+История задач (что сделано, в каком спринте, каким тестом покрыто, и
+маппинг легаси `IDEA-N` на текущую нумерацию `SF-AREA-NN`) — в
+[ROADMAP.md](./ROADMAP.md), не здесь.
+
 ---
 
 ## Архитектура
@@ -138,6 +142,39 @@ That means `dbconnection` (`db_connection_string` → `static_config.yaml`'s `po
 **docker-compose.yml runs a single Postgres instance by default** — no `postgres-replica`, no streaming replication. This is a deliberate trade-off for local dev on modest hardware: a real standby means a second always-on Postgres process plus continuous WAL streaming, for a benefit (read/write isolation) that only matters once you're actually testing replication-lag-sensitive behavior. `DB_REPLICA_HOST` defaults to empty, `docker-entrypoint.sh` builds a single-host DSN, and every `kSlave` read deterministically falls back to master — this is expected, not a bug, and the `FindPool ... falling back to master` warning below is harmless in this mode.
 
 To get genuine Master/Slave isolation (e.g. against a staging cluster with a real streaming standby), set `DB_REPLICA_HOST`/`DB_REPLICA_PORT` to that standby's address — `docker-entrypoint.sh` then assembles the multi-host DSN and the code path above starts meaning something. **Do not** point `DB_REPLICA_HOST` at the same host as `DB_HOST` to "fake" a replica: both DSN entries would resolve to the same live primary, both would answer `pg_is_in_recovery() = false`, and you'd land back in the exact `no pool for slave, falling back to master` case — just with a config that looks like it should be working, which is worse than not setting it at all.
+
+---
+
+## Кэширование ответов (ETag) и `request_id` в ошибках
+
+`/api/v1/graph`, `/api/v1/graph/path` и `/api/v1/search` (`SF-API-04`)
+отвечают слабым `ETag` (RFC 7232 §2.3, `W/"..."`) и
+`Cache-Control: private, must-revalidate` на каждый успешный ответ:
+
+- **graph** — тег строится из `seed_id`, `fetch_state.depth`/`song_count`
+  (та же величина, что опрашивает `/api/v1/status`), маски ролей,
+  `truncated`/`song_limit` — то есть меняется ровно тогда, когда меняется
+  тело: либо параметрами запроса, либо фоновым сканером.
+- **path** — тег строится из `from`/`to` id (в порядке запроса — тело
+  ассиметрично помечает "from"/"to", так что перестановка параметров
+  местами валидна как отдельный кэш-ключ), маски ролей и `fetch_state`
+  обоих концов пути.
+- **search** — у эндпоинта нет персистентного состояния (Genius
+  опрашивается вживую на каждый вызов), поэтому тег строится из
+  нормализованного query и фактически вернувшегося набора id кандидатов.
+
+Повторный запрос с `If-None-Match: <тот же ETag>` получает `304 Not
+Modified` с пустым телом вместо повторной сборки JSON. Общая логика
+слабого сравнения (`ETagMatches`, разбор `If-None-Match` со списком через
+запятую и `*`) вынесена в `libs/six-feat-common/src/core/http_cache.{hpp,cpp}`
+и используется всеми тремя хендлерами — конкретная формула тега у каждого
+своя, потому что зависит от разных данных.
+
+Отдельно от кэширования: JSON-тела ошибок `graph`/`path`/`search`/`status`
+(`SF-API-06`) содержат поле `request_id` — тот же id, что уже уходит в
+заголовке `X-Request-Id` и в теги лога (`core/request_id.hpp`,
+`EnsureRequestId`/`CurrentRequestId`). Поле добавлено только к телам
+ошибок; формат успешных ответов не менялся.
 
 ---
 
