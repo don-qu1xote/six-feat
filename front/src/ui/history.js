@@ -2,7 +2,7 @@
 // ui/history.js — Search history (localStorage), recent-search chips,
 //                 shareable URL query-string sync
 // ════════════════════════════════════════════════════════════════════════════
-import { State, MAX_HISTORY } from "../state/state.js";
+import { State, MAX_HISTORY, GRAPH_DEFAULT_LIMIT } from "../state/state.js";
 import { escapeHtml } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist } from "../api/api.js";
@@ -46,31 +46,108 @@ export function renderChips() {
 }
 
 
+// ════════════════════════════════════════════════════════════════════════════
+// SF-WEB-02: shareable URL — encodes the FULL explored state (seed artist,
+// role filters, expanded nodes, collab limit), not just the seed name, so a
+// shared link reproduces the exact graph the sharer was looking at, not just
+// its starting point.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Compact id serialization: ids are already the smallest stable identifier
+// we have, so a sorted (numeric, not lexicographic) comma-join is enough —
+// no need for base36/delta-encoding at the node counts this app deals with.
+function encodeIds(ids) {
+  return [...ids].map(Number).filter(Number.isFinite).sort((a, b) => a - b).join(",");
+}
+function decodeIds(raw) {
+  if (!raw) return new Set();
+  return new Set(raw.split(",").map(s => parseInt(s.trim(), 10)).filter(Number.isFinite));
+}
+
+// Pure state → URLSearchParams. Exported so the round-trip can be unit
+// tested without touching window.location/history.
+export function serializeGraphState({ artist, seedId, roles, expandedIds, limit } = {}) {
+  const params = new URLSearchParams();
+  if (artist) params.set("artist", artist);
+  if (roles && roles.size) params.set("roles", [...roles].sort().join(","));
+  if (seedId != null) params.set("seed", String(seedId));
+  if (expandedIds && expandedIds.size) params.set("exp", encodeIds(expandedIds));
+  if (limit && limit > 0 && limit !== GRAPH_DEFAULT_LIMIT) params.set("limit", String(limit));
+  return params;
+}
+
+// Pure URLSearchParams-like input → plain state object. Never throws —
+// anything missing/unparsable quietly falls back to the "no state" default
+// (null artist/seed/limit, empty roles/expandedIds), same as a fresh visit.
+export function parseGraphState(search) {
+  const params = new URLSearchParams(search || "");
+  const artist = params.get("artist") || null;
+
+  const rolesRaw = params.get("roles");
+  const roles = rolesRaw ? new Set(rolesRaw.split(",").map(r => r.trim()).filter(Boolean)) : new Set();
+
+  const seedRaw = params.get("seed");
+  const seedId  = seedRaw != null && /^\d+$/.test(seedRaw) ? Number(seedRaw) : null;
+
+  const expandedIds = decodeIds(params.get("exp"));
+
+  const limitRaw = params.get("limit");
+  const limit = limitRaw != null && /^\d+$/.test(limitRaw) ? Number(limitRaw) : null;
+
+  return { artist, roles, seedId, expandedIds, limit };
+}
+
 export function updateShareableUrl(artistName) {
-  if (!artistName) return;
+  const name = artistName || State.graphNodes.find(n => n.id === State.currentSeedId)?.name;
+  if (!name) return;
   const url = new URL(window.location.href);
-  url.searchParams.set("artist", artistName);
-  url.searchParams.set("roles", [...State.activeFilters].sort().join(","));
+  url.search = serializeGraphState({
+    artist:      name,
+    seedId:      State.currentSeedId,
+    roles:       State.activeFilters,
+    expandedIds: State.expandedNodes,
+    limit:       State.collabLimit || State.songLimit,
+  }).toString();
   history.replaceState(null, "", url.toString());
 }
 
 export function loadArtistFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const artist = params.get("artist");
-  const roles  = params.get("roles");
-  if (roles) {
-    const set = new Set(roles.split(",").map(r => r.trim()).filter(Boolean));
-    State.activeFilters = set;
+  const { artist, roles, expandedIds, limit } = parseGraphState(window.location.search);
+
+  if (roles.size) {
+    State.activeFilters = roles;
     [els.filterFeatured, els.filterProducer, els.filterWriter,
      els.heroFilterFeatured, els.heroFilterProducer, els.heroFilterWriter].forEach(btn => {
       if (!btn?.dataset.role) return;
       btn.classList.toggle("active", State.activeFilters.has(btn.dataset.role));
     });
   }
-  if (artist) {
-    els.heroInput.value = artist;
-    searchArtist(artist, false, true);
+
+  if (!artist) return;
+  els.heroInput.value = artist;
+  searchArtist(artist, false, true, limit);
+
+  if (expandedIds.size) _restoreExpandedNodes([...expandedIds]);
+}
+
+// Re-expands previously-expanded nodes, reusing the exact same expand path a
+// user dbl-click drives (searchArtist(name, true, true) → mergeGraph, see
+// vis-adapter/events.js). searchArtist()/mergeGraph() aren't awaitable, so we
+// poll State.inFlight as the "safe to fire the next one" signal — same
+// pattern State.pendingExpand already relies on elsewhere in api.js.
+function _restoreExpandedNodes(ids, attempt = 0) {
+  if (!ids.length) return;
+  if (attempt > 200) return; // ~10s ceiling — give up quietly, not an error.
+  if (State.inFlight || State.pendingExpand) {
+    setTimeout(() => _restoreExpandedNodes(ids, attempt + 1), 50);
+    return;
   }
+  const [id, ...rest] = ids;
+  const node = State.graphNodes.find(n => n.id === id);
+  if (node && !State.expandedNodes.has(id)) {
+    searchArtist(node.name, true, true);
+  }
+  if (rest.length) setTimeout(() => _restoreExpandedNodes(rest, 0), 50);
 }
 
 export function copyShareableLink() {

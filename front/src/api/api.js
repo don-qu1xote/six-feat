@@ -12,7 +12,7 @@ import { showLoading, showToast, showRetryToast, hideToast, pushHistory, updateS
 import { restoreDefaultColors } from "../vis-adapter/index.js";
 import { apiFetch, throwForStatus, redirectToLogin } from "./net.js";
 
-const _searchDebounced = debounce((artist, isExpansion, forceImmediate) => _doSearch(artist, isExpansion, forceImmediate), SEARCH_DEBOUNCE);
+const _searchDebounced = debounce((artist, isExpansion, forceImmediate, limitOverride) => _doSearch(artist, isExpansion, forceImmediate, limitOverride), SEARCH_DEBOUNCE);
 
 // ════════════════════════════════════════════════════════════════════════════
 // ENRICHMENT STATUS — SSE
@@ -101,7 +101,11 @@ export function pollEnrichment(seedId) {
   connect();
 }
 
-export function searchArtist(artist, isExpansion = false, forceImmediate = false) {
+// SF-WEB-02: limitOverride lets a restored deep-link ask for the same
+// collab limit the sharer had (see loadArtistFromUrl in ui/history.js) —
+// only meaningful for a fresh (non-expansion) search, same as
+// showMoreCollaborations' own `limit=` param.
+export function searchArtist(artist, isExpansion = false, forceImmediate = false, limitOverride = null) {
   artist = (artist || "").trim();
   if (!artist) return;
   if (State.inFlight) {
@@ -114,11 +118,11 @@ export function searchArtist(artist, isExpansion = false, forceImmediate = false
     }
     return;
   }
-  if (forceImmediate) _doSearch(artist, isExpansion, forceImmediate);
-  else _searchDebounced(artist, isExpansion, false);
+  if (forceImmediate) _doSearch(artist, isExpansion, forceImmediate, limitOverride);
+  else _searchDebounced(artist, isExpansion, false, limitOverride);
 }
 
-export async function _doSearch(artist, isExpansion, forceImmediate) {
+export async function _doSearch(artist, isExpansion, forceImmediate, limitOverride = null) {
   // ТЗ-4: abort any in-flight search request before starting a new one.
   if (State._abortController) State._abortController.abort();
   State._abortController = new AbortController();
@@ -147,7 +151,12 @@ export async function _doSearch(artist, isExpansion, forceImmediate) {
       }
     }
 
-    const url = `/api/v1/graph?artist=${encodeURIComponent(artist)}&roles=${encodeURIComponent(roles)}`;
+    // SF-WEB-02: same idea as showMoreCollaborations' `limit=` override —
+    // only applied to a fresh (non-expansion) search, so a restored deep-link
+    // reproduces the sharer's collab limit instead of falling back to the
+    // server default.
+    const limitParam = (!isExpansion && limitOverride > 0) ? `&limit=${limitOverride}` : "";
+    const url = `/api/v1/graph?artist=${encodeURIComponent(artist)}&roles=${encodeURIComponent(roles)}${limitParam}`;
     const res = await apiFetch(url, { signal });
 
     // IDEA-21: reflect the backend's per-client rate-limit state (headers
@@ -192,8 +201,14 @@ export async function _doSearch(artist, isExpansion, forceImmediate) {
 
     if (isExpansion) {
       mergeGraph(graph);
+      // SF-WEB-02: keep the deep-link in sync as the user expands nodes —
+      // mergeGraph() just added expandedId to State.expandedNodes.
+      updateShareableUrl();
     } else {
       replaceGraph(graph);
+      // replaceGraph()→finalizeGraphState() calls setSeed(), which resets
+      // collabLimit to null — restore it only after that settles.
+      if (limitOverride > 0) State.collabLimit = limitOverride;
       pushHistory(graph.seed || artist);
       updateShareableUrl(graph.seed || artist);
       // Once background enrichment (deep scan) finishes, re-fetch to pick
