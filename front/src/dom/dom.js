@@ -27,6 +27,8 @@ export const els = {
   seedCardAvatar: $("seed-card-avatar"),
   seedCardName:   $("seed-card-name"),
   truncationBanner:       $("truncation-banner"),
+  scanStatusBadge: $("scan-status-badge"),
+  scanStatusText:  $("scan-status-text"),
   infoBtn:        $("info-btn"),
   infoPopover:    $("info-popover"),
   rateLimitBadge: $("rate-limit-badge"),

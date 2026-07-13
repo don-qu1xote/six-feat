@@ -1112,6 +1112,24 @@
       color: var(--warn); border-color: rgba(255,143,163,.5); opacity: .9;
     }
 
+    /* [SF-WEB-05] Same pill shape as .rate-limit-badge — icon + short text,
+       neutral (mist) while just "partial", amber while background
+       enrichment is actively running (same accent .truncation-icon-btn
+       uses for "worth a second look"). */
+    .scan-status-badge {
+      display: flex; align-items: center; gap: var(--space-1);
+      font-family: "Space Mono", monospace; font-size: var(--text-xs);
+      color: var(--mist); white-space: nowrap;
+      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 999px;
+      padding: 2px var(--space-2); backdrop-filter: blur(var(--blur-chip));
+      transition: color .15s, border-color .15s;
+    }
+    .scan-status-badge[hidden] { display: none !important; }
+    .scan-status-badge svg { width: 13px; height: 13px; stroke: currentColor; fill: none; flex-shrink: 0; }
+    .scan-status-badge--enriching {
+      color: var(--amber); border-color: rgba(255,210,122,.4);
+    }
+
     /* IDEA-50 / [style pass]: was a permanently-expanded pill ("Showing top
        N collaborations — there may be more.") sitting at full text width
        next to seed-card — visibly the biggest thing in the row and the
@@ -2012,6 +2030,12 @@
       <path d="M12 8v0.01M12 12v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
+    <!-- [SF-WEB-05] scan-status-badge's partial-data/scanning indicator. -->
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
     <symbol id="icon-plus" viewBox="0 0 24 24">
       <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
@@ -2273,6 +2297,16 @@
           <span class="seed-card-name truncate" id="seed-card-name">—</span>
         </div>
       </button>
+
+      <!-- [SF-WEB-05] Inline data-completeness indicator — depth/partial/
+           background-enrichment, driven by /api/v1/status/stream events
+           (see api.js::pollEnrichment → ui/canvas-controls.js::updateScanStatus).
+           Hidden once the deep scan reaches Full depth — data is complete,
+           nothing left to explain. -->
+      <span class="scan-status-badge" id="scan-status-badge" hidden>
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-clock"/></svg>
+        <span id="scan-status-text"></span>
+      </span>
 
       <span class="rate-limit-badge" id="rate-limit-badge" hidden></span>
 

@@ -8,7 +8,7 @@ import {
 import { debounce } from "../state/helpers.js";
 import { replaceGraph, mergeGraph } from "../graph.js";
 import { showCandidatePicker } from "../ui/index.js";
-import { showLoading, showToast, showRetryToast, hideToast, pushHistory, updateShareableUrl, updateRateLimitIndicator } from "../ui/index.js";
+import { showLoading, showToast, showRetryToast, hideToast, pushHistory, updateShareableUrl, updateRateLimitIndicator, updateScanStatus } from "../ui/index.js";
 import { restoreDefaultColors } from "../vis-adapter/index.js";
 import { apiFetch, throwForStatus, redirectToLogin } from "./net.js";
 
@@ -43,6 +43,12 @@ export function pollEnrichment(seedId) {
   let es = null;
   let timeoutId = null;
 
+  // SF-WEB-05: pollEnrichment only ever starts once a graph response has
+  // already landed (FG depth reached) — show the indicator optimistically
+  // right away instead of waiting ~2s for the first real SSE event, then
+  // let each onmessage below refine/replace it with the server's actual state.
+  updateScanStatus({ depth: 1, enriching: true });
+
   const connect = () => {
     if (closed) return;
 
@@ -53,6 +59,7 @@ export function pollEnrichment(seedId) {
       backoffMs = 500;
       try {
         const s = JSON.parse(e.data);
+        updateScanStatus(s);
         if (s.depth >= 2) {           // Full-scan complete — server closes its end too.
           closed = true;
           if (timeoutId) clearTimeout(timeoutId);

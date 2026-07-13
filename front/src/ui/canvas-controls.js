@@ -119,6 +119,37 @@ export function updateTruncationBanner() {
   els.truncationBanner.hidden = false;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// SF-WEB-05: inline data-completeness indicator — depth/partial/background-
+// enrichment status, driven by /api/v1/status/stream events (see
+// pollEnrichment in api.js, which calls this on every SSE message). Lives
+// next to seed-card in #status (over the canvas) rather than only in the
+// companion — it needs to be visible even with nothing selected, since a
+// partial graph is a property of the whole canvas, not of one node/edge.
+// Hidden once depth reaches Full (2) — the data IS complete at that point,
+// nothing left to explain.
+// ════════════════════════════════════════════════════════════════════════════
+export function updateScanStatus(status) {
+  if (!els.scanStatusBadge) return;
+  const depth = status?.depth ?? 0;
+
+  if (depth >= 2) {
+    els.scanStatusBadge.hidden = true;
+    return;
+  }
+
+  const enriching = !!status?.enriching;
+  const text = enriching
+    ? "Background scan running — more collaborations may still appear."
+    : "Partial data — some collaborations may be missing.";
+
+  if (els.scanStatusText) els.scanStatusText.textContent = enriching ? "Scanning…" : "Partial";
+  els.scanStatusBadge.title = text;
+  els.scanStatusBadge.setAttribute("aria-label", text);
+  els.scanStatusBadge.classList.toggle("scan-status-badge--enriching", enriching);
+  els.scanStatusBadge.hidden = false;
+}
+
 export function setupHelpOverlay() {
   if (!els.helpBtn || !els.helpOverlay) return;
   const open  = () => els.helpOverlay.classList.add("show");
@@ -291,6 +322,7 @@ export function clearCanvas() {
   destroyNetwork();
   els.status.hidden = true;
   if (els.truncationBanner) els.truncationBanner.hidden = true;
+  if (els.scanStatusBadge) els.scanStatusBadge.hidden = true;
   startCanvasDecorator();
   els.heroInput.value = "";
   hideToast();

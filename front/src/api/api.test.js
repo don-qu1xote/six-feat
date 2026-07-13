@@ -24,6 +24,7 @@ vi.mock("../ui/index.js", () => ({
   pushHistory: vi.fn(),
   updateShareableUrl: vi.fn(),
   updateRateLimitIndicator: vi.fn(),
+  updateScanStatus: vi.fn(),
 }));
 
 vi.mock("../vis-adapter/index.js", () => ({
@@ -32,7 +33,7 @@ vi.mock("../vis-adapter/index.js", () => ({
 
 import { State } from "../state/state.js";
 import { replaceGraph, mergeGraph } from "../graph.js";
-import { showCandidatePicker, showToast, showRetryToast } from "../ui/index.js";
+import { showCandidatePicker, showToast, showRetryToast, updateScanStatus } from "../ui/index.js";
 import { _doSearch, showMoreCollaborations } from "./api.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -163,6 +164,42 @@ describe("_doSearch — successful search", () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(replaceGraph).toHaveBeenCalledWith(freshGraph);
+  });
+});
+
+// ─── SF-WEB-05: pollEnrichment drives the inline scan-status indicator ──────
+
+describe("pollEnrichment — SSE events drive updateScanStatus", () => {
+  it("shows an optimistic partial/scanning status as soon as the SSE stream opens", async () => {
+    const graph = { seed: "Radiohead", seed_id: 1, nodes: [{ id: 1, name: "Radiohead" }], edges: [] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(graph)));
+
+    await _doSearch("Radiohead", false, false);
+
+    expect(updateScanStatus).toHaveBeenCalledWith(expect.objectContaining({ depth: 1, enriching: true }));
+  });
+
+  it("reflects each mock status event, partial → background scan → full", async () => {
+    const graph = { seed: "Radiohead", seed_id: 1, nodes: [{ id: 1, name: "Radiohead" }], edges: [] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(graph)));
+
+    await _doSearch("Radiohead", false, false);
+    updateScanStatus.mockClear();
+
+    const es = FakeEventSource.instances[0];
+    expect(es).toBeTruthy();
+
+    es.onmessage({ data: JSON.stringify({ depth: 1, song_count: 10, enriching: false }) });
+    es.onmessage({ data: JSON.stringify({ depth: 1, song_count: 25, enriching: true }) });
+    es.onmessage({ data: JSON.stringify({ depth: 2, song_count: 40, enriching: false }) });
+
+    expect(updateScanStatus.mock.calls.map(([s]) => s)).toEqual([
+      { depth: 1, song_count: 10, enriching: false },
+      { depth: 1, song_count: 25, enriching: true },
+      { depth: 2, song_count: 40, enriching: false },
+    ]);
+    // depth>=2 also closes the stream (existing full-scan-complete behaviour).
+    expect(es.closed).toBe(true);
   });
 });
 
