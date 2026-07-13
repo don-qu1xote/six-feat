@@ -154,7 +154,20 @@ class TestApiAuthAndSecurityHeaders:
     ):
         resp = anon_client.get(url, timeout=5.0)
         assert resp.status_code == 401
-        assert resp.json() == expected_401_body
+
+        body = resp.json()
+        # [SF-API-06] graph/path/search/status now also carry a "request_id"
+        # in every error body (sse_status_handler.cpp is untouched by that
+        # ticket, so status_stream's body is still the bare literal below).
+        # Checked separately from the rest of the body since its value is
+        # per-request and can't be part of the static ENDPOINTS fixture.
+        request_id = body.pop("request_id", None)
+        if is_stream:
+            assert request_id is None
+        else:
+            assert request_id
+            assert request_id == resp.headers.get("X-Request-Id")
+        assert body == expected_401_body
 
     def test_anonymous_401_has_security_headers(
         self, anon_client: requests.Session,
