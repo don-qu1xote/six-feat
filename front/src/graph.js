@@ -37,25 +37,35 @@ export function mergeGraph(graph) {
   const savedPositions = State.network ? State.network.getPositions() : {};
 
   const existingNodeIds  = new Set(State.graphNodes.map(n => n.id));
-  const existingEdgeKeys = new Set(State.graphEdges.map(e => e.id));
+  // SF-WEB-01: edgeKey() (not e.id) — a Set of the same numeric/string keys
+  // computed for the incoming edges below, so membership checks below never
+  // fall back to a full string-vs-string compare when a fast numeric one
+  // will do. Doesn't touch buildEdgeState's own `.id` (still "lo_hi" —
+  // depended on elsewhere as a DOM data-edge-id string).
+  const existingEdgeKeys = new Set(State.graphEdges.map(e => edgeKey(e.from, e.to)));
 
   const nameById = {};
   State.graphNodes.forEach(n => { nameById[n.id] = n.name; });
   graph.nodes.forEach(n => { nameById[n.id] = n.name || ""; });
 
+  // SF-WEB-01: single pass over graph.nodes/graph.edges each (was a
+  // separate .filter() + .map(), i.e. two passes) — same resulting set
+  // (existingNodeIds/existingEdgeKeys are snapshotted once beforehand, same
+  // as the old .filter() closures, so duplicate ids/pairs *within* the
+  // incoming batch itself still both pass through, unchanged behaviour).
   // Централити убрана — обновлять здесь больше нечего для уже
   // существующих узлов (раньше подтягивали betweenness_normalised).
-  addNodes(
-    graph.nodes
-      .filter(n => !existingNodeIds.has(n.id))
-      .map(n => buildNodeState(n, null, existingNodeIds, graph))
-  );
+  const newNodes = [];
+  for (const n of graph.nodes) {
+    if (!existingNodeIds.has(n.id)) newNodes.push(buildNodeState(n, null, existingNodeIds, graph));
+  }
+  addNodes(newNodes);
 
-  addEdges(
-    graph.edges
-      .filter(e => !existingEdgeKeys.has(`${Math.min(e.from, e.to)}_${Math.max(e.from, e.to)}`))
-      .map(e => buildEdgeState(e))
-  );
+  const newEdges = [];
+  for (const e of graph.edges) {
+    if (!existingEdgeKeys.has(edgeKey(e.from, e.to))) newEdges.push(buildEdgeState(e));
+  }
+  addEdges(newEdges);
 
   State.expandedNodes.add(expandedId);
   State.lastExpandedId = expandedId;
@@ -96,6 +106,26 @@ export function buildNodeState(n, seedId, existingIds, graph) {
     _dimBorder:       dimBorder,        // Task 6: persisted here
     _accent:          accent,
   };
+}
+
+// SF-WEB-01: composite numeric edge-dedup key — lo*EDGE_KEY_LIMIT+hi is a
+// unique integer for any pair of ids under EDGE_KEY_LIMIT, and comparing/
+// hashing a number in a Set is cheaper than the template-string alloc
+// (`${lo}_${hi}`) mergeGraph used to build per edge, per merge. Genius
+// artist ids are nowhere near this range in practice, but rather than
+// assume it we verify: both endpoints must fit under
+// sqrt(Number.MAX_SAFE_INTEGER) so the composite itself can't exceed
+// Number.MAX_SAFE_INTEGER (lo and hi both at the limit is the worst case —
+// EDGE_KEY_LIMIT² is exactly the bound). Anything outside that range falls
+// back to the original string key — still correct, just not the fast path —
+// computed once per edge either way.
+const EDGE_KEY_LIMIT = Math.floor(Math.sqrt(Number.MAX_SAFE_INTEGER)); // ≈ 94,906,265
+
+export function edgeKey(a, b) {
+  const lo = a < b ? a : b;
+  const hi = a < b ? b : a;
+  if (lo >= 0 && hi < EDGE_KEY_LIMIT) return lo * EDGE_KEY_LIMIT + hi;
+  return `${lo}_${hi}`;
 }
 
 export function buildEdgeState(e) {

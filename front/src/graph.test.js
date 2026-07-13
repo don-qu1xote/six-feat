@@ -1,12 +1,37 @@
 // ════════════════════════════════════════════════════════════════════════════
-// graph.test.js — unit tests for buildNodeState/buildEdgeState/
-//                 computeNodeDominantRoles/cacheNodeCollaborations
+// graph.test.js — unit tests for buildNodeState/buildEdgeState/edgeKey/
+//                 mergeGraph/computeNodeDominantRoles/cacheNodeCollaborations
 // ════════════════════════════════════════════════════════════════════════════
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// mergeGraph()→finalizeGraphState() reaches into DOM-lifecycle/network
+// modules (see graph.js's own imports) that don't make sense to actually run
+// under jsdom (initNetwork/mergeNetwork expect a real `vis` global) — mocked
+// out here so the mergeGraph tests below exercise only its own dedup/merge
+// logic. resolveEdgeDominantRole is kept real via importOriginal since
+// buildEdgeState (exercised for real throughout this file) depends on it.
+vi.mock("./ui/index.js", () => ({ renderGraphA11yList: vi.fn() }));
+vi.mock("./ui/sidebar.js", () => ({ hideArtistSidebar: vi.fn() }));
+vi.mock("./ui/canvas-controls.js", () => ({ updateStatus: vi.fn(), updateTruncationBanner: vi.fn() }));
+vi.mock("./vis-adapter/index.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    initGraphOnCanvas:    vi.fn(),
+    initNetwork:          vi.fn(),
+    refreshNetwork:       vi.fn(),
+    mergeNetwork:         vi.fn(),
+    invalidateColorCache: vi.fn(),
+  };
+});
+
 import { State, COLOR } from "./state/state.js";
+import { els } from "./dom/dom.js";
 import {
   buildNodeState,
   buildEdgeState,
+  edgeKey,
+  mergeGraph,
   computeNodeDominantRoles,
   cacheNodeCollaborations,
 } from "./graph.js";
@@ -100,6 +125,97 @@ describe("buildEdgeState", () => {
 
   it("falls back to primary when no role signal is present", () => {
     expect(buildEdgeState({ from: 1, to: 2 }).dominantRole).toBe("primary");
+  });
+});
+
+// SF-WEB-01
+describe("edgeKey", () => {
+  it("is order-independent, same as the string 'lo_hi' key it replaces", () => {
+    expect(edgeKey(5, 2)).toBe(edgeKey(2, 5));
+  });
+
+  it("returns a numeric composite key for realistic (well-in-range) Genius artist ids", () => {
+    const k = edgeKey(1234, 987654);
+    expect(typeof k).toBe("number");
+    expect(Number.isSafeInteger(k)).toBe(true);
+  });
+
+  it("never collides between distinct pairs, and never overflows past Number.MAX_SAFE_INTEGER", () => {
+    const pairs = [[1, 2], [2, 3], [1, 3], [100, 200], [999999, 1]];
+    const keys = pairs.map(([a, b]) => edgeKey(a, b));
+    expect(new Set(keys).size).toBe(pairs.length);
+    for (const k of keys) expect(Number.isSafeInteger(k)).toBe(true);
+  });
+
+  it("falls back to the original string key when an id is outside the safe composite range", () => {
+    const huge = 100_000_000; // > sqrt(Number.MAX_SAFE_INTEGER) — composite would risk overflow
+    expect(edgeKey(1, huge)).toBe("1_100000000");
+    expect(edgeKey(huge, 1)).toBe("1_100000000");
+  });
+});
+
+// SF-WEB-01
+describe("mergeGraph", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    State.graphNodes    = [];
+    State.graphEdges    = [];
+    State.expandedNodes = new Set();
+    State.currentSeedId = 1;
+    State._clickedNodeId = null;
+    State.network        = null;
+    State.hasRendered    = true;
+    els.heroInput = document.createElement("input");
+  });
+
+  it("adds only genuinely-new nodes/edges — identical final set to the old filter+map approach", () => {
+    State.graphNodes = [buildNodeState({ id: 1, name: "Seed" }, 1, new Set())];
+    State.graphEdges = [];
+
+    mergeGraph({
+      seed_id: 1,
+      nodes: [
+        { id: 1, name: "Seed" },      // already present -> skipped
+        { id: 2, name: "New Artist" }, // new -> added
+      ],
+      edges: [
+        { from: 1, to: 2, weight: 3 }, // new -> added
+      ],
+    });
+
+    expect(State.graphNodes.map(n => n.id)).toEqual([1, 2]);
+    expect(State.graphEdges).toHaveLength(1);
+    expect(State.graphEdges[0].id).toBe("1_2");
+  });
+
+  it("dedups an edge already present regardless of from/to order", () => {
+    State.graphNodes = [
+      buildNodeState({ id: 1, name: "A" }, 1, new Set()),
+      buildNodeState({ id: 2, name: "B" }, 1, new Set()),
+    ];
+    State.graphEdges = [buildEdgeState({ from: 2, to: 1, weight: 5 })];
+
+    mergeGraph({
+      seed_id: 1,
+      nodes: [{ id: 1, name: "A" }, { id: 2, name: "B" }],
+      edges: [{ from: 1, to: 2, weight: 5 }], // same pair, opposite order -> not re-added
+    });
+
+    expect(State.graphEdges).toHaveLength(1);
+  });
+
+  it("marks the expanded node and does not disturb unrelated existing nodes/edges", () => {
+    State.graphNodes = [
+      buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+      buildNodeState({ id: 2, name: "Other" }, 1, new Set()),
+    ];
+    State.graphEdges = [buildEdgeState({ from: 1, to: 2, weight: 1 })];
+
+    mergeGraph({ seed_id: 2, nodes: [{ id: 2, name: "Other" }], edges: [] });
+
+    expect(State.expandedNodes.has(2)).toBe(true);
+    expect(State.graphNodes.map(n => n.id)).toEqual([1, 2]);
+    expect(State.graphEdges).toHaveLength(1);
   });
 });
 
