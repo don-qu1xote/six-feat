@@ -53,3 +53,27 @@ describe("[SF-WEB-14] no duplicate global entry points on the canvas", () => {
     expect(countOccurrences(html, 'id="btn-focus-seed"')).toBe(1);
   });
 });
+
+describe("[SF-WEB-27] object action bar merged into the sidebar body", () => {
+  it("has no standalone sidebar-genius-btn element left — Genius is one of the object action bar's own buttons now", () => {
+    expect(html).not.toContain('id="sidebar-genius-btn"');
+    expect(html).not.toContain('class="sidebar-genius-btn"');
+  });
+
+  it("no longer floats #object-action-bar above the companion panel — it's nested inside .sidebar-body, after #companion-panel opens", () => {
+    const companionPanelIdx = html.indexOf('id="companion-panel"');
+    const actionBarIdx      = html.indexOf('id="object-action-bar"');
+    expect(companionPanelIdx).toBeGreaterThan(-1);
+    expect(actionBarIdx).toBeGreaterThan(companionPanelIdx);
+  });
+
+  it("renders exactly one action row containing Genius for node context", () => {
+    expect(countOccurrences(html, 'id="object-action-bar"')).toBe(1);
+    expect(countOccurrences(html, 'id="obj-action-genius"')).toBe(1);
+    // The single object-action-bar block must be the one containing it.
+    const barStart = html.indexOf('id="object-action-bar"');
+    const barEnd    = html.indexOf("</div>", html.indexOf('id="obj-action-pin"'));
+    const barBlock  = html.slice(barStart, barEnd);
+    expect(barBlock).toContain('id="obj-action-genius"');
+  });
+});

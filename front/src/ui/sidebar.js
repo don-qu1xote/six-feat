@@ -164,17 +164,18 @@ function buildPathTrackHTML(nodeId, pathInfo) {
 // удалён (см. vis-adapter/render.js).
 
 /**
- * [SF-WEB-14] Object action bar — expand / focus / open on Genius / pin,
- * scoped to whichever node is currently shown in node context (this bar is
- * hidden for edge context, see showEdgeSidebar/hideArtistSidebar below —
- * none of these four actions make sense for an edge). Rewires all four
- * buttons' onclick to the given node every call, same pattern the Genius
- * button already used before this ticket (els.sidebarGenius.onclick).
- * Reuses the exact same paths as their pre-existing triggers:
+ * [SF-WEB-14, merged into the sidebar body by SF-WEB-27] Object action bar —
+ * expand / focus / open on Genius / pin, scoped to whichever node is
+ * currently shown in node context (this bar is hidden for edge context, see
+ * showEdgeSidebar/hideArtistSidebar below — none of these four actions make
+ * sense for an edge). Rewires all four buttons' onclick to the given node
+ * every call. Reuses the exact same paths as their pre-existing triggers:
  *   expand → searchArtist(name, true, true), same as double-click.
  *   focus  → network.focus(id, ...), same as a path-chain-card click.
- *   genius → openGeniusPage(nodeId), same as the companion's own button.
- *   pin    → new: vis-adapter/physics.js::toggleNodePin (see state.js's
+ *   genius → openGeniusPage(nodeId) — the only way to open Genius from the
+ *            sidebar now; the separate .sidebar-genius-btn tile SF-WEB-27
+ *            removed used to wire this same call independently.
+ *   pin    → vis-adapter/physics.js::toggleNodePin (see state.js's
  *            pinnedNodes).
  */
 function syncObjectActionBar(node) {
@@ -308,13 +309,11 @@ export function showArtistSidebar(nodeId) {
     });
   }
 
-  // ---- Genius button (unchanged) ----
-  els.sidebarGenius.style.display = "";
-  els.sidebarGenius.onclick = () => openGeniusPage(nodeId);
   els.artistSidebar.classList.add("show");
   els.companionPanel?.classList.add("show");
 
-  // [SF-WEB-14] Object action bar — node-only, see syncObjectActionBar.
+  // [SF-WEB-14/SF-WEB-27] Object action bar (incl. Genius) — node-only,
+  // see syncObjectActionBar.
   syncObjectActionBar(node);
 }
 
@@ -378,11 +377,10 @@ export function showEdgeSidebar(edgeId, nameById) {
   els.sidebarRoleBreakdownTile.style.display = "none";
   els.sidebarPathTile.style.display = "none";
 
-  els.sidebarGenius.style.display = "none";
   els.artistSidebar.classList.add("show");
   els.companionPanel?.classList.add("show");
-  // [SF-WEB-14] None of the object action bar's four actions apply to an
-  // edge (expand/focus/genius/pin are all single-artist concepts).
+  // [SF-WEB-14/SF-WEB-27] None of the object action bar's four actions
+  // (incl. Genius, now merged into this same row) apply to an edge.
   if (els.objectActionBar) els.objectActionBar.hidden = true;
   // IDEA-40: клик по ребру закрепляет выбор (persistent), а не только
   // временную hover-подсветку — иначе уход курсора с ребра откатывал бы

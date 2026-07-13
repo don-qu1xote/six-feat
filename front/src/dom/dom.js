@@ -91,11 +91,13 @@ export const els = {
   // visible (not tucked inside the rail's hover-to-expand icon stack).
   roleFilterSegment: $("role-filter-segment"),
 
-  // [SF-WEB-14] Object action bar — mini-actions for the currently selected
-  // node (expand / focus / open on Genius / pin), shown above the companion
-  // panel instead of as global rail buttons. Populated per-node by
-  // ui/sidebar.js::showArtistSidebar, hidden by hideArtistSidebar/
-  // showEdgeSidebar (these actions only make sense for a single artist).
+  // [SF-WEB-27] Object action bar — mini-actions for the currently selected
+  // node (expand / focus / open on Genius / pin), the last row of
+  // #sidebar-body's grid (was a separately-floating bar above the whole
+  // companion panel, plus a now-removed standalone Genius button — merged
+  // into this one row). Populated per-node by ui/sidebar.js::
+  // showArtistSidebar, hidden by hideArtistSidebar/showEdgeSidebar (these
+  // actions only make sense for a single artist).
   objectActionBar:  $("object-action-bar"),
   objActionExpand:  $("obj-action-expand"),
   objActionFocus:   $("obj-action-focus"),
@@ -118,7 +120,6 @@ export const els = {
   sidebarRoleChips:         $("sidebar-role-chips"),
   sidebarPathTile:          $("sidebar-path-tile"),
   sidebarPathTrack:         $("sidebar-path-track"),
-  sidebarGenius:  $("sidebar-genius-btn"),
   sidebarClose:   $("sidebar-close"),
 
   candidateOverlay: $("candidate-overlay"),

@@ -1,17 +1,29 @@
 // ════════════════════════════════════════════════════════════════════════════
 // sidebar.test.js — unit tests for the companion panel's node/edge context
-//                    (ui/sidebar.js): SF-WEB-12's static tiles and
-//                    SF-WEB-14's object action bar.
+//                    (ui/sidebar.js): SF-WEB-12's static tiles and the
+//                    object action bar (SF-WEB-14, merged into the sidebar
+//                    body's own grid by SF-WEB-27).
 //
-// Asserts the things both tickets care about: (1) node vs edge context
+// Asserts the things these tickets care about: (1) node vs edge context
 // render into the right static tiles with the right content, (2) doing so
 // never creates new DOM elements (the ensureTile()-style dynamic grid-tile
 // insertion SF-WEB-12 removes) — every tile referenced here is assigned
 // once in beforeEach, exactly like the real static markup in index.html,
 // and a document.createElement spy proves sidebar.js never reaches for a
-// fresh one — and (3) the object action bar (SF-WEB-14) is visible only
-// for node context and wires its four buttons to the node it's currently
-// showing.
+// fresh one — and (3) the object action bar is visible only for node
+// context, contains Genius as one of its own four buttons (no separate
+// Genius element anymore — see [SF-WEB-27] below), and wires all four
+// buttons to the node it's currently showing.
+//
+// [SF-WEB-27] Genius used to be a standalone .sidebar-genius-btn wired
+// independently of the object action bar (els.sidebarGenius, since
+// removed); it's now exclusively els.objActionGenius, one of the four
+// buttons syncObjectActionBar wires together. The markup-level assertions
+// ("exactly one action row in the page, no leftover .sidebar-genius-btn, no
+// floating #object-action-bar above the panel") live in
+// canvas-declutter.test.js instead, since they're statements about
+// index.html itself, not about this module's logic — same split the file
+// header there documents.
 //
 // Path context (openPathPanel/closePathPanel mutual exclusivity with node/
 // edge context) is covered separately in modals.test.js, since that's where
@@ -66,9 +78,9 @@ beforeEach(() => {
   els.sidebarRoleChips         = freshEl();
   els.sidebarPathTile          = freshEl();
   els.sidebarPathTrack         = freshEl();
-  els.sidebarGenius    = freshEl("button");
 
-  // [SF-WEB-14] Object action bar.
+  // [SF-WEB-14/SF-WEB-27] Object action bar — Genius lives here now, no
+  // separate els.sidebarGenius any more.
   els.objectActionBar = freshEl();
   els.objectActionBar.hidden = true;
   els.objActionExpand = freshEl("button");
@@ -108,11 +120,12 @@ describe("showArtistSidebar (node context)", () => {
     expect(els.sidebarPathTile.style.display).toBe("none");
   });
 
-  it("shows the Genius button and wires it to openGeniusPage(nodeId)", () => {
+  it("[SF-WEB-27] shows Genius as part of the (single) object action bar, wired to openGeniusPage(nodeId) — no separate Genius button", () => {
     State.graphNodes = [mockNode()];
     showArtistSidebar(1);
-    expect(els.sidebarGenius.style.display).toBe("");
-    expect(typeof els.sidebarGenius.onclick).toBe("function");
+    expect(els.objectActionBar.hidden).toBe(false);
+    expect(typeof els.objActionGenius.onclick).toBe("function");
+    expect(els.sidebarGenius).toBeUndefined();
   });
 
   it("closes the path section before showing node context (mutual exclusivity)", () => {
@@ -130,7 +143,7 @@ describe("showArtistSidebar (node context)", () => {
   });
 });
 
-describe("[SF-WEB-14] object action bar — node context", () => {
+describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
   it("is shown (un-hidden) when a node is selected", () => {
     State.graphNodes = [mockNode()];
     showArtistSidebar(1);
@@ -199,16 +212,15 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.companionPanel.classList.contains("show")).toBe(true);
   });
 
-  it("hides the node-only tiles (role breakdown, path-to-seed, Genius button) — they only make sense for a single artist", () => {
+  it("hides the node-only tiles (role breakdown, path-to-seed) — they only make sense for a single artist", () => {
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", {});
 
     expect(els.sidebarRoleBreakdownTile.style.display).toBe("none");
     expect(els.sidebarPathTile.style.display).toBe("none");
-    expect(els.sidebarGenius.style.display).toBe("none");
   });
 
-  it("[SF-WEB-14] hides the object action bar — none of its four actions apply to an edge", () => {
+  it("[SF-WEB-14/SF-WEB-27] hides the object action bar (incl. Genius, now one of its four buttons) — none of its actions apply to an edge", () => {
     els.objectActionBar.hidden = false;
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", {});
