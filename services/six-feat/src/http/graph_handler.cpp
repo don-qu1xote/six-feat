@@ -423,19 +423,24 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
     // This converts the star topology into a richer graph where centrality
     // has meaningful variation.
     {
-        // Index: which collaborators appear in which songs
-        std::unordered_map<std::int64_t, std::vector<std::int64_t>> collab_in_track;
-        std::unordered_set<std::int64_t> order_set(order.begin(), order.end());
-
+        // [SF-PERF-01] `edges`'s key set is exactly the unique ids in `order`
+        // (every id is inserted into both, together, in step 1 above, the
+        // only place either grows) — a fresh order_set here would just
+        // rebuild an unordered_set holding the same keys `edges` already
+        // hashes on. Reuse edges.count() as the "is a direct collaborator of
+        // seed" membership check instead of allocating+populating a second
+        // hash set from `order` on every call.
         for (const auto& song : data.songs) {
             std::vector<std::int64_t> collabs_in_song;
+            // Exact upper bound: at most one entry per credit on this song.
+            collabs_in_song.reserve(song.credits.size());
 
             for (const auto& credit : song.credits) {
                 if (credit.artist.id == seed_id) continue;
                 if (!RoleAllowed(credit.role, mask)) continue;
 
                 // Only include if this artist is a direct collaborator of seed
-                if (order_set.count(credit.artist.id)) {
+                if (edges.count(credit.artist.id)) {
                     collabs_in_song.push_back(credit.artist.id);
                 }
             }
