@@ -1,7 +1,6 @@
 // ════════════════════════════════════════════════════════════════════════════
-// ui/modals.js — Search modal (docked + full-screen), command palette (⌘K,
-//                was just a node-search overlay), and path-panel open/close
-//                state.
+// ui/modals.js — Search modal (docked + full-screen), node-search overlay,
+//                and path-panel open/close state.
 //
 // These three overlays mutually close each other when one opens (same
 // pattern as the original ui.js), so they're kept together rather than
@@ -11,20 +10,8 @@ import { State } from "../state/state.js";
 import { debounce, escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els, $ } from "../dom/dom.js";
 import { setFocus } from "../vis-adapter/index.js";
-import { hideArtistSidebar, showArtistSidebar, syncCompanionEmpty } from "./sidebar.js";
+import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
-// [SF-WEB-21] Command-row actions — the palette replaces the rail's
-// search/find-path/copy-link/export/clear buttons plus the standalone
-// theme-toggle and status row's help button, so it needs to reach all of
-// them. searchArtist/canvas-controls.js/history.js/theme.js already import
-// back from this file (isPathPanelOpen et al. / openNodeSearch et al.) —
-// this is a deliberate two-way cycle, safe here since every cross-import on
-// both sides is only ever used inside a function body, never at module
-// top-level.
-import { searchArtist } from "../api/api.js";
-import { exportGraphPng, clearCanvas, toggleRoleFilter, openHelpOverlay } from "./canvas-controls.js";
-import { copyShareableLink } from "./history.js";
-import { setTheme } from "./theme.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Path panel open/close
@@ -53,17 +40,13 @@ export function openPathPanel() {
   // opening the path section replaces whatever node/edge context was shown.
   hideArtistSidebar();
   els.pathPanel.classList.add("show");
-  // [SF-WEB-22] syncCompanionEmpty() both keeps companionPanel visible and
-  // hides .companion-empty now that the path section is genuinely active —
-  // hideArtistSidebar() just above would otherwise leave the empty state
-  // shown (it can't know a path is about to take over).
-  syncCompanionEmpty();
+  els.companionPanel?.classList.add("show");
   els.pathFromInput?.focus();
 }
 
 export function closePathPanel() {
   els.pathPanel?.classList.remove("show");
-  syncCompanionEmpty();
+  els.companionPanel?.classList.remove("show");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -174,77 +157,8 @@ export function setupSearchModal() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// [SF-WEB-21] Command palette ("Find on map" + new-seed search + actions,
-//             all ⌘K) — extends what used to be a graph-node-only search
-//             overlay into the app's one universal entry point.
+// Node search overlay ("Find on map" / ⌘K)
 // ════════════════════════════════════════════════════════════════════════════
-
-// Static command list — one row per secondary action that used to be a
-// permanent rail button, the standalone theme-toggle, or the status row's
-// help button. Filtered by query (substring on label OR keywords) exactly
-// like graph-node results below, so this is one unified, arrow-navigable
-// list instead of a separate "mode" the user has to switch into.
-//
-// [SF-WEB-22] `section` groups commands under a rendered header (see
-// _sectionHeaderHtml/renderNodeSearchResults) — entries are listed
-// contiguously per section on purpose, so the renderer can detect a new
-// section just by noticing `section` changed from the previous (already
-// query-filtered) command, without a separate sort/group-by pass.
-function _commands() {
-  return [
-    {
-      id: "find-path", section: "Navigate", icon: "icon-shuffle",
-      label: "Find a path between two artists",
-      run: () => { isPathPanelOpen() ? closePathPanel() : openPathPanel(); },
-    },
-    {
-      id: "filter-featured", section: "View", icon: "icon-mic",
-      label: "Toggle featured-role filter",
-      active: State.activeFilters.has("featured"), run: () => toggleRoleFilter("featured"),
-    },
-    {
-      id: "filter-producer", section: "View", icon: "icon-sliders",
-      label: "Toggle producer-role filter",
-      active: State.activeFilters.has("producer"), run: () => toggleRoleFilter("producer"),
-    },
-    {
-      id: "filter-writer", section: "View", icon: "icon-pen",
-      label: "Toggle writer-role filter",
-      active: State.activeFilters.has("writer"), run: () => toggleRoleFilter("writer"),
-    },
-    {
-      id: "theme", section: "View", icon: State.theme === "light" ? "icon-moon" : "icon-sun",
-      label: `Switch to ${State.theme === "light" ? "dark" : "light"} theme`,
-      run: () => setTheme(State.theme === "light" ? "dark" : "light"),
-    },
-    {
-      id: "export-png", section: "Graph", icon: "icon-download",
-      label: "Download graph as PNG", keywords: ["export"],
-      run: () => exportGraphPng(),
-    },
-    {
-      id: "copy-link", section: "Graph", icon: "icon-link",
-      label: "Copy shareable link",
-      run: () => copyShareableLink(),
-    },
-    {
-      id: "clear", section: "Graph", icon: "icon-close", danger: true,
-      label: "Clear graph",
-      run: () => clearCanvas(),
-    },
-    {
-      id: "help", section: "Help", icon: "icon-info",
-      label: "Keyboard shortcuts", keywords: ["help"],
-      run: () => openHelpOverlay(),
-    },
-  ];
-}
-
-function _commandMatches(cmd, q) {
-  if (!q) return true;
-  if (cmd.label.toLowerCase().includes(q)) return true;
-  return (cmd.keywords || []).some(k => k.toLowerCase().includes(q));
-}
 
 // Screen-reader/keyboard-only alternative to dragging/clicking nodes on the
 // <canvas>: an ARIA combobox+listbox pair, kept in sync via
@@ -270,24 +184,13 @@ function _nsSetActive(index, items) {
   els.nodeSearchInput.setAttribute("aria-activedescendant", active ? active.id : "");
 }
 
-// Runs whichever of the three row kinds the user picked — a command, the
-// always-present "search this as a new seed" row, or a graph node (the
-// overlay's original job, unchanged).
-function _paletteSelect(item) {
-  const kind = item.dataset.kind;
+function _nsSelect(item) {
+  const id = item.getAttribute("data-id");
   closeNodeSearch();
-  if (kind === "cmd") {
-    _commands().find(c => c.id === item.dataset.cmdId)?.run();
-  } else if (kind === "search") {
-    const q = item.dataset.query;
-    if (q) searchArtist(q, false, true);
-  } else {
-    const id = item.getAttribute("data-id");
-    if (!State.network) return;
-    State.network.focus(id, { scale: 1.5, animation: { duration: 600, easingFunction: "easeInOutQuad" } });
-    setFocus(id);
-    showArtistSidebar(id);
-  }
+  if (!State.network) return;
+  State.network.focus(id, { scale: 1.5, animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+  setFocus(id);
+  showArtistSidebar(id);
 }
 
 export function openNodeSearch() {
@@ -309,93 +212,36 @@ export function closeNodeSearch() {
   _nsActiveIndex = -1;
 }
 
-// [SF-WEB-22] A header row for the section a command/search/node row falls
-// under — role="presentation" since it's not itself a selectable option
-// (arrow-key nav/_nsItems() below only look at .ns-item, so headers are
-// already skipped there regardless; this just keeps the ARIA listbox from
-// claiming a plain label div is one of its options).
-function _sectionHeaderHtml(label) {
-  return `<div class="ns-section" role="presentation">${escapeHtml(label)}</div>`;
-}
+export function renderNodeSearchResults(query) {
+  const q = query.toLowerCase().trim();
+  const seedId = State.currentSeedId;  // FIX #1: Exclude seed from results
 
-function _cmdRowHtml(cmd, index) {
-  const dangerClass = cmd.danger ? " ns-item--danger" : "";
-  return `<div class="ns-item ns-item--cmd${dangerClass}" id="ns-item-${index}" data-kind="cmd" data-cmd-id="${cmd.id}" role="option" aria-selected="false">` +
-    `<span class="ns-cmd-label"><svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#${cmd.icon}"/></svg>${escapeHtml(cmd.label)}</span>` +
-    `<span class="ns-weight">${cmd.active ? "✓" : ""}</span>` +
-    `</div>`;
-}
+  const results = q
+    ? State.graphNodes
+        .filter(n => n.id !== seedId && n.name.toLowerCase().includes(q))
+        .slice(0, 12)
+    : State.graphNodes
+        .filter(n => n.id !== seedId)
+        .slice(0, 12);
 
-function _searchRowHtml(query, index) {
-  return `<div class="ns-item ns-item--cmd" id="ns-item-${index}" data-kind="search" data-query="${escapeHtml(query)}" role="option" aria-selected="false">` +
-    `<span class="ns-cmd-label"><svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg>Search artist: "${escapeHtml(query)}"</span>` +
-    `<span class="ns-weight"></span>` +
-    `</div>`;
-}
-
-function _nodeRowHtml(n, index) {
-  return `<div class="ns-item" id="ns-item-${index}" data-kind="node" data-id="${n.id}" role="option" aria-selected="false">` +
+  els.nodeSearchResults.innerHTML = results.map((n, i) =>
+    `<div class="ns-item" id="ns-item-${i}" data-id="${n.id}" role="option" aria-selected="false">` +
     `<span class="ns-name">${escapeHtml(n.name)}` +
     (State.expandedNodes.has(n.id) ? ` <span style="color:var(--signal);font-size:9px">✓</span>` : "") +
     `</span>` +
     `<span class="ns-weight">${n._totalCollabs || n.totalWeight || 0} collab${(n._totalCollabs || n.totalWeight) === 1 ? "" : "s"}</span>` +
-    `</div>`;
-}
-
-export function renderNodeSearchResults(query) {
-  // Trimmed-but-original-case text for the "search as new seed" row (both
-  // its label and the eventual searchArtist() call) — only the match
-  // itself (commands/nodes) is case-insensitive.
-  const trimmed = query.trim();
-  const q = trimmed.toLowerCase();
-  const seedId = State.currentSeedId;  // FIX #1: Exclude seed from results
-
-  const commands = _commands().filter(c => _commandMatches(c, q));
-
-  const nodes = (q
-    ? State.graphNodes.filter(n => n.id !== seedId && n.name.toLowerCase().includes(q))
-    : State.graphNodes.filter(n => n.id !== seedId)
-  ).slice(0, 12);
-
-  // [SF-WEB-22] Section headers make the three row kinds (command/new-seed
-  // search/graph node) visually distinct, not just distinguishable via the
-  // invisible data-kind attribute. _commands() lists entries contiguously
-  // per section, so a header only needs to render when `section` changes
-  // from the previous (already query-filtered) command — a section with no
-  // surviving matches after filtering never gets a header at all.
-  let i = 0;
-  let lastSection = null;
-  const commandRows = [];
-  for (const c of commands) {
-    if (c.section !== lastSection) {
-      commandRows.push(_sectionHeaderHtml(c.section));
-      lastSection = c.section;
-    }
-    commandRows.push(_cmdRowHtml(c, i++));
-  }
-
-  const rows = [
-    ...commandRows,
-    // Always offered when there's a query — the palette's universal
-    // "new seed" entry, same effect the old docked search-open rail
-    // button eventually led to.
-    ...(trimmed ? [_sectionHeaderHtml("Search"), _searchRowHtml(trimmed, i++)] : []),
-    ...(nodes.length ? [_sectionHeaderHtml("On this graph"), ...nodes.map(n => _nodeRowHtml(n, i++))] : []),
-  ];
-
-  els.nodeSearchResults.innerHTML = rows.join("") || `<div class="ns-empty">No matches</div>`;
+    `</div>`
+  ).join("") || `<div class="ns-empty">No nodes match</div>`;
 
   _nsActiveIndex = -1;
   els.nodeSearchInput.setAttribute("aria-activedescendant", "");
-  if (els.nodeSearchStatus) {
-    const total = commands.length + nodes.length + (q ? 1 : 0);
-    els.nodeSearchStatus.textContent = total
-      ? `${total} result${total === 1 ? "" : "s"} found`
-      : "No matches";
-  }
+  if (els.nodeSearchStatus)
+    els.nodeSearchStatus.textContent = results.length
+      ? `${results.length} artist${results.length === 1 ? "" : "s"} found`
+      : "No nodes match";
 
   els.nodeSearchResults.querySelectorAll(".ns-item").forEach(item => {
-    item.addEventListener("click", () => _paletteSelect(item));
+    item.addEventListener("click", () => _nsSelect(item));
   });
 }
 
@@ -408,23 +254,16 @@ export function setupNodeSearch() {
   els.nodeSearchInput.addEventListener("keydown", e => {
     if (e.key === "Escape") { closeNodeSearch(); return; }
     const items = _nsItems();
-    if (e.key === "ArrowDown" && items.length) {
+    if (!items.length) return;
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       _nsSetActive(Math.min(_nsActiveIndex + 1, items.length - 1), items);
-    } else if (e.key === "ArrowUp" && items.length) {
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
       _nsSetActive(Math.max(_nsActiveIndex - 1, 0), items);
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" && _nsActiveIndex >= 0) {
       e.preventDefault();
-      if (_nsActiveIndex >= 0 && items[_nsActiveIndex]) {
-        _paletteSelect(items[_nsActiveIndex]);
-      } else {
-        // No row explicitly highlighted — bare Enter still submits the
-        // typed name as a new-seed search, same muscle memory as the hero
-        // form's own Enter-to-submit.
-        const q = els.nodeSearchInput.value.trim();
-        if (q) { closeNodeSearch(); searchArtist(q, false, true); }
-      }
+      _nsSelect(items[_nsActiveIndex]);
     }
   });
   // Раньше .node-search-overlay был полноэкранным тёмным фоном — клик по
@@ -435,7 +274,7 @@ export function setupNodeSearch() {
   els.nodeSearchOverlay.addEventListener("click", e => e.stopPropagation());
   document.addEventListener("click", e => {
     if (!els.nodeSearchOverlay.classList.contains("show")) return;
-    if (els.nodeSearchOverlay.contains(e.target)) return;
+    if (els.nodeSearchOverlay.contains(e.target) || e.target === els.btnNodeSearch || els.btnNodeSearch?.contains(e.target)) return;
     closeNodeSearch();
   });
 }

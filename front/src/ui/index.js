@@ -10,29 +10,22 @@
 //                            loadArtistFromUrl / copyShareableLink
 //   autocomplete.js        — createGeniusAc / attachGeniusAutocomplete /
 //                            attachNodeAutocomplete
-//   modals.js              — search modal + command palette (⌘K, was just a
-//                            node-search overlay) + path-panel open/close
-//                            state (isPathPanelOpen/openPathPanel/
+//   modals.js              — search modal + node-search overlay + path-panel
+//                            open/close state (isPathPanelOpen/openPathPanel/
 //                            closePathPanel/isSearchModalOpen/openSearchModal/
 //                            closeSearchModal/forceCloseSearchModal/
 //                            setupSearchModal/openNodeSearch/closeNodeSearch/
 //                            renderNodeSearchResults/updateNodeSearchResults/
-//                            setupNodeSearch) — [SF-WEB-21] renderNodeSearch-
-//                            Results now renders command rows + the new-seed
-//                            search row alongside graph-node results, one
-//                            unified arrow-navigable list.
+//                            setupNodeSearch)
 //   sidebar.js             — showArtistSidebar / showEdgeSidebar /
-//                            hideArtistSidebar / syncCompanionEmpty /
-//                            setupCompanionEmptyTrigger
+//                            hideArtistSidebar
 //   path-result.js         — runServerPath / mergePathData / renderHopChain
 //   path-panel.js          — setupPathPanel / setupHeroModeSwitch /
 //                            setupHeroPathFinder
-//   canvas-controls.js     — setupFilterToggles / toggleRoleFilter /
-//                            setupSeedCard / setupHelpOverlay /
-//                            openHelpOverlay / closeHelpOverlay /
-//                            setupLoadMoreCollabs / fitView / focusSeed /
-//                            zoomIn / zoomOut / setupKeyboard / clearCanvas /
-//                            updateStatus
+//   canvas-controls.js     — setupFilterToggles / setupSeedCard /
+//                            setupHelpOverlay / setupLoadMoreCollabs /
+//                            fitView / focusSeed / zoomIn /
+//                            zoomOut / setupKeyboard / clearCanvas / updateStatus
 //
 // This file re-exports the exact same public names the old flat ui.js
 // exposed, so existing imports elsewhere (api.js, graph.js, main.js,
@@ -65,8 +58,7 @@ export {
 } from "./modals.js";
 
 export {
-  showArtistSidebar, showEdgeSidebar, hideArtistSidebar,
-  syncCompanionEmpty, setupCompanionEmptyTrigger
+  showArtistSidebar, showEdgeSidebar, hideArtistSidebar
 } from "./sidebar.js";
 
 export {
@@ -78,8 +70,7 @@ export {
 } from "./path-panel.js";
 
 export {
-  setupFilterToggles, toggleRoleFilter, setupSeedCard,
-  setupHelpOverlay, openHelpOverlay, closeHelpOverlay, setupLoadMoreCollabs,
+  setupFilterToggles, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   fitView, focusSeed, zoomIn, zoomOut, setupKeyboard,
   clearCanvas, updateStatus, updateRateLimitIndicator, updateTruncationBanner,
   exportGraphPng

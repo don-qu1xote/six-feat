@@ -234,10 +234,10 @@
     .ui-btn--ghost:hover { background: rgba(255,255,255,.05); border-color: var(--line); }
 
     /* Icon-only — fixed circular footprint, no label. Every other icon-button
-       context in this file (.rail-btn/.hero-mode-tab/etc.) sizes its own
-       .ri — this one was missing here, which is why the
-       canvas-zoom-cluster/object-action-bar icons first came out at their
-       unstyled browser-default size.
+       context in this file (.rail-btn/.hero-mode-tab/.theme-toggle/etc.)
+       sizes its own .ri — this one was missing here, which is why the
+       canvas-zoom-cluster/role-filter-segment/object-action-bar icons first
+       came out at their unstyled browser-default size.
        32px / 16px-icon (not the original 40px / 18px) and circular (not
        square) so the two new .ui-segment clusters read at the SAME scale as
        the pre-existing .status row: 32px button + .ui-segment's 3px padding
@@ -828,6 +828,23 @@
     .canvas-chrome > * { pointer-events: auto; }
     #network { position: absolute; inset: 0; z-index: 0; }
 
+    /* IDEA-23: top-center avoids both the rail column (top-left) and the
+       context-panel/docked-search column (top-right) in the graph view,
+       and sits clear of the vertically-centred hero content on the landing
+       page — the one spot free in both view-home and view-graph. */
+    .theme-toggle {
+      position: absolute; top: var(--space-4); left: 50%;
+      transform: translateX(-50%);
+      width: 34px; height: 34px; flex-shrink: 0; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 50%;
+      color: var(--mist); backdrop-filter: blur(var(--blur-chip));
+      box-shadow: var(--shadow);
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .theme-toggle .ri { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    .theme-toggle:hover { color: var(--paper); border-color: var(--pulse); }
+
     .flip-ghost {
       position: fixed; z-index: 60; pointer-events: none;
       will-change: transform, opacity;
@@ -862,11 +879,8 @@
     body.view-home .status,
     body.view-home .context-panel,
     body.view-home .actions-bar,
-    /* [SF-WEB-14] the other canvas-only clusters — .object-action-bar
-       is already covered, it's a descendant of .context-panel above.
-       [SF-WEB-22] .role-filter-segment restored here — see the CSS/markup
-       comments near .canvas-zoom-cluster and this element's own markup for
-       why SF-WEB-21 removing it was a regression. */
+    /* [SF-WEB-14] the two other canvas-only clusters — .object-action-bar
+       is already covered, it's a descendant of .context-panel above. */
     body.view-home .canvas-zoom-cluster,
     body.view-home .role-filter-segment {
       display: none;
@@ -931,6 +945,7 @@
       flex-shrink: 0;
     }
 
+    .rail-sep { height: 1px; background: var(--line); flex-shrink: 0; margin: var(--space-1) var(--space-1); }
     .rail-spacer { flex: 1; }
 
     .rail-btn {
@@ -988,17 +1003,7 @@
     /* [SF-WEB-14] Clean canvas: only the graph + these two always-visible
        clusters + the object action bar live directly over the canvas now.
        Both clusters are .ui-segment (SF-WEB-11 kit) — icon-only .ui-btn
-       children, no text labels, unlike the rail's hover-expand rows.
-       [SF-WEB-21] had removed .role-filter-segment, turning the three role
-       filters into palette-only rows — [SF-WEB-22] restores it: SF-WEB-14
-       deliberately kept role filters primary/always-visible on the canvas,
-       and a palette row 2+ keystrokes deep isn't that. The palette's
-       filter-featured/-producer/-writer commands (ui/modals.js::_commands)
-       stay too — this segment and the palette both read/write the same
-       State.activeFilters (toggleRoleFilter, canvas-controls.js, already
-       syncs every element sharing a role's data-role attribute via
-       querySelectorAll — no changes needed there), so it's two entry
-       points into one piece of state, not duplicated functionality. */
+       children, no text labels, unlike the rail's hover-expand rows. */
     .canvas-zoom-cluster {
       position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 6;
     }
@@ -1081,15 +1086,15 @@
        N collaborations — there may be more.") sitting at full text width
        next to seed-card — visibly the biggest thing in the row and the
        main reason the row read as uneven. Collapsed to a single
-       .status-icon-btn (same 26px circle as info-btn below) that *is* the
-       "Show more collaborations" action (click = same effect as the old
-       inline button) — no separate nested control, so it's a plain
+       .status-icon-btn (same 26px circle as info-btn/help-btn below) that
+       *is* the "Show more collaborations" action (click = same effect as
+       the old inline button) — no separate nested control, so it's a plain
        <button>, not the div-wrapping-a-button workaround an earlier pass
-       needed. Native `title` surfaces the descriptive text on hover/focus,
-       kept in sync with the count in
-       canvas-controls.js::updateTruncationBanner. Amber stays as the accent
-       (border + text color) so it still reads as "worth a second look"
-       among the neutral info icon. */
+       needed. Native `title` (same idiom as #help-btn's own tooltip)
+       surfaces the descriptive text on hover/focus, kept in sync with the
+       count in canvas-controls.js::updateTruncationBanner. Amber stays as
+       the accent (border + text color) so it still reads as "worth a
+       second look" among the neutral info/help icons. */
     .truncation-icon-btn {
       color: var(--amber); border-color: rgba(255,210,122,.4);
     }
@@ -1226,36 +1231,19 @@
     }
     .companion-panel.show { display: flex; flex-direction: column; }
 
-    /* Idle/empty state — [SF-WEB-22] now the canvas's one visible entry
-       point into the command palette (SF-WEB-21 added the palette itself
-       but left this reserved/unreachable — the only way in was a hidden
-       ⌘K/Ctrl+K keydown listener with no on-screen hint at all). Shown by
-       ui/sidebar.js::syncCompanionEmpty, the same class-toggle mutual-
-       exclusivity every other companion-panel section already follows —
-       see the comment there. The whole block is clickable/focusable
-       (ui/sidebar.js::setupCompanionEmptyTrigger calls openNodeSearch()). */
+    /* Idle/empty state — reserved for SF-WEB-21 (command palette): nothing
+       currently sets `.show` on this section, so it's present in the DOM
+       (satisfying "static markup for every context" up front) but not yet
+       reachable. SF-WEB-21 is the ticket that decides what populates/opens
+       it, to avoid duplicating the rail/hero search this step didn't touch. */
     .companion-empty {
       display: none;
       flex-direction: column; align-items: center; text-align: center;
       gap: var(--space-2); padding: var(--space-6) var(--space-3);
       color: var(--mist); font-size: var(--text-sm);
-      cursor: pointer;
-      transition: color .15s;
-      /* It's a real <button> now (SF-WEB-22) — reset the UA button chrome
-         the rest of this rule doesn't already cover. */
-      width: 100%; border: none; background: none; font-family: inherit;
     }
     .companion-empty.show { display: flex; }
-    .companion-empty:hover, .companion-empty:focus-visible {
-      color: var(--paper);
-    }
-    .companion-empty:focus-visible { outline: none; }
     .companion-empty-title { font-weight: 600; color: var(--paper); }
-    .companion-empty kbd {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--paper);
-      background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 5px;
-      padding: var(--space-1) var(--space-2); white-space: nowrap;
-    }
 
     /* [SF-WEB-12] .path-panel is now a plain content section inside the one
        shared .companion-panel card (see below) instead of its own
@@ -1746,16 +1734,7 @@
        который выключает весь остальной интерфейс графа. Теперь — та же
        докнутая карточка в углу канвы, что и .path-panel/.search-modal.
        docked: тот же материал, то же место, граф вокруг остаётся живым
-       и видимым, а не гаснет под сплошным затемнением.
-
-       [SF-WEB-21] ...and now it really IS the command palette: same
-       overlay/id/position, ⌘K opens it same as before — just extended
-       (ui/modals.js::_commands + renderPaletteResults) to list command
-       rows (search artist / find path / role filters / export / theme /
-       help / clear / copy link) above the existing node-search results
-       instead of being node-search-only. One input, one arrow-navigable
-       list, one entry point — replaces the rail's scattered buttons plus
-       the standalone theme-toggle and status row's help button. */
+       и видимым, а не гаснет под сплошным затемнением. */
     .node-search-overlay {
       position: absolute; z-index: 20;
       top: var(--space-4); right: var(--space-4); left: auto; bottom: auto;
@@ -1790,33 +1769,6 @@
     .ns-name { color: var(--paper); font-size: var(--text-sm); }
     .ns-weight { color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs); }
     .ns-empty { color: var(--mist); font-size: var(--text-sm); padding: var(--space-2) var(--space-3); }
-
-    /* [SF-WEB-21] Command rows share .ns-item's tile (same hover/active
-       treatment as node rows) — .ns-cmd-label is the icon+label group on
-       the left, .ns-weight (reused) holds a checkmark on the right for
-       toggle-style commands (role filters) instead of a collab count. */
-    .ns-cmd-label { display: flex; align-items: center; gap: var(--space-2); color: var(--paper); font-size: var(--text-sm); }
-    .ns-cmd-label .ri { width: 14px; height: 14px; flex-shrink: 0; display: flex; }
-    .ns-cmd-label .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-
-    /* [SF-WEB-22] Section headers — Navigate/View/Graph/Help (commands),
-       Search (new-seed row), On this graph (node results) — make the
-       palette's three row kinds visually distinct instead of only
-       differing by an invisible data-kind attribute. Not a .ns-item: not
-       selectable, so arrow-key nav/_nsItems() skip it for free. */
-    .ns-section {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      letter-spacing: .1em; text-transform: uppercase;
-      padding: var(--space-2) var(--space-3) 0;
-    }
-    .ns-section:first-child { padding-top: 0; }
-
-    /* Clear graph is destructive — same warn accent the old standalone rail
-       button's inline style="color:var(--warn)" gave it, so it still reads
-       as different from its Graph-section neighbours (export/copy-link). */
-    .ns-item--danger .ns-cmd-label { color: var(--warn); }
-    .ns-item--danger:hover,
-    .ns-item--danger.ns-active { background: rgba(255,143,163,.08); border-color: rgba(255,143,163,.4); }
 
     .overlay {
       position: absolute; z-index: 6; left: 50%; top: 50%;
@@ -2179,15 +2131,48 @@
 
     <section class="canvas-chrome" id="canvas-chrome">
 
-    <!-- [SF-WEB-21] Search/find-path/copy-link/export/clear rail buttons and
-         the standalone theme-toggle are gone — they're command-palette rows
-         now (⌘K, see ui/modals.js::_commands), not permanent canvas chrome.
-         Only brand (identity/reset) and the auth badge (a status indicator,
-         not an action) stay on the rail itself. -->
+    <!-- IDEA-23: theme toggle — a direct .canvas-chrome child (not inside
+         .rail/.status/.context-panel/.actions-bar), so it stays visible on
+         both body.view-home and body.view-graph and inherits canvas-chrome's
+         pointer-events:auto + z-index above the search modal for free. -->
+    <button class="theme-toggle" id="theme-toggle" type="button"
+      aria-label="Switch to light theme" aria-pressed="false">
+      <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sun"/></svg>
+    </button>
+
     <nav class="rail">
       <button class="brand" id="brand" type="button" title="Six Feet — back to start">
         <span class="dotmark"></span>
         <span class="rl">Six Feet</span>
+      </button>
+
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-search-open" data-tip="Search artist">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg><span class="rl">Search</span>
+      </button>
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-node-search" data-tip="Search loaded nodes (⌘K)">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg><span class="rl">Find on map</span>
+      </button>
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-find-path" data-tip="Find path">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg><span class="rl">Find path</span>
+      </button>
+
+      <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
+           visible on the canvas) — this was the rail's duplicate.
+           Fit view moved to .canvas-zoom-cluster (same #btn-fit-view id,
+           same click handler in main.js) — this was the rail's duplicate. -->
+      <div class="rail-sep"></div>
+
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-copy-link" data-tip="Copy shareable link">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg><span class="rl">Share link</span>
+      </button>
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-export-png" data-tip="Download PNG" aria-label="Download graph as PNG image">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-download"/></svg><span class="rl">Download PNG</span>
+      </button>
+
+      <div class="rail-sep"></div>
+
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-clear-graph" data-tip="Clear graph" style="color:var(--warn);">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-close"/></svg><span class="rl">Clear</span>
       </button>
 
       <div class="rail-spacer"></div>
@@ -2217,10 +2202,7 @@
 
     <!-- [SF-WEB-14] Always-visible role-filter segment — was the rail's
          #filter-featured/-producer/-writer, same State.activeFilters, see
-         ui/canvas-controls.js::setupFilterToggles/toggleRoleFilter.
-         [SF-WEB-22] Restored after SF-WEB-21 removed it — the palette's
-         own filter-featured/-producer/-writer rows (⌘K) still exist too,
-         both read/write the same State.activeFilters. -->
+         ui/canvas-controls.js::setupFilterToggles. -->
     <div class="role-filter-segment ui-segment" id="role-filter-segment">
       <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-featured" data-role="featured" title="Role: featured" aria-label="Toggle featured role filter">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg>
@@ -2262,6 +2244,10 @@
             <span>Teal glow = seed artist</span>
           </div>
         </div>
+      </button>
+
+      <button class="status-icon-btn" id="help-btn" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
+        ⌘
       </button>
     </div>
 
@@ -2315,12 +2301,11 @@
            ui/sidebar.js and ui/modals.js::openPathPanel/closePathPanel. -->
       <div class="companion-panel ui-panel" id="companion-panel">
 
-        <!-- [SF-WEB-22] The canvas's visible entry point into the command
-             palette — see ui/sidebar.js::setupCompanionEmptyTrigger. -->
-        <button class="companion-empty" id="companion-empty" type="button">
-          <div class="companion-empty-title">Search or run a command</div>
-          <kbd>⌘K</kbd>
-        </button>
+        <!-- Reserved for SF-WEB-21 (command palette) — not yet reachable. -->
+        <div class="companion-empty" id="companion-empty">
+          <div class="companion-empty-title">Nothing selected</div>
+          <div>Click a node or an edge on the graph.</div>
+        </div>
 
         <div class="artist-sidebar" id="artist-sidebar">
           <div class="sidebar-header">
@@ -2404,18 +2389,16 @@
       </div>
     </div>
 
-    <!-- [SF-WEB-21] Command palette — search a loaded artist, search a new
-         seed, run an action. See ui/modals.js::renderPaletteResults. -->
-    <div class="node-search-overlay" id="node-search-overlay" role="dialog" aria-label="Command palette">
+    <div class="node-search-overlay" id="node-search-overlay" role="dialog" aria-label="Search loaded nodes">
       <div class="node-search-box">
-        <div class="node-search-hint" id="node-search-hint">Search or run a command <kbd>Esc</kbd> to close</div>
-        <label class="sr-only" for="node-search-input">Command palette</label>
+        <div class="node-search-hint" id="node-search-hint">Jump to a loaded artist <kbd>Esc</kbd> to close</div>
+        <label class="sr-only" for="node-search-input">Search loaded nodes</label>
         <input id="node-search-input" class="path-input" type="text" autocomplete="off"
-          placeholder="Search artists or type a command…" role="combobox" aria-expanded="false" aria-haspopup="listbox"
+          placeholder="Artist name…" role="combobox" aria-expanded="false" aria-haspopup="listbox"
           aria-autocomplete="list" aria-controls="node-search-results" aria-activedescendant=""
           aria-describedby="node-search-hint" />
         <div id="node-search-status" class="sr-only" role="status" aria-live="polite"></div>
-        <div id="node-search-results" role="listbox" aria-label="Commands and artists"></div>
+        <div id="node-search-results" role="listbox" aria-label="Loaded artists"></div>
       </div>
     </div>
 

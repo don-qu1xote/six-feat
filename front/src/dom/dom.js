@@ -30,21 +30,18 @@ export const els = {
   infoBtn:        $("info-btn"),
   infoPopover:    $("info-popover"),
   rateLimitBadge: $("rate-limit-badge"),
+  helpBtn:        $("help-btn"),
   helpOverlay:    $("help-overlay"),
   helpClose:      $("help-close"),
   loading:    $("loading"),
   toast:      $("toast"),
 
-  // [SF-WEB-22] Restored — SF-WEB-14's always-visible canvas segment
-  // (removed by SF-WEB-21, which turned the three role filters into
-  // palette-only rows; that was a regression, not this ticket's call to
-  // make). The palette's own filter-featured/-producer/-writer commands
-  // (ui/modals.js::_commands) still exist too — both read/write the same
-  // State.activeFilters.
+  // [SF-WEB-14] Moved off the rail onto their own always-visible canvas
+  // segment (see .role-filter-segment) — the rail's #filter-featured/
+  // -producer/-writer buttons were the duplicate this ticket removes.
   canvasFilterFeatured: $("canvas-filter-featured"),
   canvasFilterProducer: $("canvas-filter-producer"),
   canvasFilterWriter:   $("canvas-filter-writer"),
-  roleFilterSegment:    $("role-filter-segment"),
 
   // Search settings on the landing hero (ТЗ: same logic as the rail's
   // role filters + find path, surfaced before a graph even exists).
@@ -69,6 +66,14 @@ export const els = {
   heroPathResult:     $("hero-path-result"),
   heroHopChain:       $("hero-hop-chain"),
 
+  themeToggle: $("theme-toggle"),
+
+  btnClearGraph: $("btn-clear-graph"),
+  btnCopyLink:   $("btn-copy-link"),
+  btnExportPng:  $("btn-export-png"),
+  btnFindPath:   $("btn-find-path"),
+  btnSearchOpen: $("btn-search-open"),
+
   // [SF-WEB-14] Compact zoom/fit cluster — the one control cluster the
   // redesign keeps directly on the canvas. #btn-fit-view moved here from
   // the rail (same id, same click handler in main.js); zoom-in/out/focus
@@ -78,6 +83,10 @@ export const els = {
   btnZoomOut:   $("btn-zoom-out"),
   btnFitView:   $("btn-fit-view"),
   btnFocusSeed: $("btn-focus-seed"),
+
+  // [SF-WEB-14] The other canvas-level cluster: role filters, always
+  // visible (not tucked inside the rail's hover-to-expand icon stack).
+  roleFilterSegment: $("role-filter-segment"),
 
   // [SF-WEB-14] Object action bar — mini-actions for the currently selected
   // node (expand / focus / open on Genius / pin), shown above the companion
@@ -94,9 +103,6 @@ export const els = {
   // #path-panel (below) are now plain content sections inside it, shown one
   // at a time, instead of two independently-styled floating panels.
   companionPanel: $("companion-panel"),
-  // [SF-WEB-22] The fourth section — shown whenever none of the other three
-  // are (see ui/sidebar.js::syncCompanionEmpty).
-  companionEmpty: $("companion-empty"),
 
   artistSidebar:  $("artist-sidebar"),
   sidebarAvatar:  $("sidebar-avatar"),
@@ -125,13 +131,11 @@ export const els = {
   pathResult:     $("path-result"),
   hopChain:       $("hop-chain"),
 
-  // [SF-WEB-21] Command palette (⌘K) — extends this same overlay/input/
-  // results triad; no more separate #btn-node-search rail trigger, ⌘K is
-  // the one entry point now.
   nodeSearchOverlay: $("node-search-overlay"),
   nodeSearchInput:   $("node-search-input"),
   nodeSearchResults: $("node-search-results"),
   nodeSearchStatus:  $("node-search-status"),
+  btnNodeSearch:     $("btn-node-search"),
 
   // F-43: hidden-but-accessible DOM twin of the canvas graph.
   graphA11yNodeList:         $("graph-a11y-node-list"),

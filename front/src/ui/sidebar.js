@@ -13,7 +13,7 @@ import {
   toggleNodePin, isNodePinned,
 } from "../vis-adapter/index.js";
 import { bfsPath } from "../api/analytics-client.js";
-import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel, openNodeSearch } from "./modals.js";
+import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
 import { searchArtist } from "../api/api.js";
 import { showToast } from "./toast.js";
 
@@ -212,34 +212,6 @@ function syncObjectActionBar(node) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// [SF-WEB-22] .companion-empty (SF-WEB-12, index.html) — was reserved but
-// never actually shown by anything. It's the fourth companion-panel
-// section: visible whenever neither node/edge context nor the path section
-// is, using the exact same class-toggle mutual-exclusivity every other
-// section here already follows (no separate show/hide mechanism). Called
-// at the tail of every function that changes which section is active
-// (showArtistSidebar/showEdgeSidebar/hideArtistSidebar below,
-// openPathPanel/closePathPanel in modals.js) so it's always in sync,
-// including the very first empty graph view before anything's ever been
-// selected.
-// ════════════════════════════════════════════════════════════════════════════
-export function syncCompanionEmpty() {
-  const hasContext = !!(els.artistSidebar?.classList.contains("show") || els.pathPanel?.classList.contains("show"));
-  els.companionEmpty?.classList.toggle("show", !hasContext);
-  els.companionPanel?.classList.add("show");
-}
-
-// [SF-WEB-22] .companion-empty is also the canvas's one visible entry point
-// into the command palette — SF-WEB-21 added the palette itself but left
-// no on-screen way in beyond a hidden ⌘K/Ctrl+K keydown listener
-// (setupKeyboard, canvas-controls.js). It's a real <button> (no nested
-// controls, so Enter/Space-to-activate comes for free) rather than a
-// styled div.
-export function setupCompanionEmptyTrigger() {
-  els.companionEmpty?.addEventListener("click", () => openNodeSearch());
-}
-
-// ════════════════════════════════════════════════════════════════════════════
 // Main artist sidebar function — expanded with ТЗ-F enhancements
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -340,7 +312,7 @@ export function showArtistSidebar(nodeId) {
   els.sidebarGenius.style.display = "";
   els.sidebarGenius.onclick = () => openGeniusPage(nodeId);
   els.artistSidebar.classList.add("show");
-  syncCompanionEmpty();
+  els.companionPanel?.classList.add("show");
 
   // [SF-WEB-14] Object action bar — node-only, see syncObjectActionBar.
   syncObjectActionBar(node);
@@ -394,7 +366,7 @@ export function showEdgeSidebar(edgeId, nameById) {
 
   els.sidebarGenius.style.display = "none";
   els.artistSidebar.classList.add("show");
-  syncCompanionEmpty();
+  els.companionPanel?.classList.add("show");
   // [SF-WEB-14] None of the object action bar's four actions apply to an
   // edge (expand/focus/genius/pin are all single-artist concepts).
   if (els.objectActionBar) els.objectActionBar.hidden = true;
@@ -406,9 +378,9 @@ export function showEdgeSidebar(edgeId, nameById) {
 
 export function hideArtistSidebar() {
   els.artistSidebar.classList.remove("show");
+  els.companionPanel?.classList.remove("show");
   if (els.objectActionBar) els.objectActionBar.hidden = true;
   clearSelectedEdge();
-  syncCompanionEmpty();
 }
 
 // ТЗ-205: hop-chain edge ids may come from the path API response (which can

@@ -13,23 +13,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("./sidebar.js", () => ({
   hideArtistSidebar: vi.fn(),
   showArtistSidebar: vi.fn(),
-  syncCompanionEmpty: vi.fn(),
 }));
 vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
 vi.mock("../vis-adapter/index.js", () => ({ setFocus: vi.fn() }));
-// [SF-WEB-21] Command-row actions the palette reaches into — mocked here so
-// this file doesn't pull in canvas-controls.js's/api.js's own heavy real
-// dependency trees just to test the path-panel open/close behaviour above.
-vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
-vi.mock("./canvas-controls.js", () => ({
-  exportGraphPng: vi.fn(), clearCanvas: vi.fn(),
-  toggleRoleFilter: vi.fn(), openHelpOverlay: vi.fn(),
-}));
-vi.mock("./history.js", () => ({ copyShareableLink: vi.fn() }));
-vi.mock("./theme.js", () => ({ setTheme: vi.fn() }));
 
 import { els } from "../dom/dom.js";
-import { hideArtistSidebar, syncCompanionEmpty } from "./sidebar.js";
+import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { isPathPanelOpen, openPathPanel, closePathPanel } from "./modals.js";
 
@@ -60,13 +49,10 @@ describe("isPathPanelOpen", () => {
 });
 
 describe("openPathPanel", () => {
-  it("shows the path section and syncs the companion panel's empty state", () => {
+  it("shows the path section and the companion panel", () => {
     openPathPanel();
     expect(els.pathPanel.classList.contains("show")).toBe(true);
-    // [SF-WEB-22] syncCompanionEmpty() (sidebar.js, mocked here) is now the
-    // one place that toggles companionPanel/.companion-empty visibility —
-    // real coverage of that logic lives in sidebar.test.js.
-    expect(syncCompanionEmpty).toHaveBeenCalled();
+    expect(els.companionPanel.classList.contains("show")).toBe(true);
   });
 
   it("closes node/edge context first (mutual exclusivity)", () => {
@@ -82,10 +68,11 @@ describe("openPathPanel", () => {
 });
 
 describe("closePathPanel", () => {
-  it("hides the path section and syncs the companion panel's empty state", () => {
+  it("hides both the path section and the companion panel", () => {
     els.pathPanel.classList.add("show");
+    els.companionPanel.classList.add("show");
     closePathPanel();
     expect(els.pathPanel.classList.contains("show")).toBe(false);
-    expect(syncCompanionEmpty).toHaveBeenCalled();
+    expect(els.companionPanel.classList.contains("show")).toBe(false);
   });
 });

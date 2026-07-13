@@ -10,7 +10,7 @@ import { State } from "../state/state.js";
 import { els, $ } from "../dom/dom.js";
 import { clearPathHighlight } from "../api/analytics-client.js";
 import { showToast } from "./toast.js";
-import { isPathPanelOpen, closePathPanel } from "./modals.js";
+import { isPathPanelOpen, openPathPanel, closePathPanel } from "./modals.js";
 import { attachNodeAutocomplete } from "./autocomplete.js";
 import { runServerPath } from "./path-result.js";
 
@@ -19,19 +19,21 @@ import { runServerPath } from "./path-result.js";
 // ════════════════════════════════════════════════════════════════════════════
 
 export function setupPathPanel() {
+  // Toggle path panel — same open/close pair as the rest of the app instead
+  // of a bare classList.toggle().
+  els.btnFindPath?.addEventListener("click", () => {
+    isPathPanelOpen() ? closePathPanel() : openPathPanel();
+  });
+
   // Task 4: close button
   els.pathPanelClose?.addEventListener("click", closePathPanel);
 
   // Клик вне панели закрывает её — тот же паттерн, что у node-search-overlay
   // и search-modal (click on backdrop = close).
-  // [SF-WEB-21] No more #btn-find-path rail button to open this — the
-  // palette's "Find a path" command calls openPathPanel()/closePathPanel()
-  // directly (see ui/modals.js::_commands), so there's no trigger element
-  // to exempt from the click-outside check anymore.
   els.pathPanel?.addEventListener("click", e => e.stopPropagation());
   document.addEventListener("click", e => {
     if (!isPathPanelOpen()) return;
-    if (els.pathPanel.contains(e.target)) return;
+    if (els.pathPanel.contains(e.target) || e.target === els.btnFindPath || els.btnFindPath?.contains(e.target)) return;
     closePathPanel();
   });
 
