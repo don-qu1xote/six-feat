@@ -25,50 +25,44 @@ import { hideCandidatePicker } from "./candidate-picker.js";
 // Role filter toggles
 // ════════════════════════════════════════════════════════════════════════════
 
-export function setupFilterToggles() {
-  // Каждая роль теперь может иметь несколько кнопок-переключателей —
-  // те же в .rail (доступны после построения графа) и новые в
-  // .include-roles-row на лендинге (видны до построения графа). Обе группы
-  // читают/пишут один и тот же State.activeFilters, так что достаточно
-  // держать классы .active в синхроне между всеми кнопками одной роли.
-  function makeToggle(role, btns) {
-    const buttons = btns.filter(Boolean);
-    if (!buttons.length) return;
-
-    function syncButtons() {
-      const isActive = State.activeFilters.has(role);
-      buttons.forEach(btn => btn.classList.toggle("active", isActive));
+// [SF-WEB-21] The mutate/refetch core used to live only inside
+// setupFilterToggles' click closures — pulled out so the command palette's
+// "Toggle X filter" rows (ui/modals.js::_commands) can trigger the exact
+// same behaviour a button click always did, instead of duplicating it.
+export function toggleRoleFilter(role) {
+  if (State.activeFilters.has(role)) {
+    if (State.activeFilters.size <= 1) {
+      showToast("At least one role filter must be active.", 2200);
+      return;
     }
-
-    buttons.forEach(btn => {
-      btn.addEventListener("click", () => {
-        if (State.activeFilters.has(role)) {
-          if (State.activeFilters.size <= 1) {
-            showToast("At least one role filter must be active.", 2200);
-            return;
-          }
-          State.activeFilters.delete(role);
-        } else {
-          State.activeFilters.add(role);
-        }
-        syncButtons();
-        updateShareableUrl(els.heroInput.value);
-        const artist = (els.heroInput.value || "").trim();
-        if (artist) searchArtist(artist, false, true);
-      });
-    });
-    syncButtons();
+    State.activeFilters.delete(role);
+  } else {
+    State.activeFilters.add(role);
   }
-  // [SF-WEB-14] els.filterFeatured/-Producer/-Writer (the rail's own role
-  // filters) were removed — canvasFilterFeatured/-Producer/-Writer (the new
-  // always-visible canvas segment) took over their spot in this list.
-  makeToggle("featured", [els.canvasFilterFeatured, els.heroFilterFeatured]);
-  makeToggle("producer", [els.canvasFilterProducer, els.heroFilterProducer]);
-  makeToggle("writer",   [els.canvasFilterWriter,   els.heroFilterWriter]);
+  document.querySelectorAll(`[data-role="${role}"]`).forEach(btn => {
+    btn.classList.toggle("active", State.activeFilters.has(role));
+  });
+  updateShareableUrl(els.heroInput.value);
+  const artist = (els.heroInput.value || "").trim();
+  if (artist) searchArtist(artist, false, true);
 }
 
-// Note: active role-filters are no longer duplicated in the status card —
-// they're already visible via active state on the rail icons (ТЗ-D2).
+export function setupFilterToggles() {
+  // [SF-WEB-14]/[SF-WEB-21]: the rail's own role-filter buttons, then the
+  // canvas's always-visible .role-filter-segment twin, are both gone now —
+  // toggling a role filter is a command-palette row (⌘K). The landing
+  // hero's own filter buttons (visible before a graph even exists) are the
+  // only remaining clickable UI for this, reading/writing the same
+  // State.activeFilters toggleRoleFilter() above does.
+  function makeToggle(role, btn) {
+    if (!btn) return;
+    btn.addEventListener("click", () => toggleRoleFilter(role));
+    btn.classList.toggle("active", State.activeFilters.has(role));
+  }
+  makeToggle("featured", els.heroFilterFeatured);
+  makeToggle("producer", els.heroFilterProducer);
+  makeToggle("writer",   els.heroFilterWriter);
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // Seed card & help overlay
@@ -119,14 +113,18 @@ export function updateTruncationBanner() {
   els.truncationBanner.hidden = false;
 }
 
+// [SF-WEB-21] No more standalone #help-btn — "Keyboard shortcuts" is a
+// command-palette row (⌘K) now, calling openHelpOverlay() the same as the
+// old button click did. The `?` shortcut (setupKeyboard below) and the
+// close button/backdrop-click still work exactly as before.
+export function openHelpOverlay()  { els.helpOverlay?.classList.add("show"); }
+export function closeHelpOverlay() { els.helpOverlay?.classList.remove("show"); }
+
 export function setupHelpOverlay() {
-  if (!els.helpBtn || !els.helpOverlay) return;
-  const open  = () => els.helpOverlay.classList.add("show");
-  const close = () => els.helpOverlay.classList.remove("show");
-  els.helpBtn.addEventListener("click", open);
-  els.helpClose?.addEventListener("click", close);
+  if (!els.helpOverlay) return;
+  els.helpClose?.addEventListener("click", closeHelpOverlay);
   els.helpOverlay.addEventListener("click", e => {
-    if (e.target === els.helpOverlay) close();
+    if (e.target === els.helpOverlay) closeHelpOverlay();
   });
 }
 
@@ -257,7 +255,7 @@ export function setupKeyboard() {
     }
 
     if (e.key === "Escape") {
-      if (els.helpOverlay?.classList.contains("show"))      { els.helpOverlay.classList.remove("show"); return; }
+      if (els.helpOverlay?.classList.contains("show"))      { closeHelpOverlay();   return; }
       if (els.candidateOverlay?.classList.contains("show")) { hideCandidatePicker(); return; }
       if (els.nodeSearchOverlay.classList.contains("show")) { closeNodeSearch();      return; }
       if (State.hasRendered && isSearchModalOpen())         { closeSearchModal();     return; }
@@ -272,7 +270,7 @@ export function setupKeyboard() {
       case "f": case "F": fitView(); break;
       case "+": case "=": zoomIn();  break;
       case "-": case "_": zoomOut(); break;
-      case "?": els.helpOverlay?.classList.add("show"); break;
+      case "?": openHelpOverlay(); break;
     }
   });
 }

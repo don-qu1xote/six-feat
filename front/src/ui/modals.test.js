@@ -16,6 +16,16 @@ vi.mock("./sidebar.js", () => ({
 }));
 vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
 vi.mock("../vis-adapter/index.js", () => ({ setFocus: vi.fn() }));
+// [SF-WEB-21] Command-row actions the palette reaches into — mocked here so
+// this file doesn't pull in canvas-controls.js's/api.js's own heavy real
+// dependency trees just to test the path-panel open/close behaviour above.
+vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
+vi.mock("./canvas-controls.js", () => ({
+  exportGraphPng: vi.fn(), clearCanvas: vi.fn(),
+  toggleRoleFilter: vi.fn(), openHelpOverlay: vi.fn(),
+}));
+vi.mock("./history.js", () => ({ copyShareableLink: vi.fn() }));
+vi.mock("./theme.js", () => ({ setTheme: vi.fn() }));
 
 import { els } from "../dom/dom.js";
 import { hideArtistSidebar } from "./sidebar.js";

@@ -7,11 +7,11 @@ import {
   loadHistory, setupFilterToggles, setupNodeSearch, setupPathPanel,
   setupHeroPathFinder, setupHeroModeSwitch,
   createGeniusAc, attachGeniusAutocomplete,
-  loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas,
+  loadArtistFromUrl, clearCanvas,
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
-  renderChips, exportGraphPng, setupThemeToggle
+  renderChips, setupThemeToggle
 } from "./ui/index.js";
 import { clearFocus } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
@@ -98,16 +98,15 @@ export function init() {
     if (e.target === els.candidateOverlay) hideCandidatePicker();
   });
 
-  els.btnClearGraph ?.addEventListener("click", clearCanvas);
-  els.btnCopyLink   ?.addEventListener("click", copyShareableLink);
-  els.btnExportPng  ?.addEventListener("click", exportGraphPng);
   els.btnFitView    ?.addEventListener("click", fitView);
   // [SF-WEB-14] Compact zoom/fit cluster.
   els.btnZoomIn     ?.addEventListener("click", zoomIn);
   els.btnZoomOut    ?.addEventListener("click", zoomOut);
   els.btnFocusSeed  ?.addEventListener("click", focusSeed);
 
-  $("btn-node-search")?.addEventListener("click", openNodeSearch);
+  // [SF-WEB-21] Clear/copy-link/export/search/find-on-map/find-path/theme/
+  // help are command-palette rows now (⌘K, see ui/modals.js::_commands) —
+  // no more permanent rail buttons to wire clicks to here.
 
   loadArtistFromUrl();
   checkAuth();
