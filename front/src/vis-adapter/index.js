@@ -63,6 +63,11 @@ export {
   _fitToExpandedCluster,
   mergeNetwork,
   runFlyoutAnimation,
+  // [SF-WEB-14] object action bar's Pin/Unpin
+  isNodePinned,
+  pinNode,
+  unpinNode,
+  toggleNodePin,
 } from "./physics.js";
 
 export {

@@ -178,6 +178,12 @@ const interactionSlice = {
   selectedNodeId: null,
   pathHighlight:  null,
 
+  // [SF-WEB-14] Node ids the user has manually pinned in place (object
+  // action bar's Pin/Unpin) — separate from the seed/expanded-node
+  // auto-fixing already in nodeVisual() (visuals.js), which ORs this set in
+  // so a pin survives the node item being rebuilt on the next merge/update.
+  pinnedNodes: new Set(),
+
   // Баг "тряска графа подвисает": флаг активного перетаскивания ноды —
   // используется, чтобы на время drag'а глушить hover-подсветку и держать
   // физику выключенной вместо пересчёта сил на каждом промежуточном кадре
@@ -271,6 +277,7 @@ bridge("songLimit",      graphSlice);
 bridge("focusedNodeId",  interactionSlice);
 bridge("selectedEdgeId", interactionSlice);
 bridge("selectedNodeId", interactionSlice);
+bridge("pinnedNodes",    interactionSlice);
 bridge("pathHighlight",  interactionSlice);
 bridge("_isDragging",    interactionSlice);
 bridge("_clickTimer",    interactionSlice);
@@ -356,6 +363,9 @@ export function resetExpansionState() {
   graphSlice.expandedNodes.clear();
   graphSlice.lastExpandedId = null;
   interactionSlice._clickedNodeId = null;
+  // [SF-WEB-14] A fresh (non-expansion) search draws a brand-new graph —
+  // pins from whatever was on canvas before don't carry meaning here.
+  interactionSlice.pinnedNodes.clear();
   netFetchSlice.pendingExpand = null;
   cacheSlice._bfsAdj = null;
   cacheSlice._bfsGraphHash = "";
@@ -386,6 +396,8 @@ export function resetGraphState({ resetHasRendered = true } = {}) {
   setSeed(null);
   setPathHighlight(null);
   interactionSlice._clickedNodeId = null;
+  // [SF-WEB-14] See the matching comment in resetExpansionState above.
+  interactionSlice.pinnedNodes.clear();
 
   netFetchSlice.pendingExpand = null;
 

@@ -59,9 +59,12 @@ export function setupFilterToggles() {
     });
     syncButtons();
   }
-  makeToggle("featured", [els.filterFeatured, els.heroFilterFeatured]);
-  makeToggle("producer", [els.filterProducer, els.heroFilterProducer]);
-  makeToggle("writer",   [els.filterWriter,   els.heroFilterWriter]);
+  // [SF-WEB-14] els.filterFeatured/-Producer/-Writer (the rail's own role
+  // filters) were removed — canvasFilterFeatured/-Producer/-Writer (the new
+  // always-visible canvas segment) took over their spot in this list.
+  makeToggle("featured", [els.canvasFilterFeatured, els.heroFilterFeatured]);
+  makeToggle("producer", [els.canvasFilterProducer, els.heroFilterProducer]);
+  makeToggle("writer",   [els.canvasFilterWriter,   els.heroFilterWriter]);
 }
 
 // Note: active role-filters are no longer duplicated in the status card —
@@ -80,16 +83,11 @@ export function setupSeedCard() {
 
 // IDEA-22: seed-only "show more collaborations" action — re-fetches the
 // current seed's graph with a bumped ?limit= and merges it into the canvas.
-// SF-WEB-10: the trigger is the truncation-banner's own action button, built
-// dynamically by updateTruncationBanner — so this listens for clicks
-// delegated through the banner rather than binding to a static element.
+// [style pass] The truncation-banner icon IS the trigger now (was a
+// separately-built action button nested inside an expanded pill).
 export function setupLoadMoreCollabs() {
   if (!els.truncationBanner) return;
-  els.truncationBanner.addEventListener("click", e => {
-    if (e.target.closest("#truncation-banner-action")) {
-      showMoreCollaborations();
-    }
-  });
+  els.truncationBanner.addEventListener("click", showMoreCollaborations);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -106,25 +104,17 @@ export function updateTruncationBanner() {
 
   if (!State.truncated) {
     els.truncationBanner.hidden = true;
-    els.truncationBanner.querySelector("#truncation-banner-action")?.remove();
     return;
   }
 
-  if (els.truncationBannerText) {
-    els.truncationBannerText.textContent =
-      `Showing top ${State.shownSongCount} collaborations — there may be more.`;
-  }
-
-  let action = els.truncationBanner.querySelector("#truncation-banner-action");
-  if (!action) {
-    action = document.createElement("button");
-    action.type = "button";
-    action.id = "truncation-banner-action";
-    action.className = "truncation-banner-action";
-    els.truncationBanner.appendChild(action);
-  }
-  action.innerHTML =
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg> Show ${State.shownSongCount} more`;
+  // [style pass] Collapsed to a single plus-icon button — clicking it calls
+  // showMoreCollaborations() directly (see setupLoadMoreCollabs above), so
+  // this text only needs to reach the user via hover/focus, through the
+  // same native `title` idiom #help-btn already uses for its own tooltip.
+  const text = `Showing top ${State.shownSongCount} collaborations — there may be more. `
+    + `Click to show ${State.shownSongCount} more.`;
+  els.truncationBanner.title = text;
+  els.truncationBanner.setAttribute("aria-label", text);
 
   els.truncationBanner.hidden = false;
 }

@@ -27,7 +27,6 @@ export const els = {
   seedCardAvatar: $("seed-card-avatar"),
   seedCardName:   $("seed-card-name"),
   truncationBanner:       $("truncation-banner"),
-  truncationBannerText:   $("truncation-banner-text"),
   infoBtn:        $("info-btn"),
   infoPopover:    $("info-popover"),
   rateLimitBadge: $("rate-limit-badge"),
@@ -37,9 +36,12 @@ export const els = {
   loading:    $("loading"),
   toast:      $("toast"),
 
-  filterFeatured: $("filter-featured"),
-  filterProducer: $("filter-producer"),
-  filterWriter:   $("filter-writer"),
+  // [SF-WEB-14] Moved off the rail onto their own always-visible canvas
+  // segment (see .role-filter-segment) — the rail's #filter-featured/
+  // -producer/-writer buttons were the duplicate this ticket removes.
+  canvasFilterFeatured: $("canvas-filter-featured"),
+  canvasFilterProducer: $("canvas-filter-producer"),
+  canvasFilterWriter:   $("canvas-filter-writer"),
 
   // Search settings on the landing hero (ТЗ: same logic as the rail's
   // role filters + find path, surfaced before a graph even exists).
@@ -70,8 +72,32 @@ export const els = {
   btnCopyLink:   $("btn-copy-link"),
   btnExportPng:  $("btn-export-png"),
   btnFindPath:   $("btn-find-path"),
-  btnFitView:    $("btn-fit-view"),
   btnSearchOpen: $("btn-search-open"),
+
+  // [SF-WEB-14] Compact zoom/fit cluster — the one control cluster the
+  // redesign keeps directly on the canvas. #btn-fit-view moved here from
+  // the rail (same id, same click handler in main.js); zoom-in/out/focus
+  // never had a visible button before (only +/-/Esc keyboard shortcuts).
+  canvasZoomCluster: $("canvas-zoom-cluster"),
+  btnZoomIn:    $("btn-zoom-in"),
+  btnZoomOut:   $("btn-zoom-out"),
+  btnFitView:   $("btn-fit-view"),
+  btnFocusSeed: $("btn-focus-seed"),
+
+  // [SF-WEB-14] The other canvas-level cluster: role filters, always
+  // visible (not tucked inside the rail's hover-to-expand icon stack).
+  roleFilterSegment: $("role-filter-segment"),
+
+  // [SF-WEB-14] Object action bar — mini-actions for the currently selected
+  // node (expand / focus / open on Genius / pin), shown above the companion
+  // panel instead of as global rail buttons. Populated per-node by
+  // ui/sidebar.js::showArtistSidebar, hidden by hideArtistSidebar/
+  // showEdgeSidebar (these actions only make sense for a single artist).
+  objectActionBar:  $("object-action-bar"),
+  objActionExpand:  $("obj-action-expand"),
+  objActionFocus:   $("obj-action-focus"),
+  objActionGenius:  $("obj-action-genius"),
+  objActionPin:     $("obj-action-pin"),
 
   // [SF-WEB-12] companionPanel is the one shared card — #artist-sidebar and
   // #path-panel (below) are now plain content sections inside it, shown one

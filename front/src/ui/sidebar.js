@@ -8,9 +8,14 @@
 import { State, ROLE_ICON } from "../state/state.js";
 import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
-import { openGeniusPage, highlightEdgePair, selectEdge, clearSelectedEdge } from "../vis-adapter/index.js";
+import {
+  openGeniusPage, highlightEdgePair, selectEdge, clearSelectedEdge,
+  toggleNodePin, isNodePinned,
+} from "../vis-adapter/index.js";
 import { bfsPath } from "../api/analytics-client.js";
 import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
+import { searchArtist } from "../api/api.js";
+import { showToast } from "./toast.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Helpers: Wrap ROLE_ICON's <use> element in proper <svg> containers
@@ -158,6 +163,54 @@ function buildPathTrackHTML(nodeId, pathInfo) {
 // importance" плитка больше не существуют. betweennessGlow на графе тоже
 // удалён (см. vis-adapter/render.js).
 
+/**
+ * [SF-WEB-14] Object action bar — expand / focus / open on Genius / pin,
+ * scoped to whichever node is currently shown in node context (this bar is
+ * hidden for edge context, see showEdgeSidebar/hideArtistSidebar below —
+ * none of these four actions make sense for an edge). Rewires all four
+ * buttons' onclick to the given node every call, same pattern the Genius
+ * button already used before this ticket (els.sidebarGenius.onclick).
+ * Reuses the exact same paths as their pre-existing triggers:
+ *   expand → searchArtist(name, true, true), same as double-click.
+ *   focus  → network.focus(id, ...), same as a path-chain-card click.
+ *   genius → openGeniusPage(nodeId), same as the companion's own button.
+ *   pin    → new: vis-adapter/physics.js::toggleNodePin (see state.js's
+ *            pinnedNodes).
+ */
+function syncObjectActionBar(node) {
+  if (!els.objectActionBar) return;
+
+  if (els.objActionExpand) {
+    els.objActionExpand.onclick = () => {
+      showToast(`Expanding ${node.name}…`, 1800, true);
+      State._clickedNodeId = node.id;
+      searchArtist(node.name, true, true);
+    };
+  }
+  if (els.objActionFocus) {
+    els.objActionFocus.onclick = () => {
+      if (State.network) {
+        State.network.focus(node.id, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+      }
+    };
+  }
+  if (els.objActionGenius) {
+    els.objActionGenius.onclick = () => openGeniusPage(node.id);
+  }
+  if (els.objActionPin) {
+    const syncPinState = () => {
+      const pinned = isNodePinned(node.id);
+      els.objActionPin.classList.toggle("active", pinned);
+      els.objActionPin.setAttribute("aria-pressed", String(pinned));
+      els.objActionPin.title = pinned ? "Unpin" : "Pin in place";
+    };
+    els.objActionPin.onclick = () => { toggleNodePin(node.id); syncPinState(); };
+    syncPinState();
+  }
+
+  els.objectActionBar.hidden = false;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Main artist sidebar function — expanded with ТЗ-F enhancements
 // ════════════════════════════════════════════════════════════════════════════
@@ -260,6 +313,9 @@ export function showArtistSidebar(nodeId) {
   els.sidebarGenius.onclick = () => openGeniusPage(nodeId);
   els.artistSidebar.classList.add("show");
   els.companionPanel?.classList.add("show");
+
+  // [SF-WEB-14] Object action bar — node-only, see syncObjectActionBar.
+  syncObjectActionBar(node);
 }
 
 export function showEdgeSidebar(edgeId, nameById) {
@@ -311,6 +367,9 @@ export function showEdgeSidebar(edgeId, nameById) {
   els.sidebarGenius.style.display = "none";
   els.artistSidebar.classList.add("show");
   els.companionPanel?.classList.add("show");
+  // [SF-WEB-14] None of the object action bar's four actions apply to an
+  // edge (expand/focus/genius/pin are all single-artist concepts).
+  if (els.objectActionBar) els.objectActionBar.hidden = true;
   // IDEA-40: клик по ребру закрепляет выбор (persistent), а не только
   // временную hover-подсветку — иначе уход курсора с ребра откатывал бы
   // подсветку кликнутого ребра (см. selectEdge в vis-adapter/highlight.js).
@@ -320,6 +379,7 @@ export function showEdgeSidebar(edgeId, nameById) {
 export function hideArtistSidebar() {
   els.artistSidebar.classList.remove("show");
   els.companionPanel?.classList.remove("show");
+  if (els.objectActionBar) els.objectActionBar.hidden = true;
   clearSelectedEdge();
 }
 

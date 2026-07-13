@@ -9,6 +9,7 @@ import {
   createGeniusAc, attachGeniusAutocomplete,
   loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas,
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
+  zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   renderChips, exportGraphPng, setupThemeToggle
 } from "./ui/index.js";
@@ -101,6 +102,10 @@ export function init() {
   els.btnCopyLink   ?.addEventListener("click", copyShareableLink);
   els.btnExportPng  ?.addEventListener("click", exportGraphPng);
   els.btnFitView    ?.addEventListener("click", fitView);
+  // [SF-WEB-14] Compact zoom/fit cluster.
+  els.btnZoomIn     ?.addEventListener("click", zoomIn);
+  els.btnZoomOut    ?.addEventListener("click", zoomOut);
+  els.btnFocusSeed  ?.addEventListener("click", focusSeed);
 
   $("btn-node-search")?.addEventListener("click", openNodeSearch);
 

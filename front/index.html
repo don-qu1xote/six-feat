@@ -233,8 +233,23 @@
     .ui-btn--ghost { border-color: transparent; background: transparent; }
     .ui-btn--ghost:hover { background: rgba(255,255,255,.05); border-color: var(--line); }
 
-    /* Icon-only — fixed square footprint, no label. */
-    .ui-btn--icon { padding: 0; width: var(--space-10); height: var(--space-10); }
+    /* Icon-only — fixed circular footprint, no label. Every other icon-button
+       context in this file (.rail-btn/.hero-mode-tab/.theme-toggle/etc.)
+       sizes its own .ri — this one was missing here, which is why the
+       canvas-zoom-cluster/role-filter-segment/object-action-bar icons first
+       came out at their unstyled browser-default size.
+       32px / 16px-icon (not the original 40px / 18px) and circular (not
+       square) so the two new .ui-segment clusters read at the SAME scale as
+       the pre-existing .status row: 32px button + .ui-segment's 3px padding
+       on both sides = 38px, matching .seed-card's own height (30px avatar +
+       2×var(--space-1) padding), and the 16px icon matches
+       .status-icon-btn svg exactly. Circular also rhymes with
+       .status-icon-btn's circle and the pill-shaped .ui-segment/.seed-card
+       containers these buttons sit inside, instead of looking like squares
+       dropped into a pill. */
+    .ui-btn--icon { padding: 0; width: var(--space-8); height: var(--space-8); border-radius: 999px; }
+    .ui-btn--icon .ri { width: 16px; height: 16px; display: flex; flex-shrink: 0; }
+    .ui-btn--icon .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 
     /* Chip — small pill-shaped toggle/suggestion (autocomplete suggestions,
        filter pills). Mirrors .chip's existing recipe so adopting it is a
@@ -863,7 +878,11 @@
     body.view-home .rail,
     body.view-home .status,
     body.view-home .context-panel,
-    body.view-home .actions-bar {
+    body.view-home .actions-bar,
+    /* [SF-WEB-14] the two other canvas-only clusters — .object-action-bar
+       is already covered, it's a descendant of .context-panel above. */
+    body.view-home .canvas-zoom-cluster,
+    body.view-home .role-filter-segment {
       display: none;
     }
 
@@ -959,9 +978,12 @@
     .rail:hover .rail-btn.active {
       box-shadow: 0 4px 14px rgba(0,0,0,.35);
     }
-    #filter-featured.active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.10); }
-    #filter-producer.active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.10); }
-    #filter-writer.active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.10); }
+    /* [SF-WEB-14] #filter-featured/-producer/-writer (the rail's own copies)
+       were removed — #canvas-filter-* (the new always-visible canvas
+       segment) took over their spot, same active-colour treatment. */
+    #canvas-filter-featured.active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.10); }
+    #canvas-filter-producer.active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.10); }
+    #canvas-filter-writer.active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.10); }
 
     .rail-btn[data-tip]::after {
       content: attr(data-tip);
@@ -977,6 +999,29 @@
     .rail:hover .rail-btn[data-tip]::after { display: none; }
 
     #auth-status-badge.rail-btn { color: var(--signal); border-color: rgba(94,230,197,.4); }
+
+    /* [SF-WEB-14] Clean canvas: only the graph + these two always-visible
+       clusters + the object action bar live directly over the canvas now.
+       Both clusters are .ui-segment (SF-WEB-11 kit) — icon-only .ui-btn
+       children, no text labels, unlike the rail's hover-expand rows. */
+    .canvas-zoom-cluster {
+      position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 6;
+    }
+    .role-filter-segment {
+      position: absolute; left: 50%; bottom: var(--space-4); z-index: 6;
+      transform: translateX(-50%);
+    }
+
+    /* [SF-WEB-14] Object action bar — mini-actions for the node currently
+       shown in the companion panel's node context, sitting just above it
+       instead of as global rail buttons (see ui/sidebar.js::
+       syncObjectActionBar). Hidden via the native `hidden` attribute
+       (toggled in JS), same idiom as .status[hidden] elsewhere here.
+       .context-panel's own `> * { width:100% }` would otherwise stretch
+       this small icon cluster to the full 320px companion width — opt out. */
+    .context-panel > .object-action-bar { width: auto; }
+    .object-action-bar { display: flex; }
+    .object-action-bar[hidden] { display: none !important; }
 
     .dock-btn {
       border: 1px solid var(--line); border-radius: var(--r-sm);
@@ -1037,26 +1082,23 @@
       color: var(--warn); border-color: rgba(255,143,163,.5); opacity: .9;
     }
 
-    /* IDEA-50: unobtrusive banner telling the user the FG fetch hit its
-       songs-limit-fg cap, so the graph shown is very likely missing some
-       collaborations. Shares the pill/chip visual language of seed-card and
-       rate-limit-badge rather than a jarring alert style. */
-    .truncation-banner {
-      display: inline-flex; align-items: center; gap: var(--space-2);
-      font-family: "Inter", sans-serif; font-size: var(--text-xs);
-      color: var(--amber); white-space: nowrap;
-      background: var(--chip-bg); border: 1px solid rgba(255,210,122,.4); border-radius: 999px;
-      padding: var(--space-1) var(--space-3); backdrop-filter: blur(var(--blur-chip));
+    /* IDEA-50 / [style pass]: was a permanently-expanded pill ("Showing top
+       N collaborations — there may be more.") sitting at full text width
+       next to seed-card — visibly the biggest thing in the row and the
+       main reason the row read as uneven. Collapsed to a single
+       .status-icon-btn (same 26px circle as info-btn/help-btn below) that
+       *is* the "Show more collaborations" action (click = same effect as
+       the old inline button) — no separate nested control, so it's a plain
+       <button>, not the div-wrapping-a-button workaround an earlier pass
+       needed. Native `title` (same idiom as #help-btn's own tooltip)
+       surfaces the descriptive text on hover/focus, kept in sync with the
+       count in canvas-controls.js::updateTruncationBanner. Amber stays as
+       the accent (border + text color) so it still reads as "worth a
+       second look" among the neutral info/help icons. */
+    .truncation-icon-btn {
+      color: var(--amber); border-color: rgba(255,210,122,.4);
     }
-    .truncation-banner[hidden] { display: none !important; }
-    .truncation-banner-action {
-      display: inline-flex; align-items: center; gap: var(--space-1);
-      font-family: inherit; font-size: inherit; font-weight: 600;
-      color: var(--amber); background: none; border: none; padding: 0;
-      cursor: pointer;
-    }
-    .truncation-banner-action svg { width: 14px; height: 14px; flex-shrink: 0; stroke: currentColor; fill: none; }
-    .truncation-banner-action:hover { color: var(--paper); }
+    .truncation-icon-btn:hover { color: var(--paper); border-color: var(--amber); }
 
     .status-icon-btn {
       position: relative;
@@ -1066,6 +1108,7 @@
       color: var(--mist); font-size: var(--text-sm); backdrop-filter: blur(var(--blur-chip));
       transition: border-color .15s, color .15s, background .15s;
     }
+    .status-icon-btn[hidden] { display: none !important; }
     .status-icon-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
     .status-icon-btn:hover { color: var(--paper); border-color: var(--pulse); }
 
@@ -1077,7 +1120,11 @@
       backdrop-filter: blur(var(--blur-scrim)); box-shadow: var(--shadow);
       font-family: "Inter", sans-serif; font-size: var(--text-xs); color: var(--mist); line-height: 1.5;
     }
+    /* :focus-within (not :has() — kept off this codebase's CSS for browser-
+       support reasons elsewhere) so info-btn's legend popover reveals when
+       tabbed to, not just on :hover/.open. */
     .status-icon-btn:hover .info-popover,
+    .status-icon-btn:focus-within .info-popover,
     .status-icon-btn.open .info-popover { display: flex; }
     .info-popover .bc-glow-row { display: flex; align-items: center; gap: var(--space-2); }
     .info-popover .bc-glow-demo {
@@ -1919,6 +1966,17 @@
       <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
+    <!-- [SF-WEB-14] canvas-zoom-cluster's zoom-out. -->
+    <symbol id="icon-minus" viewBox="0 0 24 24">
+      <path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <!-- [SF-WEB-14] object-action-bar's Pin/Unpin. -->
+    <symbol id="icon-pin" viewBox="0 0 24 24">
+      <path d="M12 2a5 5 0 0 0-5 5c0 3 2 5 3 7l2 5 2-5c1-2 3-4 3-7a5 5 0 0 0-5-5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12" cy="7" r="1.6" fill="currentColor" stroke="none"/>
+    </symbol>
+
     <!-- IDEA-23: theme toggle icons — sun shown while dark (switch to
          light), moon shown while light (switch to dark). -->
     <symbol id="icon-sun" viewBox="0 0 24 24">
@@ -2098,23 +2156,12 @@
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg><span class="rl">Find path</span>
       </button>
 
+      <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
+           visible on the canvas) — this was the rail's duplicate.
+           Fit view moved to .canvas-zoom-cluster (same #btn-fit-view id,
+           same click handler in main.js) — this was the rail's duplicate. -->
       <div class="rail-sep"></div>
 
-      <button class="rail-btn ui-btn ui-btn--ghost" id="filter-featured" data-tip="Role: featured" data-role="featured">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg><span class="rl">Featured</span>
-      </button>
-      <button class="rail-btn ui-btn ui-btn--ghost" id="filter-producer" data-tip="Role: producer" data-role="producer">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg><span class="rl">Producer</span>
-      </button>
-      <button class="rail-btn ui-btn ui-btn--ghost" id="filter-writer" data-tip="Role: writer" data-role="writer">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg><span class="rl">Writer</span>
-      </button>
-
-      <div class="rail-sep"></div>
-
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-fit-view" data-tip="Fit view (F)">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-frame"/></svg><span class="rl">Fit view</span>
-      </button>
       <button class="rail-btn ui-btn ui-btn--ghost" id="btn-copy-link" data-tip="Copy shareable link">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg><span class="rl">Share link</span>
       </button>
@@ -2135,6 +2182,39 @@
       </span>
     </nav>
 
+    <!-- [SF-WEB-14] Compact zoom/fit cluster — reuses fitView/zoomIn/
+         zoomOut/focusSeed from ui/canvas-controls.js (main.js wires the
+         clicks); #btn-fit-view keeps its id, moved here from the rail. -->
+    <div class="canvas-zoom-cluster ui-segment" id="canvas-zoom-cluster">
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-zoom-in" title="Zoom in (+)" aria-label="Zoom in">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-zoom-out" title="Zoom out (-)" aria-label="Zoom out">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-minus"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-fit-view" title="Fit view (F)" aria-label="Fit view">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-frame"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-focus-seed" title="Focus seed (Esc)" aria-label="Center the view on the seed artist">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg>
+      </button>
+    </div>
+
+    <!-- [SF-WEB-14] Always-visible role-filter segment — was the rail's
+         #filter-featured/-producer/-writer, same State.activeFilters, see
+         ui/canvas-controls.js::setupFilterToggles. -->
+    <div class="role-filter-segment ui-segment" id="role-filter-segment">
+      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-featured" data-role="featured" title="Role: featured" aria-label="Toggle featured role filter">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-producer" data-role="producer" title="Role: producer" aria-label="Toggle producer role filter">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-writer" data-role="writer" title="Role: writer" aria-label="Toggle writer role filter">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg>
+      </button>
+    </div>
+
     <div class="status" id="status" hidden>
       <button class="seed-card" id="seed-card" type="button" title="Back to seed focus">
         <img class="seed-card-avatar" id="seed-card-avatar" src="" alt="" />
@@ -2146,9 +2226,15 @@
 
       <span class="rate-limit-badge" id="rate-limit-badge" hidden></span>
 
-      <span class="truncation-banner" id="truncation-banner" role="status" aria-live="polite" hidden>
-        <span id="truncation-banner-text"></span>
-      </span>
+      <!-- [style pass] Collapsed to an info-btn-shaped icon (was a
+           permanently-expanded text pill). Clicking it IS "show more
+           collaborations" (same effect as the old inline action button) —
+           see canvas-controls.js::setupLoadMoreCollabs/updateTruncationBanner,
+           which keeps title/aria-label in sync with the count so the
+           descriptive text is available on hover/focus without a popover. -->
+      <button class="status-icon-btn truncation-icon-btn" id="truncation-banner" type="button" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
+      </button>
 
       <button class="status-icon-btn" id="info-btn" type="button" aria-label="Legend">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-info"/></svg>
@@ -2188,6 +2274,26 @@
     <div class="actions-bar"></div>
 
     <div class="context-panel" id="context-panel">
+
+      <!-- [SF-WEB-14] Mini-actions for the node currently shown in the
+           companion's node context — expand/focus/genius/pin, wired
+           per-node by ui/sidebar.js::syncObjectActionBar. Hidden for edge
+           context (none of these four apply to an edge) and while nothing
+           is selected. -->
+      <div class="object-action-bar ui-segment" id="object-action-bar" hidden>
+        <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-expand" title="Expand" aria-label="Expand this artist's collaborators">
+          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
+        </button>
+        <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-focus" title="Focus" aria-label="Center the view on this artist">
+          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg>
+        </button>
+        <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-genius" title="Open on Genius" aria-label="Open this artist on Genius">
+          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg>
+        </button>
+        <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-pin" title="Pin in place" aria-label="Pin this artist in place" aria-pressed="false">
+          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pin"/></svg>
+        </button>
+      </div>
 
       <!-- [SF-WEB-12] One companion panel: #artist-sidebar (node/edge
            context) and #path-panel (path context) are now plain sections

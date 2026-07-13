@@ -1,14 +1,17 @@
 // ════════════════════════════════════════════════════════════════════════════
-// sidebar.test.js — [SF-WEB-12] unit tests for the companion panel's
-//                    node/edge context (ui/sidebar.js).
+// sidebar.test.js — unit tests for the companion panel's node/edge context
+//                    (ui/sidebar.js): SF-WEB-12's static tiles and
+//                    SF-WEB-14's object action bar.
 //
-// Asserts the two things the ticket cares about: (1) node vs edge context
-// render into the right static tiles with the right content, and (2) doing
-// so never creates new DOM elements (the ensureTile()-style dynamic grid-
-// tile insertion this ticket removes) — every tile referenced here is
-// assigned once in beforeEach, exactly like the real static markup in
-// index.html, and a document.createElement spy proves sidebar.js never
-// reaches for a fresh one.
+// Asserts the things both tickets care about: (1) node vs edge context
+// render into the right static tiles with the right content, (2) doing so
+// never creates new DOM elements (the ensureTile()-style dynamic grid-tile
+// insertion SF-WEB-12 removes) — every tile referenced here is assigned
+// once in beforeEach, exactly like the real static markup in index.html,
+// and a document.createElement spy proves sidebar.js never reaches for a
+// fresh one — and (3) the object action bar (SF-WEB-14) is visible only
+// for node context and wires its four buttons to the node it's currently
+// showing.
 //
 // Path context (openPathPanel/closePathPanel mutual exclusivity with node/
 // edge context) is covered separately in modals.test.js, since that's where
@@ -21,6 +24,8 @@ vi.mock("../vis-adapter/index.js", () => ({
   highlightEdgePair: vi.fn(),
   selectEdge: vi.fn(),
   clearSelectedEdge: vi.fn(),
+  toggleNodePin: vi.fn(() => true),
+  isNodePinned: vi.fn(() => false),
 }));
 vi.mock("../api/analytics-client.js", () => ({ bfsPath: vi.fn(() => null) }));
 vi.mock("./modals.js", () => ({
@@ -29,16 +34,21 @@ vi.mock("./modals.js", () => ({
   closeNodeSearch: vi.fn(),
   closePathPanel: vi.fn(),
 }));
+vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
+vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar } from "./sidebar.js";
 import { closePathPanel } from "./modals.js";
+import { toggleNodePin, isNodePinned } from "../vis-adapter/index.js";
+import { searchArtist } from "../api/api.js";
 
 function freshEl(tag = "div") { return document.createElement(tag); }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  isNodePinned.mockReturnValue(false);
   State.graphNodes = [];
   State.graphEdges = [];
   State.currentSeedId = null;
@@ -57,6 +67,14 @@ beforeEach(() => {
   els.sidebarPathTile          = freshEl();
   els.sidebarPathTrack         = freshEl();
   els.sidebarGenius    = freshEl("button");
+
+  // [SF-WEB-14] Object action bar.
+  els.objectActionBar = freshEl();
+  els.objectActionBar.hidden = true;
+  els.objActionExpand = freshEl("button");
+  els.objActionFocus  = freshEl("button");
+  els.objActionGenius = freshEl("button");
+  els.objActionPin    = freshEl("button");
 });
 
 function mockNode(overrides = {}) {
@@ -112,6 +130,56 @@ describe("showArtistSidebar (node context)", () => {
   });
 });
 
+describe("[SF-WEB-14] object action bar — node context", () => {
+  it("is shown (un-hidden) when a node is selected", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    expect(els.objectActionBar.hidden).toBe(false);
+  });
+
+  it("wires Expand to searchArtist(name, true, true), same path as double-click", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    els.objActionExpand.onclick();
+    expect(searchArtist).toHaveBeenCalledWith("Drake", true, true);
+    expect(State._clickedNodeId).toBe(1);
+  });
+
+  it("wires Focus to center the camera on the node", () => {
+    State.network = { focus: vi.fn() };
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    els.objActionFocus.onclick();
+    expect(State.network.focus).toHaveBeenCalledWith(1, expect.any(Object));
+  });
+
+  it("wires Genius to openGeniusPage(nodeId)", async () => {
+    const { openGeniusPage } = await import("../vis-adapter/index.js");
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    els.objActionGenius.onclick();
+    expect(openGeniusPage).toHaveBeenCalledWith(1);
+  });
+
+  it("wires Pin to toggleNodePin(nodeId) and reflects the pressed state", () => {
+    // Simulate the real toggle: isNodePinned() reflects whatever
+    // toggleNodePin() last flipped, same relationship as the real
+    // vis-adapter/physics.js implementation.
+    let pinned = false;
+    isNodePinned.mockImplementation(() => pinned);
+    toggleNodePin.mockImplementation(() => { pinned = !pinned; return pinned; });
+
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    expect(els.objActionPin.getAttribute("aria-pressed")).toBe("false");
+
+    els.objActionPin.onclick();
+    expect(toggleNodePin).toHaveBeenCalledWith(1);
+    expect(els.objActionPin.getAttribute("aria-pressed")).toBe("true");
+    expect(els.objActionPin.classList.contains("active")).toBe(true);
+  });
+});
+
 describe("showEdgeSidebar (edge context)", () => {
   function mockEdge(overrides = {}) {
     return {
@@ -140,6 +208,13 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.sidebarGenius.style.display).toBe("none");
   });
 
+  it("[SF-WEB-14] hides the object action bar — none of its four actions apply to an edge", () => {
+    els.objectActionBar.hidden = false;
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", {});
+    expect(els.objectActionBar.hidden).toBe(true);
+  });
+
   it("closes the path section before showing edge context (mutual exclusivity)", () => {
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", {});
@@ -160,5 +235,11 @@ describe("hideArtistSidebar", () => {
     hideArtistSidebar();
     expect(els.artistSidebar.classList.contains("show")).toBe(false);
     expect(els.companionPanel.classList.contains("show")).toBe(false);
+  });
+
+  it("[SF-WEB-14] hides the object action bar too", () => {
+    els.objectActionBar.hidden = false;
+    hideArtistSidebar();
+    expect(els.objectActionBar.hidden).toBe(true);
   });
 });

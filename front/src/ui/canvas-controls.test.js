@@ -45,10 +45,11 @@ beforeEach(() => {
   State.shownSongCount = 0;
   State.songLimit = 0;
 
-  els.truncationBanner = document.createElement("span");
+  // [style pass] The banner is now a single plus-icon <button> — no
+  // separate text/action children — the descriptive message lives in
+  // title/aria-label, and a click on the button itself is the action.
+  els.truncationBanner = document.createElement("button");
   els.truncationBanner.hidden = true;
-  els.truncationBannerText = document.createElement("span");
-  els.truncationBanner.appendChild(els.truncationBannerText);
 
   showMoreCollaborations.mockClear();
 });
@@ -60,13 +61,14 @@ describe("updateTruncationBanner", () => {
     expect(els.truncationBanner.hidden).toBe(true);
   });
 
-  it("shows the banner with the shown-song-count when truncated", () => {
+  it("shows the banner with the shown-song-count in its title/aria-label when truncated", () => {
     State.truncated = true;
     State.shownSongCount = 40;
     State.songLimit = 40;
     updateTruncationBanner();
     expect(els.truncationBanner.hidden).toBe(false);
-    expect(els.truncationBannerText.textContent).toContain("40");
+    expect(els.truncationBanner.title).toContain("40");
+    expect(els.truncationBanner.getAttribute("aria-label")).toContain("40");
   });
 
   it("hides the banner again once a bigger-limit fetch is no longer truncated", () => {
@@ -89,39 +91,13 @@ describe("updateTruncationBanner", () => {
     expect(() => updateTruncationBanner()).not.toThrow();
   });
 
-  it("has no action control in the DOM while not truncated", () => {
-    State.truncated = false;
-    updateTruncationBanner();
-    expect(els.truncationBanner.querySelector("#truncation-banner-action")).toBeNull();
-  });
-
-  it("renders a single action control containing the shown count when truncated", () => {
-    State.truncated = true;
-    State.shownSongCount = 40;
-    updateTruncationBanner();
-    const actions = els.truncationBanner.querySelectorAll("#truncation-banner-action");
-    expect(actions.length).toBe(1);
-    expect(actions[0].textContent).toContain("40");
-  });
-
-  it("removes the action control again once no longer truncated", () => {
-    State.truncated = true;
-    State.shownSongCount = 40;
-    updateTruncationBanner();
-    expect(els.truncationBanner.querySelector("#truncation-banner-action")).not.toBeNull();
-
-    State.truncated = false;
-    updateTruncationBanner();
-    expect(els.truncationBanner.querySelector("#truncation-banner-action")).toBeNull();
-  });
-
-  it("triggers showMoreCollaborations exactly once per click on the action control", () => {
+  it("triggers showMoreCollaborations exactly once per click on the icon itself", () => {
     State.truncated = true;
     State.shownSongCount = 40;
     updateTruncationBanner();
     setupLoadMoreCollabs();
 
-    els.truncationBanner.querySelector("#truncation-banner-action").click();
+    els.truncationBanner.click();
 
     expect(showMoreCollaborations).toHaveBeenCalledTimes(1);
   });
