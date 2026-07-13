@@ -310,6 +310,11 @@
       border-radius: var(--r-lg);
       background: var(--panel-2); border: 1px solid var(--line);
       box-shadow: var(--elevation-2);
+      /* [SF-WEB-24] Same backdrop-blur the other two docked-panel shells
+         (.search-modal.docked .search-wrap/.node-search-box) already use —
+         .companion-panel (the sole .ui-panel consumer) is the same kind of
+         floating-over-canvas surface, so it gets the same shell treatment. */
+      backdrop-filter: blur(var(--blur-scrim));
       padding: var(--space-4);
       min-width: 0;
     }
@@ -440,6 +445,14 @@
       padding: 0; gap: var(--space-3);
       display: block; text-align: left;
       background: transparent; backdrop-filter: none;
+      /* [SF-WEB-24] Docked-only entry/exit timing, kit tokens (--duration-
+         slow: "panel/rail expand-style transitions" — exactly this) — the
+         base .search-modal transition above (opacity/backdrop-filter/
+         background, .32s) is shared with the full-screen landing mode and
+         stays untouched; this adds the transform .is-closed already
+         declared below but never actually animated (no matching transition
+         property existed for it before). */
+      transition: transform var(--duration-slow) var(--ease-standard);
     }
     .search-modal.docked.is-closed { transform: translateY(-6px); }
     .search-modal.docked .eyebrow,
@@ -453,7 +466,10 @@
     .search-modal.docked .search-wrap {
       width: 100%; margin: 0;
       background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
-      box-shadow: var(--shadow); backdrop-filter: blur(var(--blur-scrim));
+      /* [SF-WEB-24] --elevation-2 (not the older --shadow, still the exact
+         same value — see the token block up top) to name this the same
+         shell recipe .ui-panel/.node-search-box use. */
+      box-shadow: var(--elevation-2); backdrop-filter: blur(var(--blur-scrim));
       padding: var(--space-4);
     }
     .search-modal.docked .include-roles-row,
@@ -682,6 +698,14 @@
        existing single-artist graph search, "Connect" swaps in a two-input
        path finder. Both panels share one grid cell (.hero-mode-stage) so
        switching between them crossfades instead of causing a layout jump. */
+    /* [SF-WEB-24] border/radius/background/padding here already match the
+       SF-WEB-11 kit's .ui-segment recipe exactly (border:1px solid
+       var(--line); border-radius:999px; background:rgba(var(--panel-rgb),
+       .8); padding:3px) — same pill-segment shell as .role-filter-segment,
+       just not sharing the class since this is a tablist, not a button
+       group. Kept as its own rule (not .ui-segment in markup) so this
+       component's own selected-state thumb keeps working exactly as
+       .ui-segment's own doc comment says every segment consumer should. */
     .hero-mode-switch {
       display: flex; position: relative;
       width: min(360px, 92vw); margin: 0 auto;
@@ -694,7 +718,9 @@
       border: 0; background: transparent; border-radius: 999px;
       color: var(--mist); font: inherit; font-size: var(--text-sm); font-weight: 600;
       padding: var(--space-2) var(--space-4); cursor: pointer;
-      transition: color .18s ease;
+      /* [SF-WEB-24] Kit motion tokens (were .18s ease) — same pattern
+         .ui-chip/.ui-btn already use for their own hover-color fade. */
+      transition: color var(--duration-base) var(--ease-standard);
     }
     .hero-mode-tab .ri { width: 15px; height: 15px; display: flex; flex-shrink: 0; }
     .hero-mode-tab .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -705,7 +731,11 @@
       position: absolute; top: 3px; left: 3px; bottom: 3px;
       width: calc(50% - 3px); border-radius: 999px;
       background: linear-gradient(100deg, var(--signal), var(--pulse));
-      transition: transform .28s cubic-bezier(.4,0,.2,1);
+      /* [SF-WEB-24] Both tokens' own definitions (up top) name this rule as
+         their reason for existing (".28s" → --duration-slow, the literal
+         cubic-bezier → --ease-standard) — finishes actually referencing
+         them here instead of just documenting the match. Same value. */
+      transition: transform var(--duration-slow) var(--ease-standard);
     }
     .hero-mode-switch[data-mode="connect"] .hero-mode-thumb { transform: translateX(100%); }
 
@@ -1248,7 +1278,14 @@
     /* [SF-WEB-12] .path-panel is now a plain content section inside the one
        shared .companion-panel card (see below) instead of its own
        independently-styled floating panel — card chrome (background/
-       border/radius/shadow/blur/padding) lives once on .companion-panel. */
+       border/radius/shadow/blur/padding) lives once on .companion-panel.
+       [SF-WEB-24] That card is .ui-panel (see the kit block up top, now
+       with backdrop-filter added there) — so path-panel's shell already
+       matches .search-modal.docked .search-wrap/.node-search-box's
+       background/border/radius/shadow/blur without needing its own copy
+       of any of it. Its display:none/.show instant toggle is the same
+       deliberate, unchanged mechanism as .node-search-overlay's (see the
+       comment there). */
     .path-panel {
       display: none;
       flex-direction: column; gap: var(--space-3);
@@ -1735,6 +1772,16 @@
        докнутая карточка в углу канвы, что и .path-panel/.search-modal.
        docked: тот же материал, то же место, граф вокруг остаётся живым
        и видимым, а не гаснет под сплошным затемнением. */
+    /* [SF-WEB-24] display:none/.show — an instant swap, not a fade — is
+       deliberately left alone here (unlike .search-modal.docked's opacity-
+       based hide just above, which can transition). This overlay is only
+       ever removed from layout, never just visually hidden, so it also
+       drops out of tab order for free the moment it closes; adding a
+       fade would mean switching to an opacity/visibility-based hide
+       instead, which does NOT drop focusable children from tab order on
+       its own and would need extra visibility-delay/JS work to preserve
+       today's behaviour — out of scope for a shell-only unification
+       (see closeOtherDockedPanels for a similar note, ui/docked-panel.js). */
     .node-search-overlay {
       position: absolute; z-index: 20;
       top: var(--space-4); right: var(--space-4); left: auto; bottom: auto;
@@ -1746,7 +1793,10 @@
       background: var(--panel-2); border: 1px solid var(--line);
       border-radius: var(--r-lg); padding: var(--space-4); width: 100%;
       backdrop-filter: blur(var(--blur-scrim));
-      box-shadow: var(--shadow); display: flex; flex-direction: column; gap: var(--space-3);
+      /* [SF-WEB-24] --elevation-2, same value as --shadow (see the token
+         block up top) — names this the same shell recipe .ui-panel/
+         .search-modal.docked .search-wrap use. */
+      box-shadow: var(--elevation-2); display: flex; flex-direction: column; gap: var(--space-3);
     }
     .node-search-hint {
       font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);

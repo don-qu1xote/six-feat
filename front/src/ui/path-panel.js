@@ -28,14 +28,11 @@ export function setupPathPanel() {
   // Task 4: close button
   els.pathPanelClose?.addEventListener("click", closePathPanel);
 
-  // Клик вне панели закрывает её — тот же паттерн, что у node-search-overlay
-  // и search-modal (click on backdrop = close).
-  els.pathPanel?.addEventListener("click", e => e.stopPropagation());
-  document.addEventListener("click", e => {
-    if (!isPathPanelOpen()) return;
-    if (els.pathPanel.contains(e.target) || e.target === els.btnFindPath || els.btnFindPath?.contains(e.target)) return;
-    closePathPanel();
-  });
+  // [SF-WEB-24] Click-outside-to-close (same pattern as node-search-overlay
+  // and docked search-modal) and click-inside-doesn't-bubble-and-self-close
+  // both now come from the shared registration in
+  // ui/modals.js::setupDockedPanels() — this used to be its own document
+  // click listener.
 
   // [ТЗ-5 step 1-2] Genius AC for path fields — same factory as hero/dock.
   // Each field tracks its selected artist id so we can pass ?from=<id> to

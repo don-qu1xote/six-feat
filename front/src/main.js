@@ -11,7 +11,7 @@ import {
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
-  renderChips, exportGraphPng, setupThemeToggle
+  renderChips, exportGraphPng, setupThemeToggle, setupDockedPanels
 } from "./ui/index.js";
 import { clearFocus } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
@@ -36,6 +36,11 @@ export function init() {
   renderChips();
   setupFilterToggles();
   setupKeyboard();
+  // [SF-WEB-24] Registers the three docked-panel surfaces (docked search-
+  // modal, node-search overlay, find-path panel) with the shared shell —
+  // mutual exclusivity/outside-click — before wiring each one's own
+  // content-specific behaviour below.
+  setupDockedPanels();
   setupNodeSearch();
   setupPathPanel();
   setupHeroPathFinder();

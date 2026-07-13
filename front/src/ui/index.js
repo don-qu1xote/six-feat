@@ -16,7 +16,12 @@
 //                            closeSearchModal/forceCloseSearchModal/
 //                            setupSearchModal/openNodeSearch/closeNodeSearch/
 //                            renderNodeSearchResults/updateNodeSearchResults/
-//                            setupNodeSearch)
+//                            setupNodeSearch/setupDockedPanels)
+//   docked-panel.js        — [SF-WEB-24] shared docked-panel shell
+//                            mechanics (registerDockedPanel/
+//                            closeOtherDockedPanels) the three surfaces
+//                            above are built on — not re-exported here,
+//                            only modals.js/path-panel.js call it directly
 //   sidebar.js             — showArtistSidebar / showEdgeSidebar /
 //                            hideArtistSidebar
 //   path-result.js         — runServerPath / mergePathData / renderHopChain
@@ -54,7 +59,7 @@ export {
   isSearchModalOpen, openSearchModal, closeSearchModal, forceCloseSearchModal,
   setupSearchModal,
   openNodeSearch, closeNodeSearch, renderNodeSearchResults,
-  updateNodeSearchResults, setupNodeSearch
+  updateNodeSearchResults, setupNodeSearch, setupDockedPanels
 } from "./modals.js";
 
 export {
