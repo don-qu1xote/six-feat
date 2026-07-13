@@ -222,6 +222,25 @@ class TestTwoHopPath:
         node_ids = {n["id"] for n in data["nodes"]}
         assert {200, 201, 202}.issubset(node_ids)
 
+    # [SF-API-08] The direct (1-hop) case fills edge_songs via CheckDirectPath;
+    # multi-hop edges are instead filled by AppendAdjFromL1's BFS-expansion
+    # code path — a distinct code path that needs its own regression coverage
+    # so both A-B and B-C edges carry the connecting track, not just an icon.
+    def test_all_edges_have_nonempty_songs(self, client: requests.Session, genius_mock: GeniusMock):
+        _setup_two_hop_path(genius_mock)
+        data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
+        assert len(data["edges"]) == 2
+        for edge in data["edges"]:
+            assert isinstance(edge["songs"], list)
+            assert len(edge["songs"]) >= 1, f"edge {edge['from']}-{edge['to']} has empty songs[]"
+
+    def test_edge_songs_match_connecting_tracks(self, client: requests.Session, genius_mock: GeniusMock):
+        _setup_two_hop_path(genius_mock)
+        data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
+        by_pair = {(min(e["from"], e["to"]), max(e["from"], e["to"])): e["songs"] for e in data["edges"]}
+        assert by_pair[(200, 201)] == ["A-B Track"]
+        assert by_pair[(201, 202)] == ["B-C Track"]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. No path exists
