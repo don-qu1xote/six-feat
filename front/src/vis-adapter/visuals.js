@@ -316,7 +316,10 @@ export function resolveEdgeDominantRole(e) {
 // barnesHut пересчитывает силы через octree на каждый physics-тик — дёшево
 // для малых/средних графов, но на 150+ узлах даёт заметные просадки FPS.
 // "repulsion" (O(n²), но без octree overhead) дешевле в этом диапазоне.
-const LARGE_GRAPH_NODE_THRESHOLD = 150;
+// SF-WEB-07: exported so physics.js can shorten the live-physics settle
+// window on the same graphs this already treats as "large" for solver
+// choice — one threshold, not two independently-tuned magic numbers.
+export const LARGE_GRAPH_NODE_THRESHOLD = 150;
 
 // Итерации стабилизации пропорциональны размеру графа вместо фиксированных
 // 200 всегда — на маленьких seed-графах это избыточно и просто тратит время

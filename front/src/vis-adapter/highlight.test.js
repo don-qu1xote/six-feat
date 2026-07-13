@@ -160,6 +160,101 @@ describe("applyDimState('hover') — adjacency-index edge highlighting", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// SF-WEB-07: hover is rAF-debounced — rapid repeated hoverNode/hoverEdge
+// dispatches (vis.js can fire several per animation frame while the mouse
+// moves across a dense cluster) must collapse into a SINGLE DataSet.update()
+// per frame, not one per event. Unlike the tests above, this block does NOT
+// auto-flush requestAnimationFrame — it queues callbacks so the test can
+// dispatch several hover events, assert nothing has painted yet, then flush
+// exactly once and count the resulting update() calls.
+// ════════════════════════════════════════════════════════════════════════════
+describe("SF-WEB-07: hover rAF debounce — no redundant recompute per frame", () => {
+  // Real cancelAnimationFrame semantics matter here (unlike the
+  // always-synchronous stub other describe blocks in this file use):
+  // _applyHoverNode cancels-and-reschedules on every call, so a fake that
+  // doesn't actually deregister the cancelled callback would still fire it
+  // on flush and defeat the very coalescing this block is testing.
+  let rafQueue, nextRafId;
+
+  beforeEach(() => {
+    rafQueue = new Map();
+    nextRafId = 1;
+    vi.stubGlobal("requestAnimationFrame", cb => {
+      const id = nextRafId++;
+      rafQueue.set(id, cb);
+      return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", id => { rafQueue.delete(id); });
+
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111", _accent: "#8FA6C9" },
+      { id: 3, isSeed: false, _dimBorder: "#222222", _accent: "#8FA6C9" },
+    ];
+    State.graphEdges = [
+      { id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 },
+      { id: "2_3", from: 2, to: 3, dominantRole: "primary",  weight: 1 },
+    ];
+    invalidateColorCache();
+    State.nodesDS = mockDataSet();
+    State.edgesDS = { update: vi.fn(), get: id => ({ id, _brightColor: "#fff" }) };
+    State.network = {}; // _applyHoverEdge requires a truthy State.network
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function flushOneFrame() {
+    const due = [...rafQueue.values()];
+    rafQueue.clear();
+    due.forEach(cb => cb(0));
+  }
+
+  it("collapses several hoverNode dispatches on the same node into one nodesDS.update() call", () => {
+    applyDimState("hover", { nodeId: 2 });
+    applyDimState("hover", { nodeId: 2 });
+    applyDimState("hover", { nodeId: 2 });
+
+    expect(State.nodesDS.update).not.toHaveBeenCalled(); // nothing painted before the frame runs
+    flushOneFrame();
+
+    expect(State.nodesDS.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses rapid hoverNode dispatches on DIFFERENT nodes within the same frame into one update() — only the latest wins", () => {
+    applyDimState("hover", { nodeId: 2 });
+    applyDimState("hover", { nodeId: 3 }); // cursor moved to a neighbour before the frame ran
+
+    flushOneFrame();
+
+    expect(State.nodesDS.update).toHaveBeenCalledTimes(1);
+    expect(State.nodesDS.update).toHaveBeenCalledWith(expect.objectContaining({ id: 3 }));
+  });
+
+  it("batches multiple hoverEdge dispatches within the same frame into a single edgesDS.update() call", () => {
+    applyDimState("edge", { edgeId: "1_2" });
+    applyDimState("edge", { edgeId: "2_3" });
+
+    expect(State.edgesDS.update).not.toHaveBeenCalled();
+    flushOneFrame();
+
+    expect(State.edgesDS.update).toHaveBeenCalledTimes(1);
+    const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
+    expect(edgeUpdates.map(u => u.id).sort()).toEqual(["1_2", "2_3"]);
+  });
+
+  it("hovering a node incidentally batches its edges into the SAME frame as the node paint, not an extra one", () => {
+    applyDimState("hover", { nodeId: 2 }); // paints node 2 + edges 1_2/2_3 in one rAF callback
+
+    flushOneFrame();
+
+    expect(State.nodesDS.update).toHaveBeenCalledTimes(1);
+    expect(State.edgesDS.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // Regression guard: clearHoverHighlight(blurredNodeId) must ignore a STALE
 // blur (one that no longer matches the currently-applied hover) instead of
 // reverting whatever IS currently hovered. Reproduces the reported bug —

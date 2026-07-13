@@ -10,7 +10,7 @@
 import { State, PHYSICS_SETTLE_MS, PHYSICS_EXPAND_MS } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
-import { nodeVisual, edgeVisual } from "./visuals.js";
+import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 import { placeExpandedNodes, LEAF_R } from "./layout.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -27,6 +27,21 @@ import { placeExpandedNodes, LEAF_R } from "./layout.js";
 // остаётся. Сокращаем окно вживую-физики до минимума, достаточного лишь для
 // редких реальных пересечений, а не для полноценного расталкивания.
 const EXPAND_PHYSICS_SETTLE_MS = Math.min(180, PHYSICS_EXPAND_MS);
+
+// SF-WEB-07: nudgePhysics() re-enables live physics (barnesHut/repulsion,
+// see networkOptions in visuals.js) for its caller's requested window before
+// scheduleFreeze() switches it back off. On a graph past
+// LARGE_GRAPH_NODE_THRESHOLD, every physics tick during that window is
+// already the more expensive O(n²) "repulsion" solver networkOptions()
+// switches to at that size — most of the nodes involved already have their
+// on-screen positions restored (refreshNetwork's moveNode loop) or are
+// otherwise settled before physics is turned back on, so the caller's full
+// requested duration just keeps ticking that expensive solver across
+// hundreds of nodes to settle the handful that actually moved. Same
+// reasoning EXPAND_PHYSICS_SETTLE_MS above already applies to the
+// post-flyout case — cap it here too, for every other nudgePhysics() caller
+// (refreshNetwork's re-search settle, events.js's post-drag settle).
+const LARGE_GRAPH_SETTLE_MS = 500;
 
 // SF-WEB-09: мягкое появление новых нод — короткий scale/opacity поверх уже
 // готовой ноды (не opacity:0 в данных, см. предупреждение в visuals.js о
@@ -99,7 +114,10 @@ export function updateEdgeRenderMode() {
 
 export function nudgePhysics(ms, noFit) {
   if (!State.network) return;
-  const settleMs = ms || PHYSICS_SETTLE_MS;
+  const requested = ms || PHYSICS_SETTLE_MS;
+  const settleMs  = State.graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD
+    ? Math.min(requested, LARGE_GRAPH_SETTLE_MS)
+    : requested;
   updateEdgeRenderMode();
   State.network.setOptions({
     physics: { enabled: true, stabilization: { enabled: false } }

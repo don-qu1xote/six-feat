@@ -8,7 +8,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State } from "../state/state.js";
-import { runFlyoutAnimation } from "./physics.js";
+import { runFlyoutAnimation, nudgePhysics } from "./physics.js";
+import { LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 
 function mockNetwork(ids) {
   const nodes = {};
@@ -94,5 +95,50 @@ describe("runFlyoutAnimation", () => {
       .filter(Boolean)
       .pop();
     expect(finalUpdate).toEqual({ id: 1, size: 22, opacity: 1 });
+  });
+});
+
+// SF-WEB-07
+describe("nudgePhysics — shorter live-physics settle window on large graphs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    State.network = { setOptions: vi.fn() };
+    State.physicsTimer = null;
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it("caps the settle window below the caller's requested duration once the graph is large", () => {
+    State.graphNodes = Array.from({ length: LARGE_GRAPH_NODE_THRESHOLD + 1 }, (_, i) => ({ id: i }));
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    nudgePhysics(1500);
+
+    const [, delay] = setTimeoutSpy.mock.calls.at(-1);
+    expect(delay).toBeLessThan(1500);
+  });
+
+  it("keeps the caller's requested settle window unchanged on a normal-sized graph", () => {
+    State.graphNodes = Array.from({ length: LARGE_GRAPH_NODE_THRESHOLD }, (_, i) => ({ id: i }));
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    nudgePhysics(1500);
+
+    const [, delay] = setTimeoutSpy.mock.calls.at(-1);
+    expect(delay).toBe(1500);
+  });
+
+  it("still turns physics back off once the shortened window elapses", () => {
+    State.graphNodes = Array.from({ length: LARGE_GRAPH_NODE_THRESHOLD + 1 }, (_, i) => ({ id: i }));
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    nudgePhysics(1500);
+    const [, delay] = setTimeoutSpy.mock.calls.at(-1);
+    vi.advanceTimersByTime(delay);
+
+    expect(State.network.setOptions).toHaveBeenCalledWith({ physics: { enabled: false } });
   });
 });
