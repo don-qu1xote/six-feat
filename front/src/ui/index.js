@@ -78,7 +78,7 @@ export {
   setupFilterToggles, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   fitView, focusSeed, zoomIn, zoomOut, setupKeyboard,
   clearCanvas, updateStatus, updateRateLimitIndicator, updateTruncationBanner,
-  updateScanStatus, exportGraphPng
+  updateScanStatus, exportGraphPng, exportGraphJson, buildGraphExportData
 } from "./canvas-controls.js";
 
 export { renderGraphA11yList } from "./graph-a11y-list.js";

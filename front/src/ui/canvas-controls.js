@@ -188,22 +188,80 @@ export function zoomOut() {
 
 // ════════════════════════════════════════════════════════════════════════════
 // IDEA-20 — export rendered graph as a PNG (client-only, no backend)
+// SF-WEB-04 — export the underlying graph data as JSON, same rail, same kit
 // ════════════════════════════════════════════════════════════════════════════
-function downloadPngBlob(blob) {
+
+// Shared by both export formats — "seed name" is the one piece of the
+// filename either format cares about identifying.
+function _graphExportSlug() {
   const seedNode = State.currentSeedId != null
     ? State.graphNodes.find(n => n.id === State.currentSeedId)
     : null;
   const rawName = seedNode?.name || els.heroInput.value || "graph";
-  const slug = rawName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "graph";
+  return rawName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "graph";
+}
 
+function _downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `six-feet-${slug}.png`;
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function downloadPngBlob(blob) {
+  _downloadBlob(blob, `six-feet-${_graphExportSlug()}.png`);
+}
+
+// SF-WEB-04: stable, plain-JSON-serializable snapshot of the current graph —
+// deliberately NOT a raw dump of State.graphNodes/graphEdges (those carry
+// internal bookkeeping fields — _isNew, _dimBorder, _accent, _dominantRole,
+// _expandParent, etc. — that are rendering/layout implementation detail, not
+// graph data, and would make the export format an accidental, unstable
+// coupling to internal state shape). The field set mirrors what
+// buildNodeState/buildEdgeState (graph.js) treat as the graph's actual
+// public data — the same fields the backend's /api/v1/graph response
+// carries, not vis-adapter's derived visuals.
+export function buildGraphExportData() {
+  const seedNode = State.currentSeedId != null
+    ? State.graphNodes.find(n => n.id === State.currentSeedId)
+    : null;
+  return {
+    seed:       seedNode?.name ?? null,
+    seedId:     State.currentSeedId ?? null,
+    exportedAt: new Date().toISOString(),
+    nodes: State.graphNodes.map(n => ({
+      id:        n.id,
+      name:      n.name,
+      imageUrl:  n.imageUrl || null,
+      geniusUrl: n.geniusUrl || null,
+      isSeed:    !!n.isSeed,
+    })),
+    edges: State.graphEdges.map(e => ({
+      id:                  e.id,
+      from:                e.from,
+      to:                  e.to,
+      weight:              e.weight,
+      dominantRole:        e.dominantRole,
+      collaboration_count: e.collaboration_count ?? null,
+      songs:               e.songs || [],
+      collaborations:      e.collaborations || [],
+    })),
+  };
+}
+
+export function exportGraphJson() {
+  if (!State.graphNodes.length) {
+    showToast("Nothing to export yet — build a graph first.", 2400);
+    return;
+  }
+  const data = buildGraphExportData();
+  const dateStr = data.exportedAt.slice(0, 10); // YYYY-MM-DD
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  _downloadBlob(blob, `six-feet-${_graphExportSlug()}-${dateStr}.json`);
 }
 
 // vis-network paints node avatars straight from Genius's CDN without

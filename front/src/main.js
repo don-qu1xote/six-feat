@@ -11,7 +11,7 @@ import {
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
-  renderChips, exportGraphPng, setupThemeToggle, setupDockedPanels
+  renderChips, exportGraphPng, exportGraphJson, setupThemeToggle, setupDockedPanels
 } from "./ui/index.js";
 import { clearFocus } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
@@ -106,6 +106,7 @@ export function init() {
   els.btnClearGraph ?.addEventListener("click", clearCanvas);
   els.btnCopyLink   ?.addEventListener("click", copyShareableLink);
   els.btnExportPng  ?.addEventListener("click", exportGraphPng);
+  els.btnExportJson ?.addEventListener("click", exportGraphJson);
   els.btnFitView    ?.addEventListener("click", fitView);
   // [SF-WEB-14] Compact zoom/fit cluster.
   els.btnZoomIn     ?.addEventListener("click", zoomIn);

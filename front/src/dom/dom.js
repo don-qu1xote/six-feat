@@ -73,6 +73,7 @@ export const els = {
   btnClearGraph: $("btn-clear-graph"),
   btnCopyLink:   $("btn-copy-link"),
   btnExportPng:  $("btn-export-png"),
+  btnExportJson: $("btn-export-json"),
   btnFindPath:   $("btn-find-path"),
   btnSearchOpen: $("btn-search-open"),
 
