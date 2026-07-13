@@ -665,7 +665,17 @@ class TestGraphTruncationIndicator:
 
 class TestGraphGoldenNodeEdgeOrder:
     def _setup(self, genius_mock: GeniusMock, seed_id: int) -> dict:
-        a, b, c = seed_id + 1, seed_id + 2, seed_id + 3
+        # [SF-PERF-03 fix] unique_artist_id is a monotonic counter that only
+        # advances by small integer steps between consecutive tests (see
+        # conftest.py's _unique_artist_id_counter), so seed_id+1/+2/+3
+        # collided with an *adjacent* test's own unique_artist_id (e.g. this
+        # test's seed_id could equal another test's "b" or "c") once real
+        # background enrichment persisted that other test's collaborator
+        # data — surfacing as extra, unrelated nodes on a later request for
+        # this seed. Widely-spaced multiplicative ids (same pattern already
+        # used for song ids below, and by _songs_and_details above) keep
+        # this test's derived artist ids well clear of any nearby seed_id.
+        a, b, c = seed_id * 1000 + 1, seed_id * 1000 + 2, seed_id * 1000 + 3
         s1, s2, s3, s4, s5 = (seed_id * 10 + i for i in range(1, 6))
 
         genius_mock.artist(seed_id, {"id": seed_id, "name": "GoldenArtist"})
