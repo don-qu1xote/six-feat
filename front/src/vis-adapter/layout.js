@@ -370,56 +370,46 @@ export function placeExpandedNodes(savedPositions) {
   return { targets, fromPos };
 }
 
-export function placePathNodes(path, savedPositions) {
+// SF-WEB-17: floor on node spacing — comfortably larger than the biggest
+// node diameter (HUB_RADIUS*2 = 72px, see visuals.js) so path nodes never
+// overlap regardless of how long the path or how narrow the canvas is.
+const MIN_PATH_GAP = 140;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// placePathNodes — readable left-to-right layout for a six-degrees path on
+// the freshly-cleared canvas (see clearGraphForPathSearch/mergePathData).
+// Replaces the old single-angle diagonal line (which read as a random
+// skewed streak, and which picked its angle by inspecting already-rendered
+// expanded nodes — meaningless here since the canvas is always empty at
+// this point) with a straight horizontal row: `from` on the left, `to` on
+// the right, evenly spaced, centered on (0,0) — the same origin convention
+// the seed node uses elsewhere (see placeExpandedNodes).
+//
+// canvasSize lets the step adapt to the actual viewport instead of a fixed
+// gap that either crowds a long path or leaves a short one looking sparse:
+// spacing fills ~80% of the canvas width, clamped to [MIN_PATH_GAP,
+// PATH_NODE_GAP] so it's never so tight nodes touch, nor so wide a short
+// path looks needlessly spread out.
+// ─────────────────────────────────────────────────────────────────────────────
+export function placePathNodes(path, canvasSize = {}) {
   const targets = new Map(), fromPos = new Map();
-  
-  if (!path || path.length < 2 || !State.network || !State.nodesDS) {
-    return { targets, fromPos };
-  }
+  if (!path || path.length < 2) return { targets, fromPos };
 
-  // 1. Поиск свободного сектора (как в placeExpandedNodes)
-  let directionAngle = 0;
-  if (State.expandedNodes.size > 0) {
-    const poleAngles = [];
-    for (const nodeId of State.expandedNodes) {
-      const node = State.graphNodes.find(n => n.id === nodeId);
-      if (node) {
-        const sp = savedPositions[nodeId];
-        if (sp && (sp.x !== 0 || sp.y !== 0)) {
-          poleAngles.push(Math.atan2(sp.y, sp.x));
-        }
-      }
-    }
-    if (poleAngles.length > 0) {
-      const sorted = [...poleAngles].sort((a, b) => a - b);
-      let bestGap = 0, bestAng = 0;
-      for (let i = 0; i < sorted.length; i++) {
-        const next = sorted[(i + 1) % sorted.length];
-        const gap = ((next - sorted[i]) + 2 * Math.PI) % (2 * Math.PI) || 2 * Math.PI;
-        if (gap > bestGap) { bestGap = gap; bestAng = sorted[i] + gap / 2; }
-      }
-      directionAngle = bestAng;
-    }
-  }
+  const n      = path.length;
+  const width  = canvasSize.width > 0 ? canvasSize.width : 1100;
+  const usable = Math.max(width * 0.8, MIN_PATH_GAP);
+  const step   = clamp(usable / (n - 1), MIN_PATH_GAP, PATH_NODE_GAP);
+  const totalWidth = step * (n - 1);
+  const startX = -totalWidth / 2;
 
-  // 2. Размещаем узлы вдоль линии
-  const dx = Math.cos(directionAngle);
-  const dy = Math.sin(directionAngle);
-  const startDist = Math.max(150, (path.length - 1) * PATH_NODE_GAP * 0.1);
-  
-  let currentX = startDist * dx;
-  let currentY = startDist * dy;
-
-  for (let i = 0; i < path.length; i++) {
+  for (let i = 0; i < n; i++) {
     const nodeId = path[i];
-    targets.set(nodeId, { x: currentX, y: currentY });
-    const sp = savedPositions[nodeId];
-    fromPos.set(nodeId, sp ? { x: sp.x, y: sp.y } : { x: 0, y: 0 });
-
-    if (i < path.length - 1) {
-      currentX += PATH_NODE_GAP * dx;
-      currentY += PATH_NODE_GAP * dy;
-    }
+    targets.set(nodeId, { x: startX + step * i, y: 0 });
+    // Каждая нода "вылетает" из центра — тот же приём, что и у expand'а
+    // (см. placeExpandedNodes: новые ноды стартуют из seed), только общей
+    // точкой вылета здесь служит центр холста, а не позиция seed'а: на
+    // только что очищенном канвасе сохранённых позиций ещё нет.
+    fromPos.set(nodeId, { x: 0, y: 0 });
   }
 
   return { targets, fromPos };

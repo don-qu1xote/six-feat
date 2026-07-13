@@ -33,9 +33,10 @@ vi.mock("../graph.js", () => ({
 vi.mock("../vis-adapter/index.js", () => ({
   initGraphOnCanvas: vi.fn(),
   initNetwork: vi.fn(),
+  initPathNetwork: vi.fn(),
   mergeNetwork: vi.fn(),
   computeNodeSizes: vi.fn(),
-  placePathNodes: vi.fn(() => ({ targets: {}, fromPos: null })),
+  placePathNodes: vi.fn(() => ({ targets: new Map(), fromPos: new Map() })),
   clearGraphForPathSearch: vi.fn(),
   highlightEdgePair: vi.fn(),
 }));

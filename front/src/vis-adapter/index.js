@@ -46,6 +46,7 @@ export {
 export {
   // ── render.js ──────────────────────────────────────────────────────────
   initNetwork,
+  initPathNetwork,
   _attachZoomThrottle,
   refreshNetwork,
   openGeniusPage,

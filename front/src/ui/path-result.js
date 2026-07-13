@@ -11,7 +11,7 @@ import { State, ROLE_ICON, setPathHighlight } from "../state/state.js";
 import { escapeHtml, placeholderFor, graphHash } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import {
-  initGraphOnCanvas, initNetwork,
+  initGraphOnCanvas, initNetwork, initPathNetwork, placePathNodes,
   computeNodeSizes, clearGraphForPathSearch,
   highlightEdgePair
 } from "../vis-adapter/index.js";
@@ -200,7 +200,24 @@ export function mergePathData(data) {
   if (!State.network) {
     State.currentSeedId = newSeedId;
     State.graphNodes.forEach(n => { n.isSeed = (n.id === newSeedId); });
-    initNetwork(newSeedId, nameById);
+
+    // SF-WEB-17: a real path (2+ nodes) gets the dedicated readable
+    // left-to-right layout (placePathNodes/initPathNetwork) instead of
+    // initNetwork's generic physics-stabilized placement — pathNodeIds is
+    // exactly the array the layout needs, already resolved above. Anything
+    // shorter (defensively — runServerPath already handles the 0-hop
+    // same-artist case before calling here) just falls back to initNetwork.
+    if (pathNodeIds.length >= 2) {
+      const canvasSize = {
+        width:  els.network?.clientWidth,
+        height: els.network?.clientHeight,
+      };
+      const { targets, fromPos } = placePathNodes(pathNodeIds, canvasSize);
+      initPathNetwork(nameById, targets, fromPos);
+    } else {
+      initNetwork(newSeedId, nameById);
+    }
+
     // Граф только что был очищен и пересобран заново вокруг artist "from" —
     // это единственная ветка mergePathData, где seed-card действительно
     // должен обновиться.

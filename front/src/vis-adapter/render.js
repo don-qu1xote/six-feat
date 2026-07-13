@@ -15,7 +15,7 @@ import { runHeroGraphTransition } from "../dom/transition.js";
 import { stopCanvasDecorator } from "../dom/canvas-decorator.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
-import { scheduleFreeze, nudgePhysics, updateEdgeRenderMode } from "./physics.js";
+import { scheduleFreeze, nudgePhysics, updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
 import { nodeVisual, edgeVisual, networkOptions } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
 
@@ -58,6 +58,61 @@ export function initNetwork(seedId, nameById) {
   });
 
   scheduleFreeze(PHYSICS_SETTLE_MS);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SF-WEB-17: initPathNetwork — first render for a six-degrees path result on
+// the freshly-cleared canvas (see clearGraphForPathSearch/mergePathData).
+// Unlike initNetwork(), the path's node positions are already fully known
+// ahead of time (placePathNodes in layout.js — a straight, evenly-spaced,
+// centered row) — there is nothing for vis.js's physics simulation to
+// resolve, so it stays off from the start instead of running a barnesHut
+// stabilization pass that would only nudge nodes off their deliberate
+// layout. Nodes fly from a shared center point to their target positions via
+// the same runFlyoutAnimation() expand/path already share (SF-WEB-09), then
+// the camera fits the whole path and positions are frozen.
+// ════════════════════════════════════════════════════════════════════════════
+export function initPathNetwork(nameById, targets, fromPos) {
+  const nodeItems = State.graphNodes.map(n => {
+    const v = nodeVisual(n);
+    const f = fromPos.get(n.id) || { x: 0, y: 0 };
+    return { ...v, x: f.x, y: f.y, fixed: false };
+  });
+  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+
+  State.nodesDS = new vis.DataSet(nodeItems);
+  State.edgesDS = new vis.DataSet(edgeItems);
+
+  const opts = networkOptions();
+  opts.physics = { enabled: false };
+
+  State.network = new vis.Network(
+    els.network,
+    { nodes: State.nodesDS, edges: State.edgesDS },
+    opts
+  );
+
+  updateEdgeRenderMode();
+  _attachZoomThrottle();
+  attachNetworkEvents(nameById);
+  ensureTooltipCollisionGuard();
+
+  const pathIds = [...targets.keys()];
+  runFlyoutAnimation({
+    ids: pathIds,
+    fromPos,
+    targets,
+    durationMs: 420,
+    onDone: () => {
+      if (!State.network) return;
+      State.network.fit({
+        nodes: pathIds,
+        animation: { duration: 500, easingFunction: "easeInOutQuad" }
+      });
+      const fixAll = State.graphNodes.map(n => ({ id: n.id, fixed: { x: true, y: true } }));
+      if (State.nodesDS) State.nodesDS.update(fixAll);
+    }
+  });
 }
 
 // Порог числа рёбер для переключения в "fast render" режим.
