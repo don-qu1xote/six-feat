@@ -82,9 +82,23 @@ bool IsAsciiSpaceCodepoint(char32_t cp) {
 }
 
 std::string ToLower(std::string_view v) {
+    // [SF-PERF-02] Role-mask specs (comma-separated role names off ?roles=)
+    // are almost always plain ASCII — walk bytes directly (A-Z -> a-z,
+    // everything else unchanged) until the first byte >=0x80, skipping
+    // UTF-8 decode/re-encode entirely for the common all-ASCII case (the
+    // loop below never runs). A byte-wise map is byte-identical to the
+    // codepoint path for ASCII input, so the moment a >=0x80 byte does
+    // appear we fall back to the codepoint-aware decode/re-encode from
+    // there on — the already-lowercased ASCII prefix already in `out`
+    // carries over unchanged, no work is redone.
     std::string out;
     out.reserve(v.size());
     std::size_t i = 0;
+    for (; i < v.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(v[i]);
+        if (c >= 0x80) break;
+        out.push_back((c >= 'A' && c <= 'Z') ? static_cast<char>(c + 0x20) : static_cast<char>(c));
+    }
     while (i < v.size()) {
         EncodeUtf8(ToLowerCodepoint(DecodeUtf8(v, i)), out);
     }
