@@ -29,7 +29,6 @@ export {
   FIXED_NODE_RADIUS,
   EXPIRED_NODE_RADIUS,
   computeNodeSizes,
-  labelFont,
   nodeVisual,
   edgeWidthForWeight,
   edgeVisual,

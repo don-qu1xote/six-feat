@@ -80,16 +80,6 @@ export function computeNodeSizes() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// LABEL HELPERS
-// ════════════════════════════════════════════════════════════════════════════
-
-
-export function labelFont() {
-  return { size: 0, color: "#00000000" };
-}
-
-
-// ════════════════════════════════════════════════════════════════════════════
 // NODE VISUAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -215,8 +205,6 @@ export function nodeVisual(nodeData) {
     id,
     _accent:    accent,
     _dimBorder: dimBorder,
-    label:  name,
-    font:   labelFont(isSeed),
     shape:  "circularImage",
     image,
     brokenImage: placeholderFor(name, isSeed),

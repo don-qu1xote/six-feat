@@ -167,8 +167,7 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     .map(n => {
       const v = nodeVisual(n);
       return { id: n.id, size: v.size, color: v.color, borderWidth: v.borderWidth,
-               shadow: v.shadow, mass: v.mass, title: v.title, label: v.label,
-               font: v.font, fixed: v.fixed };
+               shadow: v.shadow, mass: v.mass, title: v.title, fixed: v.fixed };
     });
   if (existingUpdates.length) State.nodesDS.update(existingUpdates);
 
