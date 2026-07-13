@@ -54,6 +54,7 @@ add_library(six_feat_common OBJECT
     src/core/internal_http.cpp
     src/core/request_id.cpp
     src/core/security_headers.cpp
+    src/core/http_cache.cpp
     src/auth/oauth_handler.cpp
     src/auth/session_crypto.cpp
     src/http/health_handler.cpp

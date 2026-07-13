@@ -3,6 +3,7 @@
 #include "genius/genius_error_mapping.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
+#include "core/http_cache.hpp"
 #include "domain/role_mask.hpp"
 #include "schemas/handlers/six-feat/path_handler_schema.hpp"
 
@@ -79,6 +80,31 @@ bool IsStrictNumericId(const std::string& param, std::int64_t& out_id) {
     return ec == std::errc{} && ptr == end;
 }
 
+// [SF-API-04] Weak ETag for a path response. The body is a pure function of
+// (from_id, to_id, role mask, and each endpoint's fetch_state) — depth/
+// song_count/last_fetch_ts already capture "background enrichment expanded
+// either endpoint's neighbourhood since the last request", mirroring
+// graph_handler.cpp's BuildGraphETag. from/to are kept in request order
+// (not sorted) since the response labels them asymmetrically ("from"/"to"
+// fields, hops direction), so swapping the query params can legitimately
+// change the body even with identical endpoint ids.
+std::string BuildPathETag(std::int64_t from_id, std::int64_t to_id,
+                           const RoleMask& mask,
+                           const FetchState& fs_from, const FetchState& fs_to) {
+    const int mask_bits = (mask.primary  ? 1 : 0) |
+                           (mask.producer ? 2 : 0) |
+                           (mask.writer   ? 4 : 0) |
+                           (mask.featured ? 8 : 0);
+    return "W/\"" + std::to_string(from_id) + "-" + std::to_string(to_id) + "-" +
+           std::to_string(mask_bits) + "-" +
+           std::to_string(static_cast<int>(fs_from.depth)) + "-" +
+           std::to_string(fs_from.song_count) + "-" +
+           std::to_string(fs_from.last_fetch_ts) + "-" +
+           std::to_string(static_cast<int>(fs_to.depth)) + "-" +
+           std::to_string(fs_to.song_count) + "-" +
+           std::to_string(fs_to.last_fetch_ts) + "\"";
+}
+
 std::optional<ArtistRef>
 ResolveEndpoint(CollabService& svc, const std::string& param,
                 std::string& out_error, const std::string& user_token) {
@@ -118,6 +144,7 @@ PathHandler::PathHandler(const components::ComponentConfig&  config,
     : AuthenticatedHandlerBase(config, context,
                                 context.FindComponent<auth::OAuthConfig>()),
       service_(context.FindComponent<CollabService>()),
+      store_(context.FindComponent<PersistentStore>()),
       oauth_(context.FindComponent<auth::OAuthConfig>())
 {}
 
@@ -180,7 +207,27 @@ std::string PathHandler::HandleRequestThrow(
     const ArtistRef from_ref = *from_opt;
     const ArtistRef to_ref   = *to_opt;
 
+    // ── Cache validators (SF-API-04) ──────────────────────────────────────────
+    // Only success bodies pick these up — the earlier "resolve_failed"/
+    // GeniusHttpError returns above and the "no_path"/"deadline_exceeded"/
+    // "internal_error" returns below never pick up an ETag/Cache-Control or
+    // can short-circuit to 304. fetch_state is read at each branch's own
+    // point (not once up front) so the FindPath branch's ETag reflects any
+    // enrichment FindPath itself just triggered, mirroring graph_handler.cpp
+    // reading fetch_state only after its own data-fetch call returns.
+    const std::string& if_none_match =
+        request.GetHeader(std::string_view{"If-None-Match"});
+
     if (from_ref.id == to_ref.id) {
+        const FetchState fs_from = store_.GetFetchState(from_ref.id);
+        const FetchState fs_to   = store_.GetFetchState(to_ref.id);
+        const std::string etag = BuildPathETag(from_ref.id, to_ref.id, mask, fs_from, fs_to);
+        resp.SetHeader(std::string{"ETag"}, etag);
+        resp.SetHeader(std::string{"Cache-Control"}, std::string{"private, must-revalidate"});
+        if (ETagMatches(if_none_match, etag)) {
+            resp.SetStatus(server::http::HttpStatus::kNotModified);
+            return {};
+        }
         formats::json::ValueBuilder b(formats::json::Type::kObject);
         b["type"] = std::string{"path"};
         b["hops"] = 0;
@@ -222,6 +269,16 @@ std::string PathHandler::HandleRequestThrow(
         return ErrorJson("no_path",
             "No collaboration path found between '" + from_ref.name +
             "' and '" + to_ref.name + "'.");
+    }
+
+    const FetchState fs_from = store_.GetFetchState(from_ref.id);
+    const FetchState fs_to   = store_.GetFetchState(to_ref.id);
+    const std::string etag = BuildPathETag(from_ref.id, to_ref.id, mask, fs_from, fs_to);
+    resp.SetHeader(std::string{"ETag"}, etag);
+    resp.SetHeader(std::string{"Cache-Control"}, std::string{"private, must-revalidate"});
+    if (ETagMatches(if_none_match, etag)) {
+        resp.SetStatus(server::http::HttpStatus::kNotModified);
+        return {};
     }
 
     return BuildPathJson(from_ref, to_ref, result.ctx);

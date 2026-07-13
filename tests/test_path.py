@@ -474,3 +474,77 @@ class TestPathResponseSchema:
         for edge in data["edges"]:
             assert isinstance(edge["dominant_role"], str)
             assert edge["dominant_role"] in ("primary", "featured", "producer", "writer")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. [SF-API-04] ETag / Cache-Control / If-None-Match on the path response
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPathETag:
+    def test_success_response_has_etag_and_cache_control(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        _setup_direct_path(genius_mock)
+        resp = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        assert resp.status_code == 200
+        assert resp.headers.get("ETag")
+        assert resp.headers.get("Cache-Control") == "private, must-revalidate"
+
+    def test_repeat_request_with_matching_if_none_match_returns_304(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        _setup_direct_path(genius_mock)
+        first = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        etag = first.headers["ETag"]
+
+        second = client.get(
+            PATH_URL,
+            params={"from": "ArtistA", "to": "ArtistB"},
+            headers={"If-None-Match": etag},
+        )
+        assert second.status_code == 304
+        assert not second.content
+
+    def test_stale_if_none_match_still_returns_full_body(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        _setup_direct_path(genius_mock)
+        resp = client.get(
+            PATH_URL,
+            params={"from": "ArtistA", "to": "ArtistB"},
+            headers={"If-None-Match": 'W/"not-a-real-tag"'},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["type"] == "path"
+
+    def test_etag_changes_with_role_filter(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """[SF-API-04] The role mask is folded into the ETag key, so a
+        roles-only change must invalidate any previously cached response even
+        though from/to and the underlying data are unchanged."""
+        _setup_direct_path(genius_mock)
+        resp_all = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        resp_featured = client.get(
+            PATH_URL, params={"from": "ArtistA", "to": "ArtistB", "roles": "featured"}
+        )
+        assert resp_all.headers.get("ETag") != resp_featured.headers.get("ETag")
+
+    def test_etag_differs_for_swapped_from_to(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """from/to are directional in the response body (asymmetric "from"/
+        "to" fields), so the ETag key must not silently collapse (A,B) and
+        (B,A) onto the same cache entry."""
+        _setup_direct_path(genius_mock)
+        resp_ab = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        resp_ba = client.get(PATH_URL, params={"from": "ArtistB", "to": "ArtistA"})
+        assert resp_ab.headers.get("ETag") != resp_ba.headers.get("ETag")
+
+    def test_same_artist_hops_zero_also_has_etag(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        genius_mock.resolve("SoloArtist", [{"id": 700, "name": "SoloArtist", "score": 0.99}])
+        resp = client.get(PATH_URL, params={"from": "SoloArtist", "to": "SoloArtist"})
+        assert resp.status_code == 200
+        assert resp.headers.get("ETag")

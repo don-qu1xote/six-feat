@@ -20,6 +20,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "core/collab_service.hpp"
+#include "storage/persistent_store.hpp"
 #include "auth/oauth_handler.hpp"
 #include "auth/token_router.hpp"
 #include "core/rate_limiter.hpp"
@@ -52,6 +53,11 @@ private:
                                const PathContext& ctx) const;
 
     CollabService& service_;
+    // [SF-API-04] Source of each endpoint's fetch_state.depth/song_count/
+    // last_fetch_ts for the response ETag — same authority graph_handler.cpp
+    // reads, so the validator changes exactly when background enrichment
+    // would change the path/betweenness result.
+    PersistentStore& store_;
     const auth::OAuthConfig& oauth_;
     // [F-4] Per-client limiter (keyed by access_token, fallback to IP) instead
     // of a single global counter shared by every caller of the handler.

@@ -18,6 +18,7 @@
 #include "genius/genius_error_mapping.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
+#include "core/http_cache.hpp"
 #include "domain/role_mask.hpp"
 #include "schemas/handlers/six-feat/graph_handler_schema.hpp"
 
@@ -103,35 +104,6 @@ std::string BuildGraphETag(std::int64_t seed_id, const FetchState& fs,
            std::to_string(mask_bits) + "-" +
            (truncated ? "1" : "0") + "-" +
            std::to_string(song_limit) + "\"";
-}
-
-// [RFC 7232 §2.3] Weak comparison for If-None-Match: strip an optional
-// "W/" prefix from each side and compare opaque-tags only. The header may
-// carry a comma-separated list, or "*" to match unconditionally.
-bool ETagMatches(const std::string& if_none_match, const std::string& etag) {
-    if (if_none_match.empty()) return false;
-    if (if_none_match == "*") return true;
-
-    const auto strip_weak = [](std::string_view tag) {
-        if (tag.substr(0, 2) == "W/") tag.remove_prefix(2);
-        return tag;
-    };
-    const std::string_view target = strip_weak(etag);
-
-    std::size_t pos = 0;
-    while (pos <= if_none_match.size()) {
-        const std::size_t comma = if_none_match.find(',', pos);
-        std::string_view token{if_none_match};
-        token = token.substr(pos, comma == std::string::npos
-                                       ? std::string::npos
-                                       : comma - pos);
-        while (!token.empty() && token.front() == ' ') token.remove_prefix(1);
-        while (!token.empty() && token.back() == ' ')  token.remove_suffix(1);
-        if (strip_weak(token) == target) return true;
-        if (comma == std::string::npos) break;
-        pos = comma + 1;
-    }
-    return false;
 }
 
 } // namespace
