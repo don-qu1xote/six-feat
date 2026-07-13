@@ -340,7 +340,15 @@ export function showEdgeSidebar(edgeId, nameById) {
   els.sidebarMeta.innerHTML =
     `${edge.weight} shared track${edge.weight === 1 ? "" : "s"} · <span title="${escapeHtml(role)}">${icon}</span>`;
 
+  // [SF-WEB-03] six-degrees path edges (see SF-API-08) carry songs[] — plain
+  // connecting-track titles with a single dominant_role for the whole edge —
+  // instead of collaborations[] (per-song role breakdown, from the regular
+  // graph endpoint). Fall back to songs[] so the companion panel shows the
+  // same tracks/role the hop-chain pill already promises when clicked,
+  // instead of a misleading "No track data.".
   const collabs = edge.collaborations || [];
+  const songs   = edge.songs || [];
+  const roleSlug = role.toLowerCase().replace(/[^a-z0-9]/g, "");
   if (collabs.length) {
     els.sidebarTracks.innerHTML = collabs.map(c => {
       const roles = c.roles || [];
@@ -354,6 +362,12 @@ export function showEdgeSidebar(edgeId, nameById) {
         <span style="display:flex;gap:3px;flex-wrap:wrap">${chips}</span>
       </div>`;
     }).join("");
+  } else if (songs.length) {
+    els.sidebarTracks.innerHTML = songs.map(title => `
+      <div class="sidebar-track">
+        <span class="sidebar-track-name">${escapeHtml(typeof title === "string" ? title : (title.song || title.title || "Untitled"))}</span>
+        <span class="sidebar-track-role role-chip--${roleSlug}" title="${escapeHtml(role)}">${icon}</span>
+      </div>`).join("");
   } else {
     els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">No track data.</div>`;
   }

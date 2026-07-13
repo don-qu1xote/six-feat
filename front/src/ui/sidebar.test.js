@@ -226,6 +226,35 @@ describe("showEdgeSidebar (edge context)", () => {
     showEdgeSidebar("nope", {});
     expect(els.artistSidebar.classList.contains("show")).toBe(false);
   });
+
+  // [SF-WEB-03] Six-degrees path edges (SF-API-08) carry songs[] instead of
+  // collaborations[] — the companion panel must still show the connecting
+  // tracks/role for them, not fall through to "No track data.".
+  it("falls back to songs[] + the edge's dominant role when collaborations[] is empty", () => {
+    State.graphEdges = [mockEdge({
+      collaborations: [],
+      songs: ["A-B Track", "B-C Track"],
+      dominantRole: "producer",
+    })];
+    showEdgeSidebar("1_2", {});
+
+    const tracks = els.sidebarTracks.querySelectorAll(".sidebar-track");
+    expect(tracks).toHaveLength(2);
+    expect(els.sidebarTracks.innerHTML).toContain("A-B Track");
+    expect(els.sidebarTracks.innerHTML).toContain("B-C Track");
+    expect(els.sidebarTracks.innerHTML).toContain("role-chip--producer");
+  });
+
+  it("prefers collaborations[] (per-song roles) over songs[] when both are present", () => {
+    State.graphEdges = [mockEdge({
+      collaborations: [{ song: "Regular Graph Track", roles: ["producer"] }],
+      songs: ["Path Track"],
+    })];
+    showEdgeSidebar("1_2", {});
+
+    expect(els.sidebarTracks.innerHTML).toContain("Regular Graph Track");
+    expect(els.sidebarTracks.innerHTML).not.toContain("Path Track");
+  });
 });
 
 describe("hideArtistSidebar", () => {
