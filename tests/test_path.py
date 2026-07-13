@@ -140,6 +140,17 @@ class TestPathRequiresAuth:
         resp = sess.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
         assert resp.status_code == 401
 
+    def test_anonymous_error_body_has_nonempty_request_id_matching_header(
+        self, anon_client: requests.Session
+    ):
+        """[SF-API-06] request_id in the error body must be the same id
+        EnsureRequestId already stamped on the X-Request-Id response
+        header/log tags — not a second, independently-generated value."""
+        resp = anon_client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        data = resp.json()
+        assert data.get("request_id")
+        assert data["request_id"] == resp.headers.get("X-Request-Id")
+
 
 class TestDirectPath:
     def test_status_200(self, client: requests.Session, genius_mock: GeniusMock):
@@ -474,6 +485,15 @@ class TestPathResponseSchema:
         for edge in data["edges"]:
             assert isinstance(edge["dominant_role"], str)
             assert edge["dominant_role"] in ("primary", "featured", "producer", "writer")
+
+    def test_successful_response_has_no_request_id_field(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """[SF-API-06] request_id is only added to error bodies — success
+        responses' shape must stay exactly as before."""
+        _setup_direct_path(genius_mock)
+        data = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"}).json()
+        assert "request_id" not in data
 
 
 # ─────────────────────────────────────────────────────────────────────────────

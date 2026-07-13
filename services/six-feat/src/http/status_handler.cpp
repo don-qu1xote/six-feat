@@ -6,6 +6,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "http/status_handler.hpp"
+#include "core/request_id.hpp"
 #include "schemas/handlers/six-feat/status_handler_schema.hpp"
 
 #include <stdexcept>
@@ -23,6 +24,23 @@ namespace six_feat {
 
 using namespace userver;
 
+namespace {
+
+// [SF-API-06] Same id already stamped on the X-Request-Id response header/
+// log tags by EnsureRequestId (called inside Prologue(), before any of this
+// function's call sites) — not recomputed, just surfaced so a client can
+// hand it back for support. Built via ValueBuilder (not raw string
+// concatenation) since an incoming X-Request-Id header is attacker-
+// controlled and must be JSON-escaped.
+std::string ErrorJson(const std::string& code) {
+    formats::json::ValueBuilder b(formats::json::Type::kObject);
+    b["error"]      = code;
+    b["request_id"] = CurrentRequestId();
+    return formats::json::ToString(b.ExtractValue());
+}
+
+} // namespace
+
 StatusHandler::StatusHandler(const components::ComponentConfig&  config,
                               const components::ComponentContext& context)
     : AuthenticatedHandlerBase(config, context,
@@ -38,14 +56,14 @@ std::string StatusHandler::HandleRequestThrow(
     // [F-29] Same policy as graph/path: no session, no data. Anonymous
     // callers were previously able to enumerate artist_id via this endpoint.
     if (!Prologue(request)) {
-        return R"({"error":"not_authenticated"})";
+        return ErrorJson("not_authenticated");
     }
 
     const auto& id_str = request.GetArg("id");
     if (id_str.empty()) {
         request.GetHttpResponse().SetStatus(
             server::http::HttpStatus::kBadRequest);
-        return R"({"error":"missing ?id=<artist_id>"})";
+        return ErrorJson("missing ?id=<artist_id>");
     }
 
     std::int64_t artist_id = 0;
@@ -57,12 +75,12 @@ std::string StatusHandler::HandleRequestThrow(
         if (pos != id_str.size()) {
             request.GetHttpResponse().SetStatus(
                 server::http::HttpStatus::kBadRequest);
-            return R"({"error":"id must be an integer"})";
+            return ErrorJson("id must be an integer");
         }
     } catch (...) {
         request.GetHttpResponse().SetStatus(
             server::http::HttpStatus::kBadRequest);
-        return R"({"error":"id must be an integer"})";
+        return ErrorJson("id must be an integer");
     }
 
     request.GetHttpResponse().SetContentType(

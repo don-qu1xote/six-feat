@@ -49,8 +49,13 @@ std::string EmptyGraph() {
 
 std::string ErrorGraph(const std::string& msg) {
     formats::json::ValueBuilder b(formats::json::Type::kObject);
-    b["type"]  = std::string{"graph"};
-    b["error"] = msg;
+    b["type"]       = std::string{"graph"};
+    b["error"]      = msg;
+    // [SF-API-06] Same id already stamped on the X-Request-Id response
+    // header/log tags by EnsureRequestId (called at the top of
+    // HandleRequestThrow, before any of this function's call sites) — not
+    // recomputed, just surfaced so a client can hand it back for support.
+    b["request_id"] = CurrentRequestId();
     b["nodes"] = formats::json::ValueBuilder(formats::json::Type::kArray);
     b["edges"] = formats::json::ValueBuilder(formats::json::Type::kArray);
     return formats::json::ToString(b.ExtractValue());

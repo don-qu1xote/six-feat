@@ -39,6 +39,11 @@ std::string ErrorJson(const std::string& code, const std::string& msg) {
     b["type"]    = std::string{"search"};
     b["error"]   = code;
     b["message"] = msg;
+    // [SF-API-06] Same id already stamped on the X-Request-Id response
+    // header/log tags by EnsureRequestId (called at the top of
+    // HandleRequestThrow, before any of this function's call sites) — not
+    // recomputed, just surfaced so a client can hand it back for support.
+    b["request_id"] = CurrentRequestId();
     return formats::json::ToString(b.ExtractValue());
 }
 

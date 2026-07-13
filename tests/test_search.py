@@ -45,6 +45,42 @@ class TestSearchBasics:
         data = resp.json()
         assert "error" in data
 
+    def test_successful_response_has_no_request_id_field(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """[SF-API-06] request_id is only added to error bodies — success
+        responses' shape must stay exactly as before."""
+        genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
+        data = client.get(SEARCH_URL, params={"q": "Drake"}).json()
+        assert "request_id" not in data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [SF-API-06] request_id in error bodies
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSearchRequestId:
+    def test_anonymous_error_body_has_nonempty_request_id_matching_header(
+        self, anon_client: requests.Session
+    ):
+        """[SF-API-06] request_id in the error body must be the same id
+        EnsureRequestId already stamped on the X-Request-Id response
+        header/log tags — not a second, independently-generated value."""
+        resp = anon_client.get(SEARCH_URL, params={"q": "Drake"})
+        assert resp.status_code == 401
+        data = resp.json()
+        assert data.get("request_id")
+        assert data["request_id"] == resp.headers.get("X-Request-Id")
+
+    def test_bad_request_error_body_has_nonempty_request_id_matching_header(
+        self, client: requests.Session
+    ):
+        resp = client.get(SEARCH_URL)
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data.get("request_id")
+        assert data["request_id"] == resp.headers.get("X-Request-Id")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [SF-API-04] ETag / Cache-Control / If-None-Match on the search response

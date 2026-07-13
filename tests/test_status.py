@@ -85,6 +85,18 @@ class TestStatusRequiresAuth:
         _skip_if_not_implemented(resp)
         assert resp.status_code == 401
 
+    def test_anonymous_error_body_has_nonempty_request_id_matching_header(
+        self, anon_client: requests.Session
+    ):
+        """[SF-API-06] request_id in the error body must be the same id
+        EnsureRequestId already stamped on the X-Request-Id response
+        header/log tags — not a second, independently-generated value."""
+        resp = anon_client.get(STATUS_URL, params={"id": "1"})
+        _skip_if_not_implemented(resp)
+        data = resp.json()
+        assert data.get("request_id")
+        assert data["request_id"] == resp.headers.get("X-Request-Id")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. Artist with data in L1
@@ -150,6 +162,17 @@ class TestStatusKnownArtist:
         data = resp.json()
         for field in ("artist_id", "depth", "song_count", "last_fetch_ts", "enriching"):
             assert field in data, f"Missing field: {field}"
+
+    def test_successful_response_has_no_request_id_field(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """[SF-API-06] request_id is only added to error bodies — success
+        responses' shape must stay exactly as before."""
+        self._populate(client, genius_mock, 805)
+        resp = client.get(STATUS_URL, params={"id": "805"})
+        _skip_if_not_implemented(resp)
+        data = resp.json()
+        assert "request_id" not in data
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -254,6 +277,15 @@ class TestStatusMissingParam:
         resp = client.get(STATUS_URL)
         _skip_if_not_implemented(resp)
         assert resp.status_code == 400
+
+    def test_missing_id_error_body_has_nonempty_request_id_matching_header(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        resp = client.get(STATUS_URL)
+        _skip_if_not_implemented(resp)
+        data = resp.json()
+        assert data.get("request_id")
+        assert data["request_id"] == resp.headers.get("X-Request-Id")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

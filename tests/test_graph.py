@@ -98,6 +98,17 @@ class TestGraphRequiresAuth:
         resp = sess.get(GRAPH_URL, params={"artist": "Drake"})
         assert resp.status_code == 401
 
+    def test_anonymous_error_body_has_nonempty_request_id_matching_header(
+        self, anon_client: requests.Session
+    ):
+        """[SF-API-06] request_id in the error body must be the same id
+        EnsureRequestId already stamped on the X-Request-Id response
+        header/log tags — not a second, independently-generated value."""
+        resp = anon_client.get(GRAPH_URL, params={"artist": "Drake"})
+        data = resp.json()
+        assert data.get("request_id")
+        assert data["request_id"] == resp.headers.get("X-Request-Id")
+
     def test_expired_cookie_returns_401(self, service_proc):
         """A cookie that decrypts fine but carries an exp in the past must
         still be rejected — Decrypt() checks expiry server-side too, this
@@ -440,6 +451,22 @@ class TestGraphSchema:
         seed_nodes = [n for n in data["nodes"] if n.get("is_seed")]
         assert len(seed_nodes) == 1
         assert seed_nodes[0]["id"] == 1
+
+    def test_successful_response_has_no_request_id_field(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """[SF-API-06] request_id is only added to error bodies — success
+        responses' shape must stay exactly as before."""
+        genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
+        genius_mock.songs(1, [101])
+        genius_mock.song_detail(
+            101,
+            _build_song_detail(101, "God's Plan", 1, "Drake",
+                               collaborators=[_collab(2, "Future")]),
+        )
+
+        data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
+        assert "request_id" not in data
 
 
 # ─────────────────────────────────────────────────────────────────────────────
