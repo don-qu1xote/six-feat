@@ -19,6 +19,42 @@
 server {
     listen ${NGINX_PUBLIC_PORT};
 
+    # [SF-PERF-04] /api/v1/graph responses (nodes + edges + per-edge
+    # collaborations) can get large for a dense seed — compress them at the
+    # proxy layer instead of teaching every individual userver handler to do
+    # it itself. nginx:1.27-alpine (see docker-compose.yml) ships the stock
+    # gzip module but not brotli (that needs a custom-built nginx with
+    # ngx_brotli), so gzip is what's actually available here.
+    #
+    # gzip_proxied is the critical setting for OUR topology specifically:
+    # nginx's gzip module defaults to NEVER compressing a proxied response
+    # (gzip_proxied off) unless told otherwise — graph_handler.cpp/
+    # path_handler.cpp already set "Cache-Control: private, must-revalidate"
+    # on every response, which is exactly one of the conditions gzip_proxied
+    # excludes by default. `any` unconditionally allows compression for
+    # proxied responses regardless of the Cache-Control/Expires the upstream
+    # sent — safe here since every location below only ever proxies our own
+    # six-feat/six-feat-auth backends, not third-party content whose caching
+    # semantics we don't control.
+    #
+    # gzip_vary adds "Vary: Accept-Encoding" so any cache in front of this
+    # (browser, CDN) keys on it instead of serving a compressed body to a
+    # client that didn't ask for one, or vice versa.
+    #
+    # gzip_min_length skips compressing small bodies (e.g. this handler's own
+    # short {"error":...} responses) where the CPU cost isn't worth it.
+    #
+    # ETag/304 are unaffected: If-None-Match/ETag are plain headers nginx
+    # already forwards through proxy_pass unchanged in both directions
+    # (untouched by proxy_hide_header, which we don't use), and a 304 has no
+    # body for gzip to touch in the first place.
+    gzip on;
+    gzip_proxied any;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 5;
+    gzip_types application/json;
+
     location /auth/ {
         proxy_pass http://six-feat-auth:${SIX_FEAT_AUTH_PORT};
         proxy_http_version 1.1;
@@ -67,6 +103,13 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 3600s;
+        # [SF-PERF-04] Leave this stream out of the server-level gzip on
+        # above, explicitly: each pushed SSE chunk is a few dozen bytes of
+        # JSON, always well under gzip_min_length, so it wouldn't compress
+        # anyway — but making it explicit here means it stays that way even
+        # if gzip_min_length is tuned down later, instead of silently
+        # depending on that threshold to keep working for this location too.
+        gzip off;
     }
 
     location / {
