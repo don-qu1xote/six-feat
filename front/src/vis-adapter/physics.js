@@ -21,7 +21,26 @@ import { placeExpandedNodes, LEAF_R } from "./layout.js";
 // minDist), так что живой физике после вылета остаётся только лёгкая усадка —
 // её окно короче общего PHYSICS_EXPAND_MS (который также переиспользуется для
 // нежного пост-drag доседания одной ноды в events.js).
-const EXPAND_PHYSICS_SETTLE_MS = Math.min(450, PHYSICS_EXPAND_MS);
+// SF-WEB-09: раньше здесь стояло 450мс — раскладка targets уже почти без
+// наслоений (layout.js::minDist), и с новым единым RAF-полётом (включая
+// существующие ноды, см. runFlyoutAnimation) видимой "усадки" почти не
+// остаётся. Сокращаем окно вживую-физики до минимума, достаточного лишь для
+// редких реальных пересечений, а не для полноценного расталкивания.
+const EXPAND_PHYSICS_SETTLE_MS = Math.min(180, PHYSICS_EXPAND_MS);
+
+// SF-WEB-09: мягкое появление новых нод — короткий scale/opacity поверх уже
+// готовой ноды (не opacity:0 в данных, см. предупреждение в visuals.js о
+// потере circularImage при opacity:0 → 1 partial-update).
+const ENTRANCE_MS            = 220;
+const ENTRANCE_START_SCALE   = 0.55;
+const ENTRANCE_START_OPACITY = 0.35;
+
+// SF-WEB-09: prefers-reduced-motion → мгновенное размещение вместо RAF-полёта.
+function _prefersReducedMotion() {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // [SF-WEB-14] PIN / UNPIN — object action bar's manual position lock,
@@ -152,11 +171,16 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   }
 
   // Встраиваем стартовые позиции прямо в объекты нод — vis.js ставит их туда
-  // при add(), без промежуточного кадра в (0,0).
+  // при add(), без промежуточного кадра в (0,0). SF-WEB-09: новые ноды также
+  // стартуют уменьшенными/полупрозрачными (не opacity:0 — см. предупреждение
+  // выше) — runFlyoutAnimation доводит их до финального size/opacity вместе
+  // с полётом позиции, entranceTargets хранит финальные значения для этого.
+  const entranceTargets = new Map();
   const newNodeItems = freshNodes.map(n => {
     const v = nodeVisual(n);
     const f = fromPos.get(n.id) || { x: 0, y: 0 };
-    return { ...v, x: f.x, y: f.y };
+    entranceTargets.set(n.id, { size: v.size, opacity: v.opacity });
+    return { ...v, x: f.x, y: f.y, size: v.size * ENTRANCE_START_SCALE, opacity: ENTRANCE_START_OPACITY };
   });
 
   if (newNodeItems.length) State.nodesDS.add(newNodeItems);
@@ -171,15 +195,14 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     });
   if (existingUpdates.length) State.nodesDS.update(existingUpdates);
 
-  // Синхронизируем позиции нод, уже существовавших в DS (fromPos без add).
-  // Seed уже зафиксирован выше. Вызывается один раз за mergeNetwork — не
-  // RAF-hot-path, поэтому используем публичный API без обращения к body.
+  // SF-WEB-09: раньше здесь стоял отдельный синхронный net.moveNode() на
+  // каждую уже существующую ноду ("телепорт" в fromPos ДО начала полёта) —
+  // существующие ноды визуально не летели вместе с новыми, а прыгали. fromPos
+  // для них и так равен их текущей сохранённой позиции (см. getFrom в
+  // layout.js), так что первый кадр RAF-полёта ниже (pct=0 → sx,sy=fromPos)
+  // сам расставляет стартовые позиции — единый RAF-вылет для ВСЕХ нод из
+  // targets (новых и существующих), без отдельного домашнего "телепорта".
   const net = State.network;
-  for (const [id, f] of fromPos) {
-    if (net && dsNodeIds.has(id)) {   // только существующие — новые уже получили x/y через add()
-      net.moveNode(id, f.x, f.y);
-    }
-  }
 
   // ── Вылет: RAF-анимация 420мс, ноды летят fromPos → targets ──────────────
   // После завершения вылета включаем физику — она разрешит все наслоения.
@@ -194,6 +217,7 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     fromPos,
     targets,
     durationMs: 420,
+    entranceTargets,
     onDone: () => {
       // Снимаем fixed со всех нод кроме seed — физика должна двигать их.
       // Seed остаётся fixed, expanded-ноды получают высокую массу (притягивают листья).
@@ -303,13 +327,24 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
 // вместо копипасты выносим его сюда один раз, и любой будущий фикс вроде
 // ТЗ-G (лишний moveNode в RAF) достаточно будет применить в одном месте.
 //
+// SF-WEB-09: тот же RAF-хелпер теперь везёт ВСЕ ноды из targets одним
+// вылетом (не только новые — существующие, чьи targets сдвинулись, летят
+// вместе с ними, без отдельного синхронного "телепорта" в mergeNetwork), и
+// умеет мягкое scale/opacity появление новых нод (entranceTargets) поверх
+// того же RAF-цикла. prefers-reduced-motion полностью пропускает полёт —
+// ноды и entranceTargets применяются мгновенно, одним кадром.
+//
 // @param {Object} opts
-// @param {Array}            opts.ids         — id-ы нод, участвующих в полёте
-// @param {Map<id,{x,y}>}    opts.fromPos      — стартовые позиции
-// @param {Map<id,{x,y}>}    opts.targets      — целевые позиции
-// @param {number}           opts.durationMs   — длительность анимации, мс
-// @param {Function}         [opts.onDone]     — вызывается по завершении (pct===1)
-// @returns {number} RAF handle текущего шага (для отмены через cancelAnimationFrame)
+// @param {Array}            opts.ids             — id-ы нод, участвующих в полёте
+// @param {Map<id,{x,y}>}    opts.fromPos          — стартовые позиции
+// @param {Map<id,{x,y}>}    opts.targets          — целевые позиции
+// @param {number}           opts.durationMs       — длительность анимации, мс
+// @param {Map<id,{size,opacity}>} [opts.entranceTargets] — финальные
+//        size/opacity новых нод, стартующих уменьшенными/полупрозрачными
+//        (см. ENTRANCE_START_SCALE/ENTRANCE_START_OPACITY выше)
+// @param {Function}         [opts.onDone]         — вызывается по завершении, ровно один раз
+// @returns {number|null} RAF handle текущего шага (для отмены через cancelAnimationFrame),
+//        или null если анимация была пропущена (reduced motion / пустой ids)
 // ─────────────────────────────────────────────────────────────────────────────
 function _easeOutFlyout(t) { return 1 - Math.pow(1 - t, 3); }
 
@@ -339,8 +374,24 @@ function _fastMoveNode(net, body, id, x, y) {
 let _bodyShapeChecked = false;
 let _bodyShapeValid   = true;
 
-export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, onDone }) {
+export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, entranceTargets, onDone }) {
   const net  = State.network;
+
+  // SF-WEB-09: reduced motion — размещаем все ноды сразу на targets и сразу
+  // применяем финальные size/opacity новых нод, без RAF-полёта/появления.
+  if (_prefersReducedMotion() || !ids.length) {
+    for (const id of ids) {
+      const t = targets.get(id);
+      if (t && net) net.moveNode(id, t.x, t.y);
+    }
+    if (entranceTargets && entranceTargets.size && State.nodesDS) {
+      State.nodesDS.update([...entranceTargets].map(([id, v]) => ({ id, size: v.size, opacity: v.opacity })));
+    }
+    State._expandAnimId = null;
+    if (onDone) onDone();
+    return null;
+  }
+
   let body = net && net.body && net.body.nodes;
 
   if (!_bodyShapeChecked && ids.length) {
@@ -364,11 +415,16 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, onDone }
   }
 
   let t0 = null;
+  // SF-WEB-09: появление новых нод завершается раньше самого полёта позиции
+  // (ENTRANCE_MS <= durationMs обычно) — как только entrance-доля дошла до 1,
+  // прекращаем слать nodesDS.update() для entranceTargets на каждый кадр.
+  let entranceDone = !entranceTargets || !entranceTargets.size;
 
   function step(ts) {
     if (!State.network) { State._expandAnimId = null; return; }
     if (t0 === null) t0 = ts;
-    const pct = _easeOutFlyout(Math.min((ts - t0) / durationMs, 1));
+    const elapsed = ts - t0;
+    const pct = _easeOutFlyout(Math.min(elapsed / durationMs, 1));
 
     let usedFastPath = false;
     for (let i = 0; i < M; i++) {
@@ -380,6 +436,20 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, onDone }
     // Зафиксированные ноды (seed, path-nodes) сами сдвинуться не могут —
     // moveNode на каждый кадр для них не нужен (лишний layout/redraw,
     // источник микро-дёрга при быстрой анимации).
+
+    if (!entranceDone) {
+      const ePct = Math.min(elapsed / ENTRANCE_MS, 1);
+      const updates = [];
+      for (const [id, v] of entranceTargets) {
+        updates.push({
+          id,
+          size:    v.size * (ENTRANCE_START_SCALE + (1 - ENTRANCE_START_SCALE) * ePct),
+          opacity: ENTRANCE_START_OPACITY + (v.opacity - ENTRANCE_START_OPACITY) * ePct,
+        });
+      }
+      if (updates.length && State.nodesDS) State.nodesDS.update(updates);
+      if (ePct >= 1) entranceDone = true;
+    }
 
     if (pct < 1) {
       State._expandAnimId = requestAnimationFrame(step);
