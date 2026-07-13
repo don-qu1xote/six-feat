@@ -636,3 +636,116 @@ class TestGraphTruncationIndicator:
             GRAPH_URL, params={"id": str(seed_id), "limit": "5"}
         )
         assert resp_default.headers.get("ETag") != resp_override.headers.get("ETag")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. [SF-PERF-03] Golden regression for the graph_handler hot path
+#     SF-PERF-01 touched (edge dedup on a numeric key, order_set replaced by
+#     edges.count()). Locks down the FULL response shape for a fixed
+#     multi-song scenario — crucially including nodes[]/edges[] ARRAY ORDER,
+#     which must stay exactly "seed, then collaborators in first-appearance
+#     order" for BuildGraphETag caching to keep working (see
+#     test_etag_changes_with_limit_override above, which this must not break).
+#
+# Scenario, one collaborator role-credit per song (so credit-array
+# concatenation order — primary, producer, writer, featured, see
+# genius_gateway.cpp — never needs to be reasoned about for order):
+#   song1: A featured        -> order becomes [A]
+#   song2: B producer        -> order becomes [A, B]
+#   song3: A writer (repeat) -> order unchanged [A, B]; escalates A's
+#                                dominant_role (writer outranks featured) and
+#                                bumps A's weight to 2 distinct songs
+#   song4: C featured        -> order becomes [A, B, C]
+#   song5: A + C together, both already-known artists (repeat) — exercises
+#          the inter-collaborator co-occurrence step (graph_handler.cpp
+#          Step 2) without introducing any new node, so it can't perturb the
+#          asserted node/edge order above regardless of same-song credit
+#          ordering.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestGraphGoldenNodeEdgeOrder:
+    def _setup(self, genius_mock: GeniusMock, seed_id: int) -> dict:
+        a, b, c = seed_id + 1, seed_id + 2, seed_id + 3
+        s1, s2, s3, s4, s5 = (seed_id * 10 + i for i in range(1, 6))
+
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "GoldenArtist"})
+        genius_mock.songs(seed_id, [s1, s2, s3, s4, s5])
+        genius_mock.song_detail(s1, _build_song_detail(
+            s1, "Song One", seed_id, "GoldenArtist",
+            collaborators=[_collab(a, "ArtistA", "featured")]))
+        genius_mock.song_detail(s2, _build_song_detail(
+            s2, "Song Two", seed_id, "GoldenArtist",
+            collaborators=[_collab(b, "ArtistB", "producer")]))
+        genius_mock.song_detail(s3, _build_song_detail(
+            s3, "Song Three", seed_id, "GoldenArtist",
+            collaborators=[_collab(a, "ArtistA", "writer")]))
+        genius_mock.song_detail(s4, _build_song_detail(
+            s4, "Song Four", seed_id, "GoldenArtist",
+            collaborators=[_collab(c, "ArtistC", "featured")]))
+        genius_mock.song_detail(s5, _build_song_detail(
+            s5, "Song Five", seed_id, "GoldenArtist",
+            collaborators=[
+                _collab(a, "ArtistA", "featured"),
+                _collab(c, "ArtistC", "featured"),
+            ]))
+        return {"seed": seed_id, "a": a, "b": b, "c": c}
+
+    def test_node_id_order_is_seed_then_first_appearance(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        ids = self._setup(genius_mock, unique_artist_id)
+        data = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
+
+        assert [n["id"] for n in data["nodes"]] == [ids["seed"], ids["a"], ids["b"], ids["c"]]
+        assert [n["is_seed"] for n in data["nodes"]] == [True, False, False, False]
+
+    def test_edge_order_weight_and_dominant_role_are_golden(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        ids = self._setup(genius_mock, unique_artist_id)
+        data = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
+
+        edges = data["edges"]
+        assert [(e["from"], e["to"]) for e in edges] == [
+            (ids["seed"], ids["a"]),
+            (ids["seed"], ids["b"]),
+            (ids["seed"], ids["c"]),
+        ]
+        # A: 3 distinct songs (1, 3, 5); dominant role escalates to "writer"
+        # (rank 3) even though it was last re-mentioned as "featured" (rank 2)
+        # on song 5 — RoleAllowed/RoleRank track the *highest* rank ever seen.
+        assert edges[0]["weight"] == 3
+        assert edges[0]["dominant_role"] == "writer"
+        # B: 1 song, producer only.
+        assert edges[1]["weight"] == 1
+        assert edges[1]["dominant_role"] == "producer"
+        # C: 2 distinct songs (4, 5), featured only.
+        assert edges[2]["weight"] == 2
+        assert edges[2]["dominant_role"] == "featured"
+
+    def test_response_is_stable_across_repeated_requests(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        """A regression to unordered_map iteration order (e.g. reverting the
+        numeric-keyed edges map to something order-dependent) would show up
+        as flakiness between two back-to-back requests for the same seed,
+        not necessarily as an outright wrong single response."""
+        ids = self._setup(genius_mock, unique_artist_id)
+        first  = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
+        second = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
+
+        assert [n["id"] for n in first["nodes"]] == [n["id"] for n in second["nodes"]]
+        assert [(e["from"], e["to"]) for e in first["edges"]] == \
+               [(e["from"], e["to"]) for e in second["edges"]]
+
+    def test_full_schema_present_on_golden_response(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        ids = self._setup(genius_mock, unique_artist_id)
+        data = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
+
+        assert _REQUIRED_FIELDS <= data.keys()
+        for node in data["nodes"]:
+            assert _REQUIRED_NODE_FIELDS <= node.keys()
+        for edge in data["edges"]:
+            assert _REQUIRED_EDGE_FIELDS <= edge.keys()

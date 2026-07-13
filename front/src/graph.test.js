@@ -217,6 +217,41 @@ describe("mergeGraph", () => {
     expect(State.graphNodes.map(n => n.id)).toEqual([1, 2]);
     expect(State.graphEdges).toHaveLength(1);
   });
+
+  // [SF-PERF-03] Golden regression for the SF-WEB-01 refactor: a single
+  // mergeGraph() call whose incoming nodes/edges partially overlap State on
+  // BOTH axes at once (some ids/pairs already present, some new) must
+  // produce exactly the same final set the old separate .filter()+.map()
+  // passes did — nothing duplicated, nothing dropped, existing entries left
+  // untouched (dedup is by id/pair presence, not object identity).
+  it("with nodes AND edges partially overlapping in the same call, the final set has every existing entry plus every new one, no duplicates", () => {
+    State.graphNodes = [
+      buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+      buildNodeState({ id: 2, name: "B" }, 1, new Set()),
+      buildNodeState({ id: 3, name: "C" }, 1, new Set()),
+    ];
+    State.graphEdges = [buildEdgeState({ from: 1, to: 2, weight: 1 })];
+
+    mergeGraph({
+      seed_id: 3,
+      nodes: [
+        { id: 1, name: "Seed" },  // existing -> skipped
+        { id: 2, name: "B" },     // existing -> skipped
+        { id: 4, name: "D" },     // new -> added
+        { id: 5, name: "E" },     // new -> added
+      ],
+      edges: [
+        { from: 2, to: 1, weight: 1 },  // same pair as existing (1,2), reversed -> skipped
+        { from: 2, to: 4, weight: 2 },  // new -> added
+        { from: 4, to: 5, weight: 3 },  // new -> added
+      ],
+    });
+
+    expect(State.graphNodes.map(n => n.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(State.graphEdges.map(e => e.id)).toEqual(["1_2", "2_4", "4_5"]);
+    // The pre-existing (1,2) edge object itself is untouched, not replaced.
+    expect(State.graphEdges[0].weight).toBe(1);
+  });
 });
 
 describe("computeNodeDominantRoles", () => {
