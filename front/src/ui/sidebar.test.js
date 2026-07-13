@@ -33,14 +33,17 @@ vi.mock("./modals.js", () => ({
   closeSearchModal: vi.fn(),
   closeNodeSearch: vi.fn(),
   closePathPanel: vi.fn(),
+  openNodeSearch: vi.fn(),
 }));
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar } from "./sidebar.js";
-import { closePathPanel } from "./modals.js";
+import {
+  showArtistSidebar, showEdgeSidebar, hideArtistSidebar, setupCompanionEmptyTrigger,
+} from "./sidebar.js";
+import { closePathPanel, openNodeSearch } from "./modals.js";
 import { toggleNodePin, isNodePinned } from "../vis-adapter/index.js";
 import { searchArtist } from "../api/api.js";
 
@@ -55,6 +58,7 @@ beforeEach(() => {
   State.expandedNodes = new Set();
 
   els.companionPanel = freshEl();
+  els.companionEmpty = freshEl();
   els.artistSidebar   = freshEl();
   els.pathPanel        = freshEl();
   els.searchModal      = freshEl();
@@ -229,17 +233,45 @@ describe("showEdgeSidebar (edge context)", () => {
 });
 
 describe("hideArtistSidebar", () => {
-  it("hides both the sidebar section and the companion panel", () => {
+  it("hides the sidebar section but keeps the companion panel visible, showing its empty state instead", () => {
     els.artistSidebar.classList.add("show");
     els.companionPanel.classList.add("show");
     hideArtistSidebar();
     expect(els.artistSidebar.classList.contains("show")).toBe(false);
-    expect(els.companionPanel.classList.contains("show")).toBe(false);
+    // [SF-WEB-22] The panel itself no longer disappears entirely — it's
+    // the same section-switch pattern as node/edge/path context, just with
+    // .companion-empty as the "nothing selected" section.
+    expect(els.companionPanel.classList.contains("show")).toBe(true);
+    expect(els.companionEmpty.classList.contains("show")).toBe(true);
   });
 
   it("[SF-WEB-14] hides the object action bar too", () => {
     els.objectActionBar.hidden = false;
     hideArtistSidebar();
     expect(els.objectActionBar.hidden).toBe(true);
+  });
+});
+
+describe("[SF-WEB-22] syncCompanionEmpty via showArtistSidebar/showEdgeSidebar", () => {
+  it("hides .companion-empty once node context is shown", () => {
+    els.companionEmpty.classList.add("show");
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    expect(els.companionEmpty.classList.contains("show")).toBe(false);
+  });
+
+  it("hides .companion-empty once edge context is shown", () => {
+    els.companionEmpty.classList.add("show");
+    State.graphEdges = [{ id: "1_2", from: 1, to: 2, weight: 1, dominantRole: "featured", collaborations: [] }];
+    showEdgeSidebar("1_2", {});
+    expect(els.companionEmpty.classList.contains("show")).toBe(false);
+  });
+});
+
+describe("[SF-WEB-22] setupCompanionEmptyTrigger", () => {
+  it("clicking .companion-empty opens the command palette", () => {
+    setupCompanionEmptyTrigger();
+    els.companionEmpty.click();
+    expect(openNodeSearch).toHaveBeenCalledTimes(1);
   });
 });

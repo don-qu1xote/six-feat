@@ -11,7 +11,7 @@ import { State } from "../state/state.js";
 import { debounce, escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els, $ } from "../dom/dom.js";
 import { setFocus } from "../vis-adapter/index.js";
-import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
+import { hideArtistSidebar, showArtistSidebar, syncCompanionEmpty } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 // [SF-WEB-21] Command-row actions — the palette replaces the rail's
 // search/find-path/copy-link/export/clear buttons plus the standalone
@@ -53,13 +53,17 @@ export function openPathPanel() {
   // opening the path section replaces whatever node/edge context was shown.
   hideArtistSidebar();
   els.pathPanel.classList.add("show");
-  els.companionPanel?.classList.add("show");
+  // [SF-WEB-22] syncCompanionEmpty() both keeps companionPanel visible and
+  // hides .companion-empty now that the path section is genuinely active —
+  // hideArtistSidebar() just above would otherwise leave the empty state
+  // shown (it can't know a path is about to take over).
+  syncCompanionEmpty();
   els.pathFromInput?.focus();
 }
 
 export function closePathPanel() {
   els.pathPanel?.classList.remove("show");
-  els.companionPanel?.classList.remove("show");
+  syncCompanionEmpty();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -177,49 +181,69 @@ export function setupSearchModal() {
 
 // Static command list — one row per secondary action that used to be a
 // permanent rail button, the standalone theme-toggle, or the status row's
-// help button. Filtered by query (substring on label) exactly like graph-
-// node results below, so this is one unified, arrow-navigable list instead
-// of a separate "mode" the user has to switch into.
+// help button. Filtered by query (substring on label OR keywords) exactly
+// like graph-node results below, so this is one unified, arrow-navigable
+// list instead of a separate "mode" the user has to switch into.
+//
+// [SF-WEB-22] `section` groups commands under a rendered header (see
+// _sectionHeaderHtml/renderNodeSearchResults) — entries are listed
+// contiguously per section on purpose, so the renderer can detect a new
+// section just by noticing `section` changed from the previous (already
+// query-filtered) command, without a separate sort/group-by pass.
 function _commands() {
   return [
     {
-      id: "find-path", icon: "icon-shuffle", label: "Find a path between two artists",
+      id: "find-path", section: "Navigate", icon: "icon-shuffle",
+      label: "Find a path between two artists",
       run: () => { isPathPanelOpen() ? closePathPanel() : openPathPanel(); },
     },
     {
-      id: "filter-featured", icon: "icon-mic", label: "Toggle featured-role filter",
+      id: "filter-featured", section: "View", icon: "icon-mic",
+      label: "Toggle featured-role filter",
       active: State.activeFilters.has("featured"), run: () => toggleRoleFilter("featured"),
     },
     {
-      id: "filter-producer", icon: "icon-sliders", label: "Toggle producer-role filter",
+      id: "filter-producer", section: "View", icon: "icon-sliders",
+      label: "Toggle producer-role filter",
       active: State.activeFilters.has("producer"), run: () => toggleRoleFilter("producer"),
     },
     {
-      id: "filter-writer", icon: "icon-pen", label: "Toggle writer-role filter",
+      id: "filter-writer", section: "View", icon: "icon-pen",
+      label: "Toggle writer-role filter",
       active: State.activeFilters.has("writer"), run: () => toggleRoleFilter("writer"),
     },
     {
-      id: "export-png", icon: "icon-download", label: "Download graph as PNG",
-      run: () => exportGraphPng(),
-    },
-    {
-      id: "copy-link", icon: "icon-link", label: "Copy shareable link",
-      run: () => copyShareableLink(),
-    },
-    {
-      id: "theme", icon: State.theme === "light" ? "icon-moon" : "icon-sun",
+      id: "theme", section: "View", icon: State.theme === "light" ? "icon-moon" : "icon-sun",
       label: `Switch to ${State.theme === "light" ? "dark" : "light"} theme`,
       run: () => setTheme(State.theme === "light" ? "dark" : "light"),
     },
     {
-      id: "help", icon: "icon-info", label: "Keyboard shortcuts",
-      run: () => openHelpOverlay(),
+      id: "export-png", section: "Graph", icon: "icon-download",
+      label: "Download graph as PNG", keywords: ["export"],
+      run: () => exportGraphPng(),
     },
     {
-      id: "clear", icon: "icon-close", label: "Clear graph",
+      id: "copy-link", section: "Graph", icon: "icon-link",
+      label: "Copy shareable link",
+      run: () => copyShareableLink(),
+    },
+    {
+      id: "clear", section: "Graph", icon: "icon-close", danger: true,
+      label: "Clear graph",
       run: () => clearCanvas(),
     },
+    {
+      id: "help", section: "Help", icon: "icon-info",
+      label: "Keyboard shortcuts", keywords: ["help"],
+      run: () => openHelpOverlay(),
+    },
   ];
+}
+
+function _commandMatches(cmd, q) {
+  if (!q) return true;
+  if (cmd.label.toLowerCase().includes(q)) return true;
+  return (cmd.keywords || []).some(k => k.toLowerCase().includes(q));
 }
 
 // Screen-reader/keyboard-only alternative to dragging/clicking nodes on the
@@ -285,8 +309,18 @@ export function closeNodeSearch() {
   _nsActiveIndex = -1;
 }
 
+// [SF-WEB-22] A header row for the section a command/search/node row falls
+// under — role="presentation" since it's not itself a selectable option
+// (arrow-key nav/_nsItems() below only look at .ns-item, so headers are
+// already skipped there regardless; this just keeps the ARIA listbox from
+// claiming a plain label div is one of its options).
+function _sectionHeaderHtml(label) {
+  return `<div class="ns-section" role="presentation">${escapeHtml(label)}</div>`;
+}
+
 function _cmdRowHtml(cmd, index) {
-  return `<div class="ns-item ns-item--cmd" id="ns-item-${index}" data-kind="cmd" data-cmd-id="${cmd.id}" role="option" aria-selected="false">` +
+  const dangerClass = cmd.danger ? " ns-item--danger" : "";
+  return `<div class="ns-item ns-item--cmd${dangerClass}" id="ns-item-${index}" data-kind="cmd" data-cmd-id="${cmd.id}" role="option" aria-selected="false">` +
     `<span class="ns-cmd-label"><svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#${cmd.icon}"/></svg>${escapeHtml(cmd.label)}</span>` +
     `<span class="ns-weight">${cmd.active ? "✓" : ""}</span>` +
     `</div>`;
@@ -316,21 +350,37 @@ export function renderNodeSearchResults(query) {
   const q = trimmed.toLowerCase();
   const seedId = State.currentSeedId;  // FIX #1: Exclude seed from results
 
-  const commands = _commands().filter(c => !q || c.label.toLowerCase().includes(q));
+  const commands = _commands().filter(c => _commandMatches(c, q));
 
   const nodes = (q
     ? State.graphNodes.filter(n => n.id !== seedId && n.name.toLowerCase().includes(q))
     : State.graphNodes.filter(n => n.id !== seedId)
   ).slice(0, 12);
 
+  // [SF-WEB-22] Section headers make the three row kinds (command/new-seed
+  // search/graph node) visually distinct, not just distinguishable via the
+  // invisible data-kind attribute. _commands() lists entries contiguously
+  // per section, so a header only needs to render when `section` changes
+  // from the previous (already query-filtered) command — a section with no
+  // surviving matches after filtering never gets a header at all.
   let i = 0;
+  let lastSection = null;
+  const commandRows = [];
+  for (const c of commands) {
+    if (c.section !== lastSection) {
+      commandRows.push(_sectionHeaderHtml(c.section));
+      lastSection = c.section;
+    }
+    commandRows.push(_cmdRowHtml(c, i++));
+  }
+
   const rows = [
-    ...commands.map(c => _cmdRowHtml(c, i++)),
+    ...commandRows,
     // Always offered when there's a query — the palette's universal
     // "new seed" entry, same effect the old docked search-open rail
     // button eventually led to.
-    ...(trimmed ? [_searchRowHtml(trimmed, i++)] : []),
-    ...nodes.map(n => _nodeRowHtml(n, i++)),
+    ...(trimmed ? [_sectionHeaderHtml("Search"), _searchRowHtml(trimmed, i++)] : []),
+    ...(nodes.length ? [_sectionHeaderHtml("On this graph"), ...nodes.map(n => _nodeRowHtml(n, i++))] : []),
   ];
 
   els.nodeSearchResults.innerHTML = rows.join("") || `<div class="ns-empty">No matches</div>`;

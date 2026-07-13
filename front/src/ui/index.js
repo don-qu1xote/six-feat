@@ -22,7 +22,8 @@
 //                            search row alongside graph-node results, one
 //                            unified arrow-navigable list.
 //   sidebar.js             — showArtistSidebar / showEdgeSidebar /
-//                            hideArtistSidebar
+//                            hideArtistSidebar / syncCompanionEmpty /
+//                            setupCompanionEmptyTrigger
 //   path-result.js         — runServerPath / mergePathData / renderHopChain
 //   path-panel.js          — setupPathPanel / setupHeroModeSwitch /
 //                            setupHeroPathFinder
@@ -64,7 +65,8 @@ export {
 } from "./modals.js";
 
 export {
-  showArtistSidebar, showEdgeSidebar, hideArtistSidebar
+  showArtistSidebar, showEdgeSidebar, hideArtistSidebar,
+  syncCompanionEmpty, setupCompanionEmptyTrigger
 } from "./sidebar.js";
 
 export {

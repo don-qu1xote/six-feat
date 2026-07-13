@@ -11,7 +11,7 @@ import {
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
-  renderChips, setupThemeToggle
+  renderChips, setupThemeToggle, setupCompanionEmptyTrigger
 } from "./ui/index.js";
 import { clearFocus } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
@@ -44,6 +44,9 @@ export function init() {
   setupSeedCard();
   setupHelpOverlay();
   setupLoadMoreCollabs();
+  // [SF-WEB-22] The companion panel's empty state is also the canvas's
+  // visible ⌘K entry point (was hidden-listener-only since SF-WEB-21).
+  setupCompanionEmptyTrigger();
 
   // ТЗ-D8: idle starfield shown while #network is empty (first visit /
   // after clearCanvas). Mounted once, then just toggled via opacity.

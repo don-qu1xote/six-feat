@@ -4,12 +4,20 @@
 //                           renders command rows + a "search as new seed"
 //                           row alongside graph-node results, all in one
 //                           arrow-navigable list, and clicking/Entering a
-//                           row runs the right action.
+//                           row runs the right action. [SF-WEB-22] adds
+//                           section headers (Navigate/View/Graph/Help for
+//                           commands, Search for the new-seed row, On this
+//                           graph for node results), a danger style for
+//                           Clear graph, and keyword aliases for commands
+//                           whose label doesn't contain an obvious synonym
+//                           (export-png/help).
 //
 // setupKeyboard's ⌘K open/close binding is covered in
 // canvas-controls.test.js (that's where the keydown listener actually
-// lives); this file only exercises what's rendered/selected once the
-// palette is open. "No duplicate visible entry points" is covered in
+// lives); the .companion-empty canvas trigger is covered in
+// sidebar.test.js (that's where setupCompanionEmptyTrigger actually lives);
+// this file only exercises what's rendered/selected once the palette is
+// open. "No duplicate visible entry points" is covered in
 // canvas-declutter.test.js (markup-existence assertions against the real
 // index.html).
 // ════════════════════════════════════════════════════════════════════════════
@@ -19,6 +27,7 @@ vi.mock("../vis-adapter/index.js", () => ({ setFocus: vi.fn() }));
 vi.mock("./sidebar.js", () => ({
   hideArtistSidebar: vi.fn(),
   showArtistSidebar: vi.fn(),
+  syncCompanionEmpty: vi.fn(),
 }));
 vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
@@ -43,6 +52,19 @@ function freshEl(tag = "div") { return document.createElement(tag); }
 function itemsByKind(kind) {
   return [...els.nodeSearchResults.querySelectorAll(".ns-item")]
     .filter(el => el.dataset.kind === kind);
+}
+
+// [SF-WEB-22] The rendered list is a flat sequence of .ns-section headers
+// and .ns-item rows — this walks it in DOM order and returns which section
+// header (if any) precedes each row, so tests can assert a row landed
+// under the right heading without caring about exact indices.
+function sectionOf(item) {
+  let sibling = item.previousElementSibling;
+  while (sibling) {
+    if (sibling.classList.contains("ns-section")) return sibling.textContent;
+    sibling = sibling.previousElementSibling;
+  }
+  return null;
 }
 
 beforeEach(() => {
@@ -72,8 +94,8 @@ describe("renderNodeSearchResults — unified command + node list", () => {
     renderNodeSearchResults("");
     const cmdIds = itemsByKind("cmd").map(el => el.dataset.cmdId);
     expect(cmdIds).toEqual([
-      "find-path", "filter-featured", "filter-producer", "filter-writer",
-      "export-png", "copy-link", "theme", "help", "clear",
+      "find-path", "filter-featured", "filter-producer", "filter-writer", "theme",
+      "export-png", "copy-link", "clear", "help",
     ]);
   });
 
@@ -81,6 +103,18 @@ describe("renderNodeSearchResults — unified command + node list", () => {
     renderNodeSearchResults("theme");
     const cmdIds = itemsByKind("cmd").map(el => el.dataset.cmdId);
     expect(cmdIds).toEqual(["theme"]);
+  });
+
+  it("finds export-png via its 'export' keyword alias, even though the label itself doesn't contain it", () => {
+    renderNodeSearchResults("export");
+    const cmdIds = itemsByKind("cmd").map(el => el.dataset.cmdId);
+    expect(cmdIds).toEqual(["export-png"]);
+  });
+
+  it("finds help via its 'help' keyword alias, even though the label itself doesn't contain it", () => {
+    renderNodeSearchResults("help");
+    const cmdIds = itemsByKind("cmd").map(el => el.dataset.cmdId);
+    expect(cmdIds).toEqual(["help"]);
   });
 
   it("offers a 'search artist' row, in the original casing, only once a query is typed", () => {
@@ -116,6 +150,57 @@ describe("renderNodeSearchResults — unified command + node list", () => {
     renderNodeSearchResults("filter");
     const featured = itemsByKind("cmd").find(el => el.dataset.cmdId === "filter-featured");
     expect(featured.querySelector(".ns-weight").textContent).toBe("");
+  });
+});
+
+describe("[SF-WEB-22] section headers", () => {
+  it("groups commands under Navigate/View/Graph/Help headers", () => {
+    renderNodeSearchResults("");
+    const byId = id => itemsByKind("cmd").find(el => el.dataset.cmdId === id);
+    expect(sectionOf(byId("find-path"))).toBe("Navigate");
+    expect(sectionOf(byId("filter-featured"))).toBe("View");
+    expect(sectionOf(byId("theme"))).toBe("View");
+    expect(sectionOf(byId("export-png"))).toBe("Graph");
+    expect(sectionOf(byId("clear"))).toBe("Graph");
+    expect(sectionOf(byId("help"))).toBe("Help");
+  });
+
+  it("renders each section header exactly once even though it groups several commands", () => {
+    renderNodeSearchResults("");
+    const headers = [...els.nodeSearchResults.querySelectorAll(".ns-section")].map(el => el.textContent);
+    expect(headers.filter(h => h === "View")).toHaveLength(1);
+    expect(headers.filter(h => h === "Graph")).toHaveLength(1);
+  });
+
+  it("skips a section's header entirely once the query filters out all of its commands", () => {
+    renderNodeSearchResults("path");
+    const headers = [...els.nodeSearchResults.querySelectorAll(".ns-section")].map(el => el.textContent);
+    // Only find-path (Navigate) survives the command filter — no
+    // View/Graph/Help header should render since none of their commands
+    // matched. "Search" still shows because the new-seed row is always
+    // offered once there's a query, regardless of command matches.
+    expect(headers).toEqual(["Navigate", "Search"]);
+  });
+
+  it("puts the search-as-new-seed row under a Search header", () => {
+    renderNodeSearchResults("Some New Artist");
+    expect(sectionOf(els.nodeSearchResults.querySelector('[data-kind="search"]'))).toBe("Search");
+  });
+
+  it("puts graph-node results under an On this graph header", () => {
+    State.graphNodes = [{ id: 7, name: "Some Artist" }];
+    renderNodeSearchResults("some artist");
+    expect(sectionOf(els.nodeSearchResults.querySelector('[data-kind="node"]'))).toBe("On this graph");
+  });
+});
+
+describe("[SF-WEB-22] Clear graph danger styling", () => {
+  it("carries a distinct danger class, unlike its Graph-section neighbours", () => {
+    renderNodeSearchResults("");
+    const clear = els.nodeSearchResults.querySelector('[data-cmd-id="clear"]');
+    const exportRow = els.nodeSearchResults.querySelector('[data-cmd-id="export-png"]');
+    expect(clear.classList.contains("ns-item--danger")).toBe(true);
+    expect(exportRow.classList.contains("ns-item--danger")).toBe(false);
   });
 });
 

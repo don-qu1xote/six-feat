@@ -6,12 +6,17 @@
 //                             canvas-zoom-cluster. [SF-WEB-21] extends this
 //                             to the command-palette pass: the rail's
 //                             search/find-path/copy-link/export/clear
-//                             buttons, the standalone theme-toggle, the
-//                             status row's help button, and the canvas
-//                             role-filter-segment are all gone too — those
-//                             actions are ⌘K command-palette rows now (see
-//                             ui/modals.js::_commands), not permanent canvas
-//                             chrome.
+//                             buttons, the standalone theme-toggle, and the
+//                             status row's help button are all gone too —
+//                             those actions are ⌘K command-palette rows now
+//                             (see ui/modals.js::_commands), not permanent
+//                             canvas chrome. [SF-WEB-22] restores
+//                             .role-filter-segment — SF-WEB-21 turning it
+//                             into palette-only rows undid a deliberate
+//                             SF-WEB-14 decision (role filters stay primary/
+//                             always-visible on the canvas); the palette's
+//                             own filter rows stay too, both read/write the
+//                             same State.activeFilters.
 //
 // This reads the real index.html as text rather than mocking DOM state —
 // unlike sidebar.js's own tests (which assign detached elements straight to
@@ -71,13 +76,15 @@ describe("[SF-WEB-21] command palette replaces the rail's scattered buttons + th
     expect(html).not.toContain('id="help-btn"');
   });
 
-  it("has no canvas role-filter-segment — role filters are palette rows (the hero's own filter buttons on the landing page are unaffected)", () => {
-    expect(html).not.toContain('id="role-filter-segment"');
-    expect(html).not.toContain('id="canvas-filter-featured"');
-    expect(html).not.toContain('id="canvas-filter-producer"');
-    expect(html).not.toContain('id="canvas-filter-writer"');
+  it("[SF-WEB-22] has exactly one canvas role-filter-segment — restored after SF-WEB-21 wrongly removed it", () => {
+    expect(countOccurrences(html, 'id="role-filter-segment"')).toBe(1);
+    expect(countOccurrences(html, 'id="canvas-filter-featured"')).toBe(1);
+    expect(countOccurrences(html, 'id="canvas-filter-producer"')).toBe(1);
+    expect(countOccurrences(html, 'id="canvas-filter-writer"')).toBe(1);
     // The hero's own toggle buttons (visible before a graph even exists)
-    // are a different, still-live feature — untouched by this ticket.
+    // are a different, still-live feature — a second, legitimate entry
+    // point into the same State.activeFilters, not a duplicate of the
+    // canvas segment.
     expect(countOccurrences(html, 'id="hero-filter-featured"')).toBe(1);
     expect(countOccurrences(html, 'id="hero-filter-producer"')).toBe(1);
     expect(countOccurrences(html, 'id="hero-filter-writer"')).toBe(1);

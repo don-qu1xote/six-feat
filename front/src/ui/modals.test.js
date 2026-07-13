@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("./sidebar.js", () => ({
   hideArtistSidebar: vi.fn(),
   showArtistSidebar: vi.fn(),
+  syncCompanionEmpty: vi.fn(),
 }));
 vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
 vi.mock("../vis-adapter/index.js", () => ({ setFocus: vi.fn() }));
@@ -28,7 +29,7 @@ vi.mock("./history.js", () => ({ copyShareableLink: vi.fn() }));
 vi.mock("./theme.js", () => ({ setTheme: vi.fn() }));
 
 import { els } from "../dom/dom.js";
-import { hideArtistSidebar } from "./sidebar.js";
+import { hideArtistSidebar, syncCompanionEmpty } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { isPathPanelOpen, openPathPanel, closePathPanel } from "./modals.js";
 
@@ -59,10 +60,13 @@ describe("isPathPanelOpen", () => {
 });
 
 describe("openPathPanel", () => {
-  it("shows the path section and the companion panel", () => {
+  it("shows the path section and syncs the companion panel's empty state", () => {
     openPathPanel();
     expect(els.pathPanel.classList.contains("show")).toBe(true);
-    expect(els.companionPanel.classList.contains("show")).toBe(true);
+    // [SF-WEB-22] syncCompanionEmpty() (sidebar.js, mocked here) is now the
+    // one place that toggles companionPanel/.companion-empty visibility —
+    // real coverage of that logic lives in sidebar.test.js.
+    expect(syncCompanionEmpty).toHaveBeenCalled();
   });
 
   it("closes node/edge context first (mutual exclusivity)", () => {
@@ -78,11 +82,10 @@ describe("openPathPanel", () => {
 });
 
 describe("closePathPanel", () => {
-  it("hides both the path section and the companion panel", () => {
+  it("hides the path section and syncs the companion panel's empty state", () => {
     els.pathPanel.classList.add("show");
-    els.companionPanel.classList.add("show");
     closePathPanel();
     expect(els.pathPanel.classList.contains("show")).toBe(false);
-    expect(els.companionPanel.classList.contains("show")).toBe(false);
+    expect(syncCompanionEmpty).toHaveBeenCalled();
   });
 });

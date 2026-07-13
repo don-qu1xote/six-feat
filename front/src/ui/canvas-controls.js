@@ -48,20 +48,25 @@ export function toggleRoleFilter(role) {
 }
 
 export function setupFilterToggles() {
-  // [SF-WEB-14]/[SF-WEB-21]: the rail's own role-filter buttons, then the
-  // canvas's always-visible .role-filter-segment twin, are both gone now —
-  // toggling a role filter is a command-palette row (⌘K). The landing
-  // hero's own filter buttons (visible before a graph even exists) are the
-  // only remaining clickable UI for this, reading/writing the same
-  // State.activeFilters toggleRoleFilter() above does.
-  function makeToggle(role, btn) {
-    if (!btn) return;
-    btn.addEventListener("click", () => toggleRoleFilter(role));
-    btn.classList.toggle("active", State.activeFilters.has(role));
+  // [SF-WEB-14]/[SF-WEB-22]: each role can have several toggle buttons —
+  // the canvas's always-visible .role-filter-segment (restored after
+  // SF-WEB-21 wrongly removed it) and the landing hero's own filter row
+  // (visible before a graph even exists). Both groups, plus the palette's
+  // filter-featured/-producer/-writer commands (ui/modals.js::_commands),
+  // read/write the same State.activeFilters — toggleRoleFilter() above
+  // already syncs .active on every matching-data-role element regardless
+  // of which button (or palette row) triggered it, so this just needs to
+  // attach the click listener to each real button.
+  function makeToggle(role, btns) {
+    const buttons = btns.filter(Boolean);
+    buttons.forEach(btn => {
+      btn.addEventListener("click", () => toggleRoleFilter(role));
+      btn.classList.toggle("active", State.activeFilters.has(role));
+    });
   }
-  makeToggle("featured", els.heroFilterFeatured);
-  makeToggle("producer", els.heroFilterProducer);
-  makeToggle("writer",   els.heroFilterWriter);
+  makeToggle("featured", [els.canvasFilterFeatured, els.heroFilterFeatured]);
+  makeToggle("producer", [els.canvasFilterProducer, els.heroFilterProducer]);
+  makeToggle("writer",   [els.canvasFilterWriter,   els.heroFilterWriter]);
 }
 
 // ════════════════════════════════════════════════════════════════════════════

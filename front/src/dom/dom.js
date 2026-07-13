@@ -35,6 +35,17 @@ export const els = {
   loading:    $("loading"),
   toast:      $("toast"),
 
+  // [SF-WEB-22] Restored — SF-WEB-14's always-visible canvas segment
+  // (removed by SF-WEB-21, which turned the three role filters into
+  // palette-only rows; that was a regression, not this ticket's call to
+  // make). The palette's own filter-featured/-producer/-writer commands
+  // (ui/modals.js::_commands) still exist too — both read/write the same
+  // State.activeFilters.
+  canvasFilterFeatured: $("canvas-filter-featured"),
+  canvasFilterProducer: $("canvas-filter-producer"),
+  canvasFilterWriter:   $("canvas-filter-writer"),
+  roleFilterSegment:    $("role-filter-segment"),
+
   // Search settings on the landing hero (ТЗ: same logic as the rail's
   // role filters + find path, surfaced before a graph even exists).
   // "Include roles" — всегда видна (не за кнопкой).
@@ -83,6 +94,9 @@ export const els = {
   // #path-panel (below) are now plain content sections inside it, shown one
   // at a time, instead of two independently-styled floating panels.
   companionPanel: $("companion-panel"),
+  // [SF-WEB-22] The fourth section — shown whenever none of the other three
+  // are (see ui/sidebar.js::syncCompanionEmpty).
+  companionEmpty: $("companion-empty"),
 
   artistSidebar:  $("artist-sidebar"),
   sidebarAvatar:  $("sidebar-avatar"),
