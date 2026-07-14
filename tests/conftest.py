@@ -446,6 +446,23 @@ components_manager:
       task_processor: main-task-processor
       response-body-stream: true
 
+    # [SF-API-12] `allowed-hosts` overrides the compiled-in real Genius CDN
+    # hostnames (image_proxy_handler.cpp's kDefaultAllowedImageHosts) so
+    # tests can point this handler at a local stub instead of the real
+    # internet — same testability pattern genius-gateway-base-url/
+    # enrichment-base-url/auth-base-url above already use. "127.0.0.1" is
+    # ONLY ever allowlisted here, in the test binary's own config — real
+    # image_cdn_mock.py URLs are http://127.0.0.1:<port>/... (see
+    # test_image_proxy.py); the port is stripped for host comparison (see
+    # ParseUrl in image_proxy_handler.cpp), so the mock's actual port
+    # doesn't need to be templated into this config at all.
+    handler-image:
+      path: /api/v1/image
+      method: GET
+      task_processor: main-task-processor
+      timeout-ms: 2000
+      allowed-hosts: ["127.0.0.1"]
+
     handler-server-monitor:
       path: /metrics
       method: GET

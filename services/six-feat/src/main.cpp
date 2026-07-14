@@ -14,6 +14,7 @@
 #include "genius/genius_gateway_client.hpp"
 #include "http/graph_handler.hpp"
 #include "http/health_handler.hpp"
+#include "http/image_proxy_handler.hpp"
 #include "http/path_handler.hpp"
 #include "storage/persistent_store.hpp"
 #include "http/readiness_handler.hpp"
@@ -56,6 +57,7 @@ int main(int argc, char *argv[]) {
             .Append<six_feat::ReadinessHandler>()
             .Append<six_feat::StatusHandler>()
             .Append<six_feat::SseStatusHandler>()
+            .Append<six_feat::ImageProxyHandler>()
             .Append<six_feat::IndexHandler>()
             .Append<six_feat::ScriptHandler>()
             // [SF-SEC-02] Self-hosted vis-network vendor bundle — see

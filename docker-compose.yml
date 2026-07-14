@@ -126,10 +126,27 @@ services:
       six-feat-auth:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_PORT:-8080}/healthz"]
-      interval: 15s
+      # [reliability fix] Was /healthz — that only proves the HTTP listener
+      # is bound (health_handler.cpp returns "ok" unconditionally, the
+      # instant the process is up), not that six-feat can actually SERVE a
+      # request. postgres-db-1 has sync-start: false, so the process starts
+      # and starts reporting /healthz "ok" immediately while the connection
+      # pool is still connecting in the background — nginx's `depends_on:
+      # six-feat: condition: service_healthy` below was keyed off exactly
+      # this healthcheck, so it started forwarding real traffic (search,
+      # graph, ...) the moment the listener was up, landing on
+      # ArtistRepository/PersistentStore calls against a pool that wasn't
+      # connected yet → 500s during the startup window, on every fresh
+      # `docker compose up`/rebuild. /readyz (readiness_handler.cpp)
+      # actually pings the DB (and checks app-secret parity, non-blocking
+      # on a mismatch-free/unknown status) and only returns 200 once real
+      # traffic can succeed — 503 (curl -f fails) until then, so
+      # `depends_on: condition: service_healthy` now genuinely waits for
+      # that instead of just "process exists".
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_PORT:-8080}/readyz"]
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 5
       # Covers docker-entrypoint.sh's bounded wait for Postgres to become
       # reachable (up to ~26s: 20s master + 5s replica + 1s settle) plus
       # normal app startup, with headroom for one extra restart+retry cycle

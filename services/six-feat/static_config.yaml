@@ -242,6 +242,16 @@ components_manager:
       task_processor: *main_tp
       response-body-stream: true
 
+    # [SF-API-12] Same-origin Genius CDN image proxy — see
+    # image_proxy_handler.cpp for the allowlist/SSRF reasoning. No
+    # `allowed-hosts` override here — production always gets the
+    # compiled-in real Genius CDN hostnames.
+    handler-image:
+      path: /api/v1/image
+      method: GET
+      task_processor: *main_tp
+      timeout-ms: 5000
+
     # ── Observability (IDEA-27) ─────────────────────────────────────────────
     # [IDEA-46] CB state / FG/BG lane token+slot metrics now live on
     # six-feat-genius-gateway's own /metrics — nothing genius-specific to
