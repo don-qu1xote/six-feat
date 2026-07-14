@@ -1,0 +1,65 @@
+# .github/dependabot.yml — SF-CI-03
+#
+# Weekly PRs for the four dependency surfaces this repo actually has:
+#   - github-actions: this workflow file + the local composite action
+#     (.github/actions/setup) both pin `uses:` to a full commit SHA (see
+#     ci.yml/release-supply-chain.yml) — Dependabot still needs its own
+#     ecosystem entry to open the version-bump PRs; it updates the pinned
+#     SHA (and the trailing `# vX.Y.Z` comment where present) in place, it
+#     doesn't unpin anything.
+#   - docker: one entry per service's own standalone Dockerfile (see
+#     docker-build-and-scan's matrix in ci.yml for the same 4 services) —
+#     Dependabot's docker ecosystem watches the FROM base image tag/digest
+#     in a given directory's Dockerfile, so each service needs its own
+#     directory entry rather than one shared one.
+#   - pip: requirements-test.txt lives at the repo root (see
+#     .github/actions/setup/action.yml's python-testenv input).
+#   - npm: front/package.json (front-end toolchain — vitest, eslint,
+#     esbuild, playwright).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/services/six-feat"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/services/auth"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/services/enrichment"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/services/genius-gateway"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "npm"
+    directory: "/front"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
