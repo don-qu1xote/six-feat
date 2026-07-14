@@ -320,6 +320,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 
@@ -510,6 +514,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 
@@ -598,6 +606,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 
@@ -1175,6 +1187,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 

@@ -50,6 +50,22 @@ components_manager:
           file_path: '@stdout'
           level: $logging_level
               #fallback: info
+          # [SF-OBS-03] Structured JSON instead of userver's default tskv —
+          # same fields (trace_id/span_id already land here as their own
+          # top-level keys via the tracing middleware, and EnsureRequestId
+          # (SF-OBS-02, core/request_id.cpp) tags every span with
+          # request_id the same way — this only changes SERIALIZATION, not
+          # what's logged, so a log line's request/trace id was already a
+          # separate field, never baked into `text`), just machine-parseable
+          # for a log aggregator (Loki/ELK/CloudWatch...) without a tskv
+          # parser. This exact block (file_path/format; level stays
+          # per-service via $logging_level) must stay identical across all
+          # 4 (soon 5, see SF-GAME-10) services' static_config.yaml — a
+          # literal YAML anchor can't span separate files/documents, so
+          # "shared" here means "kept in sync by convention", the same
+          # caveat SF-SCH-02's task_processor anchors called out for the
+          # docker-compose.yml hardening block.
+          format: json
 
     testsuite-support:
 

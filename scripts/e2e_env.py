@@ -117,6 +117,9 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json).
+          format: json
 
     testsuite-support:
 

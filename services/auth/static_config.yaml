@@ -56,6 +56,10 @@ components_manager:
         default:
           file_path: '@stdout'
           level: $logging_level
+          # [SF-OBS-03] Structured JSON — see services/six-feat/
+          # static_config.yaml's own logging block for the full rationale;
+          # kept identical across all 4 services' static_config.yaml.
+          format: json
 
     testsuite-support:
 
