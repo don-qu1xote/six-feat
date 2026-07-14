@@ -1,0 +1,55 @@
+# observability/prometheus/rules/red.yml — SF-OBS-04
+#
+# RED (Rate/Errors/Duration) alerts for six-feat's public API handlers.
+# Metric names/labels match observability/grafana/dashboards/
+# six-feat-overview.json exactly (same userver auto-instrumentation:
+# http_handler_rps / http_handler_reply_codes / http_handler_timings_1min_p99,
+# labeled by http_path — see components.server's handler metrics in
+# services/six-feat/static_config.yaml) — this file alerts on the same
+# series the dashboard already charts, just with thresholds instead of eyes
+# on a graph.
+groups:
+  - name: six-feat-red
+    rules:
+      # ── High 5xx rate ─────────────────────────────────────────────────────
+      # `and ... > 0`: without it, a handler with zero traffic (0/0) would
+      # never fire, but "no data" and "no errors" already read as OK in
+      # Grafana anyway — the real risk is a genuinely elevated ratio, which
+      # this guards.
+      - alert: SixFeatHigh5xxRate
+        expr: >-
+          (
+            100 * sum by (http_path) (rate(http_handler_reply_codes{job="six-feat", http_path=~"/api/v1/.*", http_code=~"5.."}[5m]))
+            / sum by (http_path) (rate(http_handler_rps{job="six-feat", http_path=~"/api/v1/.*"}[5m]))
+          ) > 5
+          and
+          sum by (http_path) (rate(http_handler_rps{job="six-feat", http_path=~"/api/v1/.*"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: six-feat
+        annotations:
+          summary: "six-feat {{ $labels.http_path }}: 5xx rate {{ printf \"%.1f\" $value }}% over the last 5m"
+          description: >-
+            More than 5% of requests to {{ $labels.http_path }} on six-feat
+            have returned a 5xx for at least 5 minutes. See the "Error rate
+            (5xx, %) by handler" panel on the six-feat-overview dashboard.
+
+      # ── p99 latency regression ───────────────────────────────────────────
+      # http_handler_timings_1min_p99 is already a rolling 1-minute p99 in
+      # milliseconds (userver-computed, not something this rule derives via
+      # histogram_quantile) — `for: 5m` just requires it to stay elevated
+      # across several of those rolling windows, not a single spike.
+      - alert: SixFeatHighP99Latency
+        expr: max by (http_path) (http_handler_timings_1min_p99{job="six-feat", http_path=~"/api/v1/.*"}) > 1500
+        for: 5m
+        labels:
+          severity: warning
+          team: six-feat
+        annotations:
+          summary: "six-feat {{ $labels.http_path }}: p99 latency {{ printf \"%.0f\" $value }}ms"
+          description: >-
+            {{ $labels.http_path }} on six-feat has had a rolling 1-minute
+            p99 latency above 1500ms for at least 5 minutes. See the
+            "Duration p99 by handler" panel on the six-feat-overview
+            dashboard.

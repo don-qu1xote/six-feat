@@ -400,12 +400,36 @@ services:
     profiles: ["observability"]
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # [SF-OBS-04] prometheus.yml's `rule_files: [rules/*.yml]` resolves
+      # relative to the config file's own directory (/etc/prometheus/ in
+      # this container) — same rules/ this repo validates in CI via
+      # promtool check rules (no Docker needed there, see ci.yml).
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - alertmanager
+    restart: unless-stopped
+
+  # [SF-OBS-04] Routes prometheus.yml's firing alerts somewhere observable
+  # without a real paging receiver configured anywhere (see
+  # observability/alertmanager/alertmanager.yml's own comment) — still
+  # entirely inside the opt-in "observability" profile, same as
+  # prometheus/grafana above.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+    container_name: six-feat-alertmanager
+    profiles: ["observability"]
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
     restart: unless-stopped
 
   grafana:
