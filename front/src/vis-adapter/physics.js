@@ -7,26 +7,15 @@
 // Expand/path layout placement math («одуванчики» + «круги Эйлера») lives in
 // layout.js; this file only consumes its output (targets/fromPos maps).
 // ════════════════════════════════════════════════════════════════════════════
-import { State, PHYSICS_SETTLE_MS, PHYSICS_EXPAND_MS } from "../state/state.js";
+import { State, PHYSICS_SETTLE_MS } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
 import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
-import { placeExpandedNodes, LEAF_R } from "./layout.js";
+import { placeExpandedNodes } from "./layout.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHYSICS HELPERS
 // ════════════════════════════════════════════════════════════════════════════
-
-// ТЗ-IDEA-36: таргеты expand-нод уже почти не перекрываются (см. layout.js
-// minDist), так что живой физике после вылета остаётся только лёгкая усадка —
-// её окно короче общего PHYSICS_EXPAND_MS (который также переиспользуется для
-// нежного пост-drag доседания одной ноды в events.js).
-// SF-WEB-09: раньше здесь стояло 450мс — раскладка targets уже почти без
-// наслоений (layout.js::minDist), и с новым единым RAF-полётом (включая
-// существующие ноды, см. runFlyoutAnimation) видимой "усадки" почти не
-// остаётся. Сокращаем окно вживую-физики до минимума, достаточного лишь для
-// редких реальных пересечений, а не для полноценного расталкивания.
-const EXPAND_PHYSICS_SETTLE_MS = Math.min(180, PHYSICS_EXPAND_MS);
 
 // SF-WEB-07: nudgePhysics() re-enables live physics (barnesHut/repulsion,
 // see networkOptions in visuals.js) for its caller's requested window before
@@ -37,10 +26,11 @@ const EXPAND_PHYSICS_SETTLE_MS = Math.min(180, PHYSICS_EXPAND_MS);
 // on-screen positions restored (refreshNetwork's moveNode loop) or are
 // otherwise settled before physics is turned back on, so the caller's full
 // requested duration just keeps ticking that expensive solver across
-// hundreds of nodes to settle the handful that actually moved. Same
-// reasoning EXPAND_PHYSICS_SETTLE_MS above already applies to the
-// post-flyout case — cap it here too, for every other nudgePhysics() caller
-// (refreshNetwork's re-search settle, events.js's post-drag settle).
+// hundreds of nodes to settle the handful that actually moved. [SF-WEB-29]
+// The post-flyout expand case no longer uses live physics at all (see
+// mergeNetwork's onDone below) — this cap now only applies to nudgePhysics()'s
+// other callers (refreshNetwork's re-search settle, events.js's post-drag
+// settle).
 const LARGE_GRAPH_SETTLE_MS = 500;
 
 // SF-WEB-09: мягкое появление новых нод — короткий scale/opacity поверх уже
@@ -223,10 +213,11 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   const net = State.network;
 
   // ── Вылет: RAF-анимация 420мс, ноды летят fromPos → targets ──────────────
-  // После завершения вылета включаем физику — она разрешит все наслоения.
+  // [SF-WEB-29] targets уже сами по себе не наслаиваются (см. layout.js) —
+  // после вылета ноды просто фиксируются на месте, без живой физики.
   // ТЗ-209: сам полёт делегирован общему runFlyoutAnimation() (см. ниже) —
-  // здесь остаётся только то, что специфично для mergeNetwork: включение
-  // физики, подстройка камеры и заморозка после её остановки.
+  // здесь остаётся только то, что специфично для mergeNetwork: фиксация всех
+  // нод на приземлившихся позициях и подстройка камеры.
 
   for (const n of freshNodes) n._isNew = false;
 
@@ -237,54 +228,26 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     durationMs: 420,
     entranceTargets,
     onDone: () => {
-      // Снимаем fixed со всех нод кроме seed — физика должна двигать их.
-      // Seed остаётся fixed, expanded-ноды получают высокую массу (притягивают листья).
-      const pathNodeIds = options.pathNodeIds || [];
-      const pathNodeSet = new Set(pathNodeIds);
-
-      const unfixUpdates = [];
-      for (const n of State.graphNodes) {
-        if (n.id === State.currentSeedId) continue;
-        if (pathNodeSet.has(n.id)) continue;  // ← ВАЖНО: узлы пути остаются fixed
-
-        const isExp = State.expandedNodes.has(n.id);
-        unfixUpdates.push({
-          id:    n.id,
-          fixed: false,
-          mass:  isExp ? 6 : 1,
-        });
-      }
-      if (unfixUpdates.length) State.nodesDS.update(unfixUpdates);
-
-      // Включаем barnesHut с параметрами для expand:
-      //   springLength = LEAF_R  → листья оседают на нужном радиусе
-      //   avoidOverlap = 1       → ноды не наслаиваются
-      //   centralGravity = 0     → кластеры не съезжаются к центру
-      //   gravitationalConstant большой → expanded-ноды сильно отталкиваются
-      // ТЗ-IDEA-36: листья/полюса уже прилетают в детерминированные target-
-      // позиции почти без наслоений (см. layout.js), так что живой физике
-      // здесь остаётся только мелкая усадка, а не расталкивание целых
-      // кластеров — снижаем потолок скорости и раньше признаём движение
-      // затухшим, чтобы граф оседал быстро и без видимой тряски.
-      net.setOptions({
-        physics: {
-          enabled: true,
-          solver:  "barnesHut",
-          barnesHut: {
-            gravitationalConstant: -12000,
-            centralGravity:        0.0,
-            springLength:          LEAF_R,
-            springConstant:        0.06,
-            damping:               0.85,
-            avoidOverlap:          1.0
-          },
-          stabilization: { enabled: false },  // стабилизируем через тики, не batch
-          timestep:         0.3,
-          adaptiveTimestep: true,
-          maxVelocity:      25,
-          minVelocity:      3
-        }
-      });
+      // [SF-WEB-29] Раньше здесь снимался fixed со всех нод и на
+      // EXPAND_PHYSICS_SETTLE_MS включался живой barnesHut ("усадка") — эта
+      // фаза не столько чинила реальные наложения, сколько РАЗЪЕЗЖАЛА уже
+      // готовую раскладку: кольца-одуванчики и линзы Эйлера, посчитанные
+      // layout.js геометрически ТОЧНО (см. _ringCap/_dandelionR там —
+      // минимальная попарная дистанция между листьями теперь считается по
+      // хорде, а не по приближению «длина дуги», и полюса разносятся на
+      // dR-зависимый minDist, учитывающий фактический радиус каждого
+      // одуванчика), превращались в бесформенный кластер под действием
+      // gravitationalConstant/avoidOverlap. Раз targets сами по себе уже не
+      // перекрываются, живая физика после вылета — это чистый минус
+      // (визуальная тряска без функциональной пользы), а не страховка:
+      // убираем фазу целиком, фиксируем каждую ноду ровно там, где она уже
+      // приземлилась после runFlyoutAnimation. path-узлы и раньше оставались
+      // fixed на всё время — теперь ВСЕ ноды ведут себя так же, никакого
+      // отдельного unfix/refix цикла не требуется.
+      net.setOptions({ physics: { enabled: false } });
+      updateEdgeRenderMode();
+      const fixAll = State.graphNodes.map(n => ({ id: n.id, fixed: { x: true, y: true } }));
+      if (State.nodesDS) State.nodesDS.update(fixAll);
 
       // Камера: seed — постоянный смысловой центр графа. Раньше позиция
       // камеры считалась как центр bbox { minX..maxX, minY..maxY } самих
@@ -314,23 +277,6 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
           animation: { duration: 700, easingFunction: "easeInOutQuad" }
         });
       } catch (e) { /* ignore */ }
-
-      // Замораживаем через укороченное EXPAND_PHYSICS_SETTLE_MS (см. выше) —
-      // targets и так почти без наслоений, долгое окно только продлевало
-      // видимую тряску. После заморозки восстанавливаем красивые кривые рёбра.
-      State.physicsTimer = setTimeout(() => {
-        State.physicsTimer = null;
-        if (!State.network) return;
-        State.network.setOptions({ physics: { enabled: false } });
-        updateEdgeRenderMode();
-        // Фиксируем все ноды на их финальных позициях.
-        const fixAll = State.graphNodes.map(n => ({
-          id:    n.id,
-          fixed: { x: true, y: true }
-        }));
-        if (State.nodesDS) State.nodesDS.update(fixAll);
-        // Seed уже fixed и не мог сместиться за время анимации — moveNode здесь избыточен.
-      }, EXPAND_PHYSICS_SETTLE_MS);
     }
   });
 }

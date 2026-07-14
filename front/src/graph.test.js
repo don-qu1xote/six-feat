@@ -252,6 +252,61 @@ describe("mergeGraph", () => {
     // The pre-existing (1,2) edge object itself is untouched, not replaced.
     expect(State.graphEdges[0].weight).toBe(1);
   });
+
+  // [SF-WEB-29 follow-up] _expandParent used to be set from
+  // State._clickedNodeId, which is always the SAME id as the node just
+  // expanded (both sidebar.js's Expand button and events.js's doubleClick
+  // handler set it to the node about to be expanded, right before the
+  // fetch that becomes this same node) — a self-reference that meant
+  // layout.js could never tell a directly-seed-adjacent pole apart from a
+  // nested (2nd-degree) one. Parent is now derived from the actual edge
+  // graph instead.
+  describe("_expandParent", () => {
+    it("is the seed when the expanded node has a direct edge to it", () => {
+      State.graphNodes = [
+        buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+        buildNodeState({ id: 2, name: "Pole" }, 1, new Set()),
+      ];
+      State.graphEdges = [buildEdgeState({ from: 1, to: 2, weight: 1 })];
+
+      mergeGraph({ seed_id: 2, nodes: [{ id: 2, name: "Pole" }], edges: [] });
+
+      const pole = State.graphNodes.find(n => n.id === 2);
+      expect(pole._expandParent).toBe(1);
+    });
+
+    it("is the already-expanded pole the node is connected to, not the seed, for a nested (2nd-degree) expand", () => {
+      State.graphNodes = [
+        buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+        buildNodeState({ id: 2, name: "PoleA" }, 1, new Set()),
+        buildNodeState({ id: 3, name: "LeafOfA" }, 1, new Set()),
+      ];
+      State.graphEdges = [
+        buildEdgeState({ from: 1, to: 2, weight: 1 }), // seed <-> A
+        buildEdgeState({ from: 2, to: 3, weight: 1 }), // A <-> leaf (no direct edge to seed)
+      ];
+      State.expandedNodes = new Set([2]); // A already expanded, is a prior pole
+
+      // Expanding node 3 (a leaf of A, not directly connected to seed).
+      mergeGraph({ seed_id: 3, nodes: [{ id: 3, name: "LeafOfA" }], edges: [] });
+
+      const nested = State.graphNodes.find(n => n.id === 3);
+      expect(nested._expandParent).toBe(2); // A, not the seed
+    });
+
+    it("never overwrites an already-recorded parent on a later re-expand", () => {
+      State.graphNodes = [
+        buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+        buildNodeState({ id: 2, name: "Pole" }, 1, new Set()),
+      ];
+      State.graphNodes[1]._expandParent = 999; // pretend it was already recorded
+      State.graphEdges = [buildEdgeState({ from: 1, to: 2, weight: 1 })];
+
+      mergeGraph({ seed_id: 2, nodes: [{ id: 2, name: "Pole" }], edges: [] });
+
+      expect(State.graphNodes.find(n => n.id === 2)._expandParent).toBe(999);
+    });
+  });
 });
 
 describe("computeNodeDominantRoles", () => {

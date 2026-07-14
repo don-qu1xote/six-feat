@@ -34,6 +34,13 @@ export function replaceGraph(graph) {
 export function mergeGraph(graph) {
   const expandedId = graph.seed_id ?? (graph.nodes[0]?.id);
 
+  // [SF-WEB-29 follow-up] Snapshot of poles that existed BEFORE this expand
+  // (does not yet include expandedId) — used below to find expandedId's
+  // true visual parent for nested-pole placement (layout.js reads
+  // graphNode._expandParent). Must be captured before
+  // State.expandedNodes.add(expandedId) further down.
+  const priorPoles = new Set(State.expandedNodes);
+
   const savedPositions = State.network ? State.network.getPositions() : {};
 
   const existingNodeIds  = new Set(State.graphNodes.map(n => n.id));
@@ -70,10 +77,27 @@ export function mergeGraph(graph) {
   State.expandedNodes.add(expandedId);
   State.lastExpandedId = expandedId;
 
-  // Записываем родителя expand-дерева: кликнутая нода = _clickedNodeId
+  // [SF-WEB-29 follow-up] Записываем родителя expand-дерева — использовалось
+  // раньше State._clickedNodeId, но это ВСЕГДА сам expandedId (события
+  // sidebar.js/events.js ставят _clickedNodeId на ноду, которую собираются
+  // раскрыть, т.е. на ту же ноду, что и expandedId здесь) — self-reference,
+  // фактически бесполезное значение, из-за которого layout.js не мог
+  // отличить "полюс висит прямо на seed" от "полюс — это бывший лист
+  // другого полюса" и раскладывал вложенные (2nd-degree) expand'ы плоско,
+  // на орбите вокруг seed, вместо того чтобы прижимать их к настоящему
+  // родителю. Настоящий родитель — сосед expandedId по уже существующему
+  // ребру: либо сам seed (прямой expand), либо ближайший уже раскрытый ДО
+  // этого expand полюс (priorPoles, см. выше — вложенный expand).
   const expandedNode = State.graphNodes.find(n => n.id === expandedId);
   if (expandedNode && expandedNode._expandParent == null) {
-    expandedNode._expandParent = State._clickedNodeId ?? State.currentSeedId ?? null;
+    let parent = null;
+    for (const e of State.graphEdges) {
+      const other = e.from === expandedId ? e.to : (e.to === expandedId ? e.from : null);
+      if (other == null) continue;
+      if (other === State.currentSeedId) { parent = other; break; }
+      if (parent == null && priorPoles.has(other)) parent = other;
+    }
+    expandedNode._expandParent = parent ?? State.currentSeedId ?? null;
   }
 
   finalizeGraphState(State.currentSeedId, nameById, savedPositions, graph, true);

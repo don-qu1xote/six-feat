@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State } from "../state/state.js";
-import { runFlyoutAnimation, nudgePhysics } from "./physics.js";
+import { runFlyoutAnimation, nudgePhysics, mergeNetwork } from "./physics.js";
 import { LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 
 function mockNetwork(ids) {
@@ -140,5 +140,92 @@ describe("nudgePhysics — shorter live-physics settle window on large graphs", 
     vi.advanceTimersByTime(delay);
 
     expect(State.network.setOptions).toHaveBeenCalledWith({ physics: { enabled: false } });
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-29] mergeNetwork's post-flyout phase no longer re-enables live
+// physics for expand — layout.js's targets are already a correct,
+// non-overlapping dandelion+Euler-zone layout, so every node is fixed
+// exactly where the flyout landed it, with no barnesHut settle window in
+// between that could shift it off-target.
+// ════════════════════════════════════════════════════════════════════════════
+describe("mergeNetwork — expand lands nodes exactly on targets, no live physics", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true })); // reduced-motion: synchronous flyout, no RAF loop to flush
+    State._expandAnimId = null;
+    State.physicsTimer = null;
+
+    const seedId = 1, poleId = 2, leafA = 100, leafB = 101;
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleId]);
+    State.graphNodes = [
+      { id: seedId, isSeed: true, _isNew: false },
+      { id: poleId, isSeed: false, _isNew: false },
+      { id: leafA, isSeed: false, _isNew: true },
+      { id: leafB, isSeed: false, _isNew: true },
+    ];
+    State.graphEdges = [
+      { id: `${seedId}_${poleId}`, from: seedId, to: poleId, weight: 1 },
+      { id: `${poleId}_${leafA}`, from: poleId, to: leafA, weight: 1 },
+      { id: `${poleId}_${leafB}`, from: poleId, to: leafB, weight: 1 },
+    ];
+
+    State.nodesDS = {
+      getIds: () => [seedId, poleId],
+      add: vi.fn(),
+      update: vi.fn(),
+    };
+    State.edgesDS = {
+      getIds: () => [],
+      add: vi.fn(),
+      update: vi.fn(),
+    };
+    State.network = {
+      body: { nodes: {} }, // absent per-id entries -> _fastMoveNode falls back to moveNode
+      setOptions: vi.fn(),
+      moveNode: vi.fn(),
+      moveTo: vi.fn(),
+      redraw: vi.fn(),
+    };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("never re-enables live physics (no {physics:{enabled:true,...}} call) after the flyout", () => {
+    mergeNetwork({}, {});
+
+    const enabledTrueCalls = State.network.setOptions.mock.calls
+      .filter(([opts]) => opts?.physics?.enabled === true);
+    expect(enabledTrueCalls).toHaveLength(0);
+  });
+
+  it("explicitly turns physics off once the flyout completes", () => {
+    mergeNetwork({}, {});
+
+    expect(State.network.setOptions).toHaveBeenCalledWith({ physics: { enabled: false } });
+  });
+
+  it("fixes every node in the graph at its landed position, including nodes untouched by this expand", () => {
+    mergeNetwork({}, {});
+
+    const fixCall = State.nodesDS.update.mock.calls
+      .map(([batch]) => batch)
+      .find(batch =>
+        Array.isArray(batch) &&
+        batch.length === 4 &&
+        batch.every(u => u.fixed && u.fixed.x === true && u.fixed.y === true)
+      );
+    expect(fixCall).toBeTruthy();
+    const fixedIds = fixCall.map(u => u.id).sort((a, b) => a - b);
+    expect(fixedIds).toEqual([1, 2, 100, 101]);
+  });
+
+  it("does not schedule any settle/freeze timer for the expand case", () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    mergeNetwork({}, {});
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
   });
 });

@@ -15,16 +15,43 @@ import { runHeroGraphTransition } from "../dom/transition.js";
 import { stopCanvasDecorator } from "../dom/canvas-decorator.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
-import { scheduleFreeze, nudgePhysics, updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
+import { nudgePhysics, updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
 import { nodeVisual, edgeVisual, networkOptions } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
+import { placeExpandedNodes } from "./layout.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // NETWORK LIFECYCLE — init / refresh / destroy
 // ════════════════════════════════════════════════════════════════════════════
 
 export function initNetwork(seedId, nameById) {
-  const nodeItems = State.graphNodes.map(n => nodeVisual(n));
+  // [SF-WEB-29 follow-up] currentSeedId must be set BEFORE placeExpandedNodes
+  // runs below (it reads State.currentSeedId) — normally set later by
+  // setSeed() in graph.js::finalizeGraphState, too late for this call.
+  State.currentSeedId = seedId;
+
+  // Раньше сид и его прямые соседи получали позиции только от свободной
+  // vis.js-физики (barnesHut, см. networkOptions ниже) — её
+  // springLength/gravitationalConstant никогда не подгонялись под
+  // LEAF_R/LEAF_GAP из layout.js, так что при expand'е кольца листьев
+  // получались заметно компактнее, чем самый первый (сидовый) круг связей —
+  // визуально несогласованные размеры. placeExpandedNodes уже умеет
+  // раскладывать «одуванчик» листьев вокруг любого узла в (0,0); при пустом
+  // State.expandedNodes (свежий поиск, ничего ещё не раскрыто) её шаг 5
+  // («seed-only листья») естественно берёт на себя ВСЕХ прямых соседей сида
+  // — тот же путь, каким расходятся листья вокруг expand-полюса.
+  const { targets } = placeExpandedNodes({});
+
+  const nodeItems = State.graphNodes.map(n => {
+    const v = nodeVisual(n);
+    const t = targets.get(n.id);
+    // Точную, не перекрывающуюся геометрическую позицию фиксируем сразу —
+    // тот же принцип, что и post-flyout fixAll в mergeNetwork (physics.js):
+    // если оставить живую физику поверх уже готовой раскладки, barnesHut
+    // растащит её обратно к своему собственному равновесию, сведя на нет
+    // весь смысл прогона через placeExpandedNodes.
+    return t ? { ...v, x: t.x, y: t.y, fixed: { x: true, y: true } } : v;
+  });
   const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
 
   State.nodesDS = new vis.DataSet(nodeItems);
@@ -47,17 +74,12 @@ export function initNetwork(seedId, nameById) {
   attachNetworkEvents(nameById);
   ensureTooltipCollisionGuard();
 
-  State.network.once("stabilizationIterationsDone", () => {
-    if (!State.network) return;
-    State.network.setOptions({ physics: { enabled: false } });
-    // После стабилизации восстанавливаем seed в (0,0) — stabilization могла сдвинуть.
-    if (seedId != null) State.network.moveNode(seedId, 0, 0);
-    State.network.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
-    clearTimeout(State.physicsTimer);
-    State.physicsTimer = null;
-  });
-
-  scheduleFreeze(PHYSICS_SETTLE_MS);
+  // Все ноды выше уже зафиксированы на финальных позициях — стабилизации
+  // ждать не от чего, сразу отключаем физику и подгоняем камеру.
+  State.network.setOptions({ physics: { enabled: false } });
+  State.network.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+  clearTimeout(State.physicsTimer);
+  State.physicsTimer = null;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
