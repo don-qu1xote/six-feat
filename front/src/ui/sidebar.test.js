@@ -34,7 +34,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../vis-adapter/index.js", () => ({
   openGeniusPage: vi.fn(),
   highlightEdgePair: vi.fn(),
+  selectNode: vi.fn(),
   selectEdge: vi.fn(),
+  clearSelectedNode: vi.fn(),
   clearSelectedEdge: vi.fn(),
   toggleNodePin: vi.fn(() => true),
   isNodePinned: vi.fn(() => false),
@@ -53,7 +55,10 @@ import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar } from "./sidebar.js";
 import { closePathPanel } from "./modals.js";
-import { toggleNodePin, isNodePinned } from "../vis-adapter/index.js";
+import {
+  toggleNodePin, isNodePinned, selectNode, selectEdge,
+  clearSelectedNode, clearSelectedEdge,
+} from "../vis-adapter/index.js";
 import { searchArtist } from "../api/api.js";
 
 function freshEl(tag = "div") { return document.createElement(tag); }
@@ -78,6 +83,9 @@ beforeEach(() => {
   els.sidebarRoleChips         = freshEl();
   els.sidebarPathTile          = freshEl();
   els.sidebarPathTrack         = freshEl();
+  // [SF-WEB-33] Edge-only endpoints tile.
+  els.sidebarEndpointsTile  = freshEl();
+  els.sidebarEndpointsTrack = freshEl();
 
   // [SF-WEB-14/SF-WEB-27] Object action bar — Genius lives here now, no
   // separate els.sidebarGenius any more.
@@ -118,6 +126,13 @@ describe("showArtistSidebar (node context)", () => {
     expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer");
     // No current seed → getPathToSeed() is null → tile stays hidden.
     expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  it("[SF-WEB-33] hides the edge-only endpoints tile in node context", () => {
+    State.graphNodes = [mockNode()];
+    els.sidebarEndpointsTile.style.display = "";
+    showArtistSidebar(1);
+    expect(els.sidebarEndpointsTile.style.display).toBe("none");
   });
 
   it("[SF-WEB-27] shows Genius as part of the (single) object action bar, wired to openGeniusPage(nodeId) — no separate Genius button", () => {
@@ -212,12 +227,55 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.companionPanel.classList.contains("show")).toBe(true);
   });
 
-  it("hides the node-only tiles (role breakdown, path-to-seed) — they only make sense for a single artist", () => {
+  it("hides the path-to-seed tile — it only makes sense for a single artist", () => {
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", {});
 
-    expect(els.sidebarRoleBreakdownTile.style.display).toBe("none");
     expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  // [SF-WEB-33] Edge-context parity: both endpoints, edge-scoped role
+  // breakdown — previously this tile was hidden entirely for edges.
+  it("[SF-WEB-33] shows and populates the role-breakdown tile with THIS edge's roles, not a per-node breakdown", () => {
+    State.graphEdges = [mockEdge({ collaborations: [
+      { song: "Jumpman", roles: ["featured"] },
+      { song: "Life Is Good", roles: ["producer", "featured"] },
+    ] })];
+    showEdgeSidebar("1_2", {});
+
+    expect(els.sidebarRoleBreakdownTile.style.display).toBe("");
+    expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer");
+    expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--featured");
+  });
+
+  it("[SF-WEB-33] shows both endpoints as clickable cards, and hides the tile for node context", () => {
+    State.graphNodes = [
+      { id: 1, name: "Drake", imageUrl: "", isSeed: false },
+      { id: 2, name: "Future", imageUrl: "", isSeed: false },
+    ];
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", { 1: "Drake", 2: "Future" });
+
+    expect(els.sidebarEndpointsTile.style.display).toBe("");
+    const cards = els.sidebarEndpointsTrack.querySelectorAll(".path-node-card[data-node-id]");
+    expect(cards).toHaveLength(2);
+    expect(els.sidebarEndpointsTrack.innerHTML).toContain("Drake");
+    expect(els.sidebarEndpointsTrack.innerHTML).toContain("Future");
+  });
+
+  it("[SF-WEB-33] clicking an endpoint card shows that node's context (mutual exclusion with the edge)", () => {
+    State.graphNodes = [
+      { id: 1, name: "Drake", imageUrl: "", isSeed: false, _totalCollabs: 5, _topTracks: [] },
+      { id: 2, name: "Future", imageUrl: "", isSeed: false, _totalCollabs: 3, _topTracks: [] },
+    ];
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", { 1: "Drake", 2: "Future" });
+
+    const card = els.sidebarEndpointsTrack.querySelector('.path-node-card[data-node-id="2"]');
+    card.dispatchEvent(new Event("click", { bubbles: true }));
+
+    expect(els.sidebarName.textContent).toBe("Future");
+    expect(selectNode).toHaveBeenCalledWith(2);
   });
 
   it("[SF-WEB-14/SF-WEB-27] hides the object action bar (incl. Genius, now one of its four buttons) — none of its actions apply to an edge", () => {
@@ -282,5 +340,42 @@ describe("hideArtistSidebar", () => {
     els.objectActionBar.hidden = false;
     hideArtistSidebar();
     expect(els.objectActionBar.hidden).toBe(true);
+  });
+
+  it("[SF-WEB-28] clears both the node and edge selection markers, regardless of which was active", () => {
+    hideArtistSidebar();
+    expect(clearSelectedEdge).toHaveBeenCalled();
+    expect(clearSelectedNode).toHaveBeenCalled();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-28] Node and edge selection are equivalent, symmetric operations:
+// showArtistSidebar/showEdgeSidebar are the single downstream entry point
+// selectObject (vis-adapter/events.js) funnels both through, and each one
+// applies its own persistent marker (selectNode/selectEdge) itself — so
+// every caller (canvas click, node-search, the a11y node list, a
+// path-chain-card click) gets the same marker + mutual exclusion, not just
+// the canvas click path.
+// ════════════════════════════════════════════════════════════════════════════
+describe("[SF-WEB-28] node and edge selection go through equivalent marker calls", () => {
+  it("showArtistSidebar calls selectNode(nodeId) — the single place mutual exclusion with an edge is enforced", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    expect(selectNode).toHaveBeenCalledWith(1);
+  });
+
+  function mockEdge(overrides = {}) {
+    return {
+      id: "1_2", from: 1, to: 2, weight: 3, dominantRole: "featured",
+      collaborations: [{ song: "Jumpman", roles: ["featured"] }],
+      ...overrides,
+    };
+  }
+
+  it("showEdgeSidebar calls selectEdge(edgeId) — the single place mutual exclusion with a node is enforced", () => {
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", {});
+    expect(selectEdge).toHaveBeenCalledWith("1_2");
   });
 });

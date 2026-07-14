@@ -120,6 +120,9 @@ export const els = {
   sidebarRoleChips:         $("sidebar-role-chips"),
   sidebarPathTile:          $("sidebar-path-tile"),
   sidebarPathTrack:         $("sidebar-path-track"),
+  // [SF-WEB-33] Edge-only tile — both endpoints of the selected edge.
+  sidebarEndpointsTile:  $("sidebar-endpoints-tile"),
+  sidebarEndpointsTrack: $("sidebar-endpoints-track"),
   sidebarClose:   $("sidebar-close"),
 
   candidateOverlay: $("candidate-overlay"),

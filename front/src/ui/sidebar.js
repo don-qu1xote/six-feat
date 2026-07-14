@@ -9,8 +9,8 @@ import { State, ROLE_ICON } from "../state/state.js";
 import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import {
-  openGeniusPage, highlightEdgePair, selectEdge, clearSelectedEdge,
-  toggleNodePin, isNodePinned,
+  openGeniusPage, highlightEdgePair, selectNode, selectEdge,
+  clearSelectedEdge, clearSelectedNode, toggleNodePin, isNodePinned,
 } from "../vis-adapter/index.js";
 import { bfsPath } from "../api/analytics-client.js";
 import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
@@ -56,11 +56,16 @@ function computeRoleBreakdown(nodeId) {
  * existing role-chip system (.sidebar-role-chip + role-chip--* colour
  * modifiers). Minimal pill: icon + count only, no role word — the colour
  * + icon already identify the role, the word was redundant clutter.
- * 
+ *
  * FIX #4: Wrapped icon and count in separate spans for proper flex alignment
+ *
+ * [SF-WEB-33] Extracted from what used to be buildRoleBreakdownHTML(nodeId)
+ * so the same chip renderer serves both the per-node breakdown (count of
+ * edges by dominant role) and the per-edge breakdown (count of roles
+ * across that one edge's collaborations) below — same shape ({role: count}),
+ * same visual output, different source data.
  */
-function buildRoleBreakdownHTML(nodeId) {
-  const breakdown = computeRoleBreakdown(nodeId);
+function buildRoleChipsHTML(breakdown) {
   const entries = Object.entries(breakdown);
   if (!entries.length) {
     return `<span style="color:var(--mist);font-size:11px;">—</span>`;
@@ -69,6 +74,61 @@ function buildRoleBreakdownHTML(nodeId) {
     const slug = role.replace(/[^a-z0-9]/g, "");
     const icon = wrapRoleIconSidebar(ROLE_ICON[slug] || ROLE_ICON.primary || "");
     return `<span class="sidebar-role-chip role-chip--${slug}" title="${escapeHtml(role)}"><span class="rbc-icon">${icon}</span><span class="rbc-count">${count}</span></span>`;
+  }).join("");
+}
+
+function buildRoleBreakdownHTML(nodeId) {
+  return buildRoleChipsHTML(computeRoleBreakdown(nodeId));
+}
+
+/**
+ * [SF-WEB-33] Aggregated role breakdown for a single EDGE: count of role
+ * occurrences across its collaborations[] (per-song roles[]), or a single
+ * dominantRole bucket sized by songs.length when only the six-degrees
+ * songs[] shape is available (see showEdgeSidebar's own collabs/songs
+ * fallback) — mirrors computeRoleBreakdown(nodeId) above but scoped to one
+ * edge instead of every edge touching a node.
+ */
+function computeEdgeRoleBreakdown(edge) {
+  const breakdown = {};
+  const collabs = edge.collaborations || [];
+  if (collabs.length) {
+    collabs.forEach(c => {
+      (c.roles || []).forEach(r => {
+        const role = r.toLowerCase();
+        breakdown[role] = (breakdown[role] || 0) + 1;
+      });
+    });
+    return breakdown;
+  }
+  const songs = edge.songs || [];
+  const role = (edge.dominantRole || "featured").toLowerCase();
+  breakdown[role] = songs.length || edge.weight || 0;
+  return breakdown;
+}
+
+function buildEdgeRoleBreakdownHTML(edge) {
+  return buildRoleChipsHTML(computeEdgeRoleBreakdown(edge));
+}
+
+/**
+ * [SF-WEB-33] Both ends of an edge, reusing the exact same .path-node-card
+ * kit buildPathTrackHTML uses for "1 hop from seed" — clicking either end
+ * jumps the companion panel to that node's context (showArtistSidebar,
+ * wired in showEdgeSidebar below), the same interaction every other
+ * node-card in this file already offers. Neither end is "current" here
+ * (unlike buildPathTrackHTML's isCurrent) — both are always clickable.
+ */
+function buildEdgeEndpointsHTML(edge, nameById) {
+  return [edge.from, edge.to].map(id => {
+    const n = State.graphNodes.find(x => x.id === id);
+    const name = n ? n.name : (nameById[id] || "?");
+    const avatar = n ? (n.imageUrl || placeholderFor(name, n.isSeed)) : placeholderFor(name, false);
+    return `
+      <div class="path-node-card" data-node-id="${id}" title="${escapeHtml(name)}" style="cursor:pointer;">
+        <img class="path-node-avatar" src="${escapeHtml(avatar)}" data-fallback="${escapeHtml(placeholderFor(name, false))}" alt="" />
+        <div class="path-node-name truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+      </div>`;
   }).join("");
 }
 
@@ -232,7 +292,13 @@ export function showArtistSidebar(nodeId) {
   // #artist-sidebar/#path-panel were two independently-shown floating
   // cards instead of sections of one companion panel).
   closePathPanel();
-  clearSelectedEdge();
+  // [SF-WEB-28] selectNode() is the single place mutual exclusion with an
+  // edge selection is enforced (it clears State.selectedEdgeId internally,
+  // see vis-adapter/highlight.js) — every caller of showArtistSidebar
+  // (canvas click via selectObject, node-search, the a11y node list, a
+  // path-chain-card click below) gets the same persistent marker + mutual
+  // exclusion this way, not just the canvas click path.
+  selectNode(nodeId);
 
   els.sidebarAvatar.src = node.imageUrl || placeholderFor(node.name, node.isSeed);
   els.sidebarAvatar.dataset.fallback = placeholderFor(node.name, node.isSeed);
@@ -272,6 +338,8 @@ export function showArtistSidebar(nodeId) {
   // just fills/hides the two tiles that already exist.
   els.sidebarRoleBreakdownTile.style.display = "";
   els.sidebarRoleChips.innerHTML = buildRoleBreakdownHTML(nodeId);
+  // [SF-WEB-33] Node context never shows the edge-only endpoints tile.
+  if (els.sidebarEndpointsTile) els.sidebarEndpointsTile.style.display = "none";
 
   const pathInfo = getPathToSeed(nodeId);
   els.sidebarPathTile.style.display = pathInfo ? "" : "none";
@@ -371,11 +439,38 @@ export function showEdgeSidebar(edgeId, nameById) {
     els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">No track data.</div>`;
   }
 
-  // ТЗ-206/207: hide the role-breakdown/path tiles for edge view — they
-  // only make sense for a single artist, not an edge. (Centrality tile
+  // ТЗ-206/207: hide the "1 hop from seed" path tile for edge view — it
+  // only makes sense for a single artist, not an edge. (Centrality tile
   // removed entirely, see above.)
-  els.sidebarRoleBreakdownTile.style.display = "none";
   els.sidebarPathTile.style.display = "none";
+
+  // [SF-WEB-33] Edge context now gets the same informational depth node
+  // context has: both endpoints (clickable → that node's context) and a
+  // role breakdown, scoped to this one edge instead of "hidden entirely"
+  // as before — the companion panel's edge view used to be noticeably
+  // thinner than its node view for the exact same amount of screen space.
+  if (els.sidebarEndpointsTile && els.sidebarEndpointsTrack) {
+    els.sidebarEndpointsTile.style.display = "";
+    els.sidebarEndpointsTrack.innerHTML = buildEdgeEndpointsHTML(edge, nameById);
+    // Wired by index (endpoint 0 = edge.from, 1 = edge.to — the same order
+    // buildEdgeEndpointsHTML emits them in) rather than re-reading
+    // data-node-id back off the DOM, so the id passed to showArtistSidebar
+    // keeps whatever type edge.from/edge.to already are (numeric ids from
+    // the graph API) instead of round-tripping through an HTML attribute
+    // string.
+    const endpointIds = [edge.from, edge.to];
+    els.sidebarEndpointsTrack.querySelectorAll(".path-node-card").forEach((card, i) => {
+      const targetId = endpointIds[i];
+      card.addEventListener("click", () => {
+        if (State.network) {
+          State.network.focus(targetId, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+        }
+        showArtistSidebar(targetId);
+      });
+    });
+  }
+  els.sidebarRoleBreakdownTile.style.display = "";
+  els.sidebarRoleChips.innerHTML = buildEdgeRoleBreakdownHTML(edge);
 
   els.artistSidebar.classList.add("show");
   els.companionPanel?.classList.add("show");
@@ -385,6 +480,11 @@ export function showEdgeSidebar(edgeId, nameById) {
   // IDEA-40: клик по ребру закрепляет выбор (persistent), а не только
   // временную hover-подсветку — иначе уход курсора с ребра откатывал бы
   // подсветку кликнутого ребра (см. selectEdge в vis-adapter/highlight.js).
+  // [SF-WEB-28] selectEdge() also clears any selected node (mirrors
+  // selectNode()'s clearSelectedEdge() call in showArtistSidebar above) —
+  // exactly one of node/edge is ever selected, enforced the same way
+  // regardless of which caller reaches showEdgeSidebar (canvas click via
+  // selectObject, or a path-chain connector pill click below).
   selectEdge(edgeId);
 }
 
@@ -392,7 +492,12 @@ export function hideArtistSidebar() {
   els.artistSidebar.classList.remove("show");
   els.companionPanel?.classList.remove("show");
   if (els.objectActionBar) els.objectActionBar.hidden = true;
+  // [SF-WEB-28] Clear both markers unconditionally, not just the edge one —
+  // hiding the companion panel means nothing is selected any more, whether
+  // it was previously showing node or edge context, and every caller here
+  // (not just clearFocus) should get that same outcome.
   clearSelectedEdge();
+  clearSelectedNode();
 }
 
 // ТЗ-205: hop-chain edge ids may come from the path API response (which can

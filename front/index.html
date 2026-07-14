@@ -1695,6 +1695,7 @@
       display: grid;
       grid-template-columns: 1fr;
       grid-template-areas:
+        "endpoints"
         "tracks"
         "rolebreakdown"
         "path"
@@ -1702,6 +1703,12 @@
       gap: var(--space-3);
       overflow-y: auto;
     }
+    /* [SF-WEB-33] Edge-only — both endpoints of the selected edge, hidden
+       for node context (see ui/sidebar.js). Reuses the exact same
+       path-chain-container/path-node-card kit #sidebar-path-tile already
+       uses, so it reads as the same "connection" visual language instead
+       of a bespoke one. */
+    #sidebar-endpoints-tile           { grid-area: endpoints;    }
     #sidebar-tracks-tile              { grid-area: tracks;       }
     #sidebar-rolebreakdown-tile       { grid-area: rolebreakdown;}
     #sidebar-path-tile                { grid-area: path;         }
@@ -2421,6 +2428,20 @@
             <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">×</button>
           </div>
           <div class="sidebar-body">
+            <!-- [SF-WEB-33] Edge-only — both ends of the selected edge,
+                 clickable → showArtistSidebar for that node (mutual
+                 exclusion with the edge selection enforced the same way
+                 as every other node-selecting entry point, see
+                 ui/sidebar.js::showArtistSidebar). Hidden for node
+                 context. -->
+            <div class="ui-tile" id="sidebar-endpoints-tile" style="display:none">
+              <div class="sidebar-section-label">Connection</div>
+              <div class="path-chain-container">
+                <div class="path-chain-fade path-chain-fade--left"></div>
+                <div class="path-chain-track" id="sidebar-endpoints-track"></div>
+                <div class="path-chain-fade path-chain-fade--right"></div>
+              </div>
+            </div>
             <div class="ui-tile" id="sidebar-tracks-tile">
               <div class="sidebar-section-label">Tracks</div>
               <div id="sidebar-tracks"></div>
