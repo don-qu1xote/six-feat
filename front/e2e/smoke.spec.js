@@ -55,14 +55,20 @@ test("search artist → graph → node click → sidebar, then path search → h
   await expect(page.locator("#sidebar-name")).not.toHaveText("—");
 
   // ── Path search between two artists shows a hop-chain ───────────────────
-  await page.locator("#btn-search-open").click();
-  await page.locator("#hero-mode-tab-connect").click();
+  // [SF-WEB-30] Docked search (#btn-search-open) now shows the Explore box
+  // only — the Explore/Connect switch and #hero-mode-tab-connect are hidden
+  // entirely once a graph exists (see .search-modal.docked CSS in
+  // index.html), since #btn-find-path/#path-panel is the canonical
+  // on-graph path-finder entry point now. #hero-path-from-input/
+  // #hero-mode-tab-connect only remain reachable pre-graph, from the
+  // full-screen landing modal.
+  await page.locator("#btn-find-path").click();
 
-  await page.locator("#hero-path-from-input").fill(SEED_ARTIST);
-  await page.locator("#hero-path-to-input").fill(TARGET_ARTIST);
-  await page.locator("#btn-hero-run-path").click();
+  await page.locator("#path-from-input").fill(SEED_ARTIST);
+  await page.locator("#path-to-input").fill(TARGET_ARTIST);
+  await page.locator("#btn-run-path").click();
 
-  const hopRows = page.locator("#hero-hop-chain .hop-row");
+  const hopRows = page.locator("#hop-chain .hop-row");
   await expect(hopRows).toHaveCount(2);
   await expect(hopRows.first()).toContainText(SEED_ARTIST);
   await expect(hopRows.last()).toContainText(TARGET_ARTIST);
