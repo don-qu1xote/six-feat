@@ -148,11 +148,42 @@ function _getEdgeIdsForNode(nodeId) {
 // Фикс — два отдельных rAF-id, чтобы node-hover и edge-hover дебаунсились
 // независимо и не отменяли кадры друг друга.
 let _hoverNodeRafId = null;
+// [SF-WEB-34] Separate from _hoverNodeRafId on purpose: some
+// requestAnimationFrame test stubs (and, in principle, any environment
+// that could ever invoke the callback synchronously) run the callback
+// BEFORE `requestAnimationFrame(...)` returns — so the callback's own
+// `_hoverNodeRafId = null` would otherwise get clobbered by the *outer*
+// `_hoverNodeRafId = requestAnimationFrame(...)` assignment completing
+// right after. This flag is set true BEFORE the call (so it's correct
+// regardless of sync/async timing) and only the callback ever clears it.
+let _hoverNodeFrameScheduled = false;
 let _hoverEdgeRafId = null;
 
 // Отслеживаем id последней подсвеченной ховером ноды, чтобы «default»
 // мог откатить именно её, не трогая остальной граф (см. _applyHoverNode).
 let _hoveredNodeId = null;
+
+// [SF-WEB-34] "Истина" по состоянию node-hover на момент последнего
+// hoverNode/blurNode события — обновляется СИНХРОННО при каждом вызове
+// _applyHoverNode/clearHoverHighlight, но САМА закраска канвы (nodesDS/
+// edgesDS.update) откладывается до общего rAF-тика (см.
+// _scheduleHoverNodeFrame/_flushHoverNode). В плотном кластере курсор
+// может за один кадр пересечь несколько нод — vis.js гарантирует порядок
+// blur(A)→hover(B) только ВНУТРИ одного mousemove, так что несколько пар
+// blur/hover приходят одна за другой синхронно, каждая ДО того как rAF
+// первой из них успевает выполниться. Раньше (см. историю этого файла)
+// hover-apply откладывался через rAF, а blur-revert применялся СРАЗУ,
+// синхронно — из-за этой асимметрии blur(A) реально перекрашивал канву
+// немедленно, hover(B) откладывался, blur(B) снова перекрашивал (откатывая
+// несостоявшийся hover(B)) немедленно, и только после всего этого
+// откладывался hover(C) — то есть на N промежуточных пар в одном кадре
+// приходилось до N синхронных перерасчётов вместо одного. Теперь ОБА пути
+// (apply и revert) лишь двигают _pendingHoverNodeId и планируют один и тот
+// же rAF-слот; реальная закраска происходит один раз за кадр и отражает
+// только последнее значение _pendingHoverNodeId на момент, когда rAF
+// сработал — независимо от того, сколько промежуточных пар blur/hover
+// пришло синхронно до этого.
+let _pendingHoverNodeId = null;
 
 // Экспортируется, чтобы destroyNetwork()/clearGraphForPathSearch() могли
 // сбросить оба id при полной пересборке графа — иначе устаревший
@@ -160,9 +191,11 @@ let _hoveredNodeId = null;
 // безобидный, но лишний update() по несуществующему id на новом графе.
 export function resetHoverState() {
   _hoveredNodeId = null;
+  _pendingHoverNodeId = null;
   _hoveredEdgeIds.clear();
   _pendingHoverEdgeIds.clear();
   if (_hoverNodeRafId) { cancelAnimationFrame(_hoverNodeRafId); _hoverNodeRafId = null; }
+  _hoverNodeFrameScheduled = false;
   if (_hoverEdgeRafId) { cancelAnimationFrame(_hoverEdgeRafId); _hoverEdgeRafId = null; }
   // SF-WEB-15: a full network teardown (destroyNetwork/clearGraphForPathSearch)
   // also invalidates whatever edges the persistent node-selection marker had
@@ -173,82 +206,134 @@ export function resetHoverState() {
 // Used by events.js dragStart: cancels any not-yet-applied hover rAF without
 // rolling back already-applied hover colors (unlike clearHoverHighlight,
 // which also reverts applied state) — dragStart only needs to stop a hover
-// update from landing mid-drag, not repaint the graph.
+// update from landing mid-drag, not repaint the graph. Re-syncs
+// _pendingHoverNodeId to whatever is ACTUALLY painted right now
+// (_hoveredNodeId), so a later stale blur for the cancelled target is
+// naturally a no-op instead of scheduling a frame that then does nothing.
 export function cancelPendingHover() {
   if (_hoverNodeRafId) { cancelAnimationFrame(_hoverNodeRafId); _hoverNodeRafId = null; }
+  _hoverNodeFrameScheduled = false;
   if (_hoverEdgeRafId) { cancelAnimationFrame(_hoverEdgeRafId); _hoverEdgeRafId = null; }
+  _pendingHoverNodeId = _hoveredNodeId;
+}
+
+// Pure builder — same "hovered" look _applyHoverNode always painted,
+// extracted so the coalesced flush (_flushHoverNode) can build it without
+// writing to nodesDS itself (batched together with a revert, see below).
+function _hoverNodeUpdateFor(graphNode) {
+  const accentColor = graphNode._accent || COLOR.pulse;
+  const isSeedNode  = graphNode.isSeed;
+  return {
+    id: graphNode.id,
+    ..._imageFieldsFor(graphNode),
+    color: { border: accentColor, background: COLOR.panel },
+    borderWidth: 3,
+    shadow: {
+      enabled: true,
+      color: isSeedNode ? "rgba(94,230,197,0.65)" : `${accentColor}90`,
+      size:  isSeedNode ? 26 : 20,
+      x: 0, y: 0
+    }
+  };
+}
+
+// [SF-WEB-34] Only ever moves _pendingHoverNodeId + (re)schedules the one
+// shared rAF slot — never touches nodesDS/edgesDS synchronously. Reusing
+// the SF-WEB-07 debounce shape: if a frame is already scheduled, this call
+// just updates what it'll paint when it fires (last write wins), instead
+// of cancelling and rescheduling a fresh one every time.
+function _scheduleHoverNodeFrame() {
+  if (_hoverNodeFrameScheduled) return;
+  _hoverNodeFrameScheduled = true;
+  _hoverNodeRafId = requestAnimationFrame(() => {
+    _hoverNodeFrameScheduled = false;
+    _hoverNodeRafId = null;
+    _flushHoverNode();
+  });
 }
 
 function _applyHoverNode(nodeId) {
   if (!State.nodesDS) return;
+  _pendingHoverNodeId = nodeId;
+  _scheduleHoverNodeFrame();
+}
 
-  if (_hoverNodeRafId) cancelAnimationFrame(_hoverNodeRafId);
-  _hoverNodeRafId = requestAnimationFrame(() => {
-    _hoverNodeRafId = null;
-    if (!State.nodesDS) return;
+// [SF-WEB-34] The single place that actually reconciles the canvas with
+// _pendingHoverNodeId — runs at most once per rAF tick, regardless of how
+// many hoverNode/blurNode calls landed synchronously beforehand (they only
+// ever touched _pendingHoverNodeId). Reverts whatever was previously
+// painted (_hoveredNodeId) and applies the new target (if any and if it
+// isn't the persistently selected node) in ONE batched nodesDS.update()
+// call — so "N recomputes for N events" becomes "at most 1 recompute per
+// rAF tick", satisfying the ticket's counter requirement directly, not
+// just incidentally.
+function _flushHoverNode() {
+  if (!State.nodesDS) return;
+  const oldId = _hoveredNodeId;
+  const newId = _pendingHoverNodeId;
+  if (oldId === newId) return; // canvas already matches the latest truth
 
-    // SF-WEB-15: the persistently selected node (selectNode below) owns its
-    // own marker — mirrors the State.selectedEdgeId guard in
-    // _hoverEdgeUpdate. Without this, hovering the selected node would
-    // repaint it with hover styling, and the later blur would revert it to
-    // the plain default look instead of back to the selection marker.
-    if (nodeId === State.selectedNodeId) return;
+  const nodeUpdates = [];
+  const edgeUpdates = [];
 
+  if (oldId != null) {
+    const revertUpd = _defaultNodeUpdate(oldId);
+    if (revertUpd) nodeUpdates.push(revertUpd);
+    for (const edgeId of _hoveredEdgeIds) {
+      if (edgeId === State.selectedEdgeId) continue;
+      const eu = _defaultEdgeUpdate(edgeId);
+      if (eu) edgeUpdates.push(eu);
+    }
+    _hoveredEdgeIds.clear();
+  }
+
+  // SF-WEB-15: the persistently selected node owns its own marker — same
+  // guard _applyHoverNode always applied, just checked here instead
+  // (mirrors the State.selectedEdgeId guard in _hoverEdgeUpdate).
+  let paintedId = null;
+  if (newId != null && newId !== State.selectedNodeId) {
     // _accent берём из State.graphNodes, а НЕ из nodesDS.get() —
     // vis.js DataSet не сохраняет кастомные поля (_accent, _dimBorder)
     // после обновлений нод через nodesDS.update(), они молча теряются.
-    // graphNodes — единственный надёжный источник истины для этих полей.
-    const graphNode = _getNode(nodeId);
-    if (!graphNode) return;
-    const accentColor = graphNode._accent || COLOR.pulse;
-    const isSeedNode  = graphNode.isSeed;
+    const graphNode = _getNode(newId);
+    if (graphNode) {
+      nodeUpdates.push(_hoverNodeUpdateFor(graphNode));
+      paintedId = newId;
+      edgeUpdates.push(..._hoverNodeEdgeUpdates(newId));
+    }
+  }
 
-    _hoveredNodeId = nodeId;
-    try {
-      State.nodesDS.update({
-        id: nodeId,
-        ..._imageFieldsFor(graphNode),
-        color: { border: accentColor, background: COLOR.panel },
-        borderWidth: 3,
-        shadow: {
-          enabled: true,
-          color: isSeedNode ? "rgba(94,230,197,0.65)" : `${accentColor}90`,
-          size:  isSeedNode ? 26 : 20,
-          x: 0, y: 0
-        }
-      });
-    } catch (err) {
+  if (nodeUpdates.length) {
+    try { State.nodesDS.update(nodeUpdates); }
+    catch (err) {
       // Ховер — самое частое и самое "хрупкое по времени" взаимодействие с
       // графом (может пересечься с перерасчётом физики, пересборкой
       // DataSet и т.д.). Что бы ни пошло не так внутри vis.js — это не
       // повод ронять/подвешивать весь граф, просто отменяем hover.
-      console.warn("hover node update failed", err);
-      _hoveredNodeId = null;
+      console.warn("hover node flush failed", err);
+      paintedId = null;
     }
+  }
+  if (edgeUpdates.length && State.edgesDS) {
+    try { State.edgesDS.update(edgeUpdates); }
+    catch (err) { console.warn("hover node edges flush failed", err); }
+  }
 
-    _applyHoverNodeEdges(nodeId);
-  });
+  _hoveredNodeId = paintedId;
 }
 
+// _defaultNodeUpdate (pure "resting" look builder) is defined further down
+// in this file (shared with _revertSelectedNode) — reused here (function
+// declarations are hoisted) by both _clearHoveredNode below (still used by
+// _applyDefault, unchanged single-object nodesDS.update call) and
+// _flushHoverNode above (batched array call), instead of duplicating the
+// same border/shadow formula a third time.
 function _clearHoveredNode() {
   if (_hoveredNodeId == null || !State.nodesDS) return;
-  const graphNode = _getNode(_hoveredNodeId);
-  if (graphNode) {
-    const isExpanded = State.expandedNodes.has(graphNode.id);
-    const defaultBorderWidth = graphNode.isSeed ? 5 : (isExpanded ? 4 : 2);
-    const defaultShadow = graphNode.isSeed ? seedShadow() : { enabled: false };
-    const dimBorder = graphNode._dimBorder || "rgba(143,166,201,0.25)";
-    try {
-      State.nodesDS.update({
-        id: _hoveredNodeId,
-        ..._imageFieldsFor(graphNode),
-        color: { border: dimBorder, background: COLOR.panel },
-        borderWidth: defaultBorderWidth,
-        shadow: defaultShadow
-      });
-    } catch (err) {
-      console.warn("hover node clear failed", err);
-    }
+  const upd = _defaultNodeUpdate(_hoveredNodeId);
+  if (upd) {
+    try { State.nodesDS.update(upd); }
+    catch (err) { console.warn("hover node clear failed", err); }
   }
   _hoveredNodeId = null;
 }
@@ -328,8 +413,12 @@ function _hoverEdgeUpdate(edgeId) {
 // ноду без единой подсвеченной связи. Накапливаем id в тот же
 // _hoveredEdgeIds, что и _applyHoverEdge, — откат идёт общим
 // _clearHoveredEdge.
-function _applyHoverNodeEdges(nodeId) {
-  if (!State.edgesDS) return;
+//
+// [SF-WEB-34] Pure builder now (returns the update array instead of
+// writing it) — _flushHoverNode batches this together with any old-edge
+// reverts into ONE edgesDS.update() call per rAF tick, instead of this
+// function doing its own separate write.
+function _hoverNodeEdgeUpdates(nodeId) {
   const upd = [];
   for (const edgeId of _getEdgeIdsForNode(nodeId)) {
     const u = _hoverEdgeUpdate(edgeId);
@@ -337,10 +426,7 @@ function _applyHoverNodeEdges(nodeId) {
     _hoveredEdgeIds.add(edgeId);
     upd.push(u);
   }
-  if (upd.length) {
-    try { State.edgesDS.update(upd); }
-    catch (err) { console.warn("hover node edges update failed", err); }
-  }
+  return upd;
 }
 
 function _applyHoverEdge(edgeId) {
@@ -430,7 +516,16 @@ function _selectedEdgeUpdate(edgeId) {
 // Выставляет State.selectedEdgeId и красит ребро в устойчивый (не зависящий
 // от hover/blur) стиль. Одновременно выбранным может быть только одно
 // ребро — если уже было выбрано другое, оно сначала возвращается к дефолту.
+//
+// [SF-WEB-28] Selection is exactly one object (node XOR edge) at a time —
+// selecting an edge always reverts whatever node was selected first, same
+// as selectNode below does the mirror check for edges. Centralized here
+// (not left to callers like ui/sidebar.js to remember) so the two marker
+// functions are the single, symmetric source of truth for mutual exclusion,
+// regardless of which caller reaches them.
 export function selectEdge(edgeId) {
+  clearSelectedNode();
+
   if (State.selectedEdgeId != null && State.selectedEdgeId !== edgeId) {
     const prevUpd = _defaultEdgeUpdate(State.selectedEdgeId);
     State.selectedEdgeId = null;
@@ -469,9 +564,17 @@ export function clearSelectedEdge() {
 // PREVIOUSLY clicked node's border/shadow first, so clicking A then B left
 // both A and B looking "selected". selectNode/clearSelectedNode are a
 // separate, single-slot marker (State.selectedNodeId, distinct from
-// State.focusedNodeId) that always reverts the previous pick before
-// painting the new one — not to be confused with highlightNeighborhood's
-// hover-style dimming of the rest of the graph, which is unaffected.
+// State.focusedNodeId, which only gates ambient-hover suppression — see
+// events.js) that always reverts the previous pick before painting the new
+// one — not to be confused with highlightNeighborhood's hover-style dimming
+// of the rest of the graph, which is unaffected.
+//
+// [SF-WEB-28] State.selectedNodeId and State.selectedEdgeId together are
+// the single source of truth for "what is currently selected" — exactly one
+// of the two is ever non-null. selectNode()/selectEdge() each clear the
+// other unconditionally before applying their own marker (see the top of
+// each function), so the invariant holds no matter which was set first or
+// how many times selection bounces between a node and an edge.
 //
 // Правка: маркер выбора должен вести себя как hover-подсветка соседства
 // (_applyHoverNode/_applyHoverNodeEdges) — подсвечивать ВСЕ инцидентные
@@ -589,7 +692,13 @@ function _revertSelectedNode() {
 // Marks nodeId (+ its incident edges) as the persistently selected node,
 // reverting whichever node was selected before (if any) — node and edges
 // both — first. At most one node's selection is ever visible at a time.
+//
+// [SF-WEB-28] Mirrors selectEdge's clearSelectedNode() call above — exactly
+// one of {selected node, selected edge} exists at a time, enforced
+// symmetrically in both directions from this same pair of functions.
 export function selectNode(nodeId) {
+  clearSelectedEdge();
+
   if (State.selectedNodeId != null && State.selectedNodeId !== nodeId) {
     _revertSelectedNode();
   }
@@ -641,24 +750,50 @@ export function clearSelectedNode() {
 // подсветку оставляем как есть — её отменит её собственный будущий blur).
 // blurEdge по-прежнему не передаёт id (второй параметр остаётся undefined)
 // — поведение для рёбер не меняется.
+//
+// [SF-WEB-34] blurNode(id) no longer touches nodesDS/edgesDS
+// synchronously at all — it only updates _pendingHoverNodeId (a stale
+// blur, one that doesn't match the current pending target, is now a
+// plain no-op — nothing scheduled, nothing touched) and, for a real
+// match, lets the SAME shared rAF slot _applyHoverNode schedules also
+// apply this clear. _flushHoverNode reverts the node AND its edges
+// together in that one tick (see its own comment) — reverting the edges
+// here synchronously while deferring the node (the old shape) would just
+// desync them again, in the opposite direction. blurEdge (no id) is
+// unrelated to node-blur staleness and keeps its previous, unconditional
+// shape — it's a separate, already independently rAF-debounced mechanism
+// (SF-WEB-07) that isn't the source of this bug.
 export function clearHoverHighlight(blurredNodeId) {
-  if (_hoverNodeRafId) { cancelAnimationFrame(_hoverNodeRafId); _hoverNodeRafId = null; }
   if (_hoverEdgeRafId) { cancelAnimationFrame(_hoverEdgeRafId); _hoverEdgeRafId = null; }
   _pendingHoverEdgeIds.clear();
 
-  if (blurredNodeId !== undefined && blurredNodeId !== _hoveredNodeId) return;
+  if (blurredNodeId !== undefined) {
+    if (blurredNodeId !== _pendingHoverNodeId) return; // stale — ignore entirely
+    if (_pendingHoverNodeId == null) return; // nothing pending to clear
+    _pendingHoverNodeId = null;
+    _scheduleHoverNodeFrame();
+    return;
+  }
 
-  if (_hoveredNodeId != null) _clearHoveredNode();
+  // blurEdge (no id): unconditional, same as before — reverts whatever
+  // edges ARE currently hover-painted, and any pending node hover too
+  // (hoverConnectedEdges usually lights both up together).
   if (_hoveredEdgeIds.size > 0) _clearHoveredEdge();
-  // Если ни то, ни другое не сработало — подсветки фактически не было
-  // (или она не успела долететь до канвы), граф уже выглядит как
-  // дефолтный, трогать нечего.
+  if (_pendingHoverNodeId != null) {
+    _pendingHoverNodeId = null;
+    _scheduleHoverNodeFrame();
+  }
 }
 
 function _applyDefault() {
   if (!State.nodesDS || !State.edgesDS) return;
   if (_hoverNodeRafId) { cancelAnimationFrame(_hoverNodeRafId); _hoverNodeRafId = null; }
+  _hoverNodeFrameScheduled = false;
   if (_hoverEdgeRafId) { cancelAnimationFrame(_hoverEdgeRafId); _hoverEdgeRafId = null; }
+  // [SF-WEB-34] A full reset means "nothing pending" too, not just
+  // "nothing painted" — otherwise a stale blur matching the old pending
+  // target could still schedule a pointless frame after this runs.
+  _pendingHoverNodeId = null;
   _pendingHoverEdgeIds.clear();
 
   // Ховер теперь трогает только наведённую ноду + её рёбра (см.
