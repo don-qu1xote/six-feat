@@ -10,7 +10,7 @@ import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar, showToast } from
 import { searchArtist } from "../api/api.js";
 import {
   highlightNeighborhood, highlightEdgePair, restoreDefaultColors, clearHoverHighlight,
-  cancelPendingHover, selectNode, clearSelectedNode
+  cancelPendingHover, clearSelectedNode, clearSelectedEdge
 } from "./highlight.js";
 import { nudgePhysics } from "./physics.js";
 
@@ -18,14 +18,31 @@ import { nudgePhysics } from "./physics.js";
 // (см. hoverEdge ниже) — держится в синхроне с тем же порогом в render.js.
 const FAST_RENDER_EDGE_THRESHOLD = 150;
 
+// [SF-WEB-28] Whether anything is currently pinned/selected — a node
+// (State.focusedNodeId, set by setFocus) OR an edge (State.selectedEdgeId,
+// set by selectEdge). Ambient hover elsewhere on the canvas is suppressed
+// in either case, so a node selection and an edge selection behave
+// identically w.r.t. hover: previously only focusedNodeId gated the four
+// hoverNode/hoverEdge/blurNode/blurEdge guards below, so hovering other
+// nodes/edges kept disturbing the view while an edge (but not a node) was
+// selected.
+function isSelectionActive() {
+  return State.focusedNodeId != null || State.selectedEdgeId != null;
+}
+
 export function attachNetworkEvents(nameById) {
   const net = State.network;
 
   net.on("click", function(params) {
     const ctrlKey = params.event && (params.event.ctrlKey || params.event.metaKey);
 
+    // [SF-WEB-28] Edge click is otherwise identical to a node click (both
+    // go through selectObject below) — the only asymmetry that remains is
+    // debounce, and that's deliberate: it exists solely to disambiguate a
+    // node click from the first half of a double-click (expand), a
+    // distinction that doesn't exist for edges (no edge double-click).
     if (params.edges?.length > 0 && !params.nodes?.length) {
-      showEdgeSidebar(params.edges[0], nameById);
+      selectObject("edge", params.edges[0], nameById);
       return;
     }
 
@@ -53,11 +70,7 @@ export function attachNetworkEvents(nameById) {
     State._clickTimer = setTimeout(() => {
       State._clickTimer    = null;
       State._lastClickNode = null;
-      // SF-WEB-15: exactly one node carries the persistent "selected" marker
-      // at a time — selectNode() reverts whichever node was selected before.
-      selectNode(nodeId);
-      setFocus(nodeId);
-      showArtistSidebar(nodeId);
+      selectObject("node", nodeId);
     }, 260);
   });
 
@@ -76,7 +89,7 @@ export function attachNetworkEvents(nameById) {
 
   net.on("hoverNode", function(params) {
     els.network.style.cursor = "pointer";
-    if (!State.focusedNodeId && !State._isDragging) highlightNeighborhood(params.node);
+    if (!isSelectionActive() && !State._isDragging) highlightNeighborhood(params.node);
   });
   net.on("hoverEdge", function(params) {
     els.network.style.cursor = "pointer";
@@ -88,7 +101,7 @@ export function attachNetworkEvents(nameById) {
     // ноды (see hoverNode выше) остаётся — отключается только подсветка
     // рёбер, визуально на маленьких/средних графах ничего не меняется.
     if (State.graphEdges.length > FAST_RENDER_EDGE_THRESHOLD) return;
-    if (!State.focusedNodeId && !State._isDragging) highlightEdgePair(params.edge);
+    if (!isSelectionActive() && !State._isDragging) highlightEdgePair(params.edge);
   });
   net.on("blurNode",  function(params) {
     els.network.style.cursor = "default";
@@ -109,11 +122,11 @@ export function attachNetworkEvents(nameById) {
     // "не там, где курсор"). Фикс: передаём params.node дальше и откатываем
     // только если он всё ещё совпадает с _hoveredNodeId — иначе это
     // устаревший blur для уже вытесненной ноды, трогать нечего.
-    if (!State.focusedNodeId && !State._isDragging) clearHoverHighlight(params.node);
+    if (!isSelectionActive() && !State._isDragging) clearHoverHighlight(params.node);
   });
   net.on("blurEdge",  function() {
     els.network.style.cursor = "default";
-    if (!State.focusedNodeId && !State._isDragging) clearHoverHighlight();
+    if (!isSelectionActive() && !State._isDragging) clearHoverHighlight();
   });
 
   // Баг "при быстрой тряске граф всё ещё подвисает": hoverConnectedEdges
@@ -143,6 +156,28 @@ export function attachNetworkEvents(nameById) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// SELECTION — selectObject(kind, id): the one entry point for "select this
+// node" / "select this edge" (SF-WEB-28). Both go through the same shape:
+// apply the persistent marker (selectNode/selectEdge, in highlight.js —
+// which also enforce "exactly one of node/edge selected" by clearing the
+// other), then show the matching companion-panel context (SF-WEB-12).
+// showArtistSidebar() itself calls selectNode(); showEdgeSidebar() itself
+// calls selectEdge() — so node-search (ui/modals.js::_nsSelect) and the
+// a11y node list (ui/graph-a11y-list.js), which call showArtistSidebar
+// directly without going through the canvas click handler at all, get the
+// exact same persistent marker + mutual exclusion for free.
+// ════════════════════════════════════════════════════════════════════════════
+
+export function selectObject(kind, id, nameById) {
+  if (kind === "node") {
+    setFocus(id);
+    showArtistSidebar(id);
+  } else if (kind === "edge") {
+    showEdgeSidebar(id, nameById || {});
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // FOCUS — set/clear the "pinned" highlighted node (distinct from hover)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -151,9 +186,17 @@ export function setFocus(nodeId) {
   highlightNeighborhood(nodeId);
 }
 
+// Clears whichever of {selected node, selected edge} is currently active —
+// same outcome regardless of which one it was (SF-WEB-28 requirement 4:
+// background click / Escape / clearFocus drop any selection identically).
+// clearSelectedNode()/clearSelectedEdge() are each no-ops when their own
+// field is already null, so calling both unconditionally is safe and
+// doesn't depend on hideArtistSidebar's internals happening to also clear
+// the edge marker.
 export function clearFocus() {
   State.focusedNodeId = null;
   hideArtistSidebar();
   restoreDefaultColors();
   clearSelectedNode();
+  clearSelectedEdge();
 }
