@@ -270,9 +270,87 @@ export function exportGraphJson() {
 // never resets, so that canvas can never be handed to toBlob() again
 // (SecurityError, in every browser, permanently, once any avatar has
 // rendered). The only way to get pixels out is a second, disposable
-// vis.Network — same nodes/edges/positions, but every avatar swapped for
-// the local placeholder icon (a same-origin data: URI) — since a canvas
-// that never draws a cross-origin image never taints in the first place.
+// vis.Network — same nodes/edges/positions, but every avatar routed
+// through this origin instead of Genius's CDN directly.
+//
+// [SF-WEB-32] Real photos now go through /api/v1/image?url=... (SF-API-12
+// — a same-origin proxy that re-serves the allowlisted Genius CDN bytes
+// from THIS origin) instead of always falling back to the local
+// placeholder — that was the only way to avoid tainting before this proxy
+// existed. A same-origin image never taints the canvas, so the shadow
+// network can now draw real photos and still export cleanly. Nodes with
+// no real Genius photo (graphNode.imageUrl empty — already normalized to
+// "" for Genius's own default-avatar placeholder, see graph.js) still get
+// the local placeholderFor icon, same as before. brokenImage is always
+// the local placeholder either way — if the proxy itself 400s/502s,
+// vis.js falls back to it exactly like any other broken image load.
+const EXPORT_MIN_SETTLE_MS   = 150; // unchanged baseline for placeholder-only exports
+// [SF-WEB-32 follow-up] 3000ms wasn't enough for a dense graph: every photo
+// is now an extra same-origin round trip (browser -> /api/v1/image -> Genius
+// CDN) instead of a direct CDN fetch, and browsers cap concurrent
+// connections per origin at ~6 — so a 50-60 node graph queues most of its
+// photos behind that cap. Observed in practice: a chunk of nodes still
+// mid-flight got cut off at 3s and fell back to their placeholder icon.
+// 3000 -> 10000 gives queued requests enough headroom to actually finish
+// instead of racing the clock; a slow export is still strictly better than
+// a wrong one, and every proxied response is cached long-term (see
+// image_proxy_handler.cpp's Cache-Control), so repeat exports of the same
+// graph are fast regardless of this value.
+const EXPORT_IMAGE_TIMEOUT_MS = 10000; // upper bound on waiting for proxied photos
+
+// Pure data-shaping step (no vis.Network/DOM involved) — kept separate so
+// it's directly testable. Returns the same per-node shape exportGraphPng
+// always built, plus the list of proxy URLs it used (so the caller knows
+// what to wait on before redraw/toBlob).
+export function buildShadowNodes(nodeItems, graphNodes, positions) {
+  const proxyUrls = [];
+  const shadowNodes = nodeItems.map(n => {
+    const graphNode   = graphNodes.find(g => g.id === n.id);
+    const placeholder = placeholderFor(graphNode?.name, graphNode?.isSeed);
+    const image = graphNode?.imageUrl
+      ? `/api/v1/image?url=${encodeURIComponent(graphNode.imageUrl)}`
+      : placeholder;
+    if (graphNode?.imageUrl) proxyUrls.push(image);
+    const pos = positions[n.id];
+    return {
+      ...n,
+      shape: "circularImage",
+      image,
+      brokenImage: placeholder,
+      x: pos ? pos.x : n.x,
+      y: pos ? pos.y : n.y,
+      fixed: { x: true, y: true }
+    };
+  });
+  return { shadowNodes, proxyUrls };
+}
+
+// [SF-WEB-32] Resolves once every proxied photo has either loaded or
+// failed (never rejects — one broken photo shouldn't block the whole
+// export) or after timeoutMs, whichever comes first — plus the same fixed
+// settle delay the old placeholder-only export always waited out (vis.js
+// still loads even local data: URIs through an async Image.onload before
+// its first real redraw). Preloading through our OWN Image objects (same
+// URL vis.js's internal circularImage loader will request) means the
+// browser's HTTP cache already has the bytes by the time vis.js asks for
+// them — waiting on vis.js's own internal loader isn't possible, it's a
+// private implementation detail, so this is the practical way to know
+// "the pixels are actually available" before grabbing a frame.
+export function waitForImages(urls, timeoutMs = EXPORT_IMAGE_TIMEOUT_MS) {
+  const minDelay = new Promise(resolve => setTimeout(resolve, EXPORT_MIN_SETTLE_MS));
+  if (!urls.length) return minDelay;
+
+  const loaders = urls.map(url => new Promise(resolve => {
+    const img = new Image();
+    img.onload  = resolve;
+    img.onerror = resolve;
+    img.src = url;
+  }));
+  const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
+
+  return Promise.all([minDelay, Promise.race([Promise.all(loaders), timeout])]);
+}
+
 export function exportGraphPng() {
   if (!State.network || !State.nodesDS || !State.edgesDS || !els.network?.querySelector("canvas")) {
     showToast("Nothing to export yet — build a graph first.", 2400);
@@ -284,20 +362,7 @@ export function exportGraphPng() {
   const viewPosition = State.network.getViewPosition();
   const scale       = State.network.getScale();
 
-  const shadowNodes = State.nodesDS.get().map(n => {
-    const graphNode = State.graphNodes.find(g => g.id === n.id);
-    const img = placeholderFor(graphNode?.name, graphNode?.isSeed);
-    const pos = positions[n.id];
-    return {
-      ...n,
-      shape: "circularImage",
-      image: img,
-      brokenImage: img,
-      x: pos ? pos.x : n.x,
-      y: pos ? pos.y : n.y,
-      fixed: { x: true, y: true }
-    };
-  });
+  const { shadowNodes, proxyUrls } = buildShadowNodes(State.nodesDS.get(), State.graphNodes, positions);
 
   const holder = document.createElement("div");
   holder.style.cssText = `position:fixed; left:-99999px; top:0; width:${liveCanvas.clientWidth}px; height:${liveCanvas.clientHeight}px;`;
@@ -312,11 +377,7 @@ export function exportGraphPng() {
 
   const cleanup = () => { shadowNetwork.destroy(); holder.remove(); };
 
-  // Placeholder icons are local data: URIs (near-instant to decode), but
-  // vis.Network still loads them through an async Image.onload before its
-  // first real (non-blank) redraw — a short settle delay avoids grabbing a
-  // frame that was drawn before the icons finished loading.
-  setTimeout(() => {
+  waitForImages(proxyUrls).then(() => {
     shadowNetwork.redraw();
     const canvas = holder.querySelector("canvas");
     canvas.toBlob(blob => {
@@ -327,7 +388,7 @@ export function exportGraphPng() {
       }
       downloadPngBlob(blob);
     }, "image/png");
-  }, 150);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════════

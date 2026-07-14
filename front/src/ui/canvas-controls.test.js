@@ -7,10 +7,14 @@
 //                                exportGraphJson — the JSON export's data
 //                                shape and its "nothing to export" guard.
 // ════════════════════════════════════════════════════════════════════════════
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles } from "./canvas-controls.js";
+import {
+  updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles,
+  buildShadowNodes, waitForImages,
+} from "./canvas-controls.js";
+import { placeholderFor } from "../state/helpers.js";
 import { showToast } from "./toast.js";
 import { searchArtist } from "../api/api.js";
 import { updateShareableUrl } from "./history.js";
@@ -201,5 +205,139 @@ describe("setupFilterToggles — SF-WEB-30", () => {
     els.canvasFilterWriter.click();
     expect(searchArtist).toHaveBeenCalledWith("Kendrick Lamar", false, true);
     expect(updateShareableUrl).toHaveBeenCalledWith("Kendrick Lamar");
+  });
+});
+
+// [SF-WEB-32] PNG export's shadow-network nodes: a node with a real Genius
+// photo (graphNode.imageUrl) must route through the same-origin
+// /api/v1/image proxy (SF-API-12) instead of the local placeholder, so the
+// shadow canvas can draw a real photo without tainting (same-origin only).
+// A node with no real photo (imageUrl empty/absent — already normalized
+// that way for Genius's own default-avatar image, see graph.js) still gets
+// the local placeholder, exactly as before this ticket.
+describe("buildShadowNodes — SF-WEB-32", () => {
+  const graphNodes = [
+    { id: 1, name: "Has Photo", isSeed: true,  imageUrl: "https://images.genius.com/real-photo.jpg" },
+    { id: 2, name: "No Photo",  isSeed: false, imageUrl: "" },
+  ];
+  const nodeItems = [
+    { id: 1, label: "Has Photo" },
+    { id: 2, label: "No Photo" },
+  ];
+  const positions = {
+    1: { x: 10, y: 20 },
+    2: { x: 30, y: 40 },
+  };
+
+  it("routes a node with a real photo through /api/v1/image?url=<encoded>", () => {
+    const { shadowNodes } = buildShadowNodes(nodeItems, graphNodes, positions);
+    const node1 = shadowNodes.find(n => n.id === 1);
+    expect(node1.image).toBe(
+      `/api/v1/image?url=${encodeURIComponent("https://images.genius.com/real-photo.jpg")}`
+    );
+  });
+
+  it("keeps the local placeholder as brokenImage even for a node with a real photo", () => {
+    const { shadowNodes } = buildShadowNodes(nodeItems, graphNodes, positions);
+    const node1 = shadowNodes.find(n => n.id === 1);
+    expect(node1.brokenImage).toBe(placeholderFor("Has Photo", true));
+    expect(node1.brokenImage).not.toBe(node1.image);
+  });
+
+  it("uses the local placeholder for both image and brokenImage when there is no real photo", () => {
+    const { shadowNodes } = buildShadowNodes(nodeItems, graphNodes, positions);
+    const node2 = shadowNodes.find(n => n.id === 2);
+    const expected = placeholderFor("No Photo", false);
+    expect(node2.image).toBe(expected);
+    expect(node2.brokenImage).toBe(expected);
+  });
+
+  it("collects every proxied photo's URL, and only those", () => {
+    const { proxyUrls } = buildShadowNodes(nodeItems, graphNodes, positions);
+    expect(proxyUrls).toEqual([
+      `/api/v1/image?url=${encodeURIComponent("https://images.genius.com/real-photo.jpg")}`,
+    ]);
+  });
+
+  it("positions each shadow node from the live network's saved positions and fixes it in place", () => {
+    const { shadowNodes } = buildShadowNodes(nodeItems, graphNodes, positions);
+    const node1 = shadowNodes.find(n => n.id === 1);
+    expect(node1.x).toBe(10);
+    expect(node1.y).toBe(20);
+    expect(node1.fixed).toEqual({ x: true, y: true });
+    expect(node1.shape).toBe("circularImage");
+  });
+
+  it("falls back to the node item's own x/y when no saved position exists", () => {
+    const { shadowNodes } = buildShadowNodes(
+      [{ id: 3, label: "Untracked", x: 99, y: 88 }],
+      [{ id: 3, name: "Untracked", isSeed: false, imageUrl: "" }],
+      {},
+    );
+    expect(shadowNodes[0].x).toBe(99);
+    expect(shadowNodes[0].y).toBe(88);
+  });
+});
+
+describe("waitForImages — SF-WEB-32", () => {
+  const realImage = globalThis.Image;
+  let images;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    images = [];
+    globalThis.Image = class {
+      constructor() {
+        images.push(this);
+      }
+    };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    globalThis.Image = realImage;
+  });
+
+  it("resolves after the minimum settle delay when there are no proxy urls", async () => {
+    const done = vi.fn();
+    waitForImages([]).then(done);
+    await vi.advanceTimersByTimeAsync(149);
+    expect(done).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done).toHaveBeenCalled();
+  });
+
+  it("resolves once every image has fired onload, without waiting for the full timeout", async () => {
+    const done = vi.fn();
+    waitForImages(["/api/v1/image?url=a", "/api/v1/image?url=b"], 5000).then(done);
+
+    await vi.advanceTimersByTimeAsync(150); // past the minimum settle delay
+    expect(done).not.toHaveBeenCalled(); // images haven't loaded yet
+
+    images.forEach(img => img.onload());
+    await Promise.resolve(); // let the resolved promises flush
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done).toHaveBeenCalled();
+  });
+
+  it("resolves once every image has fired onerror too (one broken photo doesn't block export)", async () => {
+    const done = vi.fn();
+    waitForImages(["/api/v1/image?url=a"], 5000).then(done);
+
+    await vi.advanceTimersByTimeAsync(150);
+    images.forEach(img => img.onerror());
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done).toHaveBeenCalled();
+  });
+
+  it("resolves via the timeout fallback if an image never fires onload/onerror", async () => {
+    const done = vi.fn();
+    waitForImages(["/api/v1/image?url=a"], 2000).then(done);
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(done).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done).toHaveBeenCalled();
   });
 });

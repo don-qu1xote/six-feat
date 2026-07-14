@@ -325,7 +325,17 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      # [reliability fix] Was 10s — the only one of the four app services
+      # still on the original short budget (~55s total: 10s + 15s*3
+      # retries). userver's own PreheatStacktraceCollector step alone can
+      # take well over a minute before the components manager even starts
+      # (observed 131s under QEMU emulation), so this healthcheck was
+      # failing the container as unhealthy long before it had a chance to
+      # answer /healthz even once — cascading into nginx (which gates on
+      # `six-feat-auth: condition: service_healthy`) refusing to start.
+      # 120s matches six-feat/six-feat-enrichment/six-feat-genius-gateway's
+      # start_period below, for the same reason.
+      start_period: 120s
     restart: unless-stopped
     <<: *hardening
     deploy:
