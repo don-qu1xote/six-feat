@@ -403,9 +403,7 @@
       opacity: 1; transition: opacity .32s ease, backdrop-filter .32s ease, background .32s ease;
       backdrop-filter: blur(var(--blur-modal));
     }
-    .search-modal .eyebrow,
     .search-modal h1,
-    .search-modal p,
     .search-modal .include-roles-row,
     .search-modal .hero-mode-switch,
     .search-modal .hero-mode-stage,
@@ -414,9 +412,7 @@
       transition: opacity .38s ease, transform .38s ease;
     }
     .search-modal.is-closed { opacity: 0; pointer-events: none; backdrop-filter: blur(0); }
-    .search-modal.is-closed .eyebrow { opacity: 0; transform: translateY(-10px); }
     .search-modal.is-closed h1       { opacity: 0; transform: translateY(-16px); transition-delay: .02s; }
-    .search-modal.is-closed p        { opacity: 0; transform: translateY(-12px); transition-delay: .04s; }
     .search-modal.is-closed .include-roles-row { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
     .search-modal.is-closed .hero-mode-switch  { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
     .search-modal.is-closed .hero-mode-stage   { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
@@ -427,6 +423,16 @@
     /* is-first-visit: пустой канвас без графа за модалкой — усиленное
        затемнение здесь не нужно, отделять нечего. */
     .search-modal.is-first-visit { background: transparent; backdrop-filter: none; }
+    /* [SF-WEB-31] Первый экран — чуть плотнее общий gap (было --space-6,
+       рассчитанный на все блоки сразу видимыми) и меньший отступ до chips:
+       .include-roles-row теперь схлопнута по умолчанию (см. <details>
+       выше), так что визуально блоков одновременно меньше — но при полном
+       наборе видимых блоков (search-wrap, свёрнутый Filters, chips,
+       auth-bar) прежний --space-6 читался избыточно просторным. Только
+       landing — docked (SF-WEB-30) и обычный полноэкранный (не
+       is-first-visit) режимы не трогаем. */
+    .search-modal.is-first-visit { gap: var(--space-5); }
+    .search-modal.is-first-visit .chips-label { margin-top: var(--space-3); }
 
     /* ─ Docked mode: быстрый поиск на странице графа ────────────────────────
        Раньше "Search artist" на рейле открывал ТУ ЖЕ полноэкранную модалку
@@ -455,9 +461,7 @@
       transition: transform var(--duration-slow) var(--ease-standard);
     }
     .search-modal.docked.is-closed { transform: translateY(-6px); }
-    .search-modal.docked .eyebrow,
     .search-modal.docked h1,
-    .search-modal.docked p,
     .search-modal.docked .chips-label,
     .search-modal.docked .chips,
     .search-modal.docked .auth-bar {
@@ -513,20 +517,21 @@
     }
     .search-modal.docked .search button:hover { filter: none; background: rgba(255,255,255,.05); border-color: var(--pulse); }
 
-    .eyebrow {
-      font-family: "Space Mono", monospace; font-size: var(--text-sm);
-      letter-spacing: .22em; text-transform: uppercase; color: var(--signal);
-    }
+    /* [SF-WEB-31 follow-up] Вордмарк = логотип (Google/Yandex-референс —
+       один текстовый элемент, не иконка + слоган отдельно). Тот же
+       font-family/weight/size/line-height/letter-spacing, что раньше нёс
+       трёхстрочный слоган — только текст короче и max-width больше не
+       нужен (короткое название само по себе не переносится на несколько
+       строк на разумной ширине экрана). */
     .search-modal h1 {
       font-family: "Syne", sans-serif; font-weight: 800;
       font-size: var(--text-hero); line-height: 1.04;
-      letter-spacing: -.02em; max-width: 14ch;
+      letter-spacing: -.02em;
     }
     .search-modal h1 .grad {
       background: linear-gradient(100deg, var(--signal), var(--pulse));
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .search-modal p { max-width: 52ch; color: var(--mist); font-size: var(--text-base); line-height: 1.55; }
 
     .search-wrap { position: relative; width: min(680px, 92vw); margin-top: var(--space-1); }
     .search { display: flex; gap: var(--space-3); width: 100%; }
@@ -657,20 +662,32 @@
     .chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
 
     /* ─ Include roles (главная страница) ────────────────────────────────
-       Редизайн #2: раньше это была bento-плитка (своя карточка/фон/тень)
-       внутри общей .search-settings-грид — на минималистичном лендинге
-       читалась тяжеловесно. Теперь лёгкая строка без собственного фона —
-       просто подпись + пилюли ролей, — и снова ВСЕГДА видна (не за
-       кнопкой), как и было до объединения с find-path. */
+       [SF-WEB-31] Редизайн #2 держал это ВСЕГДА видимой строкой (подпись +
+       3 пилюли) — на спокойном минималистичном первом экране это было ещё
+       одним блоком, конкурирующим за внимание с eyebrow/h1/p/mode-switch/
+       chips/auth-bar одновременно. Теперь .include-roles-row — сам
+       <details> (см. разметку): .summary — компактный "Filters"-триггер в
+       том же пилюльном стиле, что и role-filter-btn/chip; сама
+       .role-filter-group (без изменений) раскрывается только по клику,
+       нативно, без JS. width/flex-раскладка строки не изменились — они
+       нужны и закрытому, и открытому состоянию одинаково. */
     .include-roles-row {
       width: min(680px, 92vw);
-      display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
-      justify-content: center;
+      display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
     }
-    .include-roles-label {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      letter-spacing: .12em; text-transform: uppercase; flex-shrink: 0;
+    .include-roles-summary {
+      display: inline-flex; align-items: center; gap: var(--space-2);
+      list-style: none; cursor: pointer; user-select: none;
+      border: 1px solid var(--line); border-radius: 999px; background: rgba(var(--panel-rgb),.8);
+      color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs);
+      letter-spacing: .04em; padding: var(--space-2) var(--space-3);
+      transition: color .15s, border-color .15s, background .15s;
     }
+    .include-roles-summary::-webkit-details-marker { display: none; }
+    .include-roles-summary .ri { width: 14px; height: 14px; display: flex; flex-shrink: 0; }
+    .include-roles-summary .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+    .include-roles-summary:hover { color: var(--paper); border-color: var(--line); background: rgba(255,255,255,.05); }
+    .include-roles-row[open] .include-roles-summary { color: var(--paper); border-color: var(--pulse); }
     .role-filter-group { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center; }
     .role-filter-btn {
       display: flex; align-items: center; gap: var(--space-2);
@@ -2073,9 +2090,20 @@
     <div class="canvas-decorator" id="canvas-decorator" aria-hidden="true"></div>
 
     <div class="search-modal is-first-visit" id="search-modal">
-      <span class="eyebrow">// genius collaboration atlas</span>
-      <h1>Trace the people behind the <span class="grad">features</span>.</h1>
-      <p>Search an artist to map who they've made songs with. Drag, zoom, and click any node to explore their world.</p>
+      <!-- [SF-WEB-31 follow-up] Референс — главные страницы Google/Yandex:
+           один крупный вордмарк по центру, сразу под ним поиск, больше
+           почти ничего. Раньше здесь были eyebrow-тег + отдельный
+           .hero-logo (градиентная точка) + трёхстрочный слоган ("Trace the
+           people behind the features.") — три разных представления бренда
+           одновременно. Теперь один элемент: САМО НАЗВАНИЕ сервиса тем же
+           шрифтом/размером, что был у слогана (font-family/font-size/
+           font-weight у h1 не менялись, только текст и вёрстка) — вордмарк
+           = логотип, отдельная иконка-точка не нужна (ни Google, ни Yandex
+           не дублируют текстовый логотип отдельной иконкой). Тот же .grad
+           градиент, что раньше подсвечивал только "features", теперь на
+           всё название — сервис становится узнаваемым по одному
+           взгляду. -->
+      <h1><span class="grad">Six Feet</span></h1>
 
       <!-- IDEA-41: segmented Explore/Connect switch sits above the hero
            search. "Explore" (default) is the existing single-artist graph
@@ -2111,10 +2139,23 @@
             <div class="ac-dropdown" id="hero-ac" role="listbox"></div>
           </div>
 
-          <!-- ТЗ (редизайн #2): "Include roles" — лёгкая строка без своей
-               карточки/фона, всегда видна вместе с Explore-поиском. -->
-          <div class="include-roles-row">
-            <span class="include-roles-label">Include roles</span>
+          <!-- [SF-WEB-31] Redesign: roles were a permanently-visible strip
+               (see the ТЗ #2 comment this replaces) — one more block always
+               competing for attention on the first screen alongside the
+               eyebrow/h1/p/mode-switch/chips/auth-bar. Same buttons, same
+               ids, same State.activeFilters wiring (setupFilterToggles,
+               canvas-controls.js) — only the presentation is now a native
+               <details> disclosure, collapsed by default, so the first
+               screen's default view drops one whole block. Native
+               <details>/<summary> needs no JS for open/close, and keeps
+               the existing .include-roles-row class (and therefore the
+               shared .search-modal open/close opacity+transform transition
+               it was already part of, see CSS) unchanged. -->
+          <details class="include-roles-row">
+            <summary class="include-roles-summary">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg>
+              <span>Filters</span>
+            </summary>
             <div class="role-filter-group">
               <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-featured" data-role="featured">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg><span>Featured</span>
@@ -2126,7 +2167,7 @@
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg><span>Writer</span>
               </button>
             </div>
-          </div>
+          </details>
 
           <div class="chips-label" id="chips-label">Try one of these</div>
           <div class="chips" id="chips">
@@ -2184,7 +2225,6 @@
             </svg>
             your Genius
           </a>
-          <span class="auth-hint-text">account to start exploring</span>
         </div>
         <div class="auth-user" id="auth-user" style="display:none">
           <span class="auth-user-name" id="auth-user-name">—</span>
