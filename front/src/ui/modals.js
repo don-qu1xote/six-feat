@@ -126,6 +126,25 @@ export function openSearchModal(opts = {}) {
   // полноэкранного scrim/blur и без скрытия rail/status/context-panel.
   if (docked) {
     hideArtistSidebar();
+    // [SF-WEB-30] Docked search shows ONLY the Explore search box — the
+    // Explore/Connect switch and the Connect panel are now hidden entirely
+    // in docked mode (see .search-modal.docked CSS), but this is the SAME
+    // persistent #search-modal element the full-screen landing modal uses.
+    // If the user had switched to Connect there, that mode would otherwise
+    // silently carry over: the switch/tabs are just display:none now (not
+    // reset), and .hero-mode-panel visibility is driven by .is-active, not
+    // display — so the (invisible) Connect panel would stay active and the
+    // Explore search box wouldn't render at all. Force Explore back to
+    // active every time docked search opens, mirroring what
+    // path-panel.js::setupHeroModeSwitch's activate("explore") does.
+    if (els.heroModeSwitch) els.heroModeSwitch.dataset.mode = "explore";
+    els.heroModeTabExplore?.setAttribute("aria-selected", "true");
+    if (els.heroModeTabExplore) els.heroModeTabExplore.tabIndex = 0;
+    els.heroModeTabConnect?.setAttribute("aria-selected", "false");
+    if (els.heroModeTabConnect) els.heroModeTabConnect.tabIndex = -1;
+    els.heroModePanelExplore?.classList.add("is-active");
+    els.heroModePanelConnect?.classList.remove("is-active");
+    State.heroMode = "explore";
     if (els.heroInput) els.heroInput.focus();
     return;
   }

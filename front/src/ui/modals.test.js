@@ -59,6 +59,14 @@ beforeAll(() => {
   els.btnSearchOpen     = freshEl("button");
   els.btnNodeSearch     = freshEl("button");
   els.btnFindPath       = freshEl("button");
+  // [SF-WEB-30] Docked search forces Explore mode on open — see
+  // openSearchModal's docked branch — so these need real elements too.
+  els.heroInput             = freshEl("input");
+  els.heroModeSwitch        = freshEl();
+  els.heroModeTabExplore    = freshEl("button");
+  els.heroModeTabConnect    = freshEl("button");
+  els.heroModePanelExplore  = freshEl();
+  els.heroModePanelConnect  = freshEl();
   // Detached elements can't become document.activeElement in jsdom, NOR do
   // clicks on them bubble anywhere (a detached node has no parent to
   // bubble into, so they'd never reach the shared document click listener
@@ -66,7 +74,7 @@ beforeAll(() => {
   // matching how these elements are always actually in the page.
   document.body.append(
     els.pathFromInput, els.pathPanel, els.searchModal, els.nodeSearchOverlay,
-    els.btnSearchOpen, els.btnNodeSearch, els.btnFindPath,
+    els.btnSearchOpen, els.btnNodeSearch, els.btnFindPath, els.heroInput,
   );
 
   // [SF-WEB-24] Registers all three surfaces with the shared ui/docked-
@@ -86,6 +94,17 @@ beforeEach(() => {
   els.searchModal.className = "";
   els.nodeSearchOverlay.className = "";
   els.pathFromInput.value = "";
+  // [SF-WEB-30] Simulate a Connect-mode selection left over from a previous
+  // full-screen landing visit — openSearchModal({docked:true}) must reset
+  // this every time, not just on first open.
+  els.heroModeSwitch.dataset.mode = "connect";
+  els.heroModeTabExplore.setAttribute("aria-selected", "false");
+  els.heroModeTabExplore.tabIndex = -1;
+  els.heroModeTabConnect.setAttribute("aria-selected", "true");
+  els.heroModeTabConnect.tabIndex = 0;
+  els.heroModePanelExplore.className = "hero-mode-panel";
+  els.heroModePanelConnect.className = "hero-mode-panel is-active";
+  State.heroMode = "connect";
 
   State.hasRendered = true;
   State.graphNodes = [];
@@ -160,6 +179,52 @@ describe("[SF-WEB-24] openSearchModal(docked) closes the other two docked panels
     expect(els.nodeSearchOverlay.classList.contains("show")).toBe(true);
     openSearchModal({ docked: true });
     expect(els.nodeSearchOverlay.classList.contains("show")).toBe(false);
+  });
+});
+
+// [SF-WEB-30] Docked search (.search-modal.docked) shows only the Explore
+// (new-seed) search box — the Explore/Connect switch, Connect panel, and
+// role-filter row are hidden entirely (CSS, not asserted here — jsdom
+// doesn't load index.html's stylesheet). What IS testable here: the
+// `.docked` class itself gets applied, and that opening docked mode always
+// resets any leftover Connect-mode selection back to Explore, so the
+// (now-hidden) Connect panel can never be the one left active underneath.
+describe("[SF-WEB-30] openSearchModal(docked) shows only the Explore box", () => {
+  it("adds the .docked class", () => {
+    openSearchModal({ docked: true });
+    expect(els.searchModal.classList.contains("docked")).toBe(true);
+  });
+
+  it("resets a leftover Connect-mode selection back to Explore", () => {
+    // beforeEach above leaves heroModeSwitch/panels in Connect mode,
+    // simulating a prior full-screen landing visit.
+    expect(State.heroMode).toBe("connect");
+    openSearchModal({ docked: true });
+    expect(State.heroMode).toBe("explore");
+    expect(els.heroModeSwitch.dataset.mode).toBe("explore");
+    expect(els.heroModeTabExplore.getAttribute("aria-selected")).toBe("true");
+    expect(els.heroModeTabConnect.getAttribute("aria-selected")).toBe("false");
+    expect(els.heroModePanelExplore.classList.contains("is-active")).toBe(true);
+    expect(els.heroModePanelConnect.classList.contains("is-active")).toBe(false);
+  });
+
+  it("focuses the hero (Explore) search input", () => {
+    openSearchModal({ docked: true });
+    expect(document.activeElement).toBe(els.heroInput);
+  });
+});
+
+describe("[SF-WEB-30] openSearchModal without docked (landing/is-first-visit) leaves Explore/Connect untouched", () => {
+  it("does not force Explore mode when opened full-screen", () => {
+    expect(State.heroMode).toBe("connect"); // set by beforeEach
+    openSearchModal({ docked: false });
+    expect(State.heroMode).toBe("connect");
+    expect(els.heroModePanelConnect.classList.contains("is-active")).toBe(true);
+  });
+
+  it("does not add the .docked class", () => {
+    openSearchModal({ docked: false });
+    expect(els.searchModal.classList.contains("docked")).toBe(false);
   });
 });
 

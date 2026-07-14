@@ -10,10 +10,25 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { updateScanStatus, buildGraphExportData, exportGraphJson } from "./canvas-controls.js";
+import { updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles } from "./canvas-controls.js";
 import { showToast } from "./toast.js";
+import { searchArtist } from "../api/api.js";
+import { updateShareableUrl } from "./history.js";
 
 vi.mock("./toast.js", () => ({ showToast: vi.fn(), hideToast: vi.fn() }));
+vi.mock("../api/api.js", () => ({ searchArtist: vi.fn(), showMoreCollaborations: vi.fn() }));
+vi.mock("./history.js", () => ({ updateShareableUrl: vi.fn() }));
+vi.mock("../vis-adapter/index.js", () => ({ clearFocus: vi.fn(), destroyNetwork: vi.fn(), networkOptions: vi.fn() }));
+vi.mock("../api/analytics-client.js", () => ({ clearPathHighlight: vi.fn() }));
+vi.mock("../dom/canvas-decorator.js", () => ({ startCanvasDecorator: vi.fn() }));
+vi.mock("../dom/transition.js", () => ({ runHeroGraphTransition: vi.fn() }));
+vi.mock("./modals.js", () => ({
+  isSearchModalOpen: vi.fn(), closeSearchModal: vi.fn(), openSearchModal: vi.fn(),
+  isPathPanelOpen: vi.fn(), closePathPanel: vi.fn(),
+  closeNodeSearch: vi.fn(), openNodeSearch: vi.fn(),
+}));
+vi.mock("./sidebar.js", () => ({ hideArtistSidebar: vi.fn() }));
+vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
 
 beforeEach(() => {
   els.scanStatusBadge = document.createElement("span");
@@ -138,5 +153,53 @@ describe("exportGraphJson — SF-WEB-04", () => {
 
     expect(() => exportGraphJson()).not.toThrow();
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining("Nothing to export"), expect.anything());
+  });
+});
+
+// [SF-WEB-30] setupFilterToggles binds BOTH the always-visible canvas
+// segment (#role-filter-segment) AND the landing/docked hero row
+// (.include-roles-row) to the same State.activeFilters — SF-WEB-30 hides
+// the hero row in docked mode via CSS only, wiring untouched, so this is
+// the first coverage for that shared wiring (none existed before).
+describe("setupFilterToggles — SF-WEB-30", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    State.activeFilters = new Set(["featured", "producer", "writer"]);
+    els.heroInput = document.createElement("input");
+    els.canvasFilterFeatured = document.createElement("button");
+    els.canvasFilterProducer = document.createElement("button");
+    els.canvasFilterWriter   = document.createElement("button");
+    els.heroFilterFeatured   = document.createElement("button");
+    els.heroFilterProducer   = document.createElement("button");
+    els.heroFilterWriter     = document.createElement("button");
+    setupFilterToggles();
+  });
+
+  it("toggling the canvas segment button removes the role and syncs the hero row's button", () => {
+    els.canvasFilterFeatured.click();
+    expect(State.activeFilters.has("featured")).toBe(false);
+    expect(els.canvasFilterFeatured.classList.contains("active")).toBe(false);
+    expect(els.heroFilterFeatured.classList.contains("active")).toBe(false);
+  });
+
+  it("toggling the hero row's button syncs the canvas segment's button", () => {
+    els.heroFilterProducer.click();
+    expect(State.activeFilters.has("producer")).toBe(false);
+    expect(els.canvasFilterProducer.classList.contains("active")).toBe(false);
+  });
+
+  it("refuses to turn off the last remaining active role filter", () => {
+    State.activeFilters = new Set(["featured"]);
+    els.canvasFilterFeatured.classList.add("active");
+    els.canvasFilterFeatured.click();
+    expect(State.activeFilters.has("featured")).toBe(true);
+    expect(showToast).toHaveBeenCalled();
+  });
+
+  it("re-searches the current artist after a toggle", () => {
+    els.heroInput.value = "Kendrick Lamar";
+    els.canvasFilterWriter.click();
+    expect(searchArtist).toHaveBeenCalledWith("Kendrick Lamar", false, true);
+    expect(updateShareableUrl).toHaveBeenCalledWith("Kendrick Lamar");
   });
 });

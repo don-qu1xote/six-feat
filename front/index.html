@@ -472,21 +472,36 @@
       box-shadow: var(--elevation-2); backdrop-filter: blur(var(--blur-scrim));
       padding: var(--space-4);
     }
-    .search-modal.docked .include-roles-row,
-    .search-modal.docked .hero-mode-switch,
     .search-modal.docked .hero-mode-stage {
       width: 100%; margin-top: var(--space-3);
     }
+    /* [SF-WEB-30] Docked search = new-seed (Explore) search box only. The
+       Explore/Connect switch, the Connect (path-finder) panel, and the
+       role-filter row each duplicated a canonical, canvas-native entry
+       point that already exists once graph is open — #btn-find-path
+       (openPathPanel) and .role-filter-segment respectively. Hidden here
+       rather than removed from markup, since the SAME #search-modal
+       element is reused, unchanged, by the full-screen landing modal
+       (.is-first-visit), where all three remain the only entry point for a
+       first-time visitor with no graph/rail yet to offer them elsewhere.
+       modals.js::openSearchModal forces Explore active on every docked
+       open, so a Connect-mode selection left over from the landing modal
+       can never leave the (now hidden) Connect panel active underneath. */
+    .search-modal.docked .hero-mode-switch,
+    .search-modal.docked .include-roles-row,
+    .search-modal.docked #hero-mode-panel-connect {
+      display: none;
+    }
 
     /* ТЗ ("докнутый поиск визуально выбивается из интерфейса графа"):
-       #search-modal/#hero-form/.hero-mode-* и т.д. — те же элементы, что и
-       на главной, со своим ярким "лендинговым" материалом (градиентная
-       кнопка "Map it", крупные поля, панель --panel фон). На главной это
-       уместно (это hero), но в узкой докнутой карточке поверх графа резко
-       выбивалось на фоне приглушённого рейла/path-panel/сайдбара
-       (.path-input/.dock-btn/.rail-btn — везде компактно и приглушённо).
-       Ниже переопределяем визуал ТОЛЬКО внутри .docked — сама вёрстка и
-       вся JS-логика (тот же #hero-input, тот же submit) не меняются. */
+       #search-modal/#hero-form и т.д. — те же элементы, что и на главной,
+       со своим ярким "лендинговым" материалом (градиентная кнопка "Map
+       it", крупные поля, панель --panel фон). На главной это уместно (это
+       hero), но в узкой докнутой карточке поверх графа резко выбивалось на
+       фоне приглушённого рейла/path-panel/сайдбара (.path-input/.dock-btn/
+       .rail-btn — везде компактно и приглушённо). Ниже переопределяем
+       визуал ТОЛЬКО внутри .docked — сама вёрстка и вся JS-логика (тот же
+       #hero-input, тот же submit) не меняются. */
     .search-modal.docked .search input {
       padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
       border-radius: var(--r-sm); background: rgba(var(--panel-rgb),.9);
@@ -497,27 +512,6 @@
       padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--r-sm);
     }
     .search-modal.docked .search button:hover { filter: none; background: rgba(255,255,255,.05); border-color: var(--pulse); }
-    .search-modal.docked .include-roles-label { font-size: var(--text-xs); }
-    .search-modal.docked .role-filter-btn { font-size: var(--text-xs); padding: var(--space-1) var(--space-2); }
-    .search-modal.docked .hero-mode-switch { width: 100%; max-width: none; }
-    .search-modal.docked .hero-mode-tab { padding: var(--space-1) var(--space-3); font-size: var(--text-xs); }
-    .search-modal.docked .hero-connect-fields .path-input {
-      padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
-      background: rgba(var(--panel-rgb),.9); border-radius: var(--r-sm);
-    }
-    .search-modal.docked .hero-connect-fields .path-input:focus { box-shadow: none; border-color: var(--signal); }
-    .search-modal.docked .hero-route-rail { padding: var(--space-2) 0; }
-    .search-modal.docked .hero-route-dot { font-size: 11px; }
-    .search-modal.docked .hero-connect-run {
-      background: rgba(var(--panel-rgb),.8); color: var(--paper); font-weight: 600; font-size: var(--text-sm);
-      padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--r-sm);
-    }
-    .search-modal.docked .hero-connect-run:hover { filter: none; background: rgba(255,255,255,.05); border-color: var(--pulse); }
-    .search-modal.docked .hero-connect-actions .dock-btn {
-      padding: var(--space-2) var(--space-3); font-size: var(--text-xs);
-      background: rgba(var(--panel-rgb),.8); border-color: var(--line); color: var(--mist);
-    }
-    .search-modal.docked .hero-connect-actions .dock-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
 
     .eyebrow {
       font-family: "Space Mono", monospace; font-size: var(--text-sm);
