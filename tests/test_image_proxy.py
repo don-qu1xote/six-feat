@@ -33,7 +33,6 @@ Scenarios covered:
 
 from __future__ import annotations
 
-import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Generator
@@ -44,8 +43,6 @@ import requests
 from conftest import SERVICE_BASE
 
 IMAGE_URL = f"{SERVICE_BASE}/api/v1/image"
-
-IMAGE_CDN_MOCK_PORT = int(os.environ.get("IMAGE_CDN_MOCK_PORT", "18096"))
 
 # A tiny (1x1 transparent) PNG — real bytes, not a placeholder string, so
 # byte-for-byte round-trip through the proxy is a meaningful assertion.
@@ -90,13 +87,21 @@ class _ImageCdnRequestHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def image_cdn_mock() -> Generator[str, None, None]:
-    """Starts the stub CDN once per module; yields its base URL."""
-    server = HTTPServer(("127.0.0.1", IMAGE_CDN_MOCK_PORT), _ImageCdnRequestHandler)
+    """Starts the stub CDN once per module; yields its base URL.
+
+    Binds to port 0 (ephemeral) rather than a hardcoded port — a fixed port
+    collides under parallel test workers or with a leaked prior-run process
+    (OSError: [Errno 98] Address already in use). The OS-assigned port is
+    read back via server.server_address[1]; the test-config allowlist entry
+    for "127.0.0.1" (see conftest.py's _TEST_CONFIG_TEMPLATE) is host-only,
+    so any port works.
+    """
+    server = HTTPServer(("127.0.0.1", 0), _ImageCdnRequestHandler)
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{IMAGE_CDN_MOCK_PORT}"
+        yield f"http://127.0.0.1:{server.server_address[1]}"
     finally:
         server.shutdown()
 

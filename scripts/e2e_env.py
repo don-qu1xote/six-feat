@@ -234,6 +234,20 @@ components_manager:
       task_processor: main-task-processor
       response-body-stream: true
 
+    # [SF-API-12] main.cpp unconditionally registers ImageProxyHandler, so
+    # every static config that boots the six_feat binary needs a matching
+    # handler-image block or components::Run fails outright at startup
+    # (InvariantError: "registered, but not present in
+    # components_manager.components section") — same reason every other
+    # handler block above exists here. No allowed-hosts override — e2e
+    # doesn't exercise /api/v1/image directly, so the compiled-in default
+    # (images.genius.com, assets.genius.com) is fine.
+    handler-image:
+      path: /api/v1/image
+      method: GET
+      task_processor: main-task-processor
+      timeout-ms: 5000
+
     handler-server-monitor:
       path: /metrics
       method: GET
