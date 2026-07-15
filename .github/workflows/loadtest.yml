@@ -77,9 +77,14 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      # node-version needed for the front-end build below — scripts/
+      # e2e_env.py hard-requires front/dist/manifest.json to exist (see
+      # ci.yml's load-test job's matching comment for why), even though k6
+      # never actually requests any front-end asset in this job.
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          node-version: "20"
           python-testenv: "true"
 
       # six_feat and six_feat_genius_gateway, same as ci.yml's e2e-smoke job
@@ -100,6 +105,14 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/install
           cmake --build build-genius-gateway -j"$(nproc)"
           cmake --install build-genius-gateway
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Build front-end bundle
+        working-directory: front
+        run: npm run build
 
       # No sha256 pin on the tarball itself — same reasoning as
       # promtool-check-rules in ci.yml: GitHub Releases don't expose a
