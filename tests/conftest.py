@@ -561,9 +561,13 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # [SF-INF-03] Unified readiness contract — always {"status":"ready",
-    # "checks":{}} for this service (no runtime-degradable dependency), see
+    # [SF-INF-03] Unified readiness contract — always ready with an empty
+    # checks map for this service (no runtime-degradable dependency), see
     # services/auth/internal_handlers.hpp's ReadinessHandler doc-comment.
+    # [fix] Keep this comment brace-free: the whole template is passed
+    # through str.format() below (auth_service_proc), so any unescaped
+    # curly brace here is parsed as a format field, not literal text, and
+    # breaks every auth-backed test with a KeyError.
     handler-readyz:
       path: /readyz
       method: GET
