@@ -12,6 +12,7 @@
 #include "core/collab_service.hpp"
 #include "enrichment/enrichment_client.hpp"
 #include "genius/genius_gateway_client.hpp"
+#include "http/artist_handler.hpp"
 #include "http/graph_handler.hpp"
 #include "http/health_handler.hpp"
 #include "http/image_proxy_handler.hpp"
@@ -63,6 +64,7 @@ int main(int argc, char *argv[]) {
             .Append<six_feat::HealthHandler>()
             .Append<six_feat::ReadinessHandler>()
             .Append<six_feat::StatusHandler>()
+            .Append<six_feat::ArtistHandler>()
             .Append<six_feat::SseStatusHandler>()
             .Append<six_feat::ImageProxyHandler>()
             .Append<six_feat::IndexHandler>()

@@ -20,6 +20,7 @@ endif()
 
 include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
+six_feat_embed_schema(handlers/six-feat/artist_handler     kArtistHandlerSchema    ARTIST_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
@@ -34,6 +35,7 @@ six_feat_embed_schema(components/collab_service            kCollabServiceCompone
 six_feat_embed_schema(components/app_secret_parity_checker kAppSecretParityCheckerComponentSchema   APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
+    ${ARTIST_HANDLER_SCHEMA_HEADER}
     ${GRAPH_HANDLER_SCHEMA_HEADER}
     ${PATH_HANDLER_SCHEMA_HEADER}
     ${SEARCH_HANDLER_SCHEMA_HEADER}
@@ -53,6 +55,7 @@ add_executable(six_feat
     src/enrichment/enrichment_client.cpp
     src/core/collab_service.cpp
     src/auth/app_secret_parity_checker.cpp
+    src/http/artist_handler.cpp
     src/http/graph_handler.cpp
     src/http/path_handler.cpp
     src/http/search_handler.cpp

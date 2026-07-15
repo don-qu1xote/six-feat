@@ -263,6 +263,13 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
+    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — no Genius
+    # calls of its own. See artist_handler.cpp.
+    handler-artist:
+      path: /api/v1/artist
+      method: GET
+      task_processor: *main_tp
+
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET
