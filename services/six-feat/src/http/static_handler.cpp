@@ -1,5 +1,6 @@
 #include "http/static_handler.hpp"
 #include "core/request_id.hpp"
+#include "core/security_headers.hpp"
 #include "schemas/handlers/six-feat/static_handler_schema.hpp"
 
 #include <userver/components/component_config.hpp>
@@ -11,34 +12,6 @@
 namespace six_feat {
 
 using namespace userver;
-
-namespace {
-
-// Genius API artist/song images are served from images.genius.com (verified
-// against genius_gateway.cpp: image_url is passed through as-is from the
-// Genius API JSON response) — but the "no artwork" placeholder Genius itself
-// falls back to (default_cover_image.png, seen on any artist/song without
-// real art) is served from the separate assets.genius.com host, not
-// images.genius.com. Without it here, every such node's image is CSP-blocked
-// — and since visuals.js's _imageFieldsFor re-sends the image URL on every
-// hover partial-update (structural fix for vis.js dropping avatars across
-// updates), each hover on one of those nodes re-triggers a blocked load ->
-// fallback swap instead of just rendering the cached placeholder, which is
-// the flicker reported on hover. [SF-SEC-02] vis-network is now self-hosted
-// (front/vendor/vis-network.min.js, served same-origin at
-// handler-vendor-vis-network) instead of loaded from unpkg.com, so
-// script-src/connect-src no longer need to allow that host — everything the
-// front-end loads is now either same-origin or Google Fonts.
-constexpr std::string_view kContentSecurityPolicy =
-    "default-src 'self'; "
-    "img-src 'self' https://images.genius.com https://assets.genius.com data:; "
-    "connect-src 'self'; "
-    "script-src 'self'; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    "font-src https://fonts.gstatic.com; "
-    "frame-ancestors 'none'";
-
-} // namespace
 
 StaticFileHandler::StaticFileHandler(
     const components::ComponentConfig &config,
@@ -85,17 +58,23 @@ std::string StaticFileHandler::HandleRequestThrow(
     const server::http::HttpRequest &request,
     server::request::RequestContext & /*context*/) const {
   EnsureRequestId(request);
+  // [SF-SEC-03] Content-Security-Policy/X-Content-Type-Options/
+  // Referrer-Policy/Strict-Transport-Security/Permissions-Policy now all
+  // come from the shared ApplySecurityHeaders (security_headers.cpp) —
+  // this handler used to hand-roll all but Permissions-Policy itself,
+  // including an unconditional Strict-Transport-Security that ignored
+  // IsHttpsDeployment()/COOKIE_SECURE=false (i.e. it would have told a
+  // plain-HTTP local-dev browser to only ever speak HTTPS to us, exactly
+  // the mistake that check exists everywhere else to avoid — folding this
+  // into the shared function fixes that inconsistency along with adding
+  // Permissions-Policy). X-Frame-Options stays local: it's this handler's
+  // own concern (an HTML document being iframed), not something a JSON API
+  // response needs, so it isn't part of the shared baseline.
+  ApplySecurityHeaders(request);
 
   auto &response = request.GetHttpResponse();
   response.SetContentType(http::ContentType{content_type_});
-  response.SetHeader(std::string_view{"Content-Security-Policy"},
-                     std::string(kContentSecurityPolicy));
-  response.SetHeader(std::string_view{"X-Content-Type-Options"}, "nosniff");
-  response.SetHeader(std::string_view{"Referrer-Policy"},
-                     "strict-origin-when-cross-origin");
   response.SetHeader(std::string_view{"X-Frame-Options"}, "DENY");
-  response.SetHeader(std::string_view{"Strict-Transport-Security"},
-                     "max-age=31536000; includeSubDomains");
   if (!cache_control_.empty()) {
     response.SetHeader(std::string_view{"Cache-Control"}, cache_control_);
   }

@@ -24,11 +24,21 @@ with a set of hardening headers:
   - X-Content-Type-Options: nosniff
   - Referrer-Policy: strict-origin-when-cross-origin
   - X-Frame-Options: DENY
+  - [SF-SEC-03] Permissions-Policy: denies every browser feature this app
+    never uses (geolocation/camera/microphone/payment/usb/motion sensors).
+
+[SF-SEC-03] Content-Security-Policy/Referrer-Policy/Permissions-Policy are
+now applied by the SAME shared ApplySecurityHeaders() every /api/v1/*
+handler already used for X-Content-Type-Options/Strict-Transport-Security
+(see test_api_auth_headers.py) — static_handler.cpp used to hand-roll its
+own copies of the first three. X-Frame-Options stays static_handler-only
+(an HTML-document-being-iframed concern, not something a JSON API response
+needs).
 
 Scenarios covered:
-  1.  GET / returns all four headers with the expected values
-  2.  GET /script.js returns all four headers with the expected values
-  3.  GET /vendor/vis-network.min.js returns all four headers, plus content
+  1.  GET / returns all five headers with the expected values
+  2.  GET /script.js returns all five headers with the expected values
+  3.  GET /vendor/vis-network.min.js returns all five headers, plus content
   4.  Content-Security-Policy directives cover the external hosts the page
       actually loads (images.genius.com, assets.genius.com, fonts.*) and no
       longer reference unpkg.com
@@ -52,6 +62,12 @@ EXPECTED_STATIC_HEADERS = {
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
     "x-frame-options": "DENY",
+    # [SF-SEC-03] Must match kPermissionsPolicy in security_headers.cpp
+    # exactly — every feature this app never uses, denied outright.
+    "permissions-policy": (
+        "geolocation=(), camera=(), microphone=(), payment=(), usb=(), "
+        "magnetometer=(), gyroscope=(), accelerometer=(), fullscreen=()"
+    ),
 }
 
 

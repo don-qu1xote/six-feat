@@ -5,9 +5,10 @@ test_api_auth_headers.py — SF-API-02: consolidated parametrized coverage of
 
 Builds on SF-API-01 (AuthenticatedHandlerBase / ApplySecurityHeaders — see
 authenticated_handler_base.hpp / security_headers.cpp): every one of the five
-handlers below calls Prologue()/PrologueStream() — which applies the two
-hardening headers and rejects an unauthenticated caller with 401 — before it
-ever looks at its own query parameters.
+handlers below calls Prologue()/PrologueStream() — which applies the shared
+hardening headers (5 as of [SF-SEC-03], see _assert_security_headers below)
+and rejects an unauthenticated caller with 401 — before it ever looks at its
+own query parameters.
 
 One parametrized test per concern, across all five endpoints:
   1. no session cookie -> 401, with the endpoint's OWN error body. The five
@@ -17,11 +18,17 @@ One parametrized test per concern, across all five endpoints:
      sse_status_handler.cpp) — each expected body below is copied verbatim
      from the handler that produces it, not unified.
   2. a valid auth_cookie -> the endpoint's success path (HTTP 200).
-  3. X-Content-Type-Options: nosniff on every response (401 and 200 alike),
-     and Strict-Transport-Security whenever this deployment is an HTTPS one
+  3. On every response (401 and 200 alike): X-Content-Type-Options: nosniff;
+     Strict-Transport-Security whenever this deployment is an HTTPS one
      (IsHttpsDeployment() in security_headers.cpp, driven by the same
      COOKIE_SECURE env var the running service_proc instance was launched
-     with — not by whether this test happens to talk http://).
+     with — not by whether this test happens to talk http://); and, as of
+     [SF-SEC-03], Content-Security-Policy, Referrer-Policy: strict-origin-
+     when-cross-origin, and Permissions-Policy — the exact same values
+     static_handler.cpp's index.html/script.js responses carry (see
+     test_static_handlers.py), now applied uniformly by the same
+     ApplySecurityHeaders() call instead of being a static_handler.cpp-only
+     concern.
 
 Per-endpoint anonymous-401 status-code/body assertions already exist in
 test_graph.py (TestGraphRequiresAuth), test_path.py (TestPathRequiresAuth),
@@ -53,6 +60,28 @@ SSE_URL    = f"{SERVICE_BASE}/api/v1/status/stream"
 # (IsHttpsDeployment() in security_headers.cpp): HSTS is sent unless
 # COOKIE_SECURE is explicitly "false" in the service's environment.
 _HSTS_EXPECTED = os.environ.get("COOKIE_SECURE") != "false"
+
+# [SF-SEC-03] Must match kContentSecurityPolicy/kPermissionsPolicy in
+# security_headers.cpp exactly, and the SAME values test_static_handlers.py
+# expects on index.html/script.js — one shared ApplySecurityHeaders() now
+# produces both.
+_EXPECTED_REFERRER_POLICY = "strict-origin-when-cross-origin"
+_EXPECTED_PERMISSIONS_POLICY = (
+    "geolocation=(), camera=(), microphone=(), payment=(), usb=(), "
+    "magnetometer=(), gyroscope=(), accelerometer=(), fullscreen=()"
+)
+
+
+def _assert_security_headers(headers) -> None:
+    assert headers.get("X-Content-Type-Options") == "nosniff"
+    if _HSTS_EXPECTED:
+        assert headers.get("Strict-Transport-Security") is not None
+    else:
+        assert "Strict-Transport-Security" not in headers
+    assert "Content-Security-Policy" in headers
+    assert "default-src 'self'" in headers["Content-Security-Policy"]
+    assert headers.get("Referrer-Policy") == _EXPECTED_REFERRER_POLICY
+    assert headers.get("Permissions-Policy") == _EXPECTED_PERMISSIONS_POLICY
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -174,11 +203,7 @@ class TestApiAuthAndSecurityHeaders:
         url: str, expected_401_body: dict, setup_fn, success_key, is_stream: bool,
     ):
         resp = anon_client.get(url, timeout=5.0)
-        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
-        if _HSTS_EXPECTED:
-            assert resp.headers.get("Strict-Transport-Security") is not None
-        else:
-            assert "Strict-Transport-Security" not in resp.headers
+        _assert_security_headers(resp.headers)
 
     def test_authenticated_reaches_success_path(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int,
@@ -205,13 +230,9 @@ class TestApiAuthAndSecurityHeaders:
         if is_stream:
             resp = client.get(url, params=params, stream=True, timeout=(5.0, 5.0))
             try:
-                assert resp.headers.get("X-Content-Type-Options") == "nosniff"
-                if _HSTS_EXPECTED:
-                    assert resp.headers.get("Strict-Transport-Security") is not None
+                _assert_security_headers(resp.headers)
             finally:
                 resp.close()
             return
         resp = client.get(url, params=params, timeout=5.0)
-        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
-        if _HSTS_EXPECTED:
-            assert resp.headers.get("Strict-Transport-Security") is not None
+        _assert_security_headers(resp.headers)
