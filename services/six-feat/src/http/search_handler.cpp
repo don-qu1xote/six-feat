@@ -9,6 +9,7 @@
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "core/http_cache.hpp"
+#include "core/rate_limit_store_component.hpp"
 #include "schemas/handlers/six-feat/search_handler_schema.hpp"
 
 #include <algorithm>
@@ -109,7 +110,11 @@ SearchHandler::SearchHandler(const components::ComponentConfig&  config,
     : AuthenticatedHandlerBase(config, context,
                                 context.FindComponent<auth::OAuthConfig>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
-      oauth_(context.FindComponent<auth::OAuthConfig>())
+      oauth_(context.FindComponent<auth::OAuthConfig>()),
+      // [SF-SEC-04] see graph_handler.cpp's constructor for the "name"
+      // namespacing rationale.
+      rate_limit_("search", 50, 1,
+                  context.FindComponent<RateLimitStoreComponent>().MakeStore())
 {}
 
 std::string SearchHandler::HandleRequestThrow(

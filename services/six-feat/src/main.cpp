@@ -17,6 +17,7 @@
 #include "http/image_proxy_handler.hpp"
 #include "http/path_handler.hpp"
 #include "storage/persistent_store.hpp"
+#include "core/rate_limit_store_component.hpp"
 #include "http/readiness_handler.hpp"
 #include "http/search_handler.hpp"
 #include "http/static_handler.hpp"
@@ -50,6 +51,12 @@ int main(int argc, char *argv[]) {
             .Append<six_feat::ArtistRepository>()
             .Append<six_feat::EnrichmentClient>()
             .Append<six_feat::CollabService>()
+            // [SF-SEC-04] Backend (single in-process, default | shared
+            // Postgres-backed) for graph/path/search's per-IP rate limits —
+            // see rate_limit_store_component.hpp. Must come before the
+            // three handlers below, which look it up in their own
+            // constructors.
+            .Append<six_feat::RateLimitStoreComponent>()
             .Append<six_feat::GraphHandler>()
             .Append<six_feat::PathHandler>()
             .Append<six_feat::SearchHandler>()

@@ -50,7 +50,10 @@ public:
 private:
     GeniusGatewayClient& gateway_;
     const auth::OAuthConfig& oauth_;
-    mutable PerIpRateLimit rate_limit_{50, 1};
+    // [SF-SEC-04] max/window/backend set in the .cpp constructor (needs
+    // ComponentContext to look up RateLimitStoreComponent) instead of a
+    // default member initializer here.
+    mutable PerIpRateLimit rate_limit_;
 };
 
 } // namespace six_feat

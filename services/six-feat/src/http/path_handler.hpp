@@ -61,7 +61,10 @@ private:
     const auth::OAuthConfig& oauth_;
     // [F-4] Per-client limiter (keyed by access_token, fallback to IP) instead
     // of a single global counter shared by every caller of the handler.
-    mutable PerIpRateLimit rate_limit_{50, 1};
+    // [SF-SEC-04] max/window/backend set in the .cpp constructor (needs
+    // ComponentContext to look up RateLimitStoreComponent) instead of a
+    // default member initializer here.
+    mutable PerIpRateLimit rate_limit_;
 };
 
 } // namespace six_feat

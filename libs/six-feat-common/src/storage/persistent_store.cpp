@@ -94,13 +94,34 @@ const std::vector<const char*> kMigrationV2 = {
     "CREATE INDEX IF NOT EXISTS idx_fetch_state_depth ON fetch_state(depth)",
 };
 
+// v3: [SF-SEC-04] rate_buckets — backs PostgresRateLimitStore (see
+// core/rate_limit_store_postgres.cpp), the opt-in shared/multi-replica
+// backend for PerIpRateLimit. Fixed-window counters, one row per
+// (namespaced rate-limit key, window bucket); PostgresRateLimitStore does
+// its own atomic INSERT ... ON CONFLICT DO UPDATE against this table, and
+// its own probabilistic cleanup DELETE keyed on window_start — the index
+// below is what makes that DELETE a range scan instead of a full table
+// scan. Not created/touched at all when every service on this cluster uses
+// the default "single" (in-process) rate-limit-store backend — this table
+// simply stays empty in that case.
+const std::vector<const char*> kMigrationV3 = {
+    R"SQL(CREATE TABLE IF NOT EXISTS rate_buckets (
+        key          TEXT NOT NULL,
+        window_start BIGINT NOT NULL,
+        count        INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (key, window_start)
+    ))SQL",
+    "CREATE INDEX IF NOT EXISTS idx_rate_buckets_window_start ON rate_buckets(window_start)",
+};
+
 // Ordered by version; add new entries here as the schema evolves.
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
+    {3, kMigrationV3},
 };
 
-constexpr int kTargetSchemaVersion = 2;
+constexpr int kTargetSchemaVersion = 3;
 
 // Applies pending migrations sequentially inside one transaction, from the
 // DB's current schema_version up to kTargetSchemaVersion. The migration

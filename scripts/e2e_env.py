@@ -166,6 +166,12 @@ components_manager:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
 
+    # [SF-SEC-04] backend: single — e2e doesn't exercise the shared/
+    # Postgres backend, only the default production shape.
+    rate-limit-store:
+      backend: single
+      dbname: postgres-db-1
+
     oauth-config:
       client-id: e2e-client-id
       redirect-uri: http://127.0.0.1:{service_port}/auth/callback

@@ -4,6 +4,7 @@
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "core/http_cache.hpp"
+#include "core/rate_limit_store_component.hpp"
 #include "domain/role_mask.hpp"
 #include "schemas/handlers/six-feat/path_handler_schema.hpp"
 
@@ -150,7 +151,11 @@ PathHandler::PathHandler(const components::ComponentConfig&  config,
                                 context.FindComponent<auth::OAuthConfig>()),
       service_(context.FindComponent<CollabService>()),
       store_(context.FindComponent<PersistentStore>()),
-      oauth_(context.FindComponent<auth::OAuthConfig>())
+      oauth_(context.FindComponent<auth::OAuthConfig>()),
+      // [SF-SEC-04] see graph_handler.cpp's constructor for the "name"
+      // namespacing rationale.
+      rate_limit_("path", 50, 1,
+                  context.FindComponent<RateLimitStoreComponent>().MakeStore())
 {}
 
 std::string PathHandler::HandleRequestThrow(

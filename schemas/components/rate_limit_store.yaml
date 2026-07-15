@@ -1,0 +1,21 @@
+type: object
+description: >-
+    [SF-SEC-04] Chooses PerIpRateLimit's backend for the whole process —
+    "single" (default) keeps the original in-process, per-replica behaviour;
+    "shared" pools every replica's counters on Postgres (rate_buckets table)
+    so a limit means the same thing regardless of replica count.
+additionalProperties: false
+properties:
+    backend:
+        type: string
+        description: 'single (in-process, default) or shared (Postgres-backed, multi-replica)'
+        enum:
+          - single
+          - shared
+        defaultDescription: single
+    dbname:
+        type: string
+        description: >-
+            Name of the components::Postgres component whose cluster backs
+            this store — only consulted when backend is "shared".
+        defaultDescription: postgres-db-1

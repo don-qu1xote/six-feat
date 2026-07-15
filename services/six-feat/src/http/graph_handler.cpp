@@ -19,6 +19,7 @@
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "core/http_cache.hpp"
+#include "core/rate_limit_store_component.hpp"
 #include "domain/role_mask.hpp"
 #include "schemas/handlers/six-feat/graph_handler_schema.hpp"
 
@@ -124,6 +125,13 @@ GraphHandler::GraphHandler(const components::ComponentConfig&  config,
       service_(context.FindComponent<CollabService>()),
       store_(context.FindComponent<PersistentStore>()),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
+      // [SF-SEC-04] "graph" namespaces this handler's keys so it can safely
+      // share a RateLimitStoreComponent-backed store with path/search
+      // (backend=shared) without colliding on their buckets — a no-op
+      // distinction under the default backend=single, where every handler
+      // gets its own private in-process store regardless.
+      rate_limit_("graph", 50, 1,
+                  context.FindComponent<RateLimitStoreComponent>().MakeStore()),
       max_limit_override_(config["max-limit-override"].As<int>(50))
 {}
 

@@ -24,6 +24,7 @@ six_feat_embed_schema(components/artist_repository     kArtistRepositoryComponen
 six_feat_embed_schema(components/persistent_store      kPersistentStoreComponentSchema      PERSISTENT_STORE_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/genius_gateway        kGeniusGatewayComponentSchema        GENIUS_GATEWAY_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/genius_gateway_client kGeniusGatewayClientComponentSchema  GENIUS_GATEWAY_CLIENT_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/rate_limit_store      kRateLimitStoreComponentSchema        RATE_LIMIT_STORE_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_common_schema_headers DEPENDS
     ${OAUTH_HANDLER_SCHEMA_HEADER}
@@ -33,6 +34,7 @@ add_custom_target(six_feat_common_schema_headers DEPENDS
     ${PERSISTENT_STORE_COMPONENT_SCHEMA_HEADER}
     ${GENIUS_GATEWAY_COMPONENT_SCHEMA_HEADER}
     ${GENIUS_GATEWAY_CLIENT_COMPONENT_SCHEMA_HEADER}
+    ${RATE_LIMIT_STORE_COMPONENT_SCHEMA_HEADER}
 )
 
 # OBJECT, not STATIC: a STATIC archive only pulls in members that resolve an
@@ -55,6 +57,9 @@ add_library(six_feat_common OBJECT
     src/core/request_id.cpp
     src/core/security_headers.cpp
     src/core/http_cache.cpp
+    src/core/rate_limit_store.cpp
+    src/core/rate_limit_store_postgres.cpp
+    src/core/rate_limit_store_component.cpp
     src/auth/oauth_handler.cpp
     src/auth/session_crypto.cpp
     src/http/health_handler.cpp

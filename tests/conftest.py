@@ -372,6 +372,13 @@ components_manager:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
 
+    # [SF-SEC-04] backend: single — same default production uses; tests
+    # exercising the shared/Postgres backend build their own config with
+    # backend: shared instead (see test_rate_limit_store.py).
+    rate-limit-store:
+      backend: single
+      dbname: postgres-db-1
+
     # [IDEA-53] The OAuth flow itself (/auth/*) now lives in the standalone
     # six-feat-auth service (see auth_service_proc / _AUTH_TEST_CONFIG_TEMPLATE
     # below) — this six_feat test instance only needs OAuthConfig for LOCAL

@@ -94,6 +94,17 @@ components_manager:
     persistent-store:
       dbname: postgres-db-1
 
+    # [SF-SEC-04] backend: single (default) keeps graph/path/search's per-IP
+    # rate limiting exactly as before — in-process, per-replica. Set to
+    # "shared" only once running >1 replica of this service behind a load
+    # balancer, so the configured limit means the same thing regardless of
+    # which replica a given request lands on (uses the same Postgres
+    # cluster as persistent-store above, via a separate rate_buckets table —
+    # see postgresql/migrations/V3__rate_buckets.sql).
+    rate-limit-store:
+      backend: single
+      dbname: postgres-db-1
+
     # ── Network layer ───────────────────────────────────────────────────────
     # [ТЗ-6] No server-level Genius token anymore — every Genius API call is
     # made with the requesting user's own OAuth session token (see

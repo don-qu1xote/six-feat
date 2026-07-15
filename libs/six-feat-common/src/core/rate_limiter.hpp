@@ -1,56 +1,54 @@
 #pragma once
 
-#include <chrono>
-#include <mutex>
+#include "core/rate_limit_store.hpp"
+
+#include <memory>
 #include <string>
-#include <unordered_map>
+#include <utility>
 
 namespace six_feat {
 
 // ════════════════════════════════════════════════════════════════════════════
-// PerIpRateLimit  —  [ТЗ-5 Part 6.2]
+// PerIpRateLimit  —  [ТЗ-5 Part 6.2, backend abstraction: SF-SEC-04]
 //
 // Strict per-IP fixed-window limiter for ANONYMOUS users (no OAuth token).
 // Authenticated users bypass this entirely — they ride their own Genius quota.
 //
 // Window: `window_seconds`. Each IP gets `max_per_window` requests per window.
-// Stale entries (last seen > 2 windows ago) are garbage-collected lazily on
-// access to keep the map bounded without a background sweeper.
 //
-// Guarded by a single mutex. Allow() never suspends a coroutine — the critical
-// section is a couple of map operations, so a plain std::mutex is appropriate.
+// [SF-SEC-04] Now a thin adapter over RateLimitStore (core/
+// rate_limit_store.hpp) instead of owning the bucket map itself — the
+// original std::mutex + unordered_map implementation still exists
+// unchanged, just moved into InProcessRateLimitStore, which is what this
+// class constructs by default (no behaviour change for a single-replica
+// deployment: PerIpRateLimit rl("graph", 50, 1); still gets its own
+// private, purely in-process bucket map exactly like before). Pass an
+// explicit store (e.g. from RateLimitStoreComponent::MakeStore(), see
+// rate_limit_store_component.hpp) to opt into a backend shared across
+// replicas — e.g. Postgres-backed, so the SAME 50-per-second actually means
+// 50-per-second cluster-wide instead of ×N for N replicas.
 // ════════════════════════════════════════════════════════════════════════════
 
 class PerIpRateLimit {
 public:
-    PerIpRateLimit(int max_per_window, int window_seconds)
-        : max_(max_per_window),
-          window_(std::chrono::seconds{window_seconds}) {}
+    // `name` namespaces every key this instance ever passes to `store` (as
+    // "name:key") — required and non-empty even for the default in-process
+    // store, so behaviour never depends on which constructor overload a
+    // caller happened to use. It's what lets multiple PerIpRateLimit
+    // instances (e.g. one per handler: graph/path/search) safely share ONE
+    // RateLimitStore — the Postgres-backed one in particular — without one
+    // endpoint's counter colliding with another's for the same client.
+    PerIpRateLimit(std::string name, int max_per_window, int window_seconds,
+                    std::shared_ptr<RateLimitStore> store = nullptr)
+        : name_(std::move(name)),
+          max_(max_per_window),
+          window_(window_seconds),
+          store_(store ? std::move(store)
+                        : std::make_shared<InProcessRateLimitStore>()) {}
 
     /// Returns true if this IP may proceed in the current window.
-    bool Allow(const std::string& ip) {
-        const auto now = std::chrono::steady_clock::now();
-        std::lock_guard<std::mutex> lk(mu_);
-
-        // Opportunistic GC of stale buckets.
-        if (now - last_gc_ > window_ * 4) {
-            for (auto it = buckets_.begin(); it != buckets_.end();) {
-                if (now - it->second.window_start > window_ * 2)
-                    it = buckets_.erase(it);
-                else
-                    ++it;
-            }
-            last_gc_ = now;
-        }
-
-        auto& b = buckets_[ip];
-        if (b.window_start.time_since_epoch().count() == 0 ||
-            now - b.window_start >= window_) {
-            b.window_start = now;
-            b.count = 0;
-        }
-        ++b.count;
-        return b.count <= max_;
+    bool Allow(const std::string& ip) const {
+        return store_->Allow(Key(ip), max_, window_);
     }
 
     /// Ceiling of requests per window, exposed so callers can report it
@@ -62,31 +60,16 @@ public:
     /// post-request quota. A key that has never been seen (or whose window
     /// has since rolled over) is reported as having the full allowance.
     int Remaining(const std::string& key) const {
-        const auto now = std::chrono::steady_clock::now();
-        std::lock_guard<std::mutex> lk(mu_);
-
-        const auto it = buckets_.find(key);
-        if (it == buckets_.end()) return max_;
-
-        const auto& b = it->second;
-        if (b.window_start.time_since_epoch().count() == 0 ||
-            now - b.window_start >= window_) {
-            return max_;
-        }
-        return b.count >= max_ ? 0 : max_ - b.count;
+        return store_->Remaining(Key(key), max_, window_);
     }
 
 private:
-    struct Bucket {
-        std::chrono::steady_clock::time_point window_start{};
-        int count{0};
-    };
+    std::string Key(const std::string& key) const { return name_ + ":" + key; }
 
-    int                                   max_;
-    std::chrono::steady_clock::duration   window_;
-    mutable std::mutex                    mu_;
-    std::unordered_map<std::string, Bucket> buckets_;
-    std::chrono::steady_clock::time_point last_gc_{};
+    std::string                      name_;
+    int                               max_;
+    int                               window_;
+    std::shared_ptr<RateLimitStore>  store_;
 };
 
 } // namespace six_feat
