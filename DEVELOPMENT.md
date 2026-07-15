@@ -128,6 +128,8 @@
 | `DB_PORT` | int | ✗ | `5432` | Порт PostgreSQL master |
 | `DB_REPLICA_HOST` | string | ✗ | *(пусто)* | Хост read-реплики; не задан — работаем против одного инстанса (см. "Postgres cluster topology" ниже) |
 | `DB_REPLICA_PORT` | int | ✗ | `5432` | Порт read-реплики (используется только если задан `DB_REPLICA_HOST`) |
+| `DB_REPLICATOR_USER` | string | ✗ | `replicator` | Роль для физической репликации (`prod-like` профиль, см. ниже) |
+| `DB_REPLICATOR_PASSWORD` | string | ✗ | `replicator_dev_password` | Пароль роли репликации — сменить для чего угодно за пределами local dev |
 
 **Примечание**: `GENIUS_CLIENT_ID` может храниться в конфиге (не секрет), но `GENIUS_CLIENT_SECRET` и `APP_SECRET` **всегда** передавать только через env vars.
 
@@ -139,9 +141,40 @@
 
 That means `dbconnection` (`db_connection_string` → `static_config.yaml`'s `postgres-db-1.dbconnection`) has to actually be a **multi-host DSN** — `postgresql://user:pass@host1:port1,host2:port2/db` — for a Slave pool to exist at all. If it only lists one host, `kSlave` requests find no Slave pool, log a `WARNING ... FindPool ... There is no pool for slave, falling back to master`, and every read silently lands on master too.
 
-**docker-compose.yml runs a single Postgres instance by default** — no `postgres-replica`, no streaming replication. This is a deliberate trade-off for local dev on modest hardware: a real standby means a second always-on Postgres process plus continuous WAL streaming, for a benefit (read/write isolation) that only matters once you're actually testing replication-lag-sensitive behavior. `DB_REPLICA_HOST` defaults to empty, `docker-entrypoint.sh` builds a single-host DSN, and every `kSlave` read deterministically falls back to master — this is expected, not a bug, and the `FindPool ... falling back to master` warning below is harmless in this mode.
+**docker-compose.yml runs a single Postgres instance by default** — `postgres-replica` exists in the file but is gated behind the `prod-like` profile, so a bare `docker compose up` never starts it. This is a deliberate trade-off for local dev on modest hardware: a real standby means a second always-on Postgres process plus continuous WAL streaming, for a benefit (read/write isolation) that only matters once you're actually testing replication-lag-sensitive behavior. `DB_REPLICA_HOST` defaults to empty, `docker-entrypoint.sh` builds a single-host DSN, and every `kSlave` read deterministically falls back to master — this is expected, not a bug, and the `FindPool ... falling back to master` warning below is harmless in this mode.
 
 To get genuine Master/Slave isolation (e.g. against a staging cluster with a real streaming standby), set `DB_REPLICA_HOST`/`DB_REPLICA_PORT` to that standby's address — `docker-entrypoint.sh` then assembles the multi-host DSN and the code path above starts meaning something. **Do not** point `DB_REPLICA_HOST` at the same host as `DB_HOST` to "fake" a replica: both DSN entries would resolve to the same live primary, both would answer `pg_is_in_recovery() = false`, and you'd land back in the exact `no pool for slave, falling back to master` case — just with a config that looks like it should be working, which is worse than not setting it at all.
+
+### `prod-like` профиль — реальная standby-реплика (SF-INF-02)
+
+`docker-compose.yml` умеет поднять настоящую streaming-репликацию локально, без внешнего staging-кластера — профиль `prod-like`:
+
+```bash
+docker compose --profile prod-like up -d
+```
+
+Это поднимает, в дополнение к обычному дефолтному набору сервисов, ещё и `postgres-replica` (`postgres:16-alpine`, тот же образ, что и у `postgres`). `postgres-replica` **не** отдельный «postgres-primary» — существующий, всегда включённый сервис `postgres` продолжает играть роль мастера и под этим профилем тоже: это осознанное решение, а не половинчатая реализация. Compose-профили работают так, что сервис без `profiles:` активен всегда, и если он через `depends_on` жёстко зависит от сервиса из профилированной группы, Compose автоматически поднимает и этот профиль — то есть будь `postgres` тоже спрятан за `prod-like` с жёстким `depends_on` от `six-feat`, дефолтный `docker compose up` начал бы неявно поднимать `prod-like` каждый раз. Вместо этого `postgres` остаётся неизменным между профилями (мастером), а `postgres-replica` — единственный новый, действительно профилированный сервис; связь `six-feat` → `postgres-replica` остаётся мягкой, через `DB_REPLICA_HOST`, как и раньше.
+
+Как это работает изнутри:
+
+- `postgres` дополнительно монтирует `postgresql/prod-like/init-replication.sh` в `/docker-entrypoint-initdb.d/` — при первом (и только первом) старте на пустом data dir создаёт роль `DB_REPLICATOR_USER` с `REPLICATION LOGIN` и открывает `pg_hba.conf` для физических replication-подключений. Эта роль безвредна и при дефолтном профиле — раз `postgres-replica` не стартует, ей просто никто не пользуется.
+- `postgres` теперь также запускается с `wal_level=replica`, `max_wal_senders`, `max_replication_slots`, `hot_standby=on` — необходимые для streaming replication параметры, применяются всегда (снова: безвредно, если реплики нет).
+- `postgres-replica` использует кастомный entrypoint (`postgresql/prod-like/replica-entrypoint.sh`): на пустом data dir дожидается готовности `postgres`, снимает физический бэкап через `pg_basebackup -R` (флаг `-R` сам пишет `standby.signal` + `primary_conninfo` в `postgresql.auto.conf` — актуальный, PG12+, механизм вместо старого `recovery.conf`), затем передаёт управление штатному `docker-entrypoint.sh postgres` образа. При рестарте (непустой data dir) бэкап не повторяется — `standby.signal` уже на месте, Postgres просто снова стартует как standby.
+
+Чтобы `PersistentStore` реально начал разделять чтения/записи под этим профилем, задайте `DB_REPLICA_HOST=postgres-replica` (например, в `.env`):
+
+```bash
+DB_REPLICA_HOST=postgres-replica
+```
+
+**Проверка**:
+
+1. `docker compose --profile prod-like up -d` — дождаться, пока `postgres-replica` пройдёт healthcheck (`pg_isready`).
+2. `docker compose exec postgres-replica psql -U "$DB_USER" -d "$DB_NAME" -c 'SELECT pg_is_in_recovery();'` → `t` (реплика в режиме standby).
+3. `docker compose exec postgres psql -U "$DB_USER" -d "$DB_NAME" -c 'SELECT pg_is_in_recovery();'` → `f` (мастер жив и остаётся мастером).
+4. С `DB_REPLICA_HOST=postgres-replica` в окружении `six-feat` — обычные чтения графа (`GET /api/v1/graph?...`) продолжают отвечать `200`, но теперь идут через `kSlave`-пул на `postgres-replica` (см. логи: предупреждение `no pool for slave` пропадает).
+
+Существующий локальный `.pgdata` (созданный до появления этого профиля) не подхватит новую replication-роль автоматически — `/docker-entrypoint-initdb.d/*.sh` выполняется только на пустом data dir. Для `prod-like` на уже существующем окружении нужен свежий volume `postgres`.
 
 ---
 

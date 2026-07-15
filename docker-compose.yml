@@ -13,6 +13,28 @@ x-hardening: &hardening
     - "no-new-privileges:true"
 
 services:
+  # [SF-INF-02] No separate "postgres-primary" service on purpose: six-feat/
+  # six-feat-enrichment's `depends_on: postgres: condition: service_healthy`
+  # below is a hard dependency on this exact service name, and Compose
+  # auto-activates a service's OWN profile whenever it's a hard dependency
+  # of an always-on (no-profile) service — so if THIS service carried
+  # `profiles: ["prod-like"]`, a bare `docker compose up` would silently
+  # pull "prod-like" in too, defeating "the profile never starts by
+  # default". Keeping `postgres` itself un-profiled (always the primary,
+  # in both the default AND prod-like profiles) sidesteps that entirely —
+  # postgres-replica (below) only has a SOFT relationship to it via
+  # DB_REPLICA_HOST (userver's Cluster already tolerates the replica being
+  # absent/not-yet-ready, see the DB_REPLICA_HOST comment on six-feat
+  # below), so it's the one service that's actually safe to gate behind
+  # `profiles: ["prod-like"]`.
+  #
+  # Replication is enabled here unconditionally (wal_level=replica +
+  # postgresql/prod-like/init-replication.sh creating the replicator role)
+  # — inert and harmless for the default single-instance profile (a
+  # replication-capable role/WAL setting that nothing ever streams from
+  # costs nothing at runtime), and it's what lets postgres-replica attach
+  # the moment the prod-like profile is actually used, without postgres
+  # itself needing to know or care whether a replica exists.
   postgres:
     image: postgres:16-alpine
     container_name: six-feat-postgres
@@ -21,8 +43,28 @@ services:
       POSTGRES_DB: ${DB_NAME:?Set DB_NAME}
       POSTGRES_USER: ${DB_USER:?Set DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      # [SF-INF-02] Dedicated replication role postgres-replica streams as
+      # (prod-like profile only) — defaulted, not `:?`-required, so a plain
+      # `docker compose up` (no replica involved) never needs it set.
+      DB_REPLICATOR_USER: ${DB_REPLICATOR_USER:-replicator}
+      DB_REPLICATOR_PASSWORD: ${DB_REPLICATOR_PASSWORD:-replicator_dev_password}
     volumes:
       - ./.pgdata:/var/lib/postgresql/data
+      # [SF-INF-02] Only runs on a genuinely first init (empty .pgdata) —
+      # see the script's own header for why an EXISTING local .pgdata
+      # predating this ticket needs a fresh volume to pick up the
+      # replication role.
+      - ./postgresql/prod-like/init-replication.sh:/docker-entrypoint-initdb.d/init-replication.sh:ro
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - hot_standby=on
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -33,6 +75,53 @@ services:
     # Only Postgres process in the stack now — cap it so it can't starve a
     # low-resource dev machine (matches the limits already set below on the
     # app services).
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  # [SF-INF-02] Real streaming standby — "prod-like" profile only (see the
+  # comment on `postgres` above for why the primary side has no matching
+  # profile of its own). Bootstraps itself via pg_basebackup from
+  # `postgres` on first start (postgresql/prod-like/replica-entrypoint.sh),
+  # then boots directly into recovery mode every time after — userver's
+  # Cluster discovers this dynamically (SELECT pg_is_in_recovery(), see
+  # DEVELOPMENT.md's "Postgres cluster topology") once DB_REPLICA_HOST
+  # points six-feat/six-feat-enrichment at it.
+  #
+  # Not wired into any other service's `depends_on` — read the big comment
+  # on `postgres` above: DB_REPLICA_HOST is deliberately a SOFT dependency
+  # (falls back to master if the replica isn't up yet), so making this a
+  # hard Compose dependency would just reintroduce the exact profile-
+  # auto-activation problem `postgres` itself avoids by staying un-profiled.
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: six-feat-postgres-replica
+    profiles: ["prod-like"]
+    environment:
+      POSTGRES_USER: ${DB_USER:?Set DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      PRIMARY_HOST: postgres
+      PRIMARY_PORT: "5432"
+      DB_REPLICATOR_USER: ${DB_REPLICATOR_USER:-replicator}
+      DB_REPLICATOR_PASSWORD: ${DB_REPLICATOR_PASSWORD:-replicator_dev_password}
+    volumes:
+      - ./.pgdata-replica:/var/lib/postgresql/data
+      - ./postgresql/prod-like/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+    entrypoint: ["/replica-entrypoint.sh"]
+    healthcheck:
+      # pg_isready alone can't tell recovery vs primary apart, but it does
+      # confirm the standby actually came up and is accepting connections
+      # (i.e. pg_basebackup succeeded and recovery started) — the
+      # pg_is_in_recovery()=true check itself is this ticket's manual/CI
+      # verification step, not something worth encoding as a healthcheck.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -78,14 +167,17 @@ services:
       # and the Redirect URI registered on genius.com/api-clients) to match.
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      # PostgreSQL connection, handed to docker-entrypoint.sh. Single instance
-      # by default (this compose file no longer runs a standby) — leave
-      # DB_REPLICA_HOST unset for that. Point it at a real streaming replica
-      # in staging/prod for genuine kMaster/kSlave read isolation: userver's
-      # Cluster classifies hosts via pg_is_in_recovery(), so a fabricated
-      # second entry pointing at this same instance would just be classified
-      # as another Master and silently disable the Slave pool — see
-      # DEVELOPMENT.md, "Postgres cluster topology".
+      # PostgreSQL connection, handed to docker-entrypoint.sh. Single
+      # instance by default — leave DB_REPLICA_HOST unset for that (the
+      # default profile's `postgres` service alone). [SF-INF-02] For
+      # genuine kMaster/kSlave read isolation, either point DB_REPLICA_HOST
+      # at a real external streaming standby, or run this repo's own one:
+      # `docker compose --profile prod-like up` plus
+      # DB_REPLICA_HOST=postgres-replica (see postgres-replica below and
+      # DEVELOPMENT.md's "Postgres cluster topology"). userver's Cluster
+      # classifies hosts via pg_is_in_recovery(), so a fabricated second
+      # entry pointing at this same instance would just be classified as
+      # another Master and silently disable the Slave pool.
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
       DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
