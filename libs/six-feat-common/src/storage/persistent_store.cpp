@@ -30,6 +30,7 @@
 #include <userver/storages/postgres/cluster.hpp>
 #include <userver/storages/postgres/cluster_types.hpp>
 #include <userver/storages/postgres/component.hpp>
+#include <userver/storages/postgres/exceptions.hpp>
 #include <userver/storages/postgres/io/array_types.hpp>
 #include <userver/storages/postgres/options.hpp>
 #include <userver/storages/postgres/result_set.hpp>
@@ -268,14 +269,42 @@ storages::postgres::ClusterHostType ReadHostType() {
 // join queries on the graph-building hot path (SongsForArtist,
 // LoadNeighboursImpl), which legitimately take longer than that under real
 // load/cold caches. Without an explicit override here Postgres cancels the
-// statement (57014) and the request 502s (seen live: /api/v1/graph ->
-// SongsForArtist canceled at 250ms while otherwise healthy). All other
-// reads here are single-row/indexed point lookups that comfortably fit
-// under the tight default, so only these two get the wider budget.
+// statement (57014) and the request 502s.
+//
+// [fix2] An earlier version of this fix just widened both timeouts to
+// 2000/3000ms outright — that traded frequent-fast-502s for a much worse
+// failure mode: every contended query now held a pool connection for up
+// to ~2s instead of failing fast, and under the test suite's request
+// volume that was enough to exhaust postgres-db-1's connection pool and
+// cascade into a mass timeout regression across unrelated tests (see
+// commit 69f739e). A single held connection at 2s is worse than several
+// failed-fast ones at 250ms when concurrency is the actual bottleneck.
+//
+// The budget here stays close to the tight default (just enough headroom
+// for genuine one-off slowness) and a bounded retry — one immediate
+// re-attempt, see ExecuteJoinQueryWithRetry below — absorbs transient
+// contention instead. Worst case is now ~2 short attempts back-to-back,
+// never one long hold.
 constexpr storages::postgres::CommandControl kJoinQueryCommandControl{
-    std::chrono::milliseconds{3000}, // network_timeout
-    std::chrono::milliseconds{2000}, // statement_timeout
+    std::chrono::milliseconds{600}, // network_timeout
+    std::chrono::milliseconds{400}, // statement_timeout
 };
+
+constexpr int kJoinQueryMaxAttempts = 2;
+
+template <typename Fn>
+auto ExecuteJoinQueryWithRetry(Fn&& fn) {
+    for (int attempt = 1;; ++attempt) {
+        try {
+            return fn();
+        } catch (const storages::postgres::QueryCancelled& ex) {
+            if (attempt >= kJoinQueryMaxAttempts) throw;
+            LOG_WARNING() << "[PersistentStore] join query cancelled ("
+                          << ex.what() << "), retrying once — attempt "
+                          << attempt << "/" << kJoinQueryMaxAttempts;
+        }
+    }
+}
 
 } // namespace
 
@@ -326,35 +355,37 @@ struct PersistentStore::Impl {
     // Columns are addressed positionally — s.id/a.id and s.title/a.name
     // would otherwise collide by name in the result set.
     std::vector<SongRecord> SongsForArtist(std::int64_t artist_id) const {
-        auto res = cluster->Execute(
-            read_host_type,
-            kJoinQueryCommandControl,
-            "SELECT s.id, s.title, c.role, a.id, a.name, a.image_url, a.url "
-            "FROM songs s "
-            "JOIN credits c ON c.song_id = s.id "
-            "JOIN artists a ON a.id = c.artist_id "
-            "WHERE s.id IN (SELECT DISTINCT song_id FROM credits WHERE artist_id = $1) "
-            "ORDER BY s.id",
-            artist_id);
+        return ExecuteJoinQueryWithRetry([&] {
+            auto res = cluster->Execute(
+                read_host_type,
+                kJoinQueryCommandControl,
+                "SELECT s.id, s.title, c.role, a.id, a.name, a.image_url, a.url "
+                "FROM songs s "
+                "JOIN credits c ON c.song_id = s.id "
+                "JOIN artists a ON a.id = c.artist_id "
+                "WHERE s.id IN (SELECT DISTINCT song_id FROM credits WHERE artist_id = $1) "
+                "ORDER BY s.id",
+                artist_id);
 
-        std::vector<SongRecord> songs;
-        for (const auto& row : res) {
-            const auto song_id = row[0].As<std::int64_t>();
-            if (songs.empty() || songs.back().id != song_id) {
-                SongRecord rec;
-                rec.id    = song_id;
-                rec.title = row[1].As<std::string>();
-                songs.push_back(std::move(rec));
+            std::vector<SongRecord> songs;
+            for (const auto& row : res) {
+                const auto song_id = row[0].As<std::int64_t>();
+                if (songs.empty() || songs.back().id != song_id) {
+                    SongRecord rec;
+                    rec.id    = song_id;
+                    rec.title = row[1].As<std::string>();
+                    songs.push_back(std::move(rec));
+                }
+                TrackCredit tc;
+                tc.role         = IntToRole(row[2].As<std::int16_t>());
+                tc.artist.id    = row[3].As<std::int64_t>();
+                tc.artist.name  = row[4].As<std::string>();
+                tc.artist.image = row[5].As<std::optional<std::string>>().value_or("");
+                tc.artist.url   = row[6].As<std::optional<std::string>>().value_or("");
+                songs.back().credits.push_back(std::move(tc));
             }
-            TrackCredit tc;
-            tc.role         = IntToRole(row[2].As<std::int16_t>());
-            tc.artist.id    = row[3].As<std::int64_t>();
-            tc.artist.name  = row[4].As<std::string>();
-            tc.artist.image = row[5].As<std::optional<std::string>>().value_or("");
-            tc.artist.url   = row[6].As<std::optional<std::string>>().value_or("");
-            songs.back().credits.push_back(std::move(tc));
-        }
-        return songs;
+            return songs;
+        });
     }
 
     std::vector<CollabEdge>
@@ -366,27 +397,29 @@ struct PersistentStore::Impl {
         if (mask.producer) roles.push_back(4);
         if (roles.empty()) return {};
 
-        auto res = cluster->Execute(
-            read_host_type,
-            kJoinQueryCommandControl,
-            "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w "
-            "FROM credits c1 "
-            "JOIN credits c2 ON c2.song_id = c1.song_id "
-            "              AND c2.artist_id != c1.artist_id "
-            "              AND c2.role = ANY($2::smallint[]) "
-            "WHERE c1.artist_id = $1 "
-            "GROUP BY c2.artist_id",
-            artist_id, roles);
+        return ExecuteJoinQueryWithRetry([&] {
+            auto res = cluster->Execute(
+                read_host_type,
+                kJoinQueryCommandControl,
+                "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w "
+                "FROM credits c1 "
+                "JOIN credits c2 ON c2.song_id = c1.song_id "
+                "              AND c2.artist_id != c1.artist_id "
+                "              AND c2.role = ANY($2::smallint[]) "
+                "WHERE c1.artist_id = $1 "
+                "GROUP BY c2.artist_id",
+                artist_id, roles);
 
-        std::vector<CollabEdge> out;
-        out.reserve(res.Size());
-        for (const auto& row : res) {
-            CollabEdge e;
-            e.neighbour = row["artist_id"].As<std::int64_t>();
-            e.weight    = static_cast<int>(row["w"].As<std::int64_t>());
-            out.push_back(e);
-        }
-        return out;
+            std::vector<CollabEdge> out;
+            out.reserve(res.Size());
+            for (const auto& row : res) {
+                CollabEdge e;
+                e.neighbour = row["artist_id"].As<std::int64_t>();
+                e.weight    = static_cast<int>(row["w"].As<std::int64_t>());
+                out.push_back(e);
+            }
+            return out;
+        });
     }
 
     std::vector<std::int64_t>
