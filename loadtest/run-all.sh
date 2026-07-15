@@ -43,7 +43,12 @@ export BASE_URL SESSION_COOKIE
 export SEED_ARTIST="${SEED_ARTIST:-Aurora Vale}"
 export FROM_ARTIST="${FROM_ARTIST:-Aurora Vale}"
 export TO_ARTIST="${TO_ARTIST:-Kessler Vane}"
-export SEARCH_QUERY="${SEARCH_QUERY:-Aurora}"
+# [fix] Deliberately NOT set here (was "${SEARCH_QUERY:-Aurora}" — a
+# substring of the seeded artist name, not the name itself, which 404'd
+# against scripts/e2e_env.py's mock Genius on every single search
+# request). Left unset so lib/config.js's own default (both exact seeded
+# names, "Aurora Vale"/"Kessler Vane") applies unless the caller sets
+# SEARCH_QUERY/SEARCH_QUERIES explicitly.
 export PROFILE="${PROFILE:-full}"
 
 status=0

@@ -88,7 +88,7 @@ SEARCH_QUERIES="Drake,Kendrick,SZA,Travis Scott" \
 | `SEED_ARTIST`       | `Aurora Vale`         | `graph_warm.js`                |
 | `FROM_ARTIST` / `TO_ARTIST` | `Aurora Vale` / `Kessler Vane` | `path_cold.js` (fallback when the pools below are unset) |
 | `FROM_ARTISTS` / `TO_ARTISTS` (comma-separated) | *(empty)* | `path_cold.js` — random pair per iteration |
-| `SEARCH_QUERY` / `SEARCH_QUERIES` (comma-separated) | `Aurora` | `search.js` — random pick per iteration |
+| `SEARCH_QUERY` / `SEARCH_QUERIES` (comma-separated) | `Aurora Vale`, `Kessler Vane` | `search.js` — random pick per iteration. Against the synthetic mock stack these must be exact matches (its `/search` dispatch is exact-string, not fuzzy) — use the two seeded names, not a substring. |
 | `E2E_ENV_FILE`      | *(unset)*             | `run-all.sh` only — see "Getting a session cookie" above |
 
 ## Output

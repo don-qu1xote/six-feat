@@ -6,8 +6,11 @@
 // latency/error-rate under load rather than six-feat's own DB/graph path.
 //
 // SEARCH_QUERIES (comma-separated) picks a random query per iteration —
-// falls back to a single SEARCH_QUERY (default "Aurora", matching
-// scripts/e2e_env.py's seeded artist) when unset.
+// falls back to a single SEARCH_QUERY when unset, and to lib/config.js's
+// own default ("Aurora Vale"/"Kessler Vane" — the two names
+// scripts/e2e_env.py's mock Genius actually has registered, see its
+// GeniusMock.resolve() calls; that mock's /search dispatch is an EXACT
+// string match, so anything else 404s) when neither is set at all.
 //
 // Run standalone:
 //   BASE_URL=http://localhost:8080 SESSION_COOKIE=<cookie> \

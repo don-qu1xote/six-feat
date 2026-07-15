@@ -30,7 +30,29 @@ export function loadConfig() {
     // synthetic two-artist scripts/e2e_env.py dataset can offer.
     fromArtists: splitList(__ENV.FROM_ARTISTS),
     toArtists: splitList(__ENV.TO_ARTISTS),
-    searchQueries: splitList(__ENV.SEARCH_QUERIES || __ENV.SEARCH_QUERY) || ["Aurora"],
+    // [fix] Two bugs here previously:
+    //   1. Default was ["Aurora"] — a SUBSTRING of the seeded artist name,
+    //      not the name itself. scripts/e2e_env.py's mock Genius /search
+    //      dispatch (tests/conftest.py: GeniusMock._register_search_handler)
+    //      is an EXACT dict-key match on `q` — "Aurora" never matches the
+    //      registered key "Aurora Vale", so every search request 404'd
+    //      from the mock (100% http_req_failed against the synthetic
+    //      stack). Now defaults to BOTH exact seeded names, which also
+    //      gives genuine query variety instead of one fixed string, same
+    //      reasoning as fromArtist/toArtist above.
+    //   2. `splitList(...) || [default]` never actually fell back to
+    //      [default]: splitList always returns an array (possibly empty),
+    //      and `[] || x` evaluates to `[]` in JS — an empty array is
+    //      truthy. Whenever neither SEARCH_QUERIES nor SEARCH_QUERY was
+    //      set, searchQueries silently ended up [], pick() on an empty
+    //      array returns undefined, and withQuery() then drops `q`
+    //      entirely (it filters out undefined values) — a request with NO
+    //      query parameter at all, which the API correctly 400s. Fixed by
+    //      checking .length explicitly instead of relying on ||.
+    searchQueries: (() => {
+      const parsed = splitList(__ENV.SEARCH_QUERIES || __ENV.SEARCH_QUERY);
+      return parsed.length ? parsed : ["Aurora Vale", "Kessler Vane"];
+    })(),
     isSmoke,
     // Smoke: short enough for a nightly/on-demand CI job against the
     // synthetic mock-Genius stack (scripts/e2e_env.py). Full: a real local
