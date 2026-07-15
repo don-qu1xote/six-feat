@@ -31,6 +31,7 @@
 #include <userver/storages/postgres/cluster_types.hpp>
 #include <userver/storages/postgres/component.hpp>
 #include <userver/storages/postgres/io/array_types.hpp>
+#include <userver/storages/postgres/options.hpp>
 #include <userver/storages/postgres/result_set.hpp>
 #include <userver/storages/postgres/transaction.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
@@ -262,6 +263,20 @@ storages::postgres::ClusterHostType ReadHostType() {
                         : storages::postgres::ClusterHostType::kMaster;
 }
 
+// [fix] userver's implicit default CommandControl caps statement_timeout at
+// 250ms (meant for simple point lookups) — too tight for the multi-table
+// join queries on the graph-building hot path (SongsForArtist,
+// LoadNeighboursImpl), which legitimately take longer than that under real
+// load/cold caches. Without an explicit override here Postgres cancels the
+// statement (57014) and the request 502s (seen live: /api/v1/graph ->
+// SongsForArtist canceled at 250ms while otherwise healthy). All other
+// reads here are single-row/indexed point lookups that comfortably fit
+// under the tight default, so only these two get the wider budget.
+constexpr storages::postgres::CommandControl kJoinQueryCommandControl{
+    std::chrono::milliseconds{3000}, // network_timeout
+    std::chrono::milliseconds{2000}, // statement_timeout
+};
+
 } // namespace
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -313,6 +328,7 @@ struct PersistentStore::Impl {
     std::vector<SongRecord> SongsForArtist(std::int64_t artist_id) const {
         auto res = cluster->Execute(
             read_host_type,
+            kJoinQueryCommandControl,
             "SELECT s.id, s.title, c.role, a.id, a.name, a.image_url, a.url "
             "FROM songs s "
             "JOIN credits c ON c.song_id = s.id "
@@ -352,6 +368,7 @@ struct PersistentStore::Impl {
 
         auto res = cluster->Execute(
             read_host_type,
+            kJoinQueryCommandControl,
             "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w "
             "FROM credits c1 "
             "JOIN credits c2 ON c2.song_id = c1.song_id "

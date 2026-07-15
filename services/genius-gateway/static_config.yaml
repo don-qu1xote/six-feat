@@ -93,8 +93,17 @@ components_manager:
       method: POST
       task_processor: *main_tp
 
-    handler-internal-healthz:
+    handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: *main_tp
+
+    # [SF-INF-03] Unified readiness contract — see
+    # libs/six-feat-common/src/http/readiness_common.hpp. Gates on the
+    # shared CircuitBreaker's state (see ReadinessHandler's own header
+    # comment for why this service gates on it while six-feat doesn't).
+    handler-readyz:
+      path: /readyz
       method: GET
       task_processor: *main_tp
 

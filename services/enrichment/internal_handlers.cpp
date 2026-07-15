@@ -1,12 +1,15 @@
 #include "internal_handlers.hpp"
 #include "core/internal_auth.hpp"
 #include "core/request_id.hpp"
+#include "core/security_headers.hpp"
+#include "http/readiness_common.hpp"
 #include "schemas/handlers/enrichment/enqueue_handler_schema.hpp"
 #include "schemas/handlers/enrichment/internal_status_handler_schema.hpp"
-#include "schemas/handlers/enrichment/health_handler_schema.hpp"
+#include "schemas/handlers/enrichment/readiness_handler_schema.hpp"
 
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
@@ -158,26 +161,32 @@ yaml_config::Schema InternalStatusHandler::GetStaticConfigSchema() {
     return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kInternalStatusHandlerSchema);
 }
 
-// ── HealthHandler ─────────────────────────────────────────────────────────
+// ── ReadinessHandler ─────────────────────────────────────────────────────
 
-HealthHandler::HealthHandler(const components::ComponentConfig&  config,
-                              const components::ComponentContext& context)
+ReadinessHandler::ReadinessHandler(const components::ComponentConfig&  config,
+                                    const components::ComponentContext& context)
     : HttpHandlerBase(config, context)
+    , store_(context.FindComponent<PersistentStore>())
 {}
 
-std::string HealthHandler::HandleRequestThrow(
+std::string ReadinessHandler::HandleRequestThrow(
     const server::http::HttpRequest&  request,
     server::request::RequestContext& /*context*/) const
 {
     EnsureRequestId(request);
+    ApplySecurityHeaders(request);
 
-    request.GetHttpResponse().SetContentType(
-        http::ContentType{"application/json"});
-    return R"({"status":"ok"})";
+    const bool db_ok = store_.Ping();
+
+    const std::vector<ReadinessCheck> checks{
+        {"database", db_ok, db_ok ? "ok" : "error"},
+    };
+
+    return BuildReadinessBody(request, checks);
 }
 
-yaml_config::Schema HealthHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kEnrichmentHealthHandlerSchema);
+yaml_config::Schema ReadinessHandler::GetStaticConfigSchema() {
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kEnrichmentReadinessHandlerSchema);
 }
 
 } // namespace six_feat::enrichment

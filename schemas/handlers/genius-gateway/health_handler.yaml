@@ -1,4 +1,0 @@
-type: object
-description: Genius-gateway service health-check handler
-additionalProperties: false
-properties: {}

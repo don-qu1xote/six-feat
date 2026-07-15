@@ -183,6 +183,16 @@ CircuitBreaker::State CircuitBreaker::CurrentState() const {
     return state_.load(std::memory_order_acquire);
 }
 
+// static
+const char* CircuitBreaker::ToString(State state) {
+    switch (state) {
+        case State::Closed:   return "closed";
+        case State::Open:     return "open";
+        case State::HalfOpen: return "half_open";
+    }
+    return "unknown";
+}
+
 void CircuitBreaker::Trip() {
     trip_time_ = std::chrono::steady_clock::now();
     state_.store(State::Open, std::memory_order_release);

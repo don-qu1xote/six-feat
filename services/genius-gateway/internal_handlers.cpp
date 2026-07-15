@@ -2,15 +2,18 @@
 #include "core/internal_auth.hpp"
 #include "core/request_id.hpp"
 #include "core/resilience.hpp"
+#include "core/security_headers.hpp"
+#include "http/readiness_common.hpp"
 #include "schemas/handlers/genius-gateway/artist_handler_schema.hpp"
 #include "schemas/handlers/genius-gateway/song_list_handler_schema.hpp"
 #include "schemas/handlers/genius-gateway/song_handler_schema.hpp"
 #include "schemas/handlers/genius-gateway/candidates_handler_schema.hpp"
-#include "schemas/handlers/genius-gateway/health_handler_schema.hpp"
+#include "schemas/handlers/genius-gateway/readiness_handler_schema.hpp"
 
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
@@ -338,26 +341,36 @@ yaml_config::Schema CandidatesHandler::GetStaticConfigSchema() {
     return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kCandidatesHandlerSchema);
 }
 
-// ── HealthHandler ─────────────────────────────────────────────────────────
+// ── ReadinessHandler ─────────────────────────────────────────────────────
 
-HealthHandler::HealthHandler(const components::ComponentConfig&  config,
-                              const components::ComponentContext& context)
+ReadinessHandler::ReadinessHandler(const components::ComponentConfig&  config,
+                                    const components::ComponentContext& context)
     : HttpHandlerBase(config, context)
+    , gateway_(context.FindComponent<GeniusGateway>())
 {}
 
-std::string HealthHandler::HandleRequestThrow(
+std::string ReadinessHandler::HandleRequestThrow(
     const server::http::HttpRequest&  request,
     server::request::RequestContext& /*context*/) const
 {
     EnsureRequestId(request);
+    ApplySecurityHeaders(request);
 
-    request.GetHttpResponse().SetContentType(
-        http::ContentType{"application/json"});
-    return R"({"status":"ok"})";
+    // See this class's own header comment for why Open/HalfOpen gates
+    // readiness here (unlike six-feat, which has an L1 cache to fall back
+    // on and deliberately does NOT gate on Genius reachability).
+    const auto cb_state = gateway_.CbState();
+    const bool cb_ok     = cb_state == CircuitBreaker::State::Closed;
+
+    const std::vector<ReadinessCheck> checks{
+        {"circuit_breaker", cb_ok, CircuitBreaker::ToString(cb_state)},
+    };
+
+    return BuildReadinessBody(request, checks);
 }
 
-yaml_config::Schema HealthHandler::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kGeniusGatewayHealthHandlerSchema);
+yaml_config::Schema ReadinessHandler::GetStaticConfigSchema() {
+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(kGeniusGatewayReadinessHandlerSchema);
 }
 
 } // namespace six_feat::genius_gateway

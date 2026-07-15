@@ -41,4 +41,30 @@ private:
     const std::string fingerprint_;
 };
 
+// GET /readyz — unauthenticated readiness probe. [SF-INF-03] Unified body
+// shape (six_feat::ReadinessCheck/BuildReadinessBody, see
+// libs/six-feat-common/src/http/readiness_common.hpp). This service has no
+// Postgres, no internal-service dependency of its own to poll (session
+// encryption is a pure function of APP_SECRET, read once at boot — it
+// can't degrade at runtime the way a network dependency can), and each of
+// its OAuth handlers calls the real Genius API directly per-request rather
+// than through a component this handler could meaningfully probe ahead of
+// time. checks{} is therefore always empty and this always reports ready —
+// an honest reflection of "there is nothing here that degrades", not a
+// stub left unfinished. If a genuine runtime-degradable dependency is ever
+// added to this service, it belongs in checks{} here.
+class ReadinessHandler final : public userver::server::handlers::HttpHandlerBase {
+public:
+    static constexpr std::string_view kName = "handler-readyz";
+
+    ReadinessHandler(const userver::components::ComponentConfig&  config,
+                      const userver::components::ComponentContext& context);
+
+    std::string HandleRequestThrow(
+        const userver::server::http::HttpRequest&  request,
+        userver::server::request::RequestContext&  context) const override;
+
+    static userver::yaml_config::Schema GetStaticConfigSchema();
+};
+
 } // namespace six_feat::auth

@@ -107,6 +107,11 @@ class CircuitBreaker {
 public:
     enum class State : int { Closed = 0, Open = 1, HalfOpen = 2 };
 
+    // [SF-INF-03] "closed"/"open"/"half_open" — used by
+    // genius-gateway's ReadinessHandler to report CbState() as a
+    // readiness_common.hpp ReadinessCheck::status string.
+    static const char* ToString(State state);
+
     explicit CircuitBreaker(int failure_threshold,
                             std::chrono::seconds open_duration)
         : failure_threshold_(failure_threshold),

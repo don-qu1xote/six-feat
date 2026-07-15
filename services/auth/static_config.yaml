@@ -110,6 +110,16 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
+    # [SF-INF-03] Unified readiness contract — see
+    # libs/six-feat-common/src/http/readiness_common.hpp. This service has
+    # no runtime-degradable dependency (see internal_handlers.hpp's
+    # ReadinessHandler doc-comment), so checks{} is always empty and this
+    # always reports 200 ready.
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: *main_tp
+
     # ── APP_SECRET fail-fast parity (SF-SEC-01) ─────────────────────────────
     # Publishes a non-invertible fingerprint of this process's APP_SECRET
     # (session_crypto::KeyFingerprint) so six-feat's AppSecretParityChecker

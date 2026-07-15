@@ -60,14 +60,17 @@ components_manager:
     # sync-start: false — see services/six-feat/static_config.yaml for the
     # full rationale (avoids crashing the whole process on a transient
     # Postgres hiccup at boot; the pool keeps retrying in the background
-    # instead). This service's /healthz is a liveness-only check (no DB
-    # ping — see libs/six-feat-common/src/http/health_handler.cpp), so
-    # unlike six-feat's /readyz it won't reflect "DB not connected yet" —
-    # that's fine here since nothing currently depends on this service's
-    # healthcheck status (docker-compose.yml gates six-feat-enrichment on
-    # condition: service_started, not service_healthy); background jobs
-    # that hit the DB before the pool is ready simply retry at the query
-    # level instead of the whole container crash-looping.
+    # instead). /healthz stays liveness-only (no DB ping — see
+    # libs/six-feat-common/src/http/health_handler.cpp); [SF-INF-03] /readyz
+    # below DOES ping the DB (internal_handlers.cpp: ReadinessHandler),
+    # matching six-feat's own /readyz contract — that's fine even though
+    # nothing currently depends on this service's healthcheck status
+    # (docker-compose.yml gates six-feat-enrichment on condition:
+    # service_started, not service_healthy): /readyz existing and being
+    # accurate doesn't require anything to actually poll it yet, and
+    # background jobs that hit the DB before the pool is ready still just
+    # retry at the query level instead of the whole container
+    # crash-looping.
     postgres-db-1:
       dbconnection: $db_connection_string
       blocking_task_processor: fs-task-processor
@@ -107,8 +110,15 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
-    handler-internal-healthz:
+    handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: *main_tp
+
+    # [SF-INF-03] Unified readiness contract — see
+    # libs/six-feat-common/src/http/readiness_common.hpp.
+    handler-readyz:
+      path: /readyz
       method: GET
       task_processor: *main_tp
 

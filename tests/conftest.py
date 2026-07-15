@@ -127,6 +127,7 @@ TEST_ENRICHMENT_INTERNAL_SECRET = "test-enrichment-internal-secret"
 # internal_auth.hpp — one shared secret for the whole internal mesh).
 GENIUS_GATEWAY_PORT = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_PORT", "18083"))
 GENIUS_GATEWAY_MONITOR_PORT = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_MONITOR_PORT", "18086"))
+GENIUS_GATEWAY_BASE = f"http://localhost:{GENIUS_GATEWAY_PORT}"
 GENIUS_GATEWAY_BINARY = Path(
     os.environ.get(
         "SIX_FEAT_GENIUS_GATEWAY_BINARY",
@@ -560,6 +561,14 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    # [SF-INF-03] Unified readiness contract — always {"status":"ready",
+    # "checks":{}} for this service (no runtime-degradable dependency), see
+    # services/auth/internal_handlers.hpp's ReadinessHandler doc-comment.
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: main-task-processor
+
     # [SF-SEC-01] Publishes this process's APP_SECRET fingerprint — see
     # test_app_secret_parity.py.
     handler-internal-key-fingerprint:
@@ -657,8 +666,16 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
-    handler-internal-healthz:
+    handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # [SF-INF-03] Unified readiness contract — gates on the shared
+    # CircuitBreaker's state, see services/genius-gateway/
+    # internal_handlers.hpp's ReadinessHandler doc-comment.
+    handler-readyz:
+      path: /readyz
       method: GET
       task_processor: main-task-processor
 
@@ -1077,6 +1094,7 @@ MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_MONITOR_PORT_BG", "18095"))
 # default profile.
 ENRICHMENT_SERVICE_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_PORT_BG", "18092"))
 ENRICHMENT_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_BG", "18096"))
+ENRICHMENT_BASE_BG = f"http://localhost:{ENRICHMENT_SERVICE_PORT_BG}"
 
 # [IDEA-46] Real six-feat-genius-gateway instance backing the BG profile —
 # both service_proc_bg and enrichment_proc_bg point their GeniusGatewayClient
@@ -1086,6 +1104,7 @@ ENRICHMENT_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_POR
 # behaviour.
 GENIUS_GATEWAY_PORT_BG = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_PORT_BG", "18093"))
 GENIUS_GATEWAY_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_MONITOR_PORT_BG", "18097"))
+GENIUS_GATEWAY_BASE_BG = f"http://localhost:{GENIUS_GATEWAY_PORT_BG}"
 
 
 def _make_mock_handler(state: _MockState):
@@ -1205,7 +1224,15 @@ components_manager:
       dbconnection: {db_connection_string}
       blocking_task_processor: fs-task-processor
       dns_resolver: async
-      sync-start: true
+      # [SF-INF-03] Parameterized (was hardcoded "true") so
+      # enrichment_proc_baddb below can boot with sync-start: false against
+      # a deliberately unreachable DB (matching production's own
+      # sync-start: false — see services/enrichment/static_config.yaml) to
+      # exercise /readyz's database check actually reporting not_ready,
+      # instead of the whole process failing to start. Every existing
+      # caller (enrichment_proc_bg) still passes "true" explicitly, so this
+      # is purely additive.
+      sync-start: {sync_start}
       connlimit_mode: manual
       min_pool_size: 1
       max_pool_size: 5
@@ -1239,8 +1266,16 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    handler-internal-healthz:
+    handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # [SF-INF-03] Unified readiness contract — pings postgres-db-1, see
+    # services/enrichment/internal_handlers.hpp's ReadinessHandler
+    # doc-comment.
+    handler-readyz:
+      path: /readyz
       method: GET
       task_processor: main-task-processor
 
@@ -1335,6 +1370,7 @@ def enrichment_proc_bg(
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=8,
             drain_timeout_ms=5000,
+            sync_start="true",
         )
     )
 
@@ -1353,6 +1389,89 @@ def enrichment_proc_bg(
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(
             f"BG-profile enrichment service did not start within timeout.\nstderr:\n{stderr}"
+        )
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+ENRICHMENT_SERVICE_PORT_BADDB = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_PORT_BADDB", "18088")
+)
+ENRICHMENT_MONITOR_PORT_BADDB = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_BADDB", "18089")
+)
+ENRICHMENT_BASE_BADDB = f"http://localhost:{ENRICHMENT_SERVICE_PORT_BADDB}"
+
+# [SF-INF-03] Deliberately unreachable: port 1 is a privileged port no
+# Postgres ever listens on in this test environment, so every connection
+# attempt fails immediately (connection refused) rather than timing out.
+_BAD_DB_CONNECTION_STRING = "postgresql://{user}:{password}@127.0.0.1:1/{dbname}".format(
+    user=DB_CONN_PARAMS["user"],
+    password=DB_CONN_PARAMS["password"],
+    dbname=DB_CONN_PARAMS["dbname"],
+)
+
+
+@pytest.fixture(scope="session")
+def enrichment_proc_baddb(
+    tmp_db_dir_bg: Path,
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-INF-03] Dedicated six-feat-enrichment instance pointed at an
+    unreachable Postgres (see _BAD_DB_CONNECTION_STRING), isolated from
+    enrichment_proc_bg (own port, own process) so it can't affect any other
+    test's DB access. sync-start: false (unlike enrichment_proc_bg's
+    "true") means the process still comes up and starts serving HTTP —
+    matching production's own sync-start: false — instead of
+    components::Run throwing at boot, so GET /readyz can be observed
+    reporting the database check as not_ready/503 instead of the container
+    just failing to start. No genius-gateway dependency needed — this
+    fixture only exercises /readyz, never enrichment's actual enqueue/status
+    endpoints.
+    """
+    if not ENRICHMENT_BINARY.exists():
+        pytest.skip(
+            f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
+            "Build the project first or set SIX_FEAT_ENRICHMENT_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir_bg / "enrichment_baddb_static_config.yaml"
+    cfg_path.write_text(
+        _ENRICHMENT_TEST_CONFIG_TEMPLATE.format(
+            enrichment_port=ENRICHMENT_SERVICE_PORT_BADDB,
+            enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_BADDB,
+            # No real genius-gateway backing this instance — fine, since
+            # nothing in this fixture's tests ever calls a handler that
+            # would need it.
+            genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            db_connection_string=_BAD_DB_CONNECTION_STRING,
+            queue_capacity=8,
+            drain_timeout_ms=5000,
+            sync_start="false",
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(ENRICHMENT_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(ENRICHMENT_SERVICE_PORT_BADDB):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(
+            f"bad-DB enrichment service did not start within timeout.\nstderr:\n{stderr}"
         )
 
     yield proc

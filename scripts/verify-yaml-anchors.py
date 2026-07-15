@@ -47,7 +47,12 @@ EXPECTED: dict[str, dict[str, str]] = {
         "server.listener-monitor": MONITOR_TP,
         "handler-internal-enqueue": MAIN_TP,
         "handler-internal-status": MAIN_TP,
-        "handler-internal-healthz": MAIN_TP,
+        # [SF-INF-03] Was handler-internal-healthz — now the shared
+        # six_feat::HealthHandler (kName "handler-healthz"), same as every
+        # other service. handler-readyz is new (enrichment-specific
+        # database check).
+        "handler-healthz": MAIN_TP,
+        "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
     "services/genius-gateway/static_config.yaml": {
@@ -57,7 +62,10 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-internal-genius-song-list": MAIN_TP,
         "handler-internal-genius-song": MAIN_TP,
         "handler-internal-genius-candidates": MAIN_TP,
-        "handler-internal-healthz": MAIN_TP,
+        # [SF-INF-03] Was handler-internal-healthz — see the matching
+        # comment in the enrichment block above.
+        "handler-healthz": MAIN_TP,
+        "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
     "services/auth/static_config.yaml": {
@@ -68,6 +76,8 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-auth-logout": MAIN_TP,
         "handler-auth-me": MAIN_TP,
         "handler-healthz": MAIN_TP,
+        # [SF-INF-03] New — auth-specific (always-empty-checks) readiness.
+        "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
 }

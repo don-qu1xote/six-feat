@@ -63,6 +63,7 @@ add_library(six_feat_common OBJECT
     src/auth/oauth_handler.cpp
     src/auth/session_crypto.cpp
     src/http/health_handler.cpp
+    src/http/readiness_common.cpp
 )
 
 target_link_libraries(six_feat_common
