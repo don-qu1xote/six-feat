@@ -107,25 +107,44 @@ BetweennessCentrality(const AdjList&                   adj,
     }
 
     // ── Full Brandes O(V·E) ───────────────────────────────────────────────
+    // [SF-PERF-05] P/sigma/dist/delta/order/queue are hoisted out of the
+    // per-source loop and reused across all |nodes| sources instead of
+    // being reallocated (4 fresh hash maps, each with their own bucket
+    // array) on every iteration — reset in place below instead. `order`
+    // and `queue` are always fully drained by the end of an iteration
+    // (both `while` loops below run until empty), so they're already
+    // empty at the top of the next one and need no explicit reset.
+    std::unordered_map<std::int64_t, std::vector<std::int64_t>> P;
+    P.reserve(nodes.size());
+    std::unordered_map<std::int64_t, double> sigma;
+    sigma.reserve(nodes.size());
+    std::unordered_map<std::int64_t, int> dist;
+    dist.reserve(nodes.size());
+    std::unordered_map<std::int64_t, double> delta;
+    delta.reserve(nodes.size());
+    for (const auto id : nodes) {
+        P[id];
+        sigma[id] = 0.0;
+        dist[id]  = -1;
+        delta[id] = 0.0;
+    }
+
+    std::stack<std::int64_t> order;
+    std::deque<std::int64_t> queue;
+
     for (const auto s : nodes) {
-
-        std::stack<std::int64_t> order;
-
-        std::unordered_map<std::int64_t, std::vector<std::int64_t>> P;
-        P.reserve(nodes.size());
-        for (const auto id : nodes) P[id] = {};
-
-        std::unordered_map<std::int64_t, double> sigma;
-        sigma.reserve(nodes.size());
-        for (const auto id : nodes) sigma[id] = 0.0;
+        // Reset values in place (same starting state as a fresh map per
+        // source in the previous version) without dropping the bucket
+        // arrays/vector buffers reserved above.
+        for (const auto id : nodes) {
+            P[id].clear();
+            sigma[id] = 0.0;
+            dist[id]  = -1;
+            delta[id] = 0.0;
+        }
         sigma[s] = 1.0;
-
-        std::unordered_map<std::int64_t, int> dist;
-        dist.reserve(nodes.size());
-        for (const auto id : nodes) dist[id] = -1;
         dist[s] = 0;
 
-        std::deque<std::int64_t> queue;
         queue.push_back(s);
 
         while (!queue.empty()) {
@@ -148,10 +167,6 @@ BetweennessCentrality(const AdjList&                   adj,
                 }
             }
         }
-
-        std::unordered_map<std::int64_t, double> delta;
-        delta.reserve(nodes.size());
-        for (const auto id : nodes) delta[id] = 0.0;
 
         while (!order.empty()) {
             const std::int64_t w = order.top();

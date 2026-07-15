@@ -208,9 +208,19 @@ void CollabService::AppendAdjFromL1(
 
         std::unordered_set<std::int64_t> neighbour_ids;
         neighbour_ids.reserve(neighbours.size());
+
+        // [SF-PERF-05] adj[id] receives exactly neighbours.size() new
+        // entries in this loop — reserve up front instead of letting
+        // push_back grow it round-by-round. Cache the reference too: it
+        // stays valid across the adj[nid] inserts below (unordered_map
+        // insertion never invalidates references to existing elements,
+        // only iterators), so there's no need to re-look-up adj[id] on
+        // every edge.
+        auto& id_adj = adj[id];
+        id_adj.reserve(id_adj.size() + neighbours.size());
         for (const auto& edge : neighbours) {
             const std::int64_t nid = edge.neighbour;
-            adj[id].push_back(edge);
+            id_adj.push_back(edge);
             adj[nid].push_back({id, edge.weight});
             neighbour_ids.insert(nid);
 
@@ -223,9 +233,16 @@ void CollabService::AppendAdjFromL1(
         // each of its neighbours, from L1 credit data — mirrors what
         // CheckDirectPath does for the 1-hop case, so multi-hop path edges
         // also carry non-empty songs[]. Dedup by song.id.
-        ArtistRef fref;
-        fref.id = id;
-        if (const auto it = node_info.find(id); it != node_info.end()) fref = it->second;
+        // [SF-PERF-05] node_info[id] was just populated above (or already
+        // present) — reference it directly instead of copying the
+        // ArtistRef (3 strings) purely to pass it to GetArtistSongs.
+        // `fallback` only matters if repo_.Lookup(id) failed above (no L1
+        // row for this id at all) — same id-only value the previous
+        // "ArtistRef fref; fref.id = id;" default carried.
+        ArtistRef fallback;
+        fallback.id = id;
+        const auto node_it = node_info.find(id);
+        const ArtistRef& fref = node_it != node_info.end() ? node_it->second : fallback;
         const auto res = repo_.GetArtistSongs(fref, Depth::Foreground);
         if (res.network_needed) continue;
 
@@ -509,6 +526,12 @@ PathFindResult CollabService::FindPath(const ArtistRef&   from,
             int       weight = 0;
         };
         std::vector<FrontierEntry> frontier_candidates;
+        // [SF-PERF-05] adj.size() is a cheap, always-available upper bound
+        // on how many candidates this loop can produce (it can only ever
+        // skip entries, never add more than one per adj key) — reserving
+        // it avoids frontier_candidates' growth-reallocation copies, which
+        // each move a full ArtistRef (3 strings).
+        frontier_candidates.reserve(adj.size());
         for (const auto& [nid, edges] : adj) {
             if (known_ids.count(nid)) continue;
             if (repo_.GetFetchDepth(nid) >= Depth::Foreground) {
@@ -556,10 +579,16 @@ PathFindResult CollabService::FindPath(const ArtistRef&   from,
         std::vector<ExpandTask> tasks;
         tasks.reserve(frontier_candidates.size());
         for (auto& fe : frontier_candidates) {
-            const ArtistRef fref = fe.ref;
-            tasks.push_back({fref, utils::Async(
+            // [SF-PERF-05] Was 3 full ArtistRef copies per frontier node
+            // (local fref, ExpandTask::ref, lambda capture) — now exactly
+            // one: fref_for_task is kept for the known_ids/EnqueueIfNeeded
+            // use below, and the async lambda gets fe.ref moved out
+            // directly (frontier_candidates isn't read again after this
+            // loop, so it's safe to consume).
+            ArtistRef fref_for_task = fe.ref;
+            tasks.push_back({std::move(fref_for_task), utils::Async(
                 "path-expand",
-                [this, fref, user_token] {
+                [this, fref = std::move(fe.ref), user_token] {
                     try { FetchFg(fref, user_token); } catch (const std::exception& ex) {
                         LOG_WARNING() << "[Service] expand " << fref.id
                                       << ": " << ex.what();
