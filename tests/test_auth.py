@@ -43,6 +43,7 @@ Scenarios covered:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -198,6 +199,39 @@ class TestAuthLogout:
         )
         set_cookie_headers = resp.headers.get("Set-Cookie", "")
         assert "six_feat_session=" in set_cookie_headers
+
+    def test_session_cookie_flags(self, auth_service_proc, auth_cookie: str):
+        """[SF-SEC-05] six_feat_session must carry HttpOnly (JS can never
+        read the encrypted token) and SameSite=Lax (see oauth_handler.cpp's
+        comment on the mint site for why not Strict: a session cookie only
+        gates GET reads here, and Lax already withholds it on cross-site
+        POST/PUT/DELETE — the actual CSRF-relevant case — so Strict bought
+        no extra protection while breaking "arrive via an external link and
+        still be logged in on first paint"). Secure is asserted only when
+        this deployment is HTTPS (COOKIE_SECURE, same condition
+        IsHttpsDeployment()/oauth_.CookieSecure() use) — sending Secure over
+        plain HTTP local dev would make the browser silently drop the
+        cookie instead of ever sending it back.
+        Exercised via the LOGOUT response rather than a real /auth/callback
+        (no Genius token-exchange mock exists — see this file's own module
+        docstring): LogoutHandler sets the SAME HttpOnly/Secure/SameSite
+        attributes on six_feat_session as CallbackHandler's mint does (only
+        Max-Age/value differ), so this is genuine coverage of the real
+        Set-Cookie serialization, not a re-implementation of it.
+        """
+        sess = requests.Session()
+        sess.cookies.update({"six_feat_session": auth_cookie, "six_feat_csrf": "test-csrf-token"})
+        resp = sess.post(
+            LOGOUT_URL, headers={"X-CSRF-Token": "test-csrf-token"}, allow_redirects=False
+        )
+        set_cookie_headers = resp.headers.get("Set-Cookie", "")
+        assert "HttpOnly" in set_cookie_headers
+        assert "SameSite=Lax" in set_cookie_headers
+        cookie_secure_env = os.environ.get("COOKIE_SECURE")
+        if cookie_secure_env != "false":
+            assert "Secure" in set_cookie_headers
+        else:
+            assert "Secure" not in set_cookie_headers
 
     def test_logout_works_even_when_already_anonymous(self, auth_anon_client: requests.Session):
         """Logout has no auth requirement of its own — it should be safe to

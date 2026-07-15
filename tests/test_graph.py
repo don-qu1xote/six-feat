@@ -17,6 +17,8 @@ Scenarios covered:
 
 from __future__ import annotations
 
+import time
+
 import pytest
 import requests
 
@@ -124,6 +126,27 @@ class TestGraphRequiresAuth:
         sess.cookies.update({"six_feat_session": expired_value})
         resp = sess.get(GRAPH_URL, params={"artist": "Drake"})
         assert resp.status_code == 401
+
+    def test_fresh_cookie_returns_200(self, service_proc, genius_mock: GeniusMock):
+        """[SF-SEC-05] Mirror image of test_expired_cookie_returns_401 above:
+        same hand-crafted-cookie mechanism (token_router.hpp's
+        ExtractToken -> Decrypt), just with exp far in the future instead of
+        in the past — confirms a session within its TTL is genuinely
+        accepted, not merely that an expired one is rejected."""
+        import session_crypto
+
+        genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
+        genius_mock.songs(1, [])
+
+        key = session_crypto.key_from_secret("f" * 64)
+        fresh_value = session_crypto.encrypt(
+            "some-token", expires_at_unix=int(time.time()) + 3600, key=key
+        )
+        sess = requests.Session()
+        sess.headers["Accept"] = "application/json"
+        sess.cookies.update({"six_feat_session": fresh_value})
+        resp = sess.get(GRAPH_URL, params={"artist": "Drake"})
+        assert resp.status_code == 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────

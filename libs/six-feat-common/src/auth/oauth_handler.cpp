@@ -368,7 +368,22 @@ std::string CallbackHandler::HandleRequestThrow(
         static_cast<long>(oauth_.SessionTtlDays()) * 86400L});
     session_cookie.SetHttpOnly();
     if (oauth_.CookieSecure()) session_cookie.SetSecure();
-    session_cookie.SetSameSite("Strict");
+    // [SF-SEC-05] SameSite=Lax, not Strict: this app is a link-shareable SPA
+    // (graph URLs like /?artist=X&seed=... get shared/bookmarked/clicked
+    // from outside the site) — with Strict, the FIRST top-level navigation
+    // into the site via such an external link would silently withhold the
+    // session cookie (the user would appear logged out for that one paint,
+    // then "log back in" once same-site fetches start working), even though
+    // a valid, unexpired session exists. Lax still sends the cookie on that
+    // top-level cross-site GET navigation while withholding it on cross-site
+    // POST/PUT/DELETE — the case that actually matters for CSRF — so this
+    // isn't a real protection downgrade: every state-changing route this
+    // session cookie gates (POST /auth/logout) is already POST-only and
+    // additionally requires the separate double-submit six_feat_csrf token
+    // below, neither of which Lax weakens (see LogoutHandler's own comment
+    // on why POST + Lax + the CSRF token together still block a forged
+    // cross-site logout).
+    session_cookie.SetSameSite("Lax");
     session_cookie.SetPath("/");
     response.SetCookie(session_cookie);
 
@@ -487,9 +502,12 @@ std::string LogoutHandler::HandleRequestThrow(
     // [F-38] logout is now routed as POST-only (see static_config.yaml), so a
     // bare <img src="/auth/logout"> or a prefetched link can no longer fire
     // it. As defense in depth, also require a double-submit CSRF token when
-    // there's an active session to protect — the six_feat_session cookie is
-    // SameSite=Strict already, but this stops logout via a same-site HTML
-    // form/auto-submit trick too. Skip the check for already-anonymous
+    // there's an active session to protect — [SF-SEC-05] the six_feat_session
+    // cookie is SameSite=Lax already (see the mint site's own comment for why
+    // not Strict), which still withholds it on a cross-site POST — same
+    // protection Strict gave here — but this stops logout via a same-site
+    // HTML form/auto-submit trick too, which SameSite (Lax or Strict) can't
+    // by itself. Skip the check for already-anonymous
     // requests: there is no session to steal a logout against, so this stays
     // a safe no-op/idempotent clear (e.g. a stray double-click on "Sign out").
     const std::string session_cookie_in = request.GetCookie("six_feat_session");
@@ -504,12 +522,18 @@ std::string LogoutHandler::HandleRequestThrow(
         }
     }
 
-    // Clear session cookie (max_age=0 → browser deletes immediately)
+    // Clear session cookie (max_age=0 → browser deletes immediately).
+    // [SF-SEC-05] SameSite/HttpOnly/Secure kept identical to the mint site
+    // above (CallbackHandler) purely for consistency — MaxAge=0 alone is
+    // what actually clears the cookie, these attributes don't matter for a
+    // deletion, but a browser that (for whatever reason) doesn't honor
+    // MaxAge=0 here shouldn't fall back to a cookie with DIFFERENT
+    // attributes than the one it's replacing.
     server::http::Cookie session_cookie{"six_feat_session", ""};
     session_cookie.SetMaxAge(std::chrono::seconds{0});
     session_cookie.SetHttpOnly();
     if (oauth_.CookieSecure()) session_cookie.SetSecure();
-    session_cookie.SetSameSite("Strict");
+    session_cookie.SetSameSite("Lax");
     session_cookie.SetPath("/");
     response.SetCookie(session_cookie);
 
