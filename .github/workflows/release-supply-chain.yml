@@ -9,6 +9,16 @@ name: Release supply chain
 # + Trivy-scans every PR; this workflow builds again (can't reuse that job's
 # artifact — see the SBOM job's own comment) specifically to attest/sign
 # what would actually ship.
+#
+# Two jobs, each one function — sbom (attest what's in the image) and
+# publish (push + keylessly sign it) — deliberately NOT chained with
+# `needs:` (see ci.yml's "Job graph" note for why that matters generally):
+# a slow/flaky SBOM run must never block a real publish, and publish
+# doesn't consume sbom's output, so serializing them would only add wait
+# time for no correctness benefit. Each job's own build step is bundled
+# with the thing it does with that build (generate SBOM / push+sign) rather
+# than split further, because neither Docker image nor digest can be
+# handed between jobs without a registry round-trip.
 on:
   push:
     branches: [main, "melidadr"]

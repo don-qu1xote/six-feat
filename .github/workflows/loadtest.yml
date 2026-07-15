@@ -5,6 +5,17 @@ name: k6 load test (smoke)
 # the same harness ci.yml's e2e-smoke job uses), which is noisy/non-
 # representative enough that gating merges on it would just be flaky, not
 # useful. See loadtest/README.md, "Thresholds are advisory, not gates".
+#
+# Separate workflow file from ci.yml on purpose — different trigger
+# (nightly/manual, never on a PR) and a single function (smoke-load the
+# stack), so it doesn't belong bundled into ci.yml's job graph. It's one
+# job, not several, because the steps below aren't independent concerns —
+# they're sequential stages of ONE live stack's lifecycle (build → start →
+# load → stop → report) that has to run inside a single runner/container;
+# splitting it across jobs would mean either re-building per job or trying
+# to keep a server alive across job boundaries, neither of which GitHub
+# Actions supports. See ci.yml's own "Job graph" note for the general
+# one-cube-one-function principle this and release-supply-chain.yml follow.
 on:
   workflow_dispatch: {}
   schedule:

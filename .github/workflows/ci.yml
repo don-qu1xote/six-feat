@@ -6,6 +6,24 @@ on:
   pull_request:
     branches: [main]
 
+# ── Job graph: one cube, one function ────────────────────────────────────────
+# Every job below owns exactly one concern (build+unit/integration-test,
+# static analysis, YAML/PromQL config validation, front-end lint, front-end
+# tests, browser e2e smoke, image build+vulnerability-scan) and only
+# declares `needs:` where a job genuinely consumes another job's *output*
+# artifact — not just "runs after" for its own sake. Audited 2026-07:
+# clang-tidy and docker-build-and-scan both used to carry
+# `needs: build-and-test` despite neither ever touching anything it
+# produced (clang-tidy reconfigures its own compile_commands.json;
+# docker-build-and-scan's Dockerfiles do a complete from-source build
+# inside the image) — that was pure accidental serialization, removed so
+# independent jobs actually run in parallel. See loadtest.yml and
+# release-supply-chain.yml (separate workflow files, deliberately — see
+# each file's own header) for the same principle applied there: a job
+# there is only as "wide" as it is because splitting it would require
+# smuggling a live build or a running server across job boundaries, not
+# because of scope creep.
+#
 # ── Single source of truth for the userver base image tag ───────────────────
 # Both the CI container and Dockerfile's ARG USERVER_IMAGE must reference the
 # same tag. Instead of duplicating ":v3.0" in two files, it lives here once
@@ -207,25 +225,24 @@ jobs:
           # empty "no files were found" artifact upload.
           include-hidden-files: true
 
-      # ── Upload compile_commands.json for the clang-tidy job ────────────────
-      - name: Upload compile_commands.json
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-        with:
-          name: compile-commands
-          path: build-six-feat/compile_commands.json
-          retention-days: 1
-
   # ══════════════════════════════════════════════════════════════════════════
   # clang-tidy — blocking; gates the merge
   # ══════════════════════════════════════════════════════════════════════════
   # Minimal check set (bugprone-*, performance-*, cppcoreguidelines-*) run
   # against src/, with --warnings-as-errors so any finding fails the job.
+  #
+  # No `needs: build-and-test` (removed — see the job-graph note at the top
+  # of this file): this job runs its own configure-only `cmake` step below
+  # to produce compile_commands.json, it never consumed build-and-test's
+  # actual build output (the full binaries), and it doesn't need Postgres
+  # or a running service either. The two jobs now run in parallel instead
+  # of clang-tidy waiting out build-and-test's full build+test run first —
+  # same static-analysis coverage, shorter wall-clock CI.
   clang-tidy:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
-    needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -497,7 +514,12 @@ jobs:
   # ══════════════════════════════════════════════════════════════════════════
   docker-build-and-scan:
     runs-on: ubuntu-22.04
-    needs: build-and-test
+    # No `needs: build-and-test` (removed — see the job-graph note at the
+    # top of this file): each Dockerfile does its own complete from-source
+    # build inside the image (see services/six-feat/Dockerfile's own header
+    # comment) — it never touched build-and-test's /install binaries, so
+    # the two jobs now run in parallel instead of this one waiting out
+    # build-and-test's full build+test run first for no reason.
     # Each service now has its own standalone Dockerfile (services/<name>/
     # Dockerfile) instead of one multi-stage Dockerfile building all 4 —
     # matrix over them so every one still gets built AND scanned in CI (the
