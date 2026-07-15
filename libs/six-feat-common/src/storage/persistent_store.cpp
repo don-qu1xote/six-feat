@@ -2,9 +2,13 @@
 // persistent_store.cpp  —  iteration 7
 //
 // PostgreSQL backend via userver::components::Postgres /
-// userver::storages::postgres::Cluster. Reads go to a Slave host, writes to
-// Master; the cluster's connection pool provides the concurrency the old
-// SQLite read-pool/write-mutex split used to provide by hand.
+// userver::storages::postgres::Cluster. Writes always go to Master. Reads
+// go to a Slave host WHEN one is actually configured (DB_REPLICA_HOST set
+// — see ReadHostType() below), otherwise straight to Master, so a
+// single-instance deployment (the default profile) doesn't spam a "no
+// pool for slave, falling back to master" WARNING on every single read.
+// The cluster's connection pool provides the concurrency the old SQLite
+// read-pool/write-mutex split used to provide by hand.
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "storage/persistent_store.hpp"
@@ -12,6 +16,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -229,6 +234,34 @@ std::string IntToRole(std::int16_t r) {
     }
 }
 
+// [fix] Reads were unconditionally routed through ClusterHostType::kSlave
+// even in the default (no-replica) deployment profile — see
+// docker-compose.yml/DEVELOPMENT.md's "Postgres cluster topology": with a
+// single-host dbconnection, userver's Cluster has no Slave pool at all, so
+// storages::postgres::detail::ClusterImpl::FindPool logs a WARNING
+// ("There is no pool for slave, falling back to master") on EVERY single
+// read this component ever makes. The fallback itself was always correct
+// (reads still hit master and succeed) — but that WARNING firing on every
+// request reads, to anyone watching the logs, exactly like something is
+// broken, when nothing is: it's expected, harmless, and permanent for as
+// long as no replica is configured, not a transient startup blip.
+//
+// DB_REPLICA_HOST is the single source of truth for "is there actually a
+// second host in dbconnection" — docker-entrypoint.sh only assembles a
+// multi-host DSN when it's set (see six-feat's env block in
+// docker-compose.yml), so reading the same env var here lets this
+// component route reads at kMaster directly when it knows there's no
+// Slave pool to find, instead of asking Cluster to discover that the hard
+// way on every call. If DB_REPLICA_HOST is set (prod-like profile, SF-
+// INF-02, or a real staging replica), reads keep going through kSlave
+// exactly as before — genuine Master/Slave read isolation is unaffected.
+storages::postgres::ClusterHostType ReadHostType() {
+    const char* replica_host = std::getenv("DB_REPLICA_HOST");
+    const bool  has_replica  = replica_host != nullptr && *replica_host != '\0';
+    return has_replica ? storages::postgres::ClusterHostType::kSlave
+                        : storages::postgres::ClusterHostType::kMaster;
+}
+
 } // namespace
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -237,6 +270,11 @@ std::string IntToRole(std::int16_t r) {
 
 struct PersistentStore::Impl {
     storages::postgres::ClusterPtr cluster;
+    // [fix] See ReadHostType()'s own comment above — kMaster when no
+    // replica is configured (avoids the "no pool for slave" WARNING on
+    // every read), kSlave when one is, computed once here rather than
+    // re-checking getenv() per call.
+    const storages::postgres::ClusterHostType read_host_type = ReadHostType();
 
     explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
         RunMigrationsWithRetry(cluster);
@@ -246,7 +284,7 @@ struct PersistentStore::Impl {
 
     std::optional<ArtistRef> LoadRef(std::int64_t id) const {
         auto res = cluster->Execute(
-            storages::postgres::ClusterHostType::kSlave,
+            read_host_type,
             "SELECT name, image_url, url FROM artists WHERE id = $1", id);
         if (res.IsEmpty()) return std::nullopt;
 
@@ -261,7 +299,7 @@ struct PersistentStore::Impl {
 
     Depth FetchDepth(std::int64_t artist_id) const {
         auto res = cluster->Execute(
-            storages::postgres::ClusterHostType::kSlave,
+            read_host_type,
             "SELECT depth FROM fetch_state WHERE artist_id = $1", artist_id);
         if (res.IsEmpty()) return Depth::None;
         return static_cast<Depth>(res.Front()[0].As<std::int16_t>());
@@ -274,7 +312,7 @@ struct PersistentStore::Impl {
     // would otherwise collide by name in the result set.
     std::vector<SongRecord> SongsForArtist(std::int64_t artist_id) const {
         auto res = cluster->Execute(
-            storages::postgres::ClusterHostType::kSlave,
+            read_host_type,
             "SELECT s.id, s.title, c.role, a.id, a.name, a.image_url, a.url "
             "FROM songs s "
             "JOIN credits c ON c.song_id = s.id "
@@ -313,7 +351,7 @@ struct PersistentStore::Impl {
         if (roles.empty()) return {};
 
         auto res = cluster->Execute(
-            storages::postgres::ClusterHostType::kSlave,
+            read_host_type,
             "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w "
             "FROM credits c1 "
             "JOIN credits c2 ON c2.song_id = c1.song_id "
@@ -337,7 +375,7 @@ struct PersistentStore::Impl {
     std::vector<std::int64_t>
     ListIncompleteImpl(Depth want, int limit, int offset) const {
         auto res = cluster->Execute(
-            storages::postgres::ClusterHostType::kSlave,
+            read_host_type,
             "SELECT artist_id FROM fetch_state WHERE depth < $1 "
             "ORDER BY artist_id LIMIT $2 OFFSET $3",
             static_cast<std::int16_t>(want), limit, offset);
@@ -485,7 +523,7 @@ Depth PersistentStore::GetFetchDepth(std::int64_t artist_id) const {
 
 FetchState PersistentStore::GetFetchState(std::int64_t artist_id) const {
     auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kSlave,
+        impl_->read_host_type,
         "SELECT depth, song_count, last_fetch_ts FROM fetch_state WHERE artist_id = $1",
         artist_id);
     if (res.IsEmpty()) return FetchState{};
@@ -506,7 +544,7 @@ PersistentStore::ListIncompleteArtists(Depth want, int limit, int offset) const 
 bool PersistentStore::Ping() const {
     try {
         auto res = impl_->cluster->Execute(
-            storages::postgres::ClusterHostType::kSlave, "SELECT 1");
+            impl_->read_host_type, "SELECT 1");
         return !res.IsEmpty();
     } catch (const std::exception& e) {
         LOG_ERROR() << "[PersistentStore] Ping failed: " << e.what();

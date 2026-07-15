@@ -663,6 +663,13 @@ jobs:
 
       - name: Publish summary to job summary
         if: always()
+        # [SF-CI-05 fix] `shopt` is a bash builtin — this job's container
+        # (the userver-framework image) doesn't put bash first for GitHub
+        # Actions' shell auto-detection here, so a bare `run:` was
+        # executing under /bin/sh ("shopt: not found"). Explicit shell:
+        # bash, same fix already applied to the clang-tidy job's "Run
+        # clang-tidy" step above for the same reason.
+        shell: bash
         run: |
           shopt -s nullglob
           for f in loadtest/.output/*-summary.txt; do
