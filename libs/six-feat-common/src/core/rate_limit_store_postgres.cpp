@@ -42,9 +42,10 @@ PostgresRateLimitStore::PostgresRateLimitStore(
     : cluster_(std::move(cluster)) {}
 
 bool PostgresRateLimitStore::Allow(const std::string& key, int max_per_window,
-                                   int window_seconds) {
-    const auto now_unix     = NowUnix();
-    const auto window_start = WindowStart(now_unix, window_seconds);
+                                   std::chrono::seconds window) {
+    const int  window_seconds = static_cast<int>(window.count());
+    const auto now_unix       = NowUnix();
+    const auto window_start   = WindowStart(now_unix, window_seconds);
 
     try {
         auto res = cluster_->Execute(
@@ -78,9 +79,10 @@ bool PostgresRateLimitStore::Allow(const std::string& key, int max_per_window,
 }
 
 int PostgresRateLimitStore::Remaining(const std::string& key, int max_per_window,
-                                      int window_seconds) const {
-    const auto now_unix     = NowUnix();
-    const auto window_start = WindowStart(now_unix, window_seconds);
+                                      std::chrono::seconds window) const {
+    const int  window_seconds = static_cast<int>(window.count());
+    const auto now_unix       = NowUnix();
+    const auto window_start   = WindowStart(now_unix, window_seconds);
 
     try {
         auto res = cluster_->Execute(

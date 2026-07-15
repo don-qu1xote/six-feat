@@ -41,8 +41,16 @@ public:
     // prefixes it with a short discriminator, e.g. "graph:1.2.3.4", so
     // multiple independently-configured PerIpRateLimit instances can safely
     // share ONE store without colliding on each other's buckets).
+    //
+    // [SF-CI-05] `window` is std::chrono::seconds, not a second `int` — was
+    // `int max_per_window, int window_seconds`, which clang-tidy's
+    // bugprone-easily-swappable-parameters correctly flagged as a CI-
+    // blocking error (two adjacent same-typed ints are an easy
+    // transposition bug at any call site). A distinct type makes that
+    // mistake fail to compile instead of silently swapping the limit and
+    // the window.
     virtual bool Allow(const std::string& key, int max_per_window,
-                        int window_seconds) = 0;
+                        std::chrono::seconds window) = 0;
 
     // Best-effort peek at the remaining allowance for `key` in its CURRENT
     // window, without recording a request — used to report an
@@ -52,7 +60,7 @@ public:
     // multiple replicas) this is inherently a snapshot, same caveat the
     // original in-process-only version already had.
     virtual int Remaining(const std::string& key, int max_per_window,
-                          int window_seconds) const = 0;
+                          std::chrono::seconds window) const = 0;
 };
 
 // ── In-process backend (default, single-node) ───────────────────────────────
@@ -68,9 +76,9 @@ public:
 class InProcessRateLimitStore final : public RateLimitStore {
 public:
     bool Allow(const std::string& key, int max_per_window,
-              int window_seconds) override;
+              std::chrono::seconds window) override;
     int Remaining(const std::string& key, int max_per_window,
-                  int window_seconds) const override;
+                  std::chrono::seconds window) const override;
 
 private:
     struct Bucket {

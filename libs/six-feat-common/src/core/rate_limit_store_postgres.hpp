@@ -35,9 +35,9 @@ public:
     explicit PostgresRateLimitStore(userver::storages::postgres::ClusterPtr cluster);
 
     bool Allow(const std::string& key, int max_per_window,
-              int window_seconds) override;
+              std::chrono::seconds window) override;
     int Remaining(const std::string& key, int max_per_window,
-                  int window_seconds) const override;
+                  std::chrono::seconds window) const override;
 
 private:
     userver::storages::postgres::ClusterPtr cluster_;

@@ -2,6 +2,7 @@
 
 #include "core/rate_limit_store.hpp"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <utility>
@@ -48,7 +49,7 @@ public:
 
     /// Returns true if this IP may proceed in the current window.
     bool Allow(const std::string& ip) const {
-        return store_->Allow(Key(ip), max_, window_);
+        return store_->Allow(Key(ip), max_, std::chrono::seconds{window_});
     }
 
     /// Ceiling of requests per window, exposed so callers can report it
@@ -60,7 +61,7 @@ public:
     /// post-request quota. A key that has never been seen (or whose window
     /// has since rolled over) is reported as having the full allowance.
     int Remaining(const std::string& key) const {
-        return store_->Remaining(Key(key), max_, window_);
+        return store_->Remaining(Key(key), max_, std::chrono::seconds{window_});
     }
 
 private:

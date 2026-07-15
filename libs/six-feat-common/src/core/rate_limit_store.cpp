@@ -3,9 +3,8 @@
 namespace six_feat {
 
 bool InProcessRateLimitStore::Allow(const std::string& key, int max_per_window,
-                                    int window_seconds) {
-    const auto now    = std::chrono::steady_clock::now();
-    const auto window = std::chrono::seconds{window_seconds};
+                                    std::chrono::seconds window) {
+    const auto now = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lk(mu_);
 
     // Opportunistic GC of stale buckets — same "every few windows" cadence
@@ -34,9 +33,8 @@ bool InProcessRateLimitStore::Allow(const std::string& key, int max_per_window,
 }
 
 int InProcessRateLimitStore::Remaining(const std::string& key, int max_per_window,
-                                       int window_seconds) const {
-    const auto now    = std::chrono::steady_clock::now();
-    const auto window = std::chrono::seconds{window_seconds};
+                                       std::chrono::seconds window) const {
+    const auto now = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lk(mu_);
 
     const auto it = buckets_.find(key);
