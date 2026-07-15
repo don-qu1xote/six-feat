@@ -624,7 +624,14 @@ jobs:
       # promtool-check-rules above: GitHub Releases don't expose a
       # checksum this workflow can verify without an extra fetch, and the
       # version in the URL is still exact and traceable to a real k6 tag.
+      #
+      # [SF-CI-05 fix] `set -o pipefail` is a bash-ism (illegal option
+      # under dash/sh) — same root cause and same fix as "Publish summary
+      # to job summary" below: this job's container doesn't get bash
+      # auto-detected for a bare `run:`, so it needs shell: bash
+      # explicitly, matching the clang-tidy job's own "Run clang-tidy" step.
       - name: Install k6
+        shell: bash
         run: |
           set -euo pipefail
           curl -fsSL -o /tmp/k6.tar.gz \
