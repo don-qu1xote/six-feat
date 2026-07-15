@@ -1,12 +1,13 @@
 # .github/dependabot.yml — SF-CI-03
 #
 # Weekly PRs for the four dependency surfaces this repo actually has:
-#   - github-actions: this workflow file + the local composite action
-#     (.github/actions/setup) both pin `uses:` to a full commit SHA (see
-#     ci.yml/release-supply-chain.yml) — Dependabot still needs its own
-#     ecosystem entry to open the version-bump PRs; it updates the pinned
-#     SHA (and the trailing `# vX.Y.Z` comment where present) in place, it
-#     doesn't unpin anything.
+#   - github-actions: ci.yml (which also carries the former
+#     release-supply-chain.yml's sbom/publish jobs — see ci.yml's own
+#     "Pipeline shape" note) + loadtest.yml + the local composite action
+#     (.github/actions/setup) all pin `uses:` to a full commit SHA —
+#     Dependabot still needs its own ecosystem entry to open the
+#     version-bump PRs; it updates the pinned SHA (and the trailing
+#     `# vX.Y.Z` comment where present) in place, it doesn't unpin anything.
 #   - docker: one entry per service's own standalone Dockerfile (see
 #     docker-build-and-scan's matrix in ci.yml for the same 4 services) —
 #     Dependabot's docker ecosystem watches the FROM base image tag/digest
