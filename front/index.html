@@ -374,6 +374,39 @@
     }
     .canvas-decorator.is-hidden { opacity: 0; }
     .canvas-decorator svg { width: 100%; height: 100%; display: block; }
+
+    /* [SF-WEB-19] Unified empty/loading/error canvas surface — see
+       src/ui/canvas-states.js. Sits above the decorator starfield (z-index:1)
+       so onboarding copy is legible over it; .ui-state-card carries its own
+       pointer-events since the slot itself must stay click-through when
+       hidden (or when only the decorator behind it should be interactive). */
+    .ui-state-slot {
+      position: absolute; inset: 0; z-index: 2;
+      display: none; align-items: center; justify-content: center;
+      pointer-events: none; padding: var(--space-6);
+    }
+    .ui-state-slot.show { display: flex; }
+    /* [SF-WEB-19 fix] #search-modal.is-first-visit has no backdrop
+       (background:transparent — see below), so anything sitting behind it
+       was fully visible through/around it: on first load the onboarding
+       card and the modal's own copy were both on screen at once, text
+       overlapping. Requires #canvas-state to be a later DOM sibling of
+       #search-modal (see index.html body markup) — this selector can only
+       match forward. Higher specificity than .ui-state-slot.show above
+       (one extra ID), so it wins without !important. */
+    #search-modal:not(.is-closed) ~ .ui-state-slot { display: none; }
+    .ui-state-card {
+      pointer-events: auto; max-width: 380px; text-align: center;
+      display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+    }
+    .ui-state-title { font-size: var(--text-lg); font-weight: 600; color: var(--paper); }
+    .ui-state-body { font-size: var(--text-sm); color: var(--mist); line-height: 1.5; }
+    .ui-state-action { margin-top: var(--space-1); }
+    .ui-state-card--error { border-color: var(--warn); }
+    .ui-state-loading-row {
+      display: flex; align-items: center; gap: var(--space-2);
+      font-family: "Space Mono", monospace; font-size: var(--text-sm); color: var(--mist);
+    }
     .decor-dot {
       fill: var(--signal);
       animation: decor-drift linear infinite;
@@ -1375,8 +1408,14 @@
       font-size: var(--text-xs); color: var(--neon); line-height: 1.6;
       min-height: 18px; word-break: break-word;
     }
-    .path-result.is-error { color: var(--warn); }
-    .path-result.is-loading { color: var(--mist); display: flex; align-items: center; gap: var(--space-2); }
+    /* [SF-WEB-19] .is-error/.is-loading modifiers removed — loading/error
+       content rendered into .path-result is now the unified
+       .ui-state-loading-row / .ui-panel.ui-state-card (see
+       ui/canvas-states.js), both self-styled, so .path-result itself no
+       longer needs its own state-specific color rules. */
+    .path-result.ui-state--error .ui-state-card {
+      align-items: flex-start; text-align: left; max-width: none; padding: var(--space-3);
+    }
 
     /* ТЗ-205: .hop-chain — horizontal scrollable track by default (wide
        panels), with a fade mask at both edges like .path-chain-track.
@@ -2239,6 +2278,20 @@
         </div>
       </div>
     </div>
+
+    <!-- [SF-WEB-19] Unified empty-state surface for the canvas — populated
+         by src/ui/canvas-states.js (renderEmptyState), never hand-authored
+         here beyond this empty shell. ONLY ever shown after clearCanvas()
+         (canvas-controls.js) clears an existing graph — never on first
+         visit, where the landing search modal is already the onboarding
+         surface. clearCanvas() no longer reopens that modal (stays on the
+         graph page instead), so this card is what fills the empty canvas.
+         Placed AFTER #search-modal on purpose — see the
+         #search-modal:not(.is-closed) ~ #canvas-state rule below, which
+         needs this sibling order: it hides the card while a search modal
+         (e.g. the docked one this card's own button opens) is covering the
+         same screen region. -->
+    <div class="ui-state-slot" id="canvas-state"></div>
 
     <section class="canvas-chrome" id="canvas-chrome">
 

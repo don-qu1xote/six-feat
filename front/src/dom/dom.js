@@ -16,6 +16,8 @@ export const els = {
   canvasChrome: $("canvas-chrome"),
   appCanvas:    $("app-canvas"),
   canvasDecorator: $("canvas-decorator"),
+  // [SF-WEB-19] Unified empty/loading/error surface — see ui/canvas-states.js.
+  canvasState: $("canvas-state"),
   brand:      $("brand"),
 
   btnRoleFilters: $("btn-role-filters"),

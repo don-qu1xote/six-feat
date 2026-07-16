@@ -7,10 +7,9 @@ import { State } from "../state/state.js";
 import { placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist, showMoreCollaborations } from "../api/api.js";
-import { clearFocus, destroyNetwork, networkOptions } from "../vis-adapter/index.js";
+import { clearFocus, resetCanvasToEmpty, networkOptions } from "../vis-adapter/index.js";
 import { clearPathHighlight } from "../api/analytics-client.js";
 import { startCanvasDecorator } from "../dom/canvas-decorator.js";
-import { runHeroGraphTransition } from "../dom/transition.js";
 import { showToast, hideToast } from "./toast.js";
 import { updateShareableUrl } from "./history.js";
 import {
@@ -20,6 +19,7 @@ import {
 } from "./modals.js";
 import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
+import { renderEmptyState } from "./canvas-states.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Role filter toggles
@@ -432,17 +432,25 @@ export function setupKeyboard() {
 // ТЗ-D8 — clearCanvas (was resetToHero)
 // ────────────────────────────────────────────────────────────────────────────
 // Раньше это скрывало .graph-view и показывало отдельную .hero "страницу".
-// Теперь canvas всегда на сцене — мы просто уничтожаем граф, возвращаем
-// decorator-анимацию и открываем search-modal поверх пустого canvas. Никакого
-// fade/scale между "страницами": .canvas-chrome никогда не скрывается целиком,
-// меняется только её содержимое (status прячется, граф очищается).
+// Затем — уничтожало граф и открывало search-modal поверх пустого canvas
+// (морф "назад в hero"). [SF-WEB-19] Модалка/переход на главную убраны: Clear
+// теперь ТОЛЬКО чистит холст и остаётся на странице графа (rail/status-чром
+// не трогаются, body.view-graph не снимается) — единый empty-state
+// (renderEmptyState) показывается прямо на канвасе вместо повторного
+// показа лендинг-модалки. Открыть поиск снова — обычный rail-докнутый
+// поиск (та же кнопка, что и над уже нарисованным графом), не полноэкранная
+// домашняя модалка.
 // ════════════════════════════════════════════════════════════════════════════
 export function clearCanvas() {
-  destroyNetwork();
+  resetCanvasToEmpty();
   els.status.hidden = true;
   if (els.truncationBanner) els.truncationBanner.hidden = true;
   if (els.scanStatusBadge) els.scanStatusBadge.hidden = true;
   startCanvasDecorator();
+  // [SF-WEB-19] Canvas is empty again — onboarding card, docked search (not
+  // the full-screen landing modal) as its action so Clear never leaves the
+  // graph page.
+  renderEmptyState(els.canvasState, { onAction: () => openSearchModal({ docked: true }) });
   els.heroInput.value = "";
   hideToast();
   hideArtistSidebar();
@@ -450,13 +458,6 @@ export function clearCanvas() {
   els.pathPanel.classList.remove("show");
   if (els.hopChain) els.hopChain.innerHTML = "";
   history.replaceState(null, "", window.location.pathname);
-
-  // ТЗ-D8: same FLIP/View-Transitions morph as initGraphOnCanvas, just run
-  // in reverse — the search-wrap "flies back" from the rail icon to its
-  // centred modal position instead of an abrupt show/hide.
-  runHeroGraphTransition(() => {
-    openSearchModal();
-  }, "toHero");
 }
 
 export function updateStatus(graph) {

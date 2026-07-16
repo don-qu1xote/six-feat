@@ -12,20 +12,23 @@ import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import {
   updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles,
-  buildShadowNodes, waitForImages,
+  buildShadowNodes, waitForImages, clearCanvas,
 } from "./canvas-controls.js";
 import { placeholderFor } from "../state/helpers.js";
 import { showToast } from "./toast.js";
 import { searchArtist } from "../api/api.js";
 import { updateShareableUrl } from "./history.js";
+import { resetCanvasToEmpty } from "../vis-adapter/index.js";
+import { openSearchModal } from "./modals.js";
 
 vi.mock("./toast.js", () => ({ showToast: vi.fn(), hideToast: vi.fn() }));
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn(), showMoreCollaborations: vi.fn() }));
 vi.mock("./history.js", () => ({ updateShareableUrl: vi.fn() }));
-vi.mock("../vis-adapter/index.js", () => ({ clearFocus: vi.fn(), destroyNetwork: vi.fn(), networkOptions: vi.fn() }));
+vi.mock("../vis-adapter/index.js", () => ({
+  clearFocus: vi.fn(), resetCanvasToEmpty: vi.fn(), networkOptions: vi.fn(),
+}));
 vi.mock("../api/analytics-client.js", () => ({ clearPathHighlight: vi.fn() }));
 vi.mock("../dom/canvas-decorator.js", () => ({ startCanvasDecorator: vi.fn() }));
-vi.mock("../dom/transition.js", () => ({ runHeroGraphTransition: vi.fn() }));
 vi.mock("./modals.js", () => ({
   isSearchModalOpen: vi.fn(), closeSearchModal: vi.fn(), openSearchModal: vi.fn(),
   isPathPanelOpen: vi.fn(), closePathPanel: vi.fn(),
@@ -339,5 +342,45 @@ describe("waitForImages — SF-WEB-32", () => {
     expect(done).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(done).toHaveBeenCalled();
+  });
+});
+
+// [SF-WEB-19] clearCanvas() no longer morphs back to the hero/landing modal —
+// it stays on the graph page (never touches document.body's view-home/
+// view-graph classes) with an empty-state card on the canvas instead. Its
+// only search entry point is the docked search (same as the rail's own
+// "Search artist" button over an already-rendered graph), never the
+// full-screen landing modal.
+describe("clearCanvas", () => {
+  beforeEach(() => {
+    document.body.className = "view-graph";
+    els.status = document.createElement("div");
+    els.truncationBanner = document.createElement("div");
+    els.canvasState = document.createElement("div");
+    els.heroInput = document.createElement("input");
+    els.pathPanel = document.createElement("div");
+    els.hopChain = document.createElement("div");
+  });
+
+  it("resets the graph state via resetCanvasToEmpty (keeps hasRendered)", () => {
+    clearCanvas();
+    expect(resetCanvasToEmpty).toHaveBeenCalledTimes(1);
+  });
+
+  it("never touches document.body's view-home/view-graph classes — stays on the graph page", () => {
+    clearCanvas();
+    expect(document.body.classList.contains("view-graph")).toBe(true);
+    expect(document.body.classList.contains("view-home")).toBe(false);
+  });
+
+  it("renders the empty-state card on the canvas", () => {
+    clearCanvas();
+    expect(els.canvasState.querySelector(".ui-panel.ui-state-card")).toBeTruthy();
+  });
+
+  it("the empty-state card's action opens docked search, never the full-screen landing modal", () => {
+    clearCanvas();
+    els.canvasState.querySelector(".ui-state-action").click();
+    expect(openSearchModal).toHaveBeenCalledWith({ docked: true });
   });
 });

@@ -6,13 +6,14 @@
 // Node/edge visual-object construction lives in visuals.js; tooltip HTML and
 // the viewport-collision guard live in tooltips.js. This file is only the
 // "wire it all up into a live vis.Network" part: initNetwork/refreshNetwork/
-// destroyNetwork/clearGraphForPathSearch.
+// resetCanvasToEmpty/clearGraphForPathSearch.
 // ════════════════════════════════════════════════════════════════════════════
 import { State, PHYSICS_SETTLE_MS, resetGraphState } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { forceCloseSearchModal, hideArtistSidebar } from "../ui/index.js";
 import { runHeroGraphTransition } from "../dom/transition.js";
 import { stopCanvasDecorator } from "../dom/canvas-decorator.js";
+import { clearCanvasState } from "../ui/canvas-states.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
 import { nudgePhysics, updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
@@ -241,9 +242,12 @@ export function initGraphOnCanvas() {
     els.status.hidden = false;
   }, "toGraph");
   stopCanvasDecorator();
+  // [SF-WEB-19] A graph now occupies the canvas — same moment the decorator
+  // above stops, same reasoning: nothing left to onboard.
+  clearCanvasState(els.canvasState);
 }
 
-// Общий сброс graph-state, используемый и destroyNetwork(), и
+// Общий сброс graph-state, используемый и resetCanvasToEmpty(), и
 // clearGraphForPathSearch() — порядок операций сохранён таким же, каким он
 // был в обеих функциях по отдельности (важно для vis.js: resetGraphState()
 // должен отработать до resetHoverState()/hideArtistSidebar()).
@@ -258,8 +262,14 @@ function _resetGraphState({ keepRendered = false, clearCache = false, invalidate
   if (invalidateColors) invalidateColorCache();
 }
 
-export function destroyNetwork() {
-  _resetGraphState({ clearCache: true });
+// [SF-WEB-19] clearCanvas()'s own reset — clears the graph cache too (ТЗ-5:
+// "Clear graph" is a full user-initiated reset), but keeps hasRendered
+// true: clearCanvas() no longer morphs back to the hero/landing modal
+// (body.view-home) — it stays on the graph page with an empty canvas and
+// its own onboarding prompt instead, same reasoning as
+// clearGraphForPathSearch() below, just also clearing the cache.
+export function resetCanvasToEmpty() {
+  _resetGraphState({ keepRendered: true, clearCache: true, invalidateColors: true });
 }
 
 // ─────────────────────────────────────────────────────────────────────────

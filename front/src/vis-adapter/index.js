@@ -51,7 +51,7 @@ export {
   refreshNetwork,
   openGeniusPage,
   initGraphOnCanvas,
-  destroyNetwork,
+  resetCanvasToEmpty,
   clearGraphForPathSearch,
 } from "./render.js";
 
@@ -99,4 +99,6 @@ export {
   attachNetworkEvents,
   setFocus,
   clearFocus,
+  // [SF-WEB-28] The one entry point for node/edge selection.
+  selectObject,
 } from "./events.js";

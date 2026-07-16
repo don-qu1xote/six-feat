@@ -283,28 +283,49 @@ storages::postgres::ClusterHostType ReadHostType() {
 // commit 69f739e). A single held connection at 2s is worse than several
 // failed-fast ones at 250ms when concurrency is the actual bottleneck.
 //
+// [fix3] Originally scoped to just the two join queries above (hence the
+// old kJoinQuery*/ExecuteJoinQueryWithRetry names) — but the SAME implicit
+// ~250ms default, entirely unprotected, was still hitting GetFetchState's
+// simple point lookup (SELECT ... FROM fetch_state WHERE artist_id = $1)
+// under real load, repeatedly 500ing /api/v1/status/stream (which polls it
+// every tick) along with graph/path/artist/status, whose own GetFetchState
+// calls have no retry either. Renamed/generalized to cover every simple
+// read in this file (LoadRef/FetchDepth/GetFetchState too), not just the
+// two join queries — the budget and retry reasoning apply identically to a
+// point lookup as to a join, and a single shared helper means the next new
+// query gets this for free instead of needing its own copy-pasted fix.
+//
+// Also widened the caught exception type from QueryCancelled (Postgres's
+// own statement_timeout cancellation, SQLSTATE 57014) to the whole
+// storages::postgres::Error hierarchy: the actual failures observed in
+// practice were just as often ConnectionTimeoutError (the client's own
+// network_timeout budget — see below — expiring while still waiting on a
+// slow-but-not-yet-cancelled server, distinct from the server itself
+// cancelling the statement) as QueryCancelled, and QueryCancelled alone let
+// that class of transient failure through uncaught.
+//
 // The budget here stays close to the tight default (just enough headroom
 // for genuine one-off slowness) and a bounded retry — one immediate
-// re-attempt, see ExecuteJoinQueryWithRetry below — absorbs transient
+// re-attempt, see ExecuteReadQueryWithRetry below — absorbs transient
 // contention instead. Worst case is now ~2 short attempts back-to-back,
 // never one long hold.
-constexpr storages::postgres::CommandControl kJoinQueryCommandControl{
+constexpr storages::postgres::CommandControl kReadQueryCommandControl{
     std::chrono::milliseconds{600}, // network_timeout
     std::chrono::milliseconds{400}, // statement_timeout
 };
 
-constexpr int kJoinQueryMaxAttempts = 2;
+constexpr int kReadQueryMaxAttempts = 2;
 
 template <typename Fn>
-auto ExecuteJoinQueryWithRetry(Fn&& fn) {
+auto ExecuteReadQueryWithRetry(Fn&& fn) {
     for (int attempt = 1;; ++attempt) {
         try {
             return fn();
-        } catch (const storages::postgres::QueryCancelled& ex) {
-            if (attempt >= kJoinQueryMaxAttempts) throw;
-            LOG_WARNING() << "[PersistentStore] join query cancelled ("
+        } catch (const storages::postgres::Error& ex) {
+            if (attempt >= kReadQueryMaxAttempts) throw;
+            LOG_WARNING() << "[PersistentStore] read query failed ("
                           << ex.what() << "), retrying once — attempt "
-                          << attempt << "/" << kJoinQueryMaxAttempts;
+                          << attempt << "/" << kReadQueryMaxAttempts;
         }
     }
 }
@@ -345,26 +366,30 @@ struct PersistentStore::Impl {
     // ── Read helpers ─────────────────────────────────────────────────────
 
     std::optional<ArtistRef> LoadRef(std::int64_t id) const {
-        auto res = cluster->Execute(
-            read_host_type,
-            "SELECT name, image_url, url FROM artists WHERE id = $1", id);
-        if (res.IsEmpty()) return std::nullopt;
+        return ExecuteReadQueryWithRetry([&] {
+            auto res = cluster->Execute(
+                read_host_type, kReadQueryCommandControl,
+                "SELECT name, image_url, url FROM artists WHERE id = $1", id);
+            if (res.IsEmpty()) return std::optional<ArtistRef>{};
 
-        const auto row = res.Front();
-        ArtistRef r;
-        r.id   = id;
-        r.name = row[0].As<std::string>();
-        r.image = row[1].As<std::optional<std::string>>().value_or("");
-        r.url   = row[2].As<std::optional<std::string>>().value_or("");
-        return r;
+            const auto row = res.Front();
+            ArtistRef r;
+            r.id   = id;
+            r.name = row[0].As<std::string>();
+            r.image = row[1].As<std::optional<std::string>>().value_or("");
+            r.url   = row[2].As<std::optional<std::string>>().value_or("");
+            return std::optional<ArtistRef>{std::move(r)};
+        });
     }
 
     Depth FetchDepth(std::int64_t artist_id) const {
-        auto res = cluster->Execute(
-            read_host_type,
-            "SELECT depth FROM fetch_state WHERE artist_id = $1", artist_id);
-        if (res.IsEmpty()) return Depth::None;
-        return static_cast<Depth>(res.Front()[0].As<std::int16_t>());
+        return ExecuteReadQueryWithRetry([&] {
+            auto res = cluster->Execute(
+                read_host_type, kReadQueryCommandControl,
+                "SELECT depth FROM fetch_state WHERE artist_id = $1", artist_id);
+            if (res.IsEmpty()) return Depth::None;
+            return static_cast<Depth>(res.Front()[0].As<std::int16_t>());
+        });
     }
 
     // Single query: all of the artist's songs plus every credit on those
@@ -373,10 +398,10 @@ struct PersistentStore::Impl {
     // Columns are addressed positionally — s.id/a.id and s.title/a.name
     // would otherwise collide by name in the result set.
     std::vector<SongRecord> SongsForArtist(std::int64_t artist_id) const {
-        return ExecuteJoinQueryWithRetry([&] {
+        return ExecuteReadQueryWithRetry([&] {
             auto res = cluster->Execute(
                 read_host_type,
-                kJoinQueryCommandControl,
+                kReadQueryCommandControl,
                 "SELECT s.id, s.title, c.role, a.id, a.name, a.image_url, a.url "
                 "FROM songs s "
                 "JOIN credits c ON c.song_id = s.id "
@@ -415,10 +440,10 @@ struct PersistentStore::Impl {
         if (mask.producer) roles.push_back(4);
         if (roles.empty()) return {};
 
-        return ExecuteJoinQueryWithRetry([&] {
+        return ExecuteReadQueryWithRetry([&] {
             auto res = cluster->Execute(
                 read_host_type,
-                kJoinQueryCommandControl,
+                kReadQueryCommandControl,
                 "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w "
                 "FROM credits c1 "
                 "JOIN credits c2 ON c2.song_id = c1.song_id "
@@ -442,15 +467,17 @@ struct PersistentStore::Impl {
 
     std::vector<std::int64_t>
     ListIncompleteImpl(Depth want, int limit, int offset) const {
-        auto res = cluster->Execute(
-            read_host_type,
-            "SELECT artist_id FROM fetch_state WHERE depth < $1 "
-            "ORDER BY artist_id LIMIT $2 OFFSET $3",
-            static_cast<std::int16_t>(want), limit, offset);
-        std::vector<std::int64_t> ids;
-        ids.reserve(res.Size());
-        for (const auto& row : res) ids.push_back(row[0].As<std::int64_t>());
-        return ids;
+        return ExecuteReadQueryWithRetry([&] {
+            auto res = cluster->Execute(
+                read_host_type, kReadQueryCommandControl,
+                "SELECT artist_id FROM fetch_state WHERE depth < $1 "
+                "ORDER BY artist_id LIMIT $2 OFFSET $3",
+                static_cast<std::int16_t>(want), limit, offset);
+            std::vector<std::int64_t> ids;
+            ids.reserve(res.Size());
+            for (const auto& row : res) ids.push_back(row[0].As<std::int64_t>());
+            return ids;
+        });
     }
 
     void UpsertImpl(const ArtistSongs& data, Depth new_depth) {
@@ -611,18 +638,20 @@ Depth PersistentStore::GetFetchDepth(std::int64_t artist_id) const {
 }
 
 FetchState PersistentStore::GetFetchState(std::int64_t artist_id) const {
-    auto res = impl_->cluster->Execute(
-        impl_->read_host_type,
-        "SELECT depth, song_count, last_fetch_ts FROM fetch_state WHERE artist_id = $1",
-        artist_id);
-    if (res.IsEmpty()) return FetchState{};
+    return ExecuteReadQueryWithRetry([&] {
+        auto res = impl_->cluster->Execute(
+            impl_->read_host_type, kReadQueryCommandControl,
+            "SELECT depth, song_count, last_fetch_ts FROM fetch_state WHERE artist_id = $1",
+            artist_id);
+        if (res.IsEmpty()) return FetchState{};
 
-    const auto row = res.Front();
-    FetchState fs;
-    fs.depth         = static_cast<Depth>(row["depth"].As<std::int16_t>());
-    fs.song_count    = row["song_count"].As<int>();
-    fs.last_fetch_ts = row["last_fetch_ts"].As<std::int64_t>();
-    return fs;
+        const auto row = res.Front();
+        FetchState fs;
+        fs.depth         = static_cast<Depth>(row["depth"].As<std::int16_t>());
+        fs.song_count    = row["song_count"].As<int>();
+        fs.last_fetch_ts = row["last_fetch_ts"].As<std::int64_t>();
+        return fs;
+    });
 }
 
 std::vector<std::int64_t>

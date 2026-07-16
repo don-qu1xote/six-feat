@@ -20,10 +20,11 @@ import {
   cacheNodeCollaborations, computeNodeDominantRoles, refreshNodeDimBorders
 } from "../graph.js";
 import { highlightPath } from "../api/analytics-client.js";
-import { showToast, showRetryToast } from "./toast.js";
+import { showToast } from "./toast.js";
 import { updateStatus } from "./canvas-controls.js";
 import { showEdgeSidebarByPathEdgeId } from "./sidebar.js";
 import { apiFetch, isTransientStatus, messageForStatus, redirectToLogin } from "../api/net.js";
+import { renderLoadingState, renderErrorState } from "./canvas-states.js";
 
 function wrapRoleIconGraph(roleIconUseString) {
   // For graph tooltips, edge displays: compact 20×20
@@ -55,11 +56,9 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
   const signal = State._pathAbortController.signal;
   State.pathInFlight = true;
 
-  // Show loading state in the path result area
-  if (resultEl) {
-    resultEl.className   = "path-result is-loading";
-    resultEl.innerHTML   = `<span class="spinner"></span> Finding path…`;
-  }
+  // [SF-WEB-19] Unified loading state — same .spinner markup the canvas-wide
+  // overlay uses, via ui/canvas-states.js.
+  if (resultEl) renderLoadingState(resultEl, "Finding path…");
   if (chainEl) chainEl.innerHTML = "";
 
   const roles = [...State.activeFilters].join(",");
@@ -84,19 +83,19 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
       // [ТЗ-5 step 1] For "ambiguous artist name" the backend returns
       // resolve_failed.  Give the user an actionable hint to pick from AC.
       let msg = data?.message || "No path found between these artists.";
+      let retry = null;
       if (isTransientStatus(res.status)) {
         msg = messageForStatus(res.status, {
           503: "Genius is temporarily unavailable — please try again in a minute, recovery is underway.",
         });
-        showRetryToast(msg, () => runServerPath(fromParam, toParam, targetEls));
+        // [SF-WEB-19] Retry lives on the unified error card itself now —
+        // no separate toast duplicating the same action.
+        retry = () => runServerPath(fromParam, toParam, targetEls);
       } else if (data?.error === "resolve_failed" && msg.includes("ambiguous")) {
         msg = msg.replace(/^'(from|to)': /, "") +
               " — please select an artist from the suggestions dropdown.";
       }
-      if (resultEl) {
-        resultEl.className = "path-result is-error";
-        resultEl.textContent = msg;
-      }
+      if (resultEl) renderErrorState(resultEl, msg, retry);
       return;
     }
 
@@ -111,10 +110,11 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
 
     const path = data.path || [];
     if (!path.length) {
-      if (resultEl) {
-        resultEl.className   = "path-result is-error";
-        resultEl.textContent = "No path found.";
-      }
+      // [SF-WEB-19] "пустой путь" — one of the three unified error triggers.
+      // Retry re-runs the exact same search (harmless if it fails
+      // identically, and covers the case where it was a transient blip on
+      // the server's own BFS/enrichment side rather than a real dead end).
+      if (resultEl) renderErrorState(resultEl, "No path found.", () => runServerPath(fromParam, toParam, targetEls));
       return;
     }
 
@@ -139,13 +139,11 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
 
   } catch (err) {
     if (err.name === 'AbortError') return; // пользователь отменил — не показываем ошибку (ТЗ-4).
-    if (err.transient) {
-      showRetryToast(err.message, () => runServerPath(fromParam, toParam, targetEls));
-    }
-    if (resultEl) {
-      resultEl.className   = "path-result is-error";
-      resultEl.textContent = "Request failed: " + (err.message || "network error");
-    }
+    // [SF-WEB-19] "сеть" — the third unified error trigger. Retry only for
+    // transient (network/502/503) failures, same condition the old
+    // showRetryToast call used.
+    const retry = err.transient ? () => runServerPath(fromParam, toParam, targetEls) : null;
+    if (resultEl) renderErrorState(resultEl, "Request failed: " + (err.message || "network error"), retry);
   } finally {
     State._pathAbortController = null;
     State.pathInFlight = false;

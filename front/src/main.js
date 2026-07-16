@@ -52,6 +52,12 @@ export function init() {
 
   // ТЗ-D8: idle starfield shown while #network is empty (first visit /
   // after clearCanvas). Mounted once, then just toggled via opacity.
+  // [SF-WEB-19] The onboarding card (canvas-controls.js::clearCanvas) is
+  // NOT shown here on first visit — only after the user explicitly clears
+  // an existing graph. The landing hero modal already is the first-visit
+  // onboarding; showing a second one behind it would be redundant (and,
+  // before this ticket's own fix, was actually unreachable — the modal
+  // has no dismiss path pre-search).
   setupCanvasDecorator();
   startCanvasDecorator();
 

@@ -31,6 +31,8 @@
 //                            setupHelpOverlay / setupLoadMoreCollabs /
 //                            fitView / focusSeed / zoomIn /
 //                            zoomOut / setupKeyboard / clearCanvas / updateStatus
+//   canvas-states.js        — [SF-WEB-19] renderEmptyState / renderLoadingState /
+//                            renderErrorState / clearCanvasState
 //
 // This file re-exports the exact same public names the old flat ui.js
 // exposed, so existing imports elsewhere (api.js, graph.js, main.js,
@@ -80,6 +82,10 @@ export {
   clearCanvas, updateStatus, updateRateLimitIndicator, updateTruncationBanner,
   updateScanStatus, exportGraphPng, exportGraphJson, buildGraphExportData
 } from "./canvas-controls.js";
+
+export {
+  renderEmptyState, renderLoadingState, renderErrorState, clearCanvasState
+} from "./canvas-states.js";
 
 export { renderGraphA11yList } from "./graph-a11y-list.js";
 
