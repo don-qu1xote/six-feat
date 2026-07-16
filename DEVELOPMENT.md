@@ -6,6 +6,10 @@
 маппинг легаси `IDEA-N` на текущую нумерацию `SF-AREA-NN`) — в
 [ROADMAP.md](./ROADMAP.md), не здесь.
 
+Обоснование ключевых архитектурных решений (почему сервисов четыре,
+почему сессия проверяется локально, почему схемы вынесены в YAML и
+т.д.) — в [docs/adr/](./docs/adr/README.md), не здесь.
+
 ---
 
 ## Архитектура
@@ -54,6 +58,12 @@
 
 ## Сервисы (IDEA-25 / IDEA-45 / IDEA-53)
 
+Почему именно такое разбиение — в [ADR-0001](./docs/adr/0001-split-into-four-services.md)
+(и по каждому сервису отдельно: [ADR-0002](./docs/adr/0002-enrichment-standalone-service.md)
+для enrichment, [ADR-0003](./docs/adr/0003-genius-gateway-centralizes-rate-limiting.md)
+для genius-gateway, [ADR-0004](./docs/adr/0004-auth-service-local-session-verification.md)
+для auth). Здесь — только таблица портов/ответственности.
+
 Проект — не один процесс, а четыре независимых userver-сервиса из одного
 репозитория (`docker-compose.yml` поднимает их все, каждый — свой Dockerfile
 `target`):
@@ -66,6 +76,9 @@
 | **six-feat-auth** (`services/auth/`) | 8083 | Весь OAuth 2.0 Authorization Code Flow: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` (IDEA-53) | нет |
 
 ### OAuth: выдача сессии (six-feat-auth) vs проверка сессии (six-feat)
+
+Обоснование того, почему проверка сессии осталась локальной, а не стала
+HTTP-вызовом к six-feat-auth — [ADR-0004](./docs/adr/0004-auth-service-local-session-verification.md).
 
 [IDEA-53] До этой итерации OAuth-хэндлеры (`LoginHandler`/`CallbackHandler`/
 `LogoutHandler`/`MeHandler`, `src/auth/oauth_handler.cpp`) жили внутри
