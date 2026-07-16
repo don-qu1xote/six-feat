@@ -58,6 +58,19 @@ export default [
     },
   },
   {
+    // [SF-WEB-08] check-bundle-size.test.js — same node globals as
+    // scripts/**/*.mjs below, matched separately since that block's glob
+    // doesn't cover .test.js files.
+    files: ["scripts/**/*.test.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ["scripts/**/*.mjs"],
     languageOptions: {
       ecmaVersion: 2022,

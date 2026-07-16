@@ -19,10 +19,12 @@ on:
 #   │  integration  │  │   ├───────────────────────┤       ┌───────────────┐
 #   │  tests,       │  ├──▶│ eslint                 │──┬──▶│ sbom          │
 #   │  coverage)    │  │   ├───────────────────────┤  │   ├───────────────┤
-#   │               │  ├──▶│ frontend-coverage      │  ├──▶│ publish       │
-#   │               │  │   ├───────────────────────┤  │   │ (build, push, │
-#   │               │  ├──▶│ docker-build-and-scan  │──┤   │  cosign sign) │
-#   │               │  │   ├───────────────────────┤  │   └───────────────┘
+#   │               │  ├──▶│ bundle-size            │──┤   ├───────────────┤
+#   │               │  │   ├───────────────────────┤  ├──▶│ publish       │
+#   │               │  ├──▶│ frontend-coverage      │  │   │ (build, push, │
+#   │               │  │   ├───────────────────────┤  │   │  cosign sign) │
+#   │               │  ├──▶│ docker-build-and-scan  │──┤   └───────────────┘
+#   │               │  │   ├───────────────────────┤  │
 #   │               │  ├──▶│ load-test (k6, blocking│──┘
 #   │               │  │   │ — see caveat below)    │
 #   │               │  │   ├───────────────────────┤
@@ -398,6 +400,36 @@ jobs:
         working-directory: front
         continue-on-error: true
         run: npm audit --audit-level=high
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 2 — [SF-WEB-08] Bundle size budget for front/'s esbuild output.
+  # Lightweight (no Docker): npm ci + npm run build + a gzip-size check
+  # against a fixed KB budget (scripts/check-bundle-size.mjs) — same shape
+  # as the eslint job just above, kept separate so a budget failure reads as
+  # its own clearly-named check rather than getting buried in lint output.
+  # ══════════════════════════════════════════════════════════════════════════
+  bundle-size:
+    name: "Stage 2 — Frontend bundle size budget"
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: ./.github/actions/setup
+        with:
+          node-version: "20"
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Build front-end bundle
+        working-directory: front
+        run: npm run build
+
+      - name: Check bundle size budget
+        working-directory: front
+        run: npm run check-bundle-size
 
   # ══════════════════════════════════════════════════════════════════════════
   # Stage 2 — Vitest coverage for front/
@@ -804,6 +836,7 @@ jobs:
       - verify-yaml-anchors
       - promtool-check-rules
       - eslint
+      - bundle-size
       - frontend-coverage
       - docker-build-and-scan
       - load-test
@@ -863,6 +896,7 @@ jobs:
       - verify-yaml-anchors
       - promtool-check-rules
       - eslint
+      - bundle-size
       - frontend-coverage
       - docker-build-and-scan
       - load-test
