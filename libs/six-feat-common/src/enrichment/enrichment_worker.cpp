@@ -120,7 +120,25 @@ void EnrichmentWorker::OnAllComponentsLoaded() {
     // [IDEA-18] Reload artists interrupted mid-scan before the worker starts
     // consuming, so recovered ids are registered ahead of any concurrent
     // foreground request that might race EnqueueIfNeeded for the same id.
-    RecoverPendingArtists();
+    //
+    // [fix] RecoverPendingArtists() queries Postgres (via repo_ ->
+    // PersistentStore). OnAllComponentsLoaded() runs for every component
+    // before the server starts serving, and an exception escaping it takes
+    // the whole process down — exactly the failure mode PersistentStore's
+    // own OnAllComponentsLoaded fix (deferred migrations) was meant to
+    // eliminate for a deliberately-unreachable-at-startup Postgres
+    // (sync-start: false). Recovery is best-effort: if the DB isn't up yet,
+    // there's nothing to recover from right now, so this just logs and
+    // moves on instead of crashing the whole service — a later restart (or
+    // this same process once the worker itself starts running normal
+    // queries) picks up any still-pending artists.
+    try {
+        RecoverPendingArtists();
+    } catch (const std::exception& ex) {
+        LOG_ERROR() << "[EnrichmentWorker] failed to recover pending artists "
+                    << "at startup (" << ex.what() << ") — continuing "
+                    << "without recovery, will retry naturally on restart";
+    }
 
     // Start the worker coroutine on the background task processor.
     task_ = utils::Async(bg_tp_, "enrichment-worker",
