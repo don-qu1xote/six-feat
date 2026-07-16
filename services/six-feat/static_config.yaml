@@ -218,6 +218,9 @@ components_manager:
       # "/script.js" occurrence inside index.html is replaced with this
       # value at handler startup (see static_handler.cpp TransformContent).
       script-url: $script_url
+      # [SF-WEB-40] Same mechanism for the design-system CSS bundle: every
+      # "/style.css" in index.html is rewritten to the hashed CSS URL.
+      style-url: $style_url
 
     handler-script:
       # Path is templated by the Docker build to match the hashed file name
@@ -232,6 +235,19 @@ components_manager:
       # Content-addressed filename → safe to cache "forever": if the
       # content ever changes, the filename (and therefore the URL) changes
       # with it.
+      cache-control: 'public, max-age=31536000, immutable'
+
+    # [SF-WEB-40] Hashed CSS bundle (src/styles/ → esbuild → dist/style.
+    # <hash>.css). Path/file-path templated by the Docker build to the real
+    # hashed name (same scheme as handler-script), content-addressed so it's
+    # safe to cache immutably: a changed stylesheet ships as a new hash, a
+    # new URL, picked up on a normal refresh.
+    handler-style:
+      path: $style_path
+      method: GET
+      task_processor: *main_tp
+      file-path: $style_file_path
+      content-type: text/css; charset=utf-8
       cache-control: 'public, max-age=31536000, immutable'
 
     # [SF-SEC-02] Self-hosted vis-network@9.1.9 (front/vendor/vis-network.min.js,

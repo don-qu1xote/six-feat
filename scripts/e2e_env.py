@@ -209,6 +209,7 @@ components_manager:
       content-type: text/html; charset=utf-8
       cache-control: 'no-cache'
       script-url: {script_url_path}
+      style-url: {style_url_path}
 
     handler-script:
       path: {script_url_path}
@@ -216,6 +217,16 @@ components_manager:
       task_processor: main-task-processor
       file-path: {script_file_path}
       content-type: application/javascript; charset=utf-8
+
+    # [SF-WEB-40] Real hashed CSS bundle — a real browser loads this page, so
+    # the design system must be served (unlike tests/conftest.py's /dev/null
+    # stub) or the page renders unstyled.
+    handler-style:
+      path: {style_url_path}
+      method: GET
+      task_processor: main-task-processor
+      file-path: {style_file_path}
+      content-type: text/css; charset=utf-8
 
     # [SF-SEC-02] Real vendored vis-network bundle (see VENDOR_VIS_NETWORK
     # above) — a real browser loads this page, so unlike tests/conftest.py's
@@ -290,18 +301,27 @@ components_manager:
 """
 
 
-def _resolve_script_bundle() -> tuple[str, Path]:
+def _resolve_bundle(key: str) -> tuple[str, Path]:
     manifest = FRONT_DIST / "manifest.json"
     if not manifest.exists():
         sys.exit(
             f"[e2e_env] {manifest} not found — build the front-end first:\n"
             f"    (cd front && npm ci && npm run build)"
         )
-    script_name = json.loads(manifest.read_text())["script"]
-    script_path = FRONT_DIST / script_name
-    if not script_path.exists():
-        sys.exit(f"[e2e_env] bundled script {script_path} referenced by manifest.json is missing.")
-    return script_name, script_path
+    name = json.loads(manifest.read_text())[key]
+    path = FRONT_DIST / name
+    if not path.exists():
+        sys.exit(f"[e2e_env] bundled {key} {path} referenced by manifest.json is missing.")
+    return name, path
+
+
+def _resolve_script_bundle() -> tuple[str, Path]:
+    return _resolve_bundle("script")
+
+
+# [SF-WEB-40] The hashed CSS bundle, resolved the same way as the JS bundle.
+def _resolve_style_bundle() -> tuple[str, Path]:
+    return _resolve_bundle("style")
 
 
 def _program_mock(mock_state: "it_conftest._MockState") -> None:
@@ -332,6 +352,7 @@ def cmd_up() -> None:
             f"bundle is missing (see DEVELOPMENT.md / front/vendor/)."
         )
     script_name, script_path = _resolve_script_bundle()
+    style_name, style_path = _resolve_style_bundle()
 
     mock_state = it_conftest._MockState()
     mock_srv = it_conftest._start_mock_server_on(MOCK_PORT, mock_state)
@@ -384,6 +405,8 @@ def cmd_up() -> None:
         front_index_path=str(FRONT_INDEX),
         script_url_path=f"/{script_name}",
         script_file_path=str(script_path),
+        style_url_path=f"/{style_name}",
+        style_file_path=str(style_path),
         vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
         openapi_json_path=str(OPENAPI_JSON),
     ))

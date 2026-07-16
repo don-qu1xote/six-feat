@@ -20,3 +20,10 @@ properties:
             replaced with this value (used by handler-index to point at the
             content-hashed JS bundle)
         defaultDescription: ''
+    style-url:
+        type: string
+        description: >-
+            [SF-WEB-40] if set, every "/style.css" occurrence in the served
+            file is replaced with this value (used by handler-index to point
+            at the content-hashed CSS bundle)
+        defaultDescription: ''

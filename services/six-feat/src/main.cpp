@@ -69,6 +69,9 @@ int main(int argc, char *argv[]) {
             .Append<six_feat::ImageProxyHandler>()
             .Append<six_feat::IndexHandler>()
             .Append<six_feat::ScriptHandler>()
+            // [SF-WEB-40] Hashed CSS design-system bundle — see
+            // static_handler.hpp.
+            .Append<six_feat::StyleHandler>()
             // [SF-SEC-02] Self-hosted vis-network vendor bundle — see
             // static_handler.hpp.
             .Append<six_feat::VendorVisNetworkHandler>()

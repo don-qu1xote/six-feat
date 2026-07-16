@@ -1,0 +1,24 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   ui-segment — SF-WEB-11 kit.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* Segment — pill-shaped group container for a small, FIXED, single-row
+   set of mutually exclusive choices (hero Explore/Connect switch).
+   Deliberately styles only the container: each consumer keeps its own
+   selected-state treatment (e.g. .hero-mode-thumb's sliding indicator)
+   rather than this block guessing at one — avoids a double-indicator
+   conflict. Not applied to .role-filter-group even though it's visually
+   similar: that group has `flex-wrap: wrap` (drops to a second row on
+   narrow viewports/long labels) — wrapped content inside a
+   border-radius:999px pill visually breaks out of the rounded edges and
+   overlaps whatever sits above/below it (regression found in review).
+   A segment control is a single-row-only pattern; a wrapping group
+   isn't one, no matter how similar the buttons inside look. */
+.ui-segment {
+  display: inline-flex; position: relative;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: rgba(var(--panel-rgb),.8); padding: 3px; gap: var(--space-1);
+}
+

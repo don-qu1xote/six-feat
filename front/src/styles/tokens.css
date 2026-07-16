@@ -1,0 +1,133 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Design tokens — every custom property (colour, space, radius, elevation, type, motion). z-index tokens deferred to SF-WEB-41.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* ─── Design tokens ─────────────────────────────────────────────── */
+:root {
+  /* Color palette (unchanged) */
+  --ink:      #0B0E14;
+  --ink-2:    #0E1320;
+  --panel:    #141A28;
+  --panel-2:  #1B2236;
+  --line:     #283044;
+  --mist:     #8A94A6;
+  --paper:    #EDEFF4;
+  --signal:   #5EE6C5;
+  --pulse:    #B98AFF;
+  --amber:    #FFD27A;
+  --warn:     #FF8FA3;
+  --neon:     #FF2D78;
+  /* "primary" role accent (collabs without an explicit featured/producer/
+     writer tag). Must stay visually distinct from --line — see
+     ROLE_STYLE.primary in state.js for the full rationale. */
+  --primary2: #8FA6C9;
+  --shadow:   0 18px 50px rgba(0,0,0,.45);
+  --r-sm:     10px;
+  --r-md:     14px;
+  --r-lg:     18px;
+
+  /* Text colour for content sitting directly on the bright signal→pulse
+     accent gradient (hero-mode thumb, "Map it"/"Trace the path" buttons,
+     info toast) — that gradient stays equally bright in both themes, so
+     this stays fixed instead of flipping with --ink/--paper. */
+  --on-accent: #07120F;
+
+  /* RGB triplets (no alpha) for the two dark "recessed surface" tones
+     used as rgba(<triplet>, alpha) overlays throughout docked
+     search/rail/path controls (see .dock-btn, .path-input, .hop-row,
+     etc.) — factored out so IDEA-23's light theme can swap the tone
+     those overlays render in without touching every call site. */
+  --panel-rgb: 20,26,40;
+  --ink2-rgb:  14,19,32;
+  /* Radial glow behind the hero title (body background) — separate from
+     --ink so the two can differ in the light theme (a dark glow on a
+     light backdrop would look like a smudge). */
+  --hero-glow: #14203A;
+
+  /* ─ Blur/scrim scale — раньше эти значения были раскиданы магическими
+     литералами по .search-modal/.help-overlay/.candidate-overlay/
+     .node-search-overlay/.seed-card/.status-icon-btn/.info-popover
+     (blur 4/5/6/8/10px, rgba(11,14,20,.72/.78) вперемешку). Два явных
+     уровня вместо произвольных значений: "chip" — маленькие плавающие
+     элементы поверх канвы (seed-card, status-icon-btn), "scrim" —
+     полноэкранные модальные подложки. ─ */
+  --blur-chip:  6px;
+  --blur-scrim: 8px;
+  --blur-modal: 10px;
+  --scrim:       rgba(11,14,20,.76);
+  --scrim-modal: rgba(9,11,17,.82);
+  --chip-bg:    rgba(14,19,32,.80);
+
+  /* ─ Typographic scale (major third: 1.25) ─ */
+  --text-xs:    0.694rem;   /* 11.1px — metadata, labels, hints */
+  --text-sm:    0.833rem;   /* 13.3px — secondary text, autocomplete */
+  --text-base:  1rem;       /* 16px — body text (standard) */
+  --text-lg:    1.25rem;    /* 20px — emphasis, larger labels */
+  --text-xl:    1.563rem;   /* 25px — subheadings */
+  --text-2xl:   1.953rem;   /* 31.2px — heading level 2 */
+  --text-3xl:   2.441rem;   /* 39px — heading level 1 */
+  --text-hero:  clamp(2.5rem, 6vw, 4rem); /* 40–64px — hero title */
+
+  /* ─ Spacing scale (4px grid) ─ */
+  --space-1:    4px;
+  --space-2:    8px;
+  --space-3:    12px;
+  --space-4:    16px;
+  --space-5:    20px;
+  --space-6:    24px;
+  --space-7:    28px;
+  --space-8:    32px;
+  --space-9:    36px;
+  --space-10:   40px;
+  --space-11:   44px;
+  --space-12:   48px;
+
+  /* ─ Motion (SF-WEB-11) — durations/easing were previously repeated as
+     bare literals at every transition: site (.12s/.15s/.18s/.2s/.26s/
+     .28s/.32s scattered across .rail/.hero-mode-thumb/.search button/
+     .rail-btn[data-tip] etc.). Three buckets covering the values already
+     in use, so new + existing transitions can converge on one scale
+     instead of each picking its own number. ─ */
+  --ease-standard: cubic-bezier(.4,0,.2,1); /* already used by .hero-mode-thumb */
+  --duration-fast:  120ms; /* press feedback — .search button:active, .rail-btn[data-tip] */
+  --duration-base:  160ms; /* hover states — the most common transition length here */
+  --duration-slow:  280ms; /* panel/rail expand-style transitions */
+
+  /* ─ Elevation scale (SF-WEB-11) — previously a single --shadow used
+     everywhere from a 26px status-icon-btn to a full bento-tile panel.
+     A 3-step scale gives floating chip-scale controls, panels/tiles,
+     and (future) modals each their own weight instead of sharing one
+     value by coincidence. --elevation-1 reuses the exact shadow already
+     used ad hoc for rail-btn/.brand's hover-expand state (line ~805);
+     --elevation-2 is --shadow unchanged (bento-tile/rail/status-icon-btn
+     keep their current look); --elevation-3 is new headroom for
+     full-screen overlays, not yet consumed here. ─ */
+  --elevation-1: 0 4px 14px rgba(0,0,0,.35);
+  --elevation-2: var(--shadow);
+  --elevation-3: 0 24px 64px rgba(0,0,0,.5);
+}
+:root[data-theme="light"] {
+  --ink:      #F2F4F9;
+  --ink-2:    #E8ECF4;
+  --panel:    #FFFFFF;
+  --panel-2:  #F4F6FB;
+  --line:     #D7DDE9;
+  --mist:     #5B6479;
+  --paper:    #12151F;
+  --signal:   #0E9C7D;
+  --pulse:    #7C4DFF;
+  --amber:    #B36B00;
+  --warn:     #D6304A;
+  --neon:     #D6004F;
+  --primary2: #4A6FA5;
+  --shadow:   0 18px 40px rgba(20,30,55,.14);
+  --scrim:       rgba(230,233,240,.72);
+  --scrim-modal: rgba(222,226,236,.82);
+  --chip-bg:    rgba(255,255,255,.82);
+  --panel-rgb: 214,220,232;
+  --ink2-rgb:  234,237,244;
+  --hero-glow: #DCE6F6;
+}
+

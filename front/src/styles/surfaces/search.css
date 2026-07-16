@@ -1,0 +1,170 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Landing + docked search modal (hero search box, is-first-visit, docked corner card).
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+.search-modal {
+  position: absolute; inset: 0; z-index: 40;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: var(--space-6); padding: var(--space-7); text-align: center;
+  /* Затемнение/блюр усилены (было rgba(11,14,20,.46) + blur(2px)) —
+     когда модалка открывается поверх уже нарисованного графа (не
+     is-first-visit), она должна визуально читаться как отдельный слой
+     над канвасом, а не полупрозрачная плёнка, сквозь которую граф
+     продолжает отвлекать внимание. */
+  background: var(--scrim-modal);
+  opacity: 1; transition: opacity .32s ease, backdrop-filter .32s ease, background .32s ease;
+  backdrop-filter: blur(var(--blur-modal));
+}
+.search-modal h1,
+.search-modal .include-roles-row,
+.search-modal .hero-mode-switch,
+.search-modal .hero-mode-stage,
+.search-modal .chips,
+.search-modal .auth-bar {
+  transition: opacity .38s ease, transform .38s ease;
+}
+.search-modal.is-closed { opacity: 0; pointer-events: none; backdrop-filter: blur(0); }
+.search-modal.is-closed h1       { opacity: 0; transform: translateY(-16px); transition-delay: .02s; }
+.search-modal.is-closed .include-roles-row { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
+.search-modal.is-closed .hero-mode-switch  { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
+.search-modal.is-closed .hero-mode-stage   { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
+.search-modal.is-closed .chips   { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
+.search-modal.is-closed .auth-bar{ opacity: 0; transform: translateY(8px);  }
+.search-modal.is-closed .search-wrap { transition: opacity .3s ease .1s; }
+.search-modal.is-closed:not(.is-morphing) .search-wrap { opacity: 0; }
+/* is-first-visit: пустой канвас без графа за модалкой — усиленное
+   затемнение здесь не нужно, отделять нечего. */
+.search-modal.is-first-visit { background: transparent; backdrop-filter: none; }
+/* [SF-WEB-31] Первый экран — чуть плотнее общий gap (было --space-6,
+   рассчитанный на все блоки сразу видимыми) и меньший отступ до chips:
+   .include-roles-row теперь схлопнута по умолчанию (см. <details>
+   выше), так что визуально блоков одновременно меньше — но при полном
+   наборе видимых блоков (search-wrap, свёрнутый Filters, chips,
+   auth-bar) прежний --space-6 читался избыточно просторным. Только
+   landing — docked (SF-WEB-30) и обычный полноэкранный (не
+   is-first-visit) режимы не трогаем. */
+.search-modal.is-first-visit { gap: var(--space-5); }
+.search-modal.is-first-visit .chips-label { margin-top: var(--space-3); }
+
+/* ─ Docked mode: быстрый поиск на странице графа ────────────────────────
+   Раньше "Search artist" на рейле открывал ТУ ЖЕ полноэкранную модалку
+   лендинга — заголовок, затемнение/блюр всего канваса, скрытие
+   rail/status (см. body.view-home) — по смыслу это "выйти обратно на
+   главную", хотя пользователь просто хочет быстро поискать другого
+   артиста, не покидая уже построенный граф — ровно как find-path.
+   .search-modal.docked превращает тот же #search-modal в компактную
+   плавающую карточку в углу канвы: тот же материал/докинг, что у
+   .path-panel (--panel-2/--r-lg/--shadow/backdrop-blur), без
+   полноэкранного scrim и без скрытия остального интерфейса графа. */
+.search-modal.docked {
+  position: absolute; inset: auto; top: var(--space-4); right: var(--space-4);
+  left: auto; bottom: auto; z-index: 46;
+  width: 380px; max-width: calc(100vw - 88px);
+  padding: 0; gap: var(--space-3);
+  display: block; text-align: left;
+  background: transparent; backdrop-filter: none;
+  /* [SF-WEB-24] Docked-only entry/exit timing, kit tokens (--duration-
+     slow: "panel/rail expand-style transitions" — exactly this) — the
+     base .search-modal transition above (opacity/backdrop-filter/
+     background, .32s) is shared with the full-screen landing mode and
+     stays untouched; this adds the transform .is-closed already
+     declared below but never actually animated (no matching transition
+     property existed for it before). */
+  transition: transform var(--duration-slow) var(--ease-standard);
+}
+.search-modal.docked.is-closed { transform: translateY(-6px); }
+.search-modal.docked h1,
+.search-modal.docked .chips-label,
+.search-modal.docked .chips,
+.search-modal.docked .auth-bar {
+  display: none;
+}
+.search-modal.docked .search-wrap {
+  width: 100%; margin: 0;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
+  /* [SF-WEB-24] --elevation-2 (not the older --shadow, still the exact
+     same value — see the token block up top) to name this the same
+     shell recipe .ui-panel/.node-search-box use. */
+  box-shadow: var(--elevation-2); backdrop-filter: blur(var(--blur-scrim));
+  padding: var(--space-4);
+}
+.search-modal.docked .hero-mode-stage {
+  width: 100%; margin-top: var(--space-3);
+}
+/* [SF-WEB-30] Docked search = new-seed (Explore) search box only. The
+   Explore/Connect switch, the Connect (path-finder) panel, and the
+   role-filter row each duplicated a canonical, canvas-native entry
+   point that already exists once graph is open — #btn-find-path
+   (openPathPanel) and .role-filter-segment respectively. Hidden here
+   rather than removed from markup, since the SAME #search-modal
+   element is reused, unchanged, by the full-screen landing modal
+   (.is-first-visit), where all three remain the only entry point for a
+   first-time visitor with no graph/rail yet to offer them elsewhere.
+   modals.js::openSearchModal forces Explore active on every docked
+   open, so a Connect-mode selection left over from the landing modal
+   can never leave the (now hidden) Connect panel active underneath. */
+.search-modal.docked .hero-mode-switch,
+.search-modal.docked .include-roles-row,
+.search-modal.docked #hero-mode-panel-connect {
+  display: none;
+}
+
+/* ТЗ ("докнутый поиск визуально выбивается из интерфейса графа"):
+   #search-modal/#hero-form и т.д. — те же элементы, что и на главной,
+   со своим ярким "лендинговым" материалом (градиентная кнопка "Map
+   it", крупные поля, панель --panel фон). На главной это уместно (это
+   hero), но в узкой докнутой карточке поверх графа резко выбивалось на
+   фоне приглушённого рейла/path-panel/сайдбара (.path-input/.dock-btn/
+   .rail-btn — везде компактно и приглушённо). Ниже переопределяем
+   визуал ТОЛЬКО внутри .docked — сама вёрстка и вся JS-логика (тот же
+   #hero-input, тот же submit) не меняются. */
+.search-modal.docked .search input {
+  padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
+  border-radius: var(--r-sm); background: rgba(var(--panel-rgb),.9);
+}
+.search-modal.docked .search input:focus { box-shadow: none; }
+.search-modal.docked .search button {
+  background: rgba(var(--panel-rgb),.8); color: var(--paper); font-weight: 600;
+  padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.search-modal.docked .search button:hover { filter: none; background: rgba(255,255,255,.05); border-color: var(--pulse); }
+
+/* [SF-WEB-31 follow-up] Вордмарк = логотип (Google/Yandex-референс —
+   один текстовый элемент, не иконка + слоган отдельно). Тот же
+   font-family/weight/size/line-height/letter-spacing, что раньше нёс
+   трёхстрочный слоган — только текст короче и max-width больше не
+   нужен (короткое название само по себе не переносится на несколько
+   строк на разумной ширине экрана). */
+.search-modal h1 {
+  font-family: "Syne", sans-serif; font-weight: 800;
+  font-size: var(--text-hero); line-height: 1.04;
+  letter-spacing: -.02em;
+}
+.search-modal h1 .grad {
+  background: linear-gradient(100deg, var(--signal), var(--pulse));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+.search-wrap { position: relative; width: min(680px, 92vw); margin-top: var(--space-1); }
+.search { display: flex; gap: var(--space-3); width: 100%; }
+.search input {
+  flex: 1; min-width: 0;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-4) var(--space-5);
+  outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
+}
+.search input::placeholder { color: #5C677C; }
+.search input:focus { background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(94,230,197,.14); }
+.search button {
+  border: 0; border-radius: var(--r-md); padding: 0 var(--space-6);
+  font: inherit; font-weight: 700; color: var(--on-accent); cursor: pointer;
+  background: linear-gradient(100deg, var(--signal), var(--pulse));
+  transition: transform .12s, filter .18s; white-space: nowrap; font-size: var(--text-base);
+}
+.search button:hover { filter: brightness(1.06); }
+.search button:active { transform: translateY(1px); }
+.search button:disabled { opacity: .55; cursor: progress; }
+

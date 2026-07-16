@@ -1,0 +1,48 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Candidate picker overlay.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+.candidate-overlay {
+  position: absolute; inset: 0; z-index: 58;
+  background: var(--scrim); backdrop-filter: blur(var(--blur-scrim));
+  display: none; align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+.candidate-overlay.show { display: flex; }
+.candidate-box {
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: var(--space-5); width: min(480px, 92vw);
+  box-shadow: var(--shadow); display: flex; flex-direction: column; gap: var(--space-3);
+}
+.candidate-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.candidate-title {
+  font-family: "Syne", sans-serif; font-weight: 700; font-size: var(--text-base); color: var(--paper);
+}
+.candidate-subtitle {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+  letter-spacing: .08em; margin-top: var(--space-1);
+}
+.candidate-close-btn {
+  border: 0; background: transparent; color: var(--mist); cursor: pointer;
+  font-size: 20px; line-height: 1; padding: 0 4px; transition: color .15s; flex-shrink: 0;
+}
+.candidate-close-btn:hover { color: var(--paper); }
+.candidate-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.candidate-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-3); border-radius: var(--r-sm);
+  border: 1px solid var(--line); background: rgba(var(--panel-rgb),.60);
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.candidate-item:hover { border-color: var(--signal); background: rgba(94,230,197,.06); }
+.candidate-avatar {
+  width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--line);
+}
+.candidate-info { flex: 1; min-width: 0; }
+.candidate-name { font-size: var(--text-sm); font-weight: 600; color: var(--paper); }
+.candidate-score {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist); margin-top: var(--space-1);
+}
+

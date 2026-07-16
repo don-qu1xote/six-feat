@@ -36,6 +36,7 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-search": MAIN_TP,
         "handler-index": MAIN_TP,
         "handler-script": MAIN_TP,
+        "handler-style": MAIN_TP,
         "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-status": MAIN_TP,

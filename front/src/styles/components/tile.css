@@ -1,0 +1,43 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Bento tile material + size/span modifiers (SF-WEB-11 kit).
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* ─── ТЗ-206: Bento tile system ─────────────────────────────────────
+   Each self-contained block of information (status/seed card, hop-chain
+   path panel, artist sidebar sections — avatar+name, top tracks, role
+   breakdown, centrality bar, path-to-seed mini chain) gets its own
+   --r-lg container with --shadow, --space-* padding, and a visible
+   border from its neighbours, instead of being just another row in a
+   flat list. Composition (which tiles go where, how big) is handled by
+   CSS grid with explicit grid-template-areas at each call site — this
+   block only defines the reusable tile "material" + size modifiers.
+   Deliberately reuses the existing --panel-2/--line/--shadow palette —
+   bento is about composition/grid, not a new colour system. Canvas/
+   vis.js nodes are untouched; this only applies to surrounding panels. */
+.bento-tile {
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: var(--space-4);
+  min-width: 0; /* allow grid children to shrink instead of overflowing */
+}
+.bento-tile--sm   { padding: var(--space-3); }
+.bento-tile--md   { padding: var(--space-4); }
+.bento-tile--lg   { padding: var(--space-5); }
+/* Span modifiers for use inside a parent with display:grid — set the
+   number of grid columns/rows a tile occupies. Call sites define their
+   own grid-template-columns/areas; these just set the span. */
+.bento-tile--wide  { grid-column: 1 / -1; }
+.bento-tile--tall  { grid-row: span 2; }
+/* Flat variant — same padding/radius rhythm but no separate background/
+   shadow, for tiles nested inside an already-elevated parent (e.g. a
+   tile-within-a-tile like the path-to-seed mini chain inside the
+   sidebar, which already sits inside .artist-sidebar's own elevation). */
+.bento-tile--flat {
+  background: rgba(var(--panel-rgb),.4);
+  box-shadow: none;
+}
+

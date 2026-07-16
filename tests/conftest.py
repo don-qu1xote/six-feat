@@ -430,6 +430,17 @@ components_manager:
       file-path: /dev/null
       content-type: application/javascript; charset=utf-8
 
+    # [SF-WEB-40] handler-style is unconditionally registered by main.cpp
+    # (StyleHandler), so — like handler-script above — every static config
+    # that boots this binary needs a matching section. The API integration
+    # suite never loads a real page, so /dev/null is fine.
+    handler-style:
+      path: /style.css
+      method: GET
+      task_processor: main-task-processor
+      file-path: /dev/null
+      content-type: text/css; charset=utf-8
+
     # [SF-SEC-02] Self-hosted vis-network vendor bundle — unconditionally
     # registered by main.cpp, so every static config that boots this binary
     # needs a matching section, same as every other handler here. The API

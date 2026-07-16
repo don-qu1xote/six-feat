@@ -1,0 +1,35 @@
+/* ============================================================================
+   index.css — SF-WEB-40 design-system entry point.
+
+   Bundled by esbuild into dist/style.<hash>.css (see package.json build +
+   scripts/hash-build.mjs) and loaded by index.html as a single <link>.
+
+   The @import order below is DELIBERATE and load-bearing: it reproduces the
+   exact top-to-bottom order the rules had in index.html's original inline
+   <style>, so the cascade — and therefore the rendered result — is identical
+   to before this extraction (SF-WEB-40 is a pure move+systematisation; the
+   Observatory visual skin lands later, SF-WEB-42+). tokens first; reset/base
+   sit after the component kit only because that is where they lived in the
+   source — do not reorder without re-checking the cascade.
+   Both light and dark themes are token-driven (tokens.css), no hardcoding.
+   ============================================================================ */
+
+@import "./tokens.css";
+@import "./components/tile.css";
+@import "./components/button.css";
+@import "./components/chip.css";
+@import "./components/pill.css";
+@import "./components/segment.css";
+@import "./components/panel.css";
+@import "./reset.css";
+@import "./base.css";
+@import "./surfaces/canvas.css";
+@import "./surfaces/search.css";
+@import "./surfaces/autocomplete.css";
+@import "./surfaces/hero.css";
+@import "./surfaces/canvas-controls.css";
+@import "./surfaces/companion.css";
+@import "./surfaces/candidate.css";
+@import "./surfaces/node-search.css";
+@import "./surfaces/graph-overlay.css";
+@import "./surfaces/responsive.css";

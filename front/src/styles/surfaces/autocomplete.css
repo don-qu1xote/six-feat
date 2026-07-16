@@ -1,0 +1,101 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Autocomplete dropdown + role-icon / sidebar-role-chip primitives.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* ─ Autocomplete dropdown — переработано ────────────────────────────
+   Раньше здесь по очереди были два расходящихся подхода:
+     1) обычный absolute-оверлей — перекрывал соседнее поле снизу
+        (From/To друг под другом в .path-panel);
+     2) "раздвигать поток" (position:relative на .open) — устраняло
+        перекрытие, но расталкивало соседние блоки/кнопки под собой,
+        что при быстром открытии-закрытии ощущается как дёрганый layout.
+   Оба решали только позиционирование, а сам список подсказок
+   оставался тесным (маленький аватар, мелкий текст, минимальные
+   отступы) — отсюда "окошки слишком маленькие".
+   Новое решение: снова floating-оверлей (ничего не раздвигает), но
+   поднятый на тот же материал, что и .path-panel (--panel-2/--r-lg/
+   --shadow/backdrop-blur) — читается как самостоятельная всплывающая
+   карточка НАД остальным интерфейсом, а не тонкая полоска впритык к
+   полю. Более крупные строки (--space-4 отступы, 44px аватар) не
+   нужно втискивать в узкий столбец — карточка сама шире инпута
+   (min-width), а не 1:1 с ним. */
+.ac-dropdown {
+  position: absolute; top: calc(100% + 8px); left: 0;
+  min-width: 100%; width: max-content; max-width: min(400px, 90vw);
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow);
+  backdrop-filter: blur(var(--blur-scrim));
+  z-index: 55; display: none; flex-direction: column; overflow: hidden;
+  max-height: 360px; overflow-y: auto;
+}
+.ac-dropdown.open { display: flex; }
+.ac-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); cursor: pointer;
+  transition: background .12s; border-bottom: 1px solid rgba(40,48,68,.3);
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover, .ac-item.ac-active { background: rgba(94,230,197,.07); }
+.ac-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex-shrink: 0;
+  font-size: var(--text-sm); color: var(--mist);
+}
+
+.role-icon {
+  display: inline-block;
+  width: 16px; height: 16px;
+  vertical-align: -2px;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  flex-shrink: 0;
+}
+.sidebar-track-role svg.role-icon,
+.role-chip--featured svg.role-icon,
+.role-chip--producer svg.role-icon,
+.role-chip--writer svg.role-icon {
+  margin-right: var(--space-1);
+}
+
+/* FIX #4: Flexbox layout for role chips */
+.sidebar-role-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.sidebar-role-chip .rbc-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+.sidebar-role-chip .rbc-count {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1;
+  font-family: "Space Mono", monospace;
+}
+
+.sidebar-role-chip svg.role-icon {
+  margin: 0;
+}
+.ac-avatar {
+  width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
+  flex-shrink: 0; border: 1px solid var(--line);
+}
+.ac-info { flex: 1; min-width: 0; overflow: hidden; }
+.ac-name { font-size: var(--text-base); font-weight: 600; color: var(--paper); }
+.ac-hint { font-size: var(--text-xs); color: var(--mist); margin-top: var(--space-1); letter-spacing: 0.5px; }
+.ac-spinner {
+  padding: var(--space-4); text-align: center;
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+}
+

@@ -25,33 +25,42 @@ StaticFileHandler::StaticFileHandler(
       cache_control_(config["cache-control"].As<std::string>("")) {
 }
 
-std::string StaticFileHandler::TransformContent(
-    const components::ComponentConfig &config, std::string content) {
-  // Optional "script-url" config value: if present, every occurrence of the
-  // literal "/script.js" in the file is replaced with it. Used by
-  // handler-index so index.html always references the actual
-  // content-hashed JS bundle name baked into the image at build time,
-  // without hard-coding it into the source file itself.
-  const auto script_url = config["script-url"].As<std::string>("");
-  if (script_url.empty()) {
+std::string StaticFileHandler::ReplaceAll(std::string content,
+                                          std::string_view placeholder,
+                                          const std::string &replacement) {
+  if (placeholder.empty() || replacement.empty()) {
     return content;
   }
-
-  constexpr std::string_view kPlaceholder = "/script.js";
   std::string result;
   result.reserve(content.size());
   std::size_t pos = 0;
   while (true) {
-    const auto found = content.find(kPlaceholder, pos);
+    const auto found = content.find(placeholder, pos);
     if (found == std::string::npos) {
       result.append(content, pos, std::string::npos);
       break;
     }
     result.append(content, pos, found - pos);
-    result.append(script_url);
-    pos = found + kPlaceholder.size();
+    result.append(replacement);
+    pos = found + placeholder.size();
   }
   return result;
+}
+
+std::string StaticFileHandler::TransformContent(
+    const components::ComponentConfig &config, std::string content) {
+  // Optional "script-url"/"style-url" config values: if present, every
+  // occurrence of the literal "/script.js" (resp. "/style.css") in the file
+  // is replaced with it. Used by handler-index so index.html always
+  // references the actual content-hashed JS/CSS bundle names baked into the
+  // image at build time, without hard-coding them into the source file
+  // itself. Empty (the default) leaves the placeholder untouched.
+  content = ReplaceAll(std::move(content), "/script.js",
+                       config["script-url"].As<std::string>(""));
+  // [SF-WEB-40] Same mechanism for the design-system CSS bundle.
+  content = ReplaceAll(std::move(content), "/style.css",
+                       config["style-url"].As<std::string>(""));
+  return content;
 }
 
 std::string StaticFileHandler::HandleRequestThrow(

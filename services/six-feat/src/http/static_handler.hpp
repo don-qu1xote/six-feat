@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
@@ -21,10 +22,18 @@ public:
 
 protected:
   // Allows a derived class (IndexHandler) to post-process the file content
-  // that was just read from disk (e.g. to inline the hashed script URL)
-  // before it's served. Called once, from the constructor.
+  // that was just read from disk (e.g. to inline the hashed script/style
+  // URLs) before it's served. Called once, from the constructor.
   static std::string TransformContent(const userver::components::ComponentConfig &config,
                                        std::string content);
+
+private:
+  // Replaces every occurrence of `placeholder` in `content` with
+  // `replacement`. No-op when either is empty. Used by TransformContent for
+  // the "/script.js" and "/style.css" → hashed-URL rewrites.
+  static std::string ReplaceAll(std::string content,
+                                std::string_view placeholder,
+                                const std::string &replacement);
 
 private:
   const std::string content_;
@@ -34,11 +43,12 @@ private:
 
 // Serves index.html. At startup, any occurrence of the literal string
 // "/script.js" inside the file is rewritten to the content-hashed script
-// URL (e.g. "/script.a1b2c3d4.js"), read from the "script-url" config value.
-// This is what lets the browser pick up a new JS bundle on a normal
-// (non-hard) refresh: index.html itself is served with Cache-Control:
-// no-cache, so it's always revalidated, and it always points at whatever
-// hashed script URL was baked in at image-build time.
+// URL (e.g. "/script.a1b2c3d4.js"), read from the "script-url" config value;
+// [SF-WEB-40] likewise "/style.css" → the hashed CSS bundle URL via
+// "style-url". This is what lets the browser pick up a new JS/CSS bundle on
+// a normal (non-hard) refresh: index.html itself is served with
+// Cache-Control: no-cache, so it's always revalidated, and it always points
+// at whatever hashed asset URLs were baked in at image-build time.
 class IndexHandler final : public StaticFileHandler {
 public:
   static constexpr std::string_view kName = "handler-index";
@@ -51,6 +61,15 @@ public:
 class ScriptHandler final : public StaticFileHandler {
 public:
   static constexpr std::string_view kName = "handler-script";
+  using StaticFileHandler::StaticFileHandler;
+};
+
+// [SF-WEB-40] Serves the hashed CSS bundle (src/styles/ → esbuild →
+// dist/style.<hash>.css). Content-addressed like the JS bundle, so served
+// with the same long, immutable cache lifetime.
+class StyleHandler final : public StaticFileHandler {
+public:
+  static constexpr std::string_view kName = "handler-style";
   using StaticFileHandler::StaticFileHandler;
 };
 

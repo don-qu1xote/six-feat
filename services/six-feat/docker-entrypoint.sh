@@ -96,7 +96,20 @@ SCRIPT_FILENAME="$(cat "$SCRIPT_FILENAME_FILE")"
 SCRIPT_PATH="/${SCRIPT_FILENAME}"
 SCRIPT_FILE_PATH="/usr/share/six_feat/${SCRIPT_FILENAME}"
 
+# [SF-WEB-40] Same for the hashed CSS bundle (see .style-filename baked in
+# by the Dockerfile from manifest.json's "style" entry). Feeds
+# handler-style's route/file-path and handler-index's "/style.css" rewrite.
+STYLE_FILENAME_FILE=/usr/share/six_feat/.style-filename
+if [[ ! -f "$STYLE_FILENAME_FILE" ]]; then
+  echo "[entrypoint] ERROR: $STYLE_FILENAME_FILE missing — CSS bundle was not baked into the image correctly" >&2
+  exit 1
+fi
+STYLE_FILENAME="$(cat "$STYLE_FILENAME_FILE")"
+STYLE_PATH="/${STYLE_FILENAME}"
+STYLE_FILE_PATH="/usr/share/six_feat/${STYLE_FILENAME}"
+
 echo "[entrypoint] serving JS bundle as ${SCRIPT_PATH}"
+echo "[entrypoint] serving CSS bundle as ${STYLE_PATH}"
 if [[ -n "$DB_REPLICA_HOST" ]]; then
   echo "[entrypoint] Postgres target: ${DB_HOST}:${DB_PORT} (master), ${DB_REPLICA_HOST}:${DB_REPLICA_PORT} (replica), db=${DB_NAME}"
 else
@@ -155,6 +168,10 @@ script_filename: ${SCRIPT_FILENAME}
 script_path: ${SCRIPT_PATH}
 script_url: ${SCRIPT_PATH}
 script_file_path: ${SCRIPT_FILE_PATH}
+style_filename: ${STYLE_FILENAME}
+style_path: ${STYLE_PATH}
+style_url: ${STYLE_PATH}
+style_file_path: ${STYLE_FILE_PATH}
 db_connection_string: "${DB_CONNECTION_STRING}"
 enrichment_base_url: ${ENRICHMENT_BASE_URL}
 genius_gateway_base_url: ${GENIUS_GATEWAY_BASE_URL}

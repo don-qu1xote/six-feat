@@ -63,9 +63,9 @@ COPY front/package.json front/package-lock.json ./
 RUN npm ci
 COPY front/src ./src
 COPY front/scripts ./scripts
-# Produces dist/script.<hash>.js (minified, content-hashed) plus
-# dist/manifest.json ({"script": "script.<hash>.js"}) — see
-# front/scripts/hash-build.mjs.
+# Produces dist/script.<hash>.js and dist/style.<hash>.css (both minified,
+# content-hashed) plus dist/manifest.json ({"script": ..., "style": ...}) —
+# see front/scripts/hash-build.mjs. [SF-WEB-40] added the CSS bundle.
 RUN npm run build
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -167,21 +167,27 @@ COPY --from=builder /install/etc/six_feat/static_config.yaml ./static_config.yam
 # Front-end files — paths must match static_config.yaml:
 #   handler-index              → /usr/share/six_feat/index.html
 #   handler-script             → /usr/share/six_feat/<hashed script filename>
+#   handler-style              → /usr/share/six_feat/<hashed style filename>
 #   handler-vendor-vis-network → /usr/share/six_feat/vendor/vis-network.min.js
 #   handler-openapi            → /usr/share/six_feat/openapi.json
 #
-# The JS bundle keeps its content-hashed name (script.<hash>.js) all the way
-# into the runtime image — no renaming to a static "script.js" here. The
-# entrypoint reads SCRIPT_FILENAME (baked in below from js-builder's
-# manifest.json) and writes it into config_vars.yaml so static_config.yaml's
-# handler-script route/file-path and handler-index's injected reference both
-# resolve to the exact same file.
+# The JS/CSS bundles keep their content-hashed names (script.<hash>.js,
+# style.<hash>.css) all the way into the runtime image — no renaming to a
+# static name here. The entrypoint reads SCRIPT_FILENAME/STYLE_FILENAME
+# (baked in below from js-builder's manifest.json) and writes them into
+# config_vars.yaml so static_config.yaml's handler-script/handler-style
+# routes/file-paths and handler-index's injected references all resolve to
+# the exact same files.
 COPY front/index.html /usr/share/six_feat/index.html
 COPY --from=js-builder /front/dist/script.*.js /usr/share/six_feat/
+COPY --from=js-builder /front/dist/style.*.css /usr/share/six_feat/
 COPY --from=js-builder /front/dist/manifest.json /tmp/manifest.json
 RUN SCRIPT_FILENAME="$(sed -n 's/.*"script": *"\([^"]*\)".*/\1/p' /tmp/manifest.json)" \
+ && STYLE_FILENAME="$(sed -n 's/.*"style": *"\([^"]*\)".*/\1/p' /tmp/manifest.json)" \
  && test -n "$SCRIPT_FILENAME" \
+ && test -n "$STYLE_FILENAME" \
  && echo "$SCRIPT_FILENAME" > /usr/share/six_feat/.script-filename \
+ && echo "$STYLE_FILENAME" > /usr/share/six_feat/.style-filename \
  && rm /tmp/manifest.json
 
 # [SF-SEC-02] Self-hosted vis-network vendor bundle (see front/vendor/ —

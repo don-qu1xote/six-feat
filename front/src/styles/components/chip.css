@@ -1,0 +1,28 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   ui-chip — SF-WEB-11 kit.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* Chip — small pill-shaped toggle/suggestion (autocomplete suggestions,
+   filter pills). Mirrors .chip's existing recipe so adopting it is a
+   no-op for controls that already look right, while giving them the
+   shared focus ring for free. */
+.ui-chip {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  font-family: "Space Mono", monospace; font-size: var(--text-xs);
+  color: var(--mist); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  transition: color var(--duration-base) var(--ease-standard),
+              border-color var(--duration-base) var(--ease-standard),
+              background var(--duration-base) var(--ease-standard);
+}
+.ui-chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
+.ui-chip:focus-visible {
+  outline: none; border-color: var(--signal);
+  box-shadow: 0 0 0 3px rgba(94,230,197,.35);
+}
+.ui-chip.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
+
