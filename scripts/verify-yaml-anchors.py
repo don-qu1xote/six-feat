@@ -40,6 +40,7 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-readyz": MAIN_TP,
         "handler-status": MAIN_TP,
         "handler-artist": MAIN_TP,
+        "handler-openapi": MAIN_TP,
         "handler-status-stream": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },

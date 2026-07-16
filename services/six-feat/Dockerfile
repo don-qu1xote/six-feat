@@ -168,6 +168,7 @@ COPY --from=builder /install/etc/six_feat/static_config.yaml ./static_config.yam
 #   handler-index              → /usr/share/six_feat/index.html
 #   handler-script             → /usr/share/six_feat/<hashed script filename>
 #   handler-vendor-vis-network → /usr/share/six_feat/vendor/vis-network.min.js
+#   handler-openapi            → /usr/share/six_feat/openapi.json
 #
 # The JS bundle keeps its content-hashed name (script.<hash>.js) all the way
 # into the runtime image — no renaming to a static "script.js" here. The
@@ -188,6 +189,11 @@ RUN SCRIPT_FILENAME="$(sed -n 's/.*"script": *"\([^"]*\)".*/\1/p' /tmp/manifest.
 # file rather than fetched at build time) — replaces the old unpkg.com CDN
 # <script src=...> tag in front/index.html.
 COPY front/vendor/vis-network.min.js /usr/share/six_feat/vendor/vis-network.min.js
+
+# [SF-API-05] Checked-in static OpenAPI 3.1 document — see
+# schemas/openapi/openapi.json's own header comment and static_handler.hpp's
+# OpenApiHandler.
+COPY schemas/openapi/openapi.json /usr/share/six_feat/openapi.json
 
 COPY services/six-feat/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

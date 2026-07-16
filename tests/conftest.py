@@ -87,6 +87,11 @@ import session_crypto  # noqa: E402  (path must be set up first)
 
 SRC_ROOT = Path(__file__).parent.parent
 BINARY = Path(os.environ.get("SIX_FEAT_BINARY", SRC_ROOT / "build" / "six_feat"))
+# [SF-API-05] Real (not /dev/null-stubbed) file — test_openapi.py fetches
+# and parses this handler's actual response body, unlike handler-index/
+# handler-script/handler-vendor-vis-network above whose content nothing in
+# this suite reads.
+OPENAPI_JSON_PATH = SRC_ROOT / "schemas" / "openapi" / "openapi.json"
 SERVICE_PORT = int(os.environ.get("SIX_FEAT_PORT", "18080"))
 MOCK_PORT = int(os.environ.get("MOCK_PORT", "18081"))
 SERVICE_BASE = f"http://localhost:{SERVICE_PORT}"
@@ -437,6 +442,20 @@ components_manager:
       file-path: /dev/null
       content-type: application/javascript; charset=utf-8
 
+    # [SF-API-05] Unlike the /dev/null-stubbed handlers above, this one
+    # points at the real checked-in schemas/openapi/openapi.json —
+    # test_openapi.py actually fetches and parses this response body.
+    # __OPENAPI_JSON_PATH__ is a literal sentinel (not a str.format() {}
+    # field — see the .replace() call right after this template's
+    # definition below) so adding it doesn't require touching every one of
+    # this template's several .format() call sites.
+    handler-openapi:
+      path: /api/v1/openapi.json
+      method: GET
+      task_processor: main-task-processor
+      file-path: __OPENAPI_JSON_PATH__
+      content-type: application/json; charset=utf-8
+
     handler-healthz:
       path: /healthz
       method: GET
@@ -489,6 +508,13 @@ components_manager:
       method: GET
       task_processor: monitor-task-processor
 """
+
+# [SF-API-05] Splice in the real openapi.json path — see the sentinel's own
+# comment above. Done once, at import time, so every one of this template's
+# .format() call sites is unaffected (no new required kwarg).
+_TEST_CONFIG_TEMPLATE = _TEST_CONFIG_TEMPLATE.replace(
+    "__OPENAPI_JSON_PATH__", str(OPENAPI_JSON_PATH)
+)
 
 # [IDEA-53] Standalone six-feat-auth static config (auth_service_proc below)
 # — same shape as services/auth/static_config.yaml, minus the $var

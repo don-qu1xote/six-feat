@@ -248,6 +248,20 @@ components_manager:
       content-type: application/javascript; charset=utf-8
       cache-control: 'public, max-age=31536000, immutable'
 
+    # [SF-API-05] Static, hand-written OpenAPI 3.1 document (schemas/openapi/
+    # openapi.json) — checked-in artifact, not generated from the running
+    # handlers at build/runtime. Not content-hashed (unlike handler-script),
+    # so no long immutable cache — a moderate revalidate-friendly max-age
+    # instead, same reasoning as handler-index's no-cache but a bit looser
+    # since this document changes far less often than index.html.
+    handler-openapi:
+      path: /api/v1/openapi.json
+      method: GET
+      task_processor: *main_tp
+      file-path: /usr/share/six_feat/openapi.json
+      content-type: application/json; charset=utf-8
+      cache-control: 'public, max-age=3600, must-revalidate'
+
     handler-healthz:
       path: /healthz
       method: GET

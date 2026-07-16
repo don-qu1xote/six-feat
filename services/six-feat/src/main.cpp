@@ -72,6 +72,8 @@ int main(int argc, char *argv[]) {
             // [SF-SEC-02] Self-hosted vis-network vendor bundle — see
             // static_handler.hpp.
             .Append<six_feat::VendorVisNetworkHandler>()
+            // [SF-API-05] Static OpenAPI 3.1 document — see static_handler.hpp.
+            .Append<six_feat::OpenApiHandler>()
             // [IDEA-27] Internal metrics endpoint — bound to listener-monitor
             // (see static_config.yaml), not the public listener.
             .Append<server::handlers::ServerMonitor>();

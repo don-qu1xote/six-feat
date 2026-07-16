@@ -67,4 +67,14 @@ public:
   using StaticFileHandler::StaticFileHandler;
 };
 
+// [SF-API-05] Serves the checked-in static OpenAPI 3.1 document
+// (schemas/openapi/openapi.json) at GET /api/v1/openapi.json — hand-written
+// and version-controlled, not generated from the running handlers, so it's
+// a reviewable artifact like every other schema under schemas/.
+class OpenApiHandler final : public StaticFileHandler {
+public:
+  static constexpr std::string_view kName = "handler-openapi";
+  using StaticFileHandler::StaticFileHandler;
+};
+
 } // namespace six_feat

@@ -78,6 +78,11 @@ FRONT_INDEX = Path(os.environ.get("E2E_FRONT_INDEX", REPO_ROOT / "front" / "inde
 VENDOR_VIS_NETWORK = Path(
     os.environ.get("E2E_VENDOR_VIS_NETWORK", REPO_ROOT / "front" / "vendor" / "vis-network.min.js")
 )
+# [SF-API-05] Checked-in static OpenAPI 3.1 document — same file
+# static_handler.hpp's OpenApiHandler serves in the real image.
+OPENAPI_JSON = Path(
+    os.environ.get("E2E_OPENAPI_JSON", REPO_ROOT / "schemas" / "openapi" / "openapi.json")
+)
 
 _STATIC_CONFIG_TEMPLATE = """\
 components_manager:
@@ -267,6 +272,17 @@ components_manager:
       task_processor: main-task-processor
       timeout-ms: 5000
 
+    # [SF-API-05] Same reasoning as handler-image above: main.cpp
+    # unconditionally registers OpenApiHandler, so this config needs a
+    # matching block too. Real file (not a stub) since it costs nothing to
+    # serve correctly here.
+    handler-openapi:
+      path: /api/v1/openapi.json
+      method: GET
+      task_processor: main-task-processor
+      file-path: {openapi_json_path}
+      content-type: application/json; charset=utf-8
+
     handler-server-monitor:
       path: /metrics
       method: GET
@@ -369,6 +385,7 @@ def cmd_up() -> None:
         script_url_path=f"/{script_name}",
         script_file_path=str(script_path),
         vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
+        openapi_json_path=str(OPENAPI_JSON),
     ))
 
     proc = subprocess.Popen(
