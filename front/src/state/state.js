@@ -206,6 +206,12 @@ const interactionSlice = {
   // Session-only (no localStorage): reset to the prefers-color-scheme
   // read on the next load instead of persisting. See setupThemeToggle.
   theme: "dark",
+
+  // [SF-WEB-25] Which top-level "surface" is active — "graph" (default,
+  // current/only real behavior) or "game" (not built yet; this is just the
+  // routing groundwork for it). Driven by ui/router.js's URL hash
+  // (#/graph, #/game), never set directly outside that module.
+  surface: "graph",
 };
 
 // netFetch — in-flight graph/path requests, their AbortControllers, pollers.
@@ -287,6 +293,7 @@ bridge("activeFilters",  interactionSlice);
 bridge("history",        interactionSlice);
 bridge("heroMode",       interactionSlice);
 bridge("theme",          interactionSlice);
+bridge("surface",        interactionSlice);
 
 bridge("inFlight",             netFetchSlice);
 bridge("pendingExpand",        netFetchSlice);

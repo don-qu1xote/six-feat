@@ -35,6 +35,8 @@
 //                            renderErrorState / clearCanvasState
 //   compare-panel.js        — [SF-WEB-20] showComparePanel / closeComparePanel /
 //                            computeCommonCollaborators / wireComparePinnedButton
+//   router.js               — [SF-WEB-25] parseSurfaceFromHash / getCurrentSurface /
+//                            navigateToSurface / restoreSurfaceFromUrl / onSurfaceChange
 //
 // This file re-exports the exact same public names the old flat ui.js
 // exposed, so existing imports elsewhere (api.js, graph.js, main.js,
@@ -94,6 +96,12 @@ export {
   isComparePanelOpen, closeComparePanel, showComparePanel,
   wireComparePinnedButton, syncComparePinnedButton
 } from "./compare-panel.js";
+
+export {
+  SURFACE_GRAPH, SURFACE_GAME, DEFAULT_SURFACE,
+  parseSurfaceFromHash, getCurrentSurface, onSurfaceChange,
+  navigateToSurface, restoreSurfaceFromUrl
+} from "./router.js";
 
 export { renderGraphA11yList } from "./graph-a11y-list.js";
 

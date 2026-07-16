@@ -12,7 +12,8 @@ import {
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   renderChips, exportGraphPng, exportGraphJson, setupThemeToggle, setupDockedPanels,
-  wireComparePinnedButton, syncComparePinnedButton
+  wireComparePinnedButton, syncComparePinnedButton,
+  restoreSurfaceFromUrl
 } from "./ui/index.js";
 import { clearFocus } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
@@ -32,6 +33,13 @@ export function init() {
   // earlier than the bundle itself (see ui/theme.js for why there's no
   // inline pre-paint script).
   setupThemeToggle();
+
+  // [SF-WEB-25] Restores the active surface (#/graph, #/game — game not
+  // built yet) from the URL hash before anything else touches routing/
+  // history state below. Current graph behavior is unchanged: a missing or
+  // unrecognized hash resolves to the "graph" default, same as before this
+  // ticket existed.
+  restoreSurfaceFromUrl();
 
   loadHistory();
   renderChips();
