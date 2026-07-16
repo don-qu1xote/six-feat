@@ -445,10 +445,12 @@ components_manager:
     # [SF-API-05] Unlike the /dev/null-stubbed handlers above, this one
     # points at the real checked-in schemas/openapi/openapi.json —
     # test_openapi.py actually fetches and parses this response body.
-    # __OPENAPI_JSON_PATH__ is a literal sentinel (not a str.format() {}
-    # field — see the .replace() call right after this template's
-    # definition below) so adding it doesn't require touching every one of
-    # this template's several .format() call sites.
+    # __OPENAPI_JSON_PATH__ is a literal sentinel substituted via a plain
+    # .replace() call right after this template's definition below, not a
+    # str-dot-format placeholder — this comment must stay brace-free itself
+    # (the whole template is passed through str.format() at every one of
+    # its several call sites), or a stray pair of curly braces here gets
+    # parsed as a positional format field and breaks every one of them.
     handler-openapi:
       path: /api/v1/openapi.json
       method: GET
