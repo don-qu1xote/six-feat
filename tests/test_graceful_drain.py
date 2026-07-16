@@ -150,6 +150,7 @@ def _write_config(
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=queue_capacity,
             drain_timeout_ms=drain_timeout_ms,
+            sync_start="true",
         )
     )
 
