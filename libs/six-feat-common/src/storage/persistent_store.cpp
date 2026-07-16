@@ -35,6 +35,7 @@
 #include <userver/storages/postgres/options.hpp>
 #include <userver/storages/postgres/result_set.hpp>
 #include <userver/storages/postgres/transaction.hpp>
+#include <userver/utils/async.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
 #include "schemas/components/persistent_store_schema.hpp"
@@ -171,17 +172,19 @@ void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
 
 // postgres-db-1 runs with sync-start: false (see static_config.yaml) so a
 // slow-to-connect Postgres doesn't crash the whole component system at
-// boot — but that just moves the risk here: this is the first real query
-// against the cluster, and it used to run once, uncaught, at component
-// construction time. If the pool hadn't finished its background connect
-// yet, Execute() would throw and PersistentStore's constructor would
-// propagate it straight into components::Run, killing the process exactly
-// as before, just a few components later. Retrying with backoff here is
-// what actually closes that gap: transient "pool not ready yet" failures
-// get absorbed instead of taking the whole service down, while a genuinely
-// unreachable Postgres still surfaces a clear fatal error once the budget
-// (~29s across kMigrationMaxAttempts) is exhausted, rather than hanging
-// forever.
+// boot. PersistentStore::Impl's constructor makes one quick unretried
+// migration attempt (succeeds immediately in the common case); the retry
+// loop below only runs in the background (PersistentStore::
+// OnAllComponentsLoaded), so a genuinely unreachable Postgres no longer
+// blocks the whole process from starting up for the length of this retry
+// budget — the server starts serving immediately and Ping()/readyz reflect
+// live DB reachability regardless of migration progress. Retrying with
+// backoff here absorbs transient "pool not ready yet" failures during a
+// real startup race; a Postgres that's still unreachable once the budget
+// (~29s across kMigrationMaxAttempts) is exhausted just leaves the schema
+// unmigrated — logged as an error, not fatal to the process — and every
+// query against a missing table fails normally, the same as any other
+// runtime DB outage.
 constexpr int kMigrationMaxAttempts = 10;
 constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
 constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
@@ -320,8 +323,23 @@ struct PersistentStore::Impl {
     // re-checking getenv() per call.
     const storages::postgres::ClusterHostType read_host_type = ReadHostType();
 
+    // One unretried attempt up front: in the common case (sync-start:
+    // true, Postgres already reachable) this succeeds immediately and the
+    // schema is ready before the constructor returns, same guarantee the
+    // old fully-synchronous-with-retry version gave. RunMigrations() is
+    // idempotent (it only applies versions past the DB's current one), so
+    // OnAllComponentsLoaded's background RunMigrationsWithRetry — which
+    // handles the cases this quick attempt doesn't (pool still warming up,
+    // Postgres genuinely unreachable at startup) — just becomes a cheap
+    // no-op re-check when this already succeeded.
     explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
-        RunMigrationsWithRetry(cluster);
+        try {
+            RunMigrations(cluster);
+        } catch (const std::exception& ex) {
+            LOG_WARNING() << "[PersistentStore] initial schema migration "
+                          << "attempt failed (" << ex.what() << "), deferring "
+                          << "to the background retry";
+        }
     }
 
     // ── Read helpers ─────────────────────────────────────────────────────
@@ -532,14 +550,35 @@ PersistentStore::PersistentStore(
     const components::ComponentConfig&  config,
     const components::ComponentContext& context)
     : ComponentBase(config, context)
+    , main_tp_(context.GetTaskProcessor("main-task-processor"))
 {
     const std::string dbname = config["dbname"].As<std::string>("postgres-db-1");
     auto cluster = context.FindComponent<components::Postgres>(dbname).GetCluster();
     impl_ = std::make_unique<Impl>(std::move(cluster));
-    LOG_INFO() << "[PersistentStore] Postgres cluster ready: " << dbname;
+    LOG_INFO() << "[PersistentStore] Postgres cluster attached: " << dbname;
 }
 
 PersistentStore::~PersistentStore() = default;
+
+void PersistentStore::OnAllComponentsLoaded() {
+    // See the comment above RunMigrationsWithRetry: this used to run
+    // synchronously in the constructor, which blocked the whole component
+    // system (and therefore the HTTP listener) from starting for up to the
+    // full retry budget whenever Postgres was unreachable. Running it here,
+    // detached on main-task-processor, lets the server start serving
+    // immediately; a failure just leaves the schema unmigrated (logged, not
+    // fatal) until Postgres becomes reachable.
+    migration_task_ = utils::Async(main_tp_, "persistent-store-migrate", [this] {
+        try {
+            RunMigrationsWithRetry(impl_->cluster);
+            LOG_INFO() << "[PersistentStore] schema migrations complete";
+        } catch (const std::exception& ex) {
+            LOG_ERROR() << "[PersistentStore] giving up on schema migrations, "
+                        << "continuing to serve with an unmigrated/stale "
+                        << "schema until Postgres recovers: " << ex.what();
+        }
+    });
+}
 
 yaml_config::Schema PersistentStore::GetStaticConfigSchema() {
     return yaml_config::MergeSchemas<components::ComponentBase>(kPersistentStoreComponentSchema);

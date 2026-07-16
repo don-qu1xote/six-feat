@@ -41,6 +41,8 @@
 
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>
+#include <userver/engine/task/task_processor_fwd.hpp>
+#include <userver/engine/task/task_with_result.hpp>
 #include <userver/yaml_config/schema.hpp>
 
 namespace six_feat {
@@ -61,6 +63,21 @@ public:
                     const userver::components::ComponentContext& context);
 
     ~PersistentStore() override;
+
+    // [fix] postgres-db-1 may run with sync-start: false specifically so an
+    // unreachable/slow-starting DB doesn't block this process from coming
+    // up at all (see static_config.yaml's own comment on that key) — but
+    // migrations used to run synchronously in the constructor, blocking
+    // component startup for the whole retry budget (~29s) and then killing
+    // the process outright once it gave up, which defeated the point.
+    // Migrations now run in the background once every component is up, so
+    // the server starts accepting connections immediately; Ping()/readyz
+    // reflect live DB reachability regardless of whether migrations have
+    // completed yet. migration_task_'s destructor (reverse-declaration-order,
+    // runs before impl_'s) cancels and waits for it, same as ~PersistentStore
+    // being = default is enough — no separate OnAllComponentsAreStopping
+    // override needed.
+    void OnAllComponentsLoaded() override;
 
     static userver::yaml_config::Schema GetStaticConfigSchema();
 
@@ -110,6 +127,9 @@ private:
     // Pimpl hides the Postgres driver types.
     struct Impl;
     std::unique_ptr<Impl> impl_;
+
+    userver::engine::TaskProcessor& main_tp_;
+    userver::engine::TaskWithResult<void> migration_task_;
 };
 
 } // namespace six_feat
