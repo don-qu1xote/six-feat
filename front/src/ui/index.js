@@ -33,6 +33,8 @@
 //                            zoomOut / setupKeyboard / clearCanvas / updateStatus
 //   canvas-states.js        — [SF-WEB-19] renderEmptyState / renderLoadingState /
 //                            renderErrorState / clearCanvasState
+//   compare-panel.js        — [SF-WEB-20] showComparePanel / closeComparePanel /
+//                            computeCommonCollaborators / wireComparePinnedButton
 //
 // This file re-exports the exact same public names the old flat ui.js
 // exposed, so existing imports elsewhere (api.js, graph.js, main.js,
@@ -86,6 +88,12 @@ export {
 export {
   renderEmptyState, renderLoadingState, renderErrorState, clearCanvasState
 } from "./canvas-states.js";
+
+export {
+  neighboursOf, computeCommonCollaborators,
+  isComparePanelOpen, closeComparePanel, showComparePanel,
+  wireComparePinnedButton, syncComparePinnedButton
+} from "./compare-panel.js";
 
 export { renderGraphA11yList } from "./graph-a11y-list.js";
 

@@ -140,6 +140,13 @@ export const els = {
   pathResult:     $("path-result"),
   hopChain:       $("hop-chain"),
 
+  // [SF-WEB-20] Compare mode — common collaborators of two pinned artists.
+  comparePanel:      $("compare-panel"),
+  comparePanelClose: $("compare-panel-close"),
+  compareTitle:      $("compare-title"),
+  compareList:       $("compare-list"),
+  btnComparePinned:  $("btn-compare-pinned"),
+
   nodeSearchOverlay: $("node-search-overlay"),
   nodeSearchInput:   $("node-search-input"),
   nodeSearchResults: $("node-search-results"),

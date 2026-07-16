@@ -16,6 +16,7 @@ import { bfsPath } from "../api/analytics-client.js";
 import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
 import { searchArtist } from "../api/api.js";
 import { showToast } from "./toast.js";
+import { closeComparePanel, syncComparePinnedButton } from "./compare-panel.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Helpers: Wrap ROLE_ICON's <use> element in proper <svg> containers
@@ -265,7 +266,7 @@ function syncObjectActionBar(node) {
       els.objActionPin.setAttribute("aria-pressed", String(pinned));
       els.objActionPin.title = pinned ? "Unpin" : "Pin in place";
     };
-    els.objActionPin.onclick = () => { toggleNodePin(node.id); syncPinState(); };
+    els.objActionPin.onclick = () => { toggleNodePin(node.id); syncPinState(); syncComparePinnedButton(); };
     syncPinState();
   }
 
@@ -292,6 +293,7 @@ export function showArtistSidebar(nodeId) {
   // #artist-sidebar/#path-panel were two independently-shown floating
   // cards instead of sections of one companion panel).
   closePathPanel();
+  closeComparePanel();
   // [SF-WEB-28] selectNode() is the single place mutual exclusion with an
   // edge selection is enforced (it clears State.selectedEdgeId internally,
   // see vis-adapter/highlight.js) — every caller of showArtistSidebar
@@ -392,6 +394,7 @@ export function showEdgeSidebar(edgeId, nameById) {
   // [SF-WEB-12] Same mutual-exclusivity as showArtistSidebar — see the
   // comment there.
   closePathPanel();
+  closeComparePanel();
 
   const fromName = nameById[edge.from] || State.graphNodes.find(n => n.id === edge.from)?.name || "?";
   const toName   = nameById[edge.to]   || State.graphNodes.find(n => n.id === edge.to)?.name   || "?";
@@ -491,6 +494,7 @@ export function showEdgeSidebar(edgeId, nameById) {
 export function hideArtistSidebar() {
   els.artistSidebar.classList.remove("show");
   els.companionPanel?.classList.remove("show");
+  closeComparePanel();
   if (els.objectActionBar) els.objectActionBar.hidden = true;
   // [SF-WEB-28] Clear both markers unconditionally, not just the edge one —
   // hiding the companion panel means nothing is selected any more, whether

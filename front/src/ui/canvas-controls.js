@@ -20,6 +20,7 @@ import {
 import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { renderEmptyState } from "./canvas-states.js";
+import { syncComparePinnedButton } from "./compare-panel.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Role filter toggles
@@ -457,6 +458,10 @@ export function clearCanvas() {
   hideCandidatePicker();
   els.pathPanel.classList.remove("show");
   if (els.hopChain) els.hopChain.innerHTML = "";
+  // [SF-WEB-20] Pins (and any pending compare) don't survive a Clear —
+  // resetCanvasToEmpty() already clears State.pinnedNodes, reflect that on
+  // the rail button too.
+  syncComparePinnedButton();
   history.replaceState(null, "", window.location.pathname);
 }
 

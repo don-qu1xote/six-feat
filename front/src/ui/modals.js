@@ -23,6 +23,7 @@ import { setFocus } from "../vis-adapter/index.js";
 import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { registerDockedPanel, closeOtherDockedPanels } from "./docked-panel.js";
+import { closeComparePanel } from "./compare-panel.js";
 
 let _searchModalPanel = null;
 let _nodeSearchPanel  = null;
@@ -83,6 +84,7 @@ export function openPathPanel() {
   // [SF-WEB-12] The companion panel shows exactly one context at a time —
   // opening the path section replaces whatever node/edge context was shown.
   hideArtistSidebar();
+  closeComparePanel();
   els.pathPanel.classList.add("show");
   els.companionPanel?.classList.add("show");
   els.pathFromInput?.focus();
@@ -126,6 +128,7 @@ export function openSearchModal(opts = {}) {
   // полноэкранного scrim/blur и без скрытия rail/status/context-panel.
   if (docked) {
     hideArtistSidebar();
+    closeComparePanel();
     // [SF-WEB-30] Docked search shows ONLY the Explore search box — the
     // Explore/Connect switch and the Connect panel are now hidden entirely
     // in docked mode (see .search-modal.docked CSS), but this is the SAME

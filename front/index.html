@@ -1358,6 +1358,25 @@
     }
     .path-close:hover { color: var(--paper); }
 
+    /* [SF-WEB-20] Compare mode — same section-of-.companion-panel mechanics
+       as .path-panel just above (shares its header/close-button styling via
+       .path-panel-header/.path-title/.path-close). */
+    .compare-panel {
+      display: none;
+      flex-direction: column; gap: var(--space-3);
+      max-height: 60%; overflow-y: auto; flex-shrink: 0;
+    }
+    .compare-panel.show { display: flex; }
+    .compare-list { display: flex; flex-direction: column; gap: var(--space-2); }
+    .compare-item {
+      display: flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-2); border-radius: var(--r-sm);
+      cursor: pointer; transition: background .15s;
+    }
+    .compare-item:hover, .compare-item:focus-visible { background: rgba(20, 26, 40, 0.8); }
+    .compare-item-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+    .compare-item-name { font-size: var(--text-sm); color: var(--paper); }
+
     .path-input-wrap { position: relative; }
     .path-input {
       background: rgba(var(--panel-rgb),.9); border: 1px solid var(--line); border-radius: var(--r-sm);
@@ -2104,6 +2123,13 @@
       <circle cx="12" cy="7" r="1.6" fill="currentColor" stroke="none"/>
     </symbol>
 
+    <!-- [SF-WEB-20] Compare-pinned-artists rail button — two overlapping
+         circles (Venn intersection). -->
+    <symbol id="icon-compare" viewBox="0 0 24 24">
+      <circle cx="9" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="15" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    </symbol>
+
     <!-- IDEA-23: theme toggle icons — sun shown while dark (switch to
          light), moon shown while light (switch to dark). -->
     <symbol id="icon-sun" viewBox="0 0 24 24">
@@ -2318,6 +2344,12 @@
       </button>
       <button class="rail-btn ui-btn ui-btn--ghost" id="btn-find-path" data-tip="Find path">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg><span class="rl">Find path</span>
+      </button>
+      <!-- [SF-WEB-20] Compare mode entry point — enabled once exactly two
+           artists are pinned (object-action-bar's Pin/Unpin, see
+           ui/compare-panel.js::wireComparePinnedButton). -->
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-compare-pinned" data-tip="Compare pinned artists" disabled>
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-compare"/></svg><span class="rl">Compare</span>
       </button>
 
       <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
@@ -2566,6 +2598,18 @@
           </div>
           <div class="path-result" id="path-result"></div>
           <div class="hop-chain" id="hop-chain"></div>
+        </div>
+
+        <!-- [SF-WEB-20] Compare mode — common immediate collaborators of two
+             pinned artists (see ui/compare-panel.js::showComparePanel).
+             Same "one companion-panel section visible at a time" pattern as
+             #artist-sidebar/#path-panel above. -->
+        <div class="compare-panel" id="compare-panel">
+          <div class="path-panel-header">
+            <div class="path-title" id="compare-title">Compare</div>
+            <button class="path-close" id="compare-panel-close" title="Close" aria-label="Close">×</button>
+          </div>
+          <div class="compare-list" id="compare-list"></div>
         </div>
 
       </div>
