@@ -23,9 +23,17 @@ Scenarios covered:
      metadata + fetch_state fields
   2. Unknown artist (never fetched) -> 404
   3. Missing id param -> 400
-  4. Response content-type is application/json
+  4. Response content-type is application/json (success) /
+     application/problem+json (errors)
   5. Non-strict numeric id ("123abc") -> 400
   6. ETag / If-None-Match -> 304 on repeat request
+
+[SF-API-11] This handler is new (SF-API-03), so its error bodies use the
+unified problem+json envelope ({"type","title","status","detail",
+"request_id"}) instead of every other (pre-existing) handler's bespoke
+{"error":...} shape — see core/error_response.hpp. Do not copy the
+{"error":...} assertion pattern from graph/path/search/status/sse_status
+tests onto new handlers.
 """
 
 from __future__ import annotations
@@ -74,10 +82,21 @@ class TestArtistRequiresAuth:
         resp = anon_client.get(ARTIST_URL, params={"id": "1"})
         assert resp.status_code == 401
 
-    def test_anonymous_error_body_has_not_authenticated(self, anon_client: requests.Session):
+    def test_anonymous_error_body_is_problem_json(self, anon_client: requests.Session):
+        """[SF-API-11] New handler -> unified problem+json envelope, not the
+        {"error":...} shape older handlers use."""
         resp = anon_client.get(ARTIST_URL, params={"id": "1"})
         data = resp.json()
-        assert data.get("error") == "not_authenticated"
+        assert data.get("type") == "about:blank"
+        assert data.get("title") == "Unauthorized"
+        assert data.get("status") == 401
+
+    def test_anonymous_error_content_type_is_problem_json(
+        self, anon_client: requests.Session
+    ):
+        resp = anon_client.get(ARTIST_URL, params={"id": "1"})
+        ct = resp.headers.get("content-type", "")
+        assert "application/problem+json" in ct
 
     def test_anonymous_error_body_has_nonempty_request_id_matching_header(
         self, anon_client: requests.Session
@@ -141,10 +160,20 @@ class TestArtistUnknownArtist:
         resp = client.get(ARTIST_URL, params={"id": str(unique_artist_id)})
         assert resp.status_code == 404
 
-    def test_unknown_error_body(self, client: requests.Session, unique_artist_id: int):
+    def test_unknown_error_body_is_problem_json(self, client: requests.Session, unique_artist_id: int):
         resp = client.get(ARTIST_URL, params={"id": str(unique_artist_id)})
         data = resp.json()
-        assert data.get("error") == "not_found"
+        assert data.get("type") == "about:blank"
+        assert data.get("title") == "Not Found"
+        assert data.get("status") == 404
+        assert data.get("detail") == "not_found"
+
+    def test_unknown_error_content_type_is_problem_json(
+        self, client: requests.Session, unique_artist_id: int
+    ):
+        resp = client.get(ARTIST_URL, params={"id": str(unique_artist_id)})
+        ct = resp.headers.get("content-type", "")
+        assert "application/problem+json" in ct
 
     def test_unknown_error_body_has_nonempty_request_id_matching_header(
         self, client: requests.Session, unique_artist_id: int
@@ -163,6 +192,15 @@ class TestArtistMissingParam:
     def test_no_id_returns_400(self, client: requests.Session):
         resp = client.get(ARTIST_URL)
         assert resp.status_code == 400
+
+    def test_missing_id_error_body_is_problem_json(self, client: requests.Session):
+        resp = client.get(ARTIST_URL)
+        data = resp.json()
+        assert data.get("type") == "about:blank"
+        assert data.get("title") == "Bad Request"
+        assert data.get("status") == 400
+        ct = resp.headers.get("content-type", "")
+        assert "application/problem+json" in ct
 
     def test_missing_id_error_body_has_nonempty_request_id_matching_header(
         self, client: requests.Session
@@ -195,6 +233,12 @@ class TestArtistStrictIdParsing:
     def test_trailing_garbage_returns_400(self, client: requests.Session):
         resp = client.get(ARTIST_URL, params={"id": "123abc"})
         assert resp.status_code == 400
+
+    def test_trailing_garbage_error_body_is_problem_json(self, client: requests.Session):
+        resp = client.get(ARTIST_URL, params={"id": "123abc"})
+        data = resp.json()
+        assert data.get("type") == "about:blank"
+        assert data.get("status") == 400
 
     def test_float_id_returns_400(self, client: requests.Session):
         resp = client.get(ARTIST_URL, params={"id": "1.5"})

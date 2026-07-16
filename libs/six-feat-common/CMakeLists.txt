@@ -55,6 +55,7 @@ add_library(six_feat_common OBJECT
     src/core/internal_auth.cpp
     src/core/internal_http.cpp
     src/core/request_id.cpp
+    src/core/error_response.cpp
     src/core/security_headers.cpp
     src/core/http_cache.cpp
     src/core/rate_limit_store.cpp

@@ -6,8 +6,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 #include "http/artist_handler.hpp"
+#include "core/error_response.hpp"
 #include "core/http_cache.hpp"
-#include "core/request_id.hpp"
 #include "schemas/handlers/six-feat/artist_handler_schema.hpp"
 
 #include <string>
@@ -25,15 +25,6 @@ namespace six_feat {
 using namespace userver;
 
 namespace {
-
-// [SF-API-06] Same convention as every other handler here — see
-// status_handler.cpp for the canonical comment.
-std::string ErrorJson(const std::string& code) {
-    formats::json::ValueBuilder b(formats::json::Type::kObject);
-    b["error"]      = code;
-    b["request_id"] = CurrentRequestId();
-    return formats::json::ToString(b.ExtractValue());
-}
 
 // [SF-API-04] Weak ETag, same shape as graph_handler.cpp's BuildGraphETag —
 // the response body (fetch_state's three fields, plus the effectively-
@@ -61,7 +52,9 @@ std::string ArtistHandler::HandleRequestThrow(
     server::request::RequestContext& /*ctx*/) const
 {
     if (!Prologue(request)) {
-        return ErrorJson("not_authenticated");
+        // [SF-API-11] Status already set to 401 by RequireSession().
+        return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized,
+                                 "not authenticated");
     }
 
     auto& response = request.GetHttpResponse();
@@ -69,7 +62,8 @@ std::string ArtistHandler::HandleRequestThrow(
     const auto& id_str = request.GetArg("id");
     if (id_str.empty()) {
         response.SetStatus(server::http::HttpStatus::kBadRequest);
-        return ErrorJson("missing ?id=<artist_id>");
+        return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
+                                 "missing ?id=<artist_id>");
     }
 
     std::int64_t artist_id = 0;
@@ -80,17 +74,20 @@ std::string ArtistHandler::HandleRequestThrow(
         // status_handler.cpp.
         if (pos != id_str.size()) {
             response.SetStatus(server::http::HttpStatus::kBadRequest);
-            return ErrorJson("id must be an integer");
+            return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
+                                     "id must be an integer");
         }
     } catch (...) {
         response.SetStatus(server::http::HttpStatus::kBadRequest);
-        return ErrorJson("id must be an integer");
+        return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
+                                 "id must be an integer");
     }
 
     const auto ref = repo_.Lookup(artist_id);
     if (!ref) {
         response.SetStatus(server::http::HttpStatus::kNotFound);
-        return ErrorJson("not_found");
+        return BuildProblemJson(request, server::http::HttpStatus::kNotFound,
+                                 "not_found");
     }
 
     const FetchState fetch_state = store_.GetFetchState(artist_id);
