@@ -1297,6 +1297,12 @@ components_manager:
       queue-capacity: {queue_capacity}
       drain-timeout-ms: {drain_timeout_ms}
 
+    # [SF-DB-06] Off by default (see PRUNE_TTL_DAYS env var, 0 = off) —
+    # interval-seconds/batch-size only matter once a caller sets that > 0.
+    prune-task:
+      interval-seconds: {prune_interval_seconds}
+      batch-size: {prune_batch_size}
+
     handler-internal-enqueue:
       path: /internal/enqueue
       method: POST
@@ -1412,6 +1418,11 @@ def enrichment_proc_bg(
             queue_capacity=8,
             drain_timeout_ms=5000,
             sync_start="true",
+            # [SF-DB-06] PRUNE_TTL_DAYS isn't set on this fixture's process
+            # env (see below) — prune-task never starts regardless of these
+            # values, so plain production-like defaults are fine here.
+            prune_interval_seconds=3600,
+            prune_batch_size=500,
         )
     )
 
@@ -1495,6 +1506,8 @@ def enrichment_proc_baddb(
             queue_capacity=8,
             drain_timeout_ms=5000,
             sync_start="false",
+            prune_interval_seconds=3600,
+            prune_batch_size=500,
         )
     )
 
@@ -1513,6 +1526,87 @@ def enrichment_proc_baddb(
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(
             f"bad-DB enrichment service did not start within timeout.\nstderr:\n{stderr}"
+        )
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+ENRICHMENT_SERVICE_PORT_PRUNE = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_PORT_PRUNE", "18102")
+)
+ENRICHMENT_MONITOR_PORT_PRUNE = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_PRUNE", "18103")
+)
+
+
+@pytest.fixture(scope="session")
+def enrichment_proc_prune(
+    tmp_db_dir_bg: Path,
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-DB-06] Dedicated six-feat-enrichment instance with the prune task
+    actually enabled (PRUNE_TTL_DAYS set on this process's env only — see
+    prune_task.cpp's PruneTtlDaysFromEnv, read once at startup, so toggling
+    it requires a separate process rather than a per-request switch), and a
+    short interval-seconds so tests/test_prune.py doesn't need to wait a
+    full hour for a pass to run. Isolated from enrichment_proc_bg (own
+    port, own process) so this doesn't affect any other test's enrichment
+    behavior. Points at the SAME real Postgres test DB as every other
+    fixture (DB_CONNECTION_STRING) — tests/test_prune.py seeds/inspects
+    rows directly via psycopg2 rather than through the HTTP API, and cleans
+    up its own rows (real deletion is the thing under test, so relying on
+    clean_db_state's TRUNCATE — which isn't even gated on this fixture,
+    only on service_proc/service_proc_bg — would be the wrong tool here).
+    No genius-gateway dependency needed, same reasoning as
+    enrichment_proc_baddb above: nothing in test_prune.py calls a handler
+    that would need one.
+    """
+    if not ENRICHMENT_BINARY.exists():
+        pytest.skip(
+            f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
+            "Build the project first or set SIX_FEAT_ENRICHMENT_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir_bg / "enrichment_prune_static_config.yaml"
+    cfg_path.write_text(
+        _ENRICHMENT_TEST_CONFIG_TEMPLATE.format(
+            enrichment_port=ENRICHMENT_SERVICE_PORT_PRUNE,
+            enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_PRUNE,
+            genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            db_connection_string=DB_CONNECTION_STRING,
+            queue_capacity=8,
+            drain_timeout_ms=5000,
+            sync_start="true",
+            prune_interval_seconds=1,
+            prune_batch_size=100,
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(ENRICHMENT_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+            # [SF-DB-06] The one on/off switch — see prune_task.cpp. 1 day
+            # is short enough that any last_fetch_ts a test seeds "in the
+            # past" (even a few minutes back) is comfortably past cutoff.
+            "PRUNE_TTL_DAYS": "1",
+        },
+    )
+
+    if not _wait_for_port(ENRICHMENT_SERVICE_PORT_PRUNE):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(
+            f"prune-profile enrichment service did not start within timeout.\nstderr:\n{stderr}"
         )
 
     yield proc

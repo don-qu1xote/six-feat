@@ -100,6 +100,12 @@ components_manager:
       queue-capacity: 1024
       drain-timeout-ms: 5000
 
+    # [SF-DB-06] Off by default — see PRUNE_TTL_DAYS (env var, 0 = off).
+    # interval-seconds/batch-size only take effect once that's set > 0.
+    prune-task:
+      interval-seconds: 3600
+      batch-size: 500
+
     handler-internal-enqueue:
       path: /internal/enqueue
       method: POST

@@ -330,6 +330,19 @@ auto ExecuteReadQueryWithRetry(Fn&& fn) {
     }
 }
 
+// [SF-DB-06] A prune batch is a handful of DELETEs (id-list scans + one
+// NOT IN sweep over songs) rather than a point lookup — given its own
+// budget instead of reusing kReadQueryCommandControl verbatim, wider than a
+// point read but still bounded so a pathologically large batch-size can't
+// hold a connection open indefinitely. No retry: PruneTask's own loop
+// already re-attempts on its next interval tick, and re-running a failed
+// batch is safe (DELETE is naturally idempotent — a row already gone from
+// a previous partial attempt just matches zero rows the second time).
+constexpr storages::postgres::CommandControl kPruneCommandControl{
+    std::chrono::milliseconds{2000}, // network_timeout
+    std::chrono::milliseconds{1500}, // statement_timeout
+};
+
 } // namespace
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -567,6 +580,41 @@ struct PersistentStore::Impl {
 
         trx.Commit();
     }
+
+    // [SF-DB-06] One batch of the prune pass: selects up to `batch_size`
+    // artist ids whose fetch_state.last_fetch_ts predates cutoff_ts, then
+    // deletes their footprint in FK order — credits (references both
+    // songs and artists) and fetch_state (references artists) must go
+    // before artists itself, and songs left with zero remaining credits
+    // are swept in the same transaction as a byproduct (a song is shared
+    // data, not owned by any one artist, so it only disappears once
+    // nothing credits it any more). Always against Master: a replica read
+    // could return ids that were already pruned by a previous batch and
+    // haven't caught up yet, wasting a round trip on rows that no longer
+    // exist rather than corrupting anything.
+    std::int64_t PruneStaleArtistsImpl(std::int64_t cutoff_ts, int batch_size) {
+        auto id_res = cluster->Execute(
+            storages::postgres::ClusterHostType::kMaster, kPruneCommandControl,
+            "SELECT artist_id FROM fetch_state WHERE last_fetch_ts < $1 "
+            "ORDER BY artist_id LIMIT $2",
+            cutoff_ts, batch_size);
+        if (id_res.IsEmpty()) return 0;
+
+        std::vector<std::int64_t> ids;
+        ids.reserve(id_res.Size());
+        for (const auto& row : id_res) ids.push_back(row[0].As<std::int64_t>());
+
+        auto trx = cluster->Begin(storages::postgres::ClusterHostType::kMaster,
+                                  storages::postgres::TransactionOptions{});
+        trx.Execute("DELETE FROM credits WHERE artist_id = ANY($1::bigint[])", ids);
+        trx.Execute("DELETE FROM fetch_state WHERE artist_id = ANY($1::bigint[])", ids);
+        trx.Execute("DELETE FROM artists WHERE id = ANY($1::bigint[])", ids);
+        trx.Execute(
+            "DELETE FROM songs WHERE id NOT IN (SELECT DISTINCT song_id FROM credits)");
+        trx.Commit();
+
+        return static_cast<std::int64_t>(ids.size());
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -676,6 +724,17 @@ void PersistentStore::UpsertArtistSongs(const ArtistSongs& data,
     LOG_DEBUG() << "[PersistentStore] Upserted artist " << data.seed.id
                 << " depth=" << static_cast<int>(new_depth)
                 << " songs=" << data.songs.size();
+}
+
+std::int64_t PersistentStore::PruneStaleArtists(std::int64_t cutoff_ts,
+                                                 int batch_size) {
+    const auto pruned = impl_->PruneStaleArtistsImpl(cutoff_ts, batch_size);
+    if (pruned > 0) {
+        LOG_DEBUG() << "[PersistentStore] pruned " << pruned
+                    << " stale artist(s) (cutoff_ts=" << cutoff_ts
+                    << ", batch_size=" << batch_size << ")";
+    }
+    return pruned;
 }
 
 } // namespace six_feat

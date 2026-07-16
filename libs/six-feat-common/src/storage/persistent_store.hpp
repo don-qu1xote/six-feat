@@ -123,6 +123,17 @@ public:
     // writers are safe. Only advances depth if new_depth > current depth(L1).
     void UpsertArtistSongs(const ArtistSongs& data, Depth new_depth);
 
+    // [SF-DB-06] Deletes one batch (up to `batch_size` artists) whose
+    // fetch_state.last_fetch_ts is older than cutoff_ts (unix seconds),
+    // cascading through credits -> fetch_state -> artists in FK order, then
+    // sweeping any songs left with zero credits as a result. Returns the
+    // number of artists deleted in this batch — 0 means nothing left to
+    // prune. Callers loop this until it returns 0 to fully drain a prune
+    // pass; see enrichment/prune_task.cpp, the only caller. Off by default
+    // (see PruneTask's own PRUNE_TTL_DAYS env var) — never invoked unless a
+    // deployment opts in.
+    std::int64_t PruneStaleArtists(std::int64_t cutoff_ts, int batch_size);
+
 private:
     // Pimpl hides the Postgres driver types.
     struct Impl;
