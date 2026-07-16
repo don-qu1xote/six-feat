@@ -89,8 +89,45 @@ def _cleanup(artist_id: int) -> None:
         conn.close()
 
 
+class TestPruneDisabledByDefault:
+    """enrichment_proc_bg: PRUNE_TTL_DAYS unset (0 = off, the default) —
+    the background task never even starts (see PruneTask::OnAllComponentsLoaded),
+    so a stale row has nothing to delete it regardless of how long this
+    waits.
+
+    [Ordering] Deliberately defined (and therefore run — pytest's default
+    is source order within a module) BEFORE TestPruneEnabled below.
+    enrichment_proc_prune is a real, module-scoped (see its own docstring
+    in conftest.py) background process: once started, its 1s-interval
+    prune loop keeps sweeping the ENTIRE shared test Postgres for stale
+    rows for as long as it's alive — module scope only bounds that to the
+    lifetime of this file's tests, it doesn't stop it from seeing rows
+    seeded by OTHER tests/fixtures within this same file once started.
+    Running this class first means enrichment_proc_prune has never been
+    started yet when this test seeds its own old-last_fetch_ts row, so
+    there is nothing else in the process that could prune it out from
+    under this assertion. Swapping the class order would reintroduce that
+    race."""
+
+    def test_ttl_zero_deletes_nothing(self, enrichment_proc_bg):
+        artist_id = _ID_BASE + 3
+        old_ts = int(time.time()) - 1_000_000
+        _seed_artist(artist_id, old_ts)
+        try:
+            time.sleep(2.0)
+            assert _row_exists("artists", "id", artist_id), \
+                "artist row was pruned even though PRUNE_TTL_DAYS=0 (disabled)"
+            assert _row_exists("fetch_state", "artist_id", artist_id)
+        finally:
+            _cleanup(artist_id)
+
+
 class TestPruneEnabled:
-    """enrichment_proc_prune: PRUNE_TTL_DAYS=1, interval-seconds=1."""
+    """enrichment_proc_prune: PRUNE_TTL_DAYS=1, interval-seconds=1.
+
+    [Ordering] Must run AFTER TestPruneDisabledByDefault above — see that
+    class's own docstring. Nothing later in this module depends on an old
+    row surviving, so starting the real background pruner here is safe."""
 
     def test_stale_artist_is_pruned(self, enrichment_proc_prune):
         artist_id = _ID_BASE + 1
@@ -123,25 +160,6 @@ class TestPruneEnabled:
             time.sleep(3.0)
             assert _row_exists("artists", "id", artist_id), \
                 "fresh artist row was incorrectly pruned"
-            assert _row_exists("fetch_state", "artist_id", artist_id)
-        finally:
-            _cleanup(artist_id)
-
-
-class TestPruneDisabledByDefault:
-    """enrichment_proc_bg: PRUNE_TTL_DAYS unset (0 = off, the default) —
-    the background task never even starts (see PruneTask::OnAllComponentsLoaded),
-    so a stale row has nothing to delete it regardless of how long this
-    waits."""
-
-    def test_ttl_zero_deletes_nothing(self, enrichment_proc_bg):
-        artist_id = _ID_BASE + 3
-        old_ts = int(time.time()) - 1_000_000
-        _seed_artist(artist_id, old_ts)
-        try:
-            time.sleep(2.0)
-            assert _row_exists("artists", "id", artist_id), \
-                "artist row was pruned even though PRUNE_TTL_DAYS=0 (disabled)"
             assert _row_exists("fetch_state", "artist_id", artist_id)
         finally:
             _cleanup(artist_id)

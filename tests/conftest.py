@@ -1545,7 +1545,7 @@ ENRICHMENT_MONITOR_PORT_PRUNE = int(
 )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def enrichment_proc_prune(
     tmp_db_dir_bg: Path,
 ) -> Generator[subprocess.Popen, None, None]:
@@ -1566,6 +1566,17 @@ def enrichment_proc_prune(
     No genius-gateway dependency needed, same reasoning as
     enrichment_proc_baddb above: nothing in test_prune.py calls a handler
     that would need one.
+
+    scope="module" (not "session", unlike every other proc fixture here) is
+    deliberate: this is a REAL background process that actively deletes
+    stale rows from the whole shared test Postgres on a 1s tick the moment
+    it starts, for as long as it's alive. Session scope would keep it
+    running for the rest of the entire pytest session after
+    tests/test_prune.py finishes, silently pruning any old-timestamped row
+    ANY later test file happens to leave lying around — module scope tears
+    it down (SIGTERM) as soon as test_prune.py's own tests are done, same
+    as the ordering discipline test_prune.py's own docstrings document for
+    its two test classes.
     """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
