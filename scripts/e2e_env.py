@@ -237,6 +237,16 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — see
+    # services/six-feat/src/http/artist_handler.hpp. Every static config
+    # that boots this binary needs a matching section, same as every other
+    # handler here (see the handler-image comment below for the same
+    # failure mode this fixes).
+    handler-artist:
+      path: /api/v1/artist
+      method: GET
+      task_processor: main-task-processor
+
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET
