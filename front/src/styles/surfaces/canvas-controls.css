@@ -4,9 +4,9 @@
    Rendering identical to pre-extraction; see src/styles/index.css
    for the import order that preserves the original cascade.
    ============================================================ */
-.canvas-chrome { position: absolute; inset: 0; z-index: 45; pointer-events: none; }
+.canvas-chrome { position: absolute; inset: 0; z-index: var(--z-panel); pointer-events: none; }
 .canvas-chrome > * { pointer-events: auto; }
-#network { position: absolute; inset: 0; z-index: 0; }
+#network { position: absolute; inset: 0; z-index: var(--z-canvas); }
 
 /* IDEA-23: top-center avoids both the rail column (top-left) and the
    context-panel/docked-search column (top-right) in the graph view,
@@ -26,7 +26,7 @@
 .theme-toggle:hover { color: var(--paper); border-color: var(--pulse); }
 
 .flip-ghost {
-  position: fixed; z-index: 60; pointer-events: none;
+  position: fixed; z-index: var(--z-overlay); pointer-events: none;
   will-change: transform, opacity;
 }
 .flip-ghost .search-wrap,
@@ -76,7 +76,7 @@ body.view-home .role-filter-segment {
    материал: рейл становится такой же плавающей bento-плиткой, с
    отступом со всех сторон вместо border-right впритык. */
 .rail {
-  position: absolute; top: var(--space-4); left: var(--space-4); bottom: var(--space-4); z-index: 8;
+  position: absolute; top: var(--space-4); left: var(--space-4); bottom: var(--space-4); z-index: calc(var(--z-graph-overlay) + 2);
   width: 56px;
   display: flex; flex-direction: column; align-items: stretch;
   gap: var(--space-1); padding: var(--space-3) var(--space-2);
@@ -173,7 +173,7 @@ body.view-home .role-filter-segment {
   white-space: nowrap; padding: var(--space-1) var(--space-2); border-radius: var(--r-sm);
   box-shadow: var(--shadow); opacity: 0; pointer-events: none;
   transition: opacity .12s, transform .12s; transform-origin: left center;
-  z-index: 30;
+  z-index: var(--z-panel);
 }
 .rail-btn[data-tip]:hover::after { opacity: 1; transform: translateY(-50%) translateX(2px); }
 .rail:hover .rail-btn[data-tip]::after { display: none; }
@@ -187,10 +187,10 @@ body.view-home .role-filter-segment {
    icon-only .ui-btn children, no text labels, unlike the rail's
    hover-expand rows. */
 .canvas-zoom-cluster {
-  position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 6;
+  position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: var(--z-graph-overlay);
 }
 .role-filter-segment {
-  position: absolute; left: 50%; bottom: var(--space-4); z-index: 6;
+  position: absolute; left: 50%; bottom: var(--space-4); z-index: var(--z-graph-overlay);
   transform: translateX(-50%);
 }
 
@@ -206,7 +206,7 @@ body.view-home .role-filter-segment {
 .dock-btn.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
 
 .status {
-  position: absolute; left: calc(56px + var(--space-4) * 2); bottom: var(--space-4); z-index: 5;
+  position: absolute; left: calc(56px + var(--space-4) * 2); bottom: var(--space-4); z-index: var(--z-graph-overlay);
   display: flex; align-items: center; gap: var(--space-1);
   transition: opacity .32s ease, filter .32s ease;
 }
@@ -330,7 +330,7 @@ body.view-home .role-filter-segment {
 }
 
 .help-overlay {
-  position: absolute; inset: 0; z-index: 60;
+  position: absolute; inset: 0; z-index: var(--z-overlay);
   background: var(--scrim); backdrop-filter: blur(var(--blur-scrim));
   display: none; align-items: center; justify-content: center;
 }
@@ -364,7 +364,7 @@ body.view-home .role-filter-segment {
 }
 
 .actions-bar {
-  position: absolute; right: var(--space-4); bottom: var(--space-5); z-index: 5;
+  position: absolute; right: var(--space-4); bottom: var(--space-5); z-index: var(--z-graph-overlay);
   display: flex; gap: var(--space-1); flex-wrap: wrap; justify-content: flex-end;
 }
 
@@ -376,7 +376,7 @@ body.view-home .role-filter-segment {
 .rail-btn[href*="sixfeet"]:hover { color: var(--paper); background: rgba(185,138,255,.08); }
 
 .context-panel {
-  position: absolute; right: var(--space-4); top: var(--space-4); bottom: var(--space-4); z-index: 6;
+  position: absolute; right: var(--space-4); top: var(--space-4); bottom: var(--space-4); z-index: var(--z-graph-overlay);
   width: 320px; max-width: calc(100vw - 88px);
   pointer-events: none;
   display: flex; flex-direction: column; gap: var(--space-3);

@@ -5,7 +5,7 @@
    for the import order that preserves the original cascade.
    ============================================================ */
 .search-modal {
-  position: absolute; inset: 0; z-index: 40;
+  position: absolute; inset: 0; z-index: var(--z-panel);
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: var(--space-6); padding: var(--space-7); text-align: center;
@@ -61,7 +61,7 @@
    полноэкранного scrim и без скрытия остального интерфейса графа. */
 .search-modal.docked {
   position: absolute; inset: auto; top: var(--space-4); right: var(--space-4);
-  left: auto; bottom: auto; z-index: 46;
+  left: auto; bottom: auto; z-index: var(--z-docked);
   width: 380px; max-width: calc(100vw - 88px);
   padding: 0; gap: var(--space-3);
   display: block; text-align: left;

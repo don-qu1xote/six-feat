@@ -6,7 +6,7 @@ import { searchArtist } from "./api/api.js";
 import {
   loadHistory, setupFilterToggles, setupNodeSearch, setupPathPanel,
   setupHeroPathFinder, setupHeroModeSwitch,
-  createGeniusAc, attachGeniusAutocomplete,
+  createGeniusAc, attachGeniusAutocomplete, closeDropdown,
   loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas,
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
   zoomIn, zoomOut, focusSeed,
@@ -90,7 +90,7 @@ export function init() {
 
   els.heroForm.addEventListener("submit", e => {
     e.preventDefault();
-    heroAc?.classList.remove("open");
+    if (heroAc) closeDropdown(heroAc);
     searchArtist(els.heroInput.value, false, true);
   });
 

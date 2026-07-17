@@ -5,8 +5,7 @@
    for the import order that preserves the original cascade.
    ============================================================ */
 .candidate-overlay {
-  position: absolute; inset: 0; z-index: 58;
-  background: var(--scrim); backdrop-filter: blur(var(--blur-scrim));
+  position: absolute; inset: 0; z-index: var(--z-overlay);  background: var(--scrim); backdrop-filter: blur(var(--blur-scrim));
   display: none; align-items: flex-start; justify-content: center; padding-top: 12vh;
 }
 .candidate-overlay.show { display: flex; }

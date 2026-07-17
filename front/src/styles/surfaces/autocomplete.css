@@ -27,7 +27,7 @@
   background: var(--panel-2); border: 1px solid var(--line);
   border-radius: var(--r-lg); box-shadow: var(--shadow);
   backdrop-filter: blur(var(--blur-scrim));
-  z-index: 55; display: none; flex-direction: column; overflow: hidden;
+  z-index: var(--z-dropdown); display: none; flex-direction: column; overflow: hidden;
   max-height: 360px; overflow-y: auto;
 }
 .ac-dropdown.open { display: flex; }

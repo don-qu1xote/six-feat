@@ -107,6 +107,16 @@
   --elevation-1: 0 4px 14px rgba(0,0,0,.35);
   --elevation-2: var(--shadow);
   --elevation-3: 0 24px 64px rgba(0,0,0,.5);
+   --z-canvas:        0;   /* #network — сам граф, базовый холст */
+   --z-graph-overlay: 10;  /* хром поверх канвы: декоратор, состояния,
+                              HUD-кластеры, статус, спиннер загрузки */
+   --z-panel:         20;  /* докнутый хром/панели, полноэкранная модалка,
+                              canvas-chrome, тултипы рейла */
+   --z-docked:        30;  /* эксклюзивные докнутые поисковые поверхности
+                              (search-modal.docked, node-search) */
+   --z-dropdown:      40;  /* выпадающие списки автокомплита (#overlay-root) */
+   --z-overlay:       50;  /* полноэкранные оверлеи: candidate/help, flip-ghost */
+   --z-toast:         60;  /* тосты — всегда сверху */
 }
 :root[data-theme="light"] {
   --ink:      #F2F4F9;

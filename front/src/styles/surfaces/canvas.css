@@ -20,7 +20,7 @@
 #network { transition: filter .32s ease; }
 
 .canvas-decorator {
-  position: absolute; inset: 0; z-index: 1;
+  position: absolute; inset: 0; z-index: var(--z-graph-overlay);
   opacity: 1; pointer-events: none;
   transition: opacity .6s ease;
 }
@@ -33,7 +33,7 @@
    pointer-events since the slot itself must stay click-through when
    hidden (or when only the decorator behind it should be interactive). */
 .ui-state-slot {
-  position: absolute; inset: 0; z-index: 2;
+  position: absolute; inset: 0; z-index: calc(var(--z-graph-overlay) + 1);
   display: none; align-items: center; justify-content: center;
   pointer-events: none; padding: var(--space-6);
 }

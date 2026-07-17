@@ -22,7 +22,7 @@
    today's behaviour — out of scope for a shell-only unification
    (see closeOtherDockedPanels for a similar note, ui/docked-panel.js). */
 .node-search-overlay {
-  position: absolute; z-index: 20;
+  position: absolute; z-index: var(--z-docked);
   top: var(--space-4); right: var(--space-4); left: auto; bottom: auto;
   background: transparent; backdrop-filter: none;
   display: none; padding: 0; width: 380px; max-width: calc(100vw - 88px);

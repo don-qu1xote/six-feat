@@ -661,6 +661,11 @@
 
   <div class="toast" id="toast" role="alert" aria-live="polite"></div>
 
+  <!-- [SF-WEB-41] Portal mount for anchored floating layers — see #overlay-root
+       CSS above and ui/overlay-root.js. Must be the last child of <body> so it
+       stacks above the rest of the tree without needing an outsized z-index. -->
+  <div id="overlay-root"></div>
+
   <!-- [SF-SEC-02] Self-hosted — vis-network@9.1.9/standalone/umd/vis-network.min.js,
        vendored verbatim under front/vendor/ (see DEVELOPMENT.md for how to
        bump the pinned version). Same-origin, so no integrity/crossorigin
