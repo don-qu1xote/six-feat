@@ -145,6 +145,14 @@
   --panel-2-rgb: 27,34,54;
   --signal-rgb:  94,230,197;
   --pulse-rgb:   185,138,255;
+  /* [SF-WEB-44] Same "hardcoded per callsite" fix, extended to the two
+     role-chip colours that were still missing a triplet — .role-chip--
+     writer/--primary (companion.css) had --amber/--primary2's dark hex
+     spelled out as their own rgba() literal instead of a token, so both
+     stayed dark-styled under :root[data-theme="light"] the same way
+     --panel-2/--signal/--pulse did before SF-WEB-42/43 fixed those. */
+  --amber-rgb:    255,210,122;
+  --primary2-rgb: 143,166,201;
 
   /* How translucent a "glass" panel's own fill is before backdrop-filter
      blurs whatever sits behind it — a panel painted at alpha 1 makes an
@@ -233,5 +241,10 @@
   --panel-2-rgb: 244,246,251;
   --signal-rgb:  14,156,125;
   --pulse-rgb:   124,77,255;
+  /* [SF-WEB-44] Light-theme triplets for --amber-rgb/--primary2-rgb — see
+     the dark :root's own comment on why these two role-chip colours
+     needed one. */
+  --amber-rgb:    179,107,0;
+  --primary2-rgb: 74,111,165;
 }
 

@@ -305,6 +305,9 @@ export function showArtistSidebar(nodeId) {
   els.sidebarAvatar.src = node.imageUrl || placeholderFor(node.name, node.isSeed);
   els.sidebarAvatar.dataset.fallback = placeholderFor(node.name, node.isSeed);
   els.sidebarAvatar.alt = node.name;
+  // [SF-WEB-44] Purely visual hook — the accent glow ring companion.css
+  // puts on .sidebar-avatar.is-seed.
+  els.sidebarAvatar.classList.toggle("is-seed", !!node.isSeed);
   els.sidebarName.textContent = node.name;
   els.sidebarName.title = node.name;  // native tooltip when ellipsis-truncated
 
@@ -404,6 +407,9 @@ export function showEdgeSidebar(edgeId, nameById) {
   els.sidebarAvatar.src = placeholderFor(`${fromName[0]}${toName[0]}`, false);
   els.sidebarAvatar.dataset.fallback = placeholderFor(`${fromName[0]}${toName[0]}`, false);
   els.sidebarAvatar.alt = "";
+  // [SF-WEB-44] A combined two-artist avatar is never "the seed" — clear
+  // any glow left over from a previous node context.
+  els.sidebarAvatar.classList.remove("is-seed");
   els.sidebarName.textContent = `${fromName} × ${toName}`;
   // Минимальный вид: без текстового слова роли в мете — иконка достаточно
   // информативна, полное название роли доступно через title.

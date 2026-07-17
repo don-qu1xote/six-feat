@@ -215,9 +215,14 @@
   background: rgba(var(--panel-rgb),.4);
   border: 1px solid var(--line);
 }
+/* [SF-WEB-44] "hop-chain as a constellation" — a soft accent halo on each
+   avatar (reads as a small star) instead of a flat --line border, same
+   rgba(var(--signal-rgb)) glow language .sidebar-avatar.is-seed and
+   --glass-glow already use elsewhere. */
 .hop-avatar {
   width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
   flex-shrink: 0; border: 1px solid var(--line);
+  box-shadow: 0 0 8px -2px rgba(var(--signal-rgb), .45);
 }
 .hop-info { flex: 1; min-width: 0; width: 100%; }
 .hop-name {
@@ -245,12 +250,20 @@
   margin: 0 calc(-1 * var(--space-1));
 }
 
+/* [SF-WEB-44] "созвездие" — a very faint two-tone glow wash behind the
+   chain (same --signal-rgb/--pulse-rgb the rest of the kit's glow
+   language already draws from), echoing the canvas's own starfield
+   decorator at a much lower opacity so this reads as a small patch of
+   sky rather than a flat panel. */
 .path-chain-container {
   position: relative;
   margin-top: var(--space-3);
   overflow: hidden;
   border-radius: var(--r-sm);
-  background: rgba(var(--panel-rgb), 0.4);
+  background:
+    radial-gradient(140px 70px at 15% 0%, rgba(var(--signal-rgb), .08), transparent 70%),
+    radial-gradient(140px 70px at 85% 100%, rgba(var(--pulse-rgb), .06), transparent 70%),
+    rgba(var(--panel-rgb), 0.4);
   border: 1px solid var(--line);
 }
 
@@ -318,12 +331,16 @@
   border-color: var(--line);
 }
 
+/* [SF-WEB-44] Same "constellation" glow as .hop-avatar above — one
+   accent-halo language for every path/hop avatar in the companion panel,
+   not just the hop-chain's own. */
 .path-node-avatar {
   width: 24px;
   height: 24px;
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid var(--line);
+  box-shadow: 0 0 6px -2px rgba(var(--signal-rgb), .4);
   flex-shrink: 0;
 }
 
@@ -336,6 +353,10 @@
   line-height: 1.2;
 }
 
+/* [SF-WEB-44] A resting glow (not just on :hover) — the connector between
+   two path/hop cards is the "star" linking them, so it keeps a faint halo
+   at rest and brightens further on hover instead of having no glow at
+   all until interacted with. */
 .path-edge-connector {
   display: flex;
   flex-direction: column;
@@ -345,6 +366,7 @@
   border-radius: var(--r-sm);
   background: rgba(var(--panel-rgb), 0.4);
   border: 1px solid rgba(var(--signal-rgb), 0.3);
+  box-shadow: 0 0 6px -3px rgba(var(--signal-rgb), .35);
   flex-shrink: 0;
   min-width: 72px;
   cursor: pointer;
@@ -392,15 +414,20 @@
   border-color: rgba(var(--pulse-rgb), 0.4);
   background: rgba(var(--pulse-rgb), 0.08);
 }
+/* [SF-WEB-44] var(--amber-rgb)/var(--primary2-rgb) (tokens.css) replace
+   the literal rgba(255,210,122,...)/rgba(143,166,201,...) — the dark
+   theme's own --amber/--primary2 hex spelled out per-callsite, the same
+   fix already applied to --signal/--pulse above (and elsewhere all
+   through this file). */
 .role-chip--writer {
   color: var(--amber);
-  border-color: rgba(255, 210, 122, 0.35);
-  background: rgba(255, 210, 122, 0.08);
+  border-color: rgba(var(--amber-rgb), 0.35);
+  background: rgba(var(--amber-rgb), 0.08);
 }
 .role-chip--primary {
   color: var(--primary2);
-  border-color: rgba(143, 166, 201, 0.4);
-  background: rgba(143, 166, 201, 0.08);
+  border-color: rgba(var(--primary2-rgb), 0.4);
+  background: rgba(var(--primary2-rgb), 0.08);
 }
 
 @media (max-width: 420px) {
@@ -480,6 +507,15 @@
 .sidebar-avatar {
   width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
   border: 2px solid var(--line);
+  transition: border-color .2s, box-shadow .2s;
+}
+/* [SF-WEB-44] Seed glow — toggled by ui/sidebar.js::showArtistSidebar
+   (node.isSeed), cleared for edge context (a two-artist combined avatar
+   is never "the seed"). Same accent-glow language --glass-glow already
+   established (tokens.css) rather than a new one-off shadow value. */
+.sidebar-avatar.is-seed {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px rgba(var(--signal-rgb), .18), 0 0 16px -2px rgba(var(--signal-rgb), .55);
 }
 .sidebar-info { flex: 1; min-width: 0; }
 .sidebar-name {

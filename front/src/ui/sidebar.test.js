@@ -156,6 +156,20 @@ describe("showArtistSidebar (node context)", () => {
     showArtistSidebar(1);
     expect(createSpy).not.toHaveBeenCalled();
   });
+
+  // [SF-WEB-44] .sidebar-avatar.is-seed — purely visual hook for the
+  // Observatory accent-glow ring (companion.css).
+  it("marks the avatar .is-seed when showing the seed node", () => {
+    State.graphNodes = [mockNode({ isSeed: true })];
+    showArtistSidebar(1);
+    expect(els.sidebarAvatar.classList.contains("is-seed")).toBe(true);
+  });
+
+  it("does not mark the avatar .is-seed for a non-seed node", () => {
+    State.graphNodes = [mockNode({ isSeed: false })];
+    showArtistSidebar(1);
+    expect(els.sidebarAvatar.classList.contains("is-seed")).toBe(false);
+  });
 });
 
 describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
@@ -232,6 +246,16 @@ describe("showEdgeSidebar (edge context)", () => {
     showEdgeSidebar("1_2", {});
 
     expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  // [SF-WEB-44] A combined two-artist avatar is never "the seed" — clears
+  // any glow left over from a previous node context.
+  it("clears .is-seed on the avatar — a combined edge avatar is never the seed", () => {
+    els.sidebarAvatar.classList.add("is-seed");
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", {});
+
+    expect(els.sidebarAvatar.classList.contains("is-seed")).toBe(false);
   });
 
   // [SF-WEB-33] Edge-context parity: both endpoints, edge-scoped role
