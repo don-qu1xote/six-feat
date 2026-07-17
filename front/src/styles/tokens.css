@@ -233,9 +233,23 @@
   --line:     #D7DDE9;
   --mist:     #5B6479;
   --paper:    #12151F;
-  --signal:   #0E9C7D;
-  --pulse:    #7C4DFF;
-  --amber:    #B36B00;
+  /* [SF-WEB-49] --signal/--pulse/--amber all get real text-color use
+     (eyebrow labels, active-filter/role-badge text, auth-user-name — see
+     components/*.css and surfaces/*.css `color: var(--signal|--pulse|
+     --amber)` sites) at --text-xs/--text-sm sizes, which WCAG counts as
+     normal text (4.5:1), not large text (3:1). The straight "darken dark
+     theme's saturated accent for a light backdrop" values used here before
+     measured 3.46:1 / 4.81:1 / 3.80:1 against --panel/--ink — --signal and
+     --amber failed AA outright, --pulse only cleared it against --panel
+     but not the (slightly darker) --ink. Nudged darker (same hue, same
+     recognizable "signal/pulse/amber" character) until every accent clears
+     4.5:1 against BOTH --panel and --ink with a small margin — see
+     styles.test.js's [SF-WEB-49] contrast assertions, computed straight
+     from these hex values so a future edit here that regresses contrast
+     fails the test, not just a visual read. */
+  --signal:   #0B7D64;
+  --pulse:    #703CFF;
+  --amber:    #8F5600;
   --warn:     #D6304A;
   --neon:     #D6004F;
   --primary2: #4A6FA5;
@@ -264,12 +278,17 @@
      no need to redefine the composed tokens themselves here too) would
      silently stay pinned to the dark palette. */
   --panel-2-rgb: 244,246,251;
-  --signal-rgb:  14,156,125;
-  --pulse-rgb:   124,77,255;
+  /* [SF-WEB-49] Triplets for the AA-contrast-adjusted --signal/--pulse/
+     --amber hex above — kept in exact sync (same "hardcoded per-callsite
+     drift" bug class every other -rgb token comment in this file already
+     warns about, just between a hex and its own triplet this time instead
+     of between a token and a literal call site). */
+  --signal-rgb:  11,125,100;
+  --pulse-rgb:   112,60,255;
   /* [SF-WEB-44] Light-theme triplets for --amber-rgb/--primary2-rgb — see
      the dark :root's own comment on why these two role-chip colours
      needed one. */
-  --amber-rgb:    179,107,0;
+  --amber-rgb:    143,86,0;
   --primary2-rgb: 74,111,165;
 }
 

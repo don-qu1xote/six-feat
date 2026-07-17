@@ -203,6 +203,101 @@ describe("SF-WEB-47 motion tokens", () => {
   });
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-49] Dark + light theme parity — both a first-class palette on the
+// same tokens (not light-as-a-hasty-inversion-of-dark), verified two ways:
+// every color token both themes need actually gets redefined in the light
+// override (not silently inherited from dark), and the text-bearing accent
+// tokens (--signal/--pulse/--amber/--mist/--paper/--on-accent — all used as
+// `color:` somewhere in components/*.css or surfaces/*.css, at --text-xs/sm
+// sizes WCAG treats as normal text) clear the AA 4.5:1 contrast threshold
+// against the surfaces they actually render on, in BOTH themes.
+// ════════════════════════════════════════════════════════════════════════════
+function extractVar(block, name) {
+  const m = block && block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`));
+  return m ? m[1] : null;
+}
+
+function relLuminance(hex) {
+  const c = hex.replace("#", "");
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(c.slice(i, i + 2), 16) / 255);
+  const lin = v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+// WCAG 2.x contrast ratio — (L1+0.05)/(L2+0.05), L1 the lighter of the pair.
+function contrastRatio(hexA, hexB) {
+  const lA = relLuminance(hexA), lB = relLuminance(hexB);
+  const [lighter, darker] = lA > lB ? [lA, lB] : [lB, lA];
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+const AA_TEXT = 4.5; // WCAG AA, normal-size text
+
+describe("[SF-WEB-49] theme tokens — dark + light both defined, not one inverted from the other", () => {
+  const darkBlock  = rule(css, ":root");
+  const lightBlock = rule(css, ':root[data-theme="light"]') || rule(css, ":root[data-theme=light]");
+
+  it("both theme blocks exist in the bundle", () => {
+    expect(darkBlock, ":root block missing").toBeTruthy();
+    expect(lightBlock, ':root[data-theme="light"] block missing').toBeTruthy();
+  });
+
+  it("every color token the app themes redefines a real, distinct value in light — not inherited from dark", () => {
+    const colorTokens = [
+      "--ink", "--ink-2", "--panel", "--panel-2", "--line", "--mist", "--paper",
+      "--signal", "--pulse", "--amber", "--warn", "--neon", "--primary2",
+      "--on-accent", "--hero-glow", "--panel-rgb", "--ink2-rgb", "--line-rgb",
+      "--panel-2-rgb", "--signal-rgb", "--pulse-rgb", "--amber-rgb", "--primary2-rgb",
+    ];
+    for (const token of colorTokens) {
+      const inLight = lightBlock.match(new RegExp(`${token}:\\s*[^;]+;`));
+      expect(inLight, `${token} not redefined in the light theme block`).toBeTruthy();
+    }
+  });
+});
+
+describe("[SF-WEB-49] theme contrast — text-bearing accents clear AA (4.5:1) in both themes", () => {
+  const darkBlock  = rule(css, ":root");
+  const lightBlock = rule(css, ':root[data-theme="light"]') || rule(css, ":root[data-theme=light]");
+
+  function themeVars(block) {
+    const v = name => extractVar(block, name);
+    return {
+      panel: v("--panel"), ink: v("--ink"), paper: v("--paper"), mist: v("--mist"),
+      signal: v("--signal"), pulse: v("--pulse"), amber: v("--amber"), onAccent: v("--on-accent"),
+    };
+  }
+
+  it("dark theme", () => {
+    const t = themeVars(darkBlock);
+    expect(contrastRatio(t.paper, t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.mist,  t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.mist,  t.panel)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.signal, t.panel)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.signal, t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.amber,  t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.pulse,  t.panel)).toBeGreaterThanOrEqual(AA_TEXT);
+    // Button/toast text sitting directly on the signal/pulse accent fill.
+    expect(contrastRatio(t.onAccent, t.signal)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.onAccent, t.pulse)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+
+  it("light theme — same thresholds as dark, not a looser bar for the 'inverted' palette", () => {
+    const t = themeVars(lightBlock);
+    expect(contrastRatio(t.paper, t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.mist,  t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.mist,  t.panel)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.signal, t.panel)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.signal, t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.amber,  t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.pulse,  t.panel)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.pulse,  t.ink)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.onAccent, t.signal)).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(t.onAccent, t.pulse)).toBeGreaterThanOrEqual(AA_TEXT);
+  });
+});
+
 function rule(css, selector) {
   const idx = css.indexOf(`${selector} {`);
   if (idx === -1) return null;

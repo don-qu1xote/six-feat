@@ -48,8 +48,11 @@ describe("SF-WEB-42 Observatory shell — tokens", () => {
     expect(lightBlockRaw, "light theme :root block not found").toBeTruthy();
     const lightBlock = lightBlockRaw.replace(/\s+/g, "");
     expect(lightBlock).toContain("--panel-2-rgb:244,246,251");
-    expect(lightBlock).toContain("--signal-rgb:14,156,125");
-    expect(lightBlock).toContain("--pulse-rgb:124,77,255");
+    // [SF-WEB-49] --signal/--pulse hex (and so their triplets) moved darker
+    // for AA text contrast — see tokens.css's own comment and
+    // styles.test.js's [SF-WEB-49] contrast assertions for why.
+    expect(lightBlock).toContain("--signal-rgb:11,125,100");
+    expect(lightBlock).toContain("--pulse-rgb:112,60,255");
   });
 
   it("composes glass-fill/glass-glow/focus-ring/tint tokens from the triplets, not fresh literals", () => {

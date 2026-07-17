@@ -42,3 +42,30 @@ body {
 }
 
 .app-canvas { position: absolute; inset: 0; }
+
+/* [SF-WEB-49] setTheme (ui/theme.js) flips :root[data-theme] in one
+   synchronous attribute write — a CSS custom property changing value
+   doesn't itself animate, only the concrete color/border/shadow properties
+   that resolve it do, and hand-adding a transition to every individual
+   selector that happens to reference a themed token isn't realistic. A
+   blanket, opt-in (prefers-reduced-motion: no-preference, so it can never
+   fight the app's existing reduced-motion rules — see surfaces/responsive.css)
+   transition on `*` is the standard low-risk way to make an app-wide theme
+   swap read as a soft cross-fade instead of a hard snap. Universal-selector
+   specificity is the lowest there is, so any element with its OWN more
+   specific transition (e.g. a hover-tuned .rate-limit-badge-dot) keeps that
+   timing untouched — this only fills in surfaces that don't declare one.
+   Doesn't reach `background-image` (gradients aren't transitionable at
+   all — body's own radial-gradient glow still snaps), just the solid
+   color/border/shadow layer most elements actually paint with. */
+@media (prefers-reduced-motion: no-preference) {
+  * {
+    transition:
+      background-color var(--duration-slow) var(--ease-standard),
+      border-color      var(--duration-slow) var(--ease-standard),
+      color             var(--duration-slow) var(--ease-standard),
+      box-shadow        var(--duration-slow) var(--ease-standard),
+      fill              var(--duration-slow) var(--ease-standard),
+      stroke            var(--duration-slow) var(--ease-standard);
+  }
+}
