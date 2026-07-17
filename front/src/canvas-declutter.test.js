@@ -26,12 +26,14 @@ function countOccurrences(haystack, needle) {
 }
 
 describe("[SF-WEB-14] no duplicate global entry points on the canvas", () => {
-  it("has no separate rail buttons for the four object-action-bar actions", () => {
-    // These four ids only exist inside .object-action-bar.
+  it("has no separate rail buttons for the three object-action-bar actions", () => {
+    // These three ids only exist inside .object-action-bar. [SF-WEB-47]
+    // The fourth (pin) is gone entirely — it only existed to gate
+    // Compare's old pinned-pair selection.
     expect(countOccurrences(html, 'id="obj-action-expand"')).toBe(1);
     expect(countOccurrences(html, 'id="obj-action-focus"')).toBe(1);
     expect(countOccurrences(html, 'id="obj-action-genius"')).toBe(1);
-    expect(countOccurrences(html, 'id="obj-action-pin"')).toBe(1);
+    expect(html).not.toContain('id="obj-action-pin"');
   });
 
   it("has exactly one #btn-fit-view — moved into the zoom cluster, not duplicated", () => {
@@ -71,8 +73,10 @@ describe("[SF-WEB-27] object action bar merged into the sidebar body", () => {
     expect(countOccurrences(html, 'id="object-action-bar"')).toBe(1);
     expect(countOccurrences(html, 'id="obj-action-genius"')).toBe(1);
     // The single object-action-bar block must be the one containing it.
+    // Genius is the last of the three buttons (see [SF-WEB-47] above — the
+    // old fourth button, pin, is gone), so anchor the block's end there.
     const barStart = html.indexOf('id="object-action-bar"');
-    const barEnd    = html.indexOf("</div>", html.indexOf('id="obj-action-pin"'));
+    const barEnd    = html.indexOf("</div>", html.indexOf('id="obj-action-genius"'));
     const barBlock  = html.slice(barStart, barEnd);
     expect(barBlock).toContain('id="obj-action-genius"');
   });

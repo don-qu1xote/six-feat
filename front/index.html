@@ -126,13 +126,7 @@
       <path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
-    <!-- [SF-WEB-14] object-action-bar's Pin/Unpin. -->
-    <symbol id="icon-pin" viewBox="0 0 24 24">
-      <path d="M12 2a5 5 0 0 0-5 5c0 3 2 5 3 7l2 5 2-5c1-2 3-4 3-7a5 5 0 0 0-5-5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="12" cy="7" r="1.6" fill="currentColor" stroke="none"/>
-    </symbol>
-
-    <!-- [SF-WEB-20] Compare-pinned-artists rail button — two overlapping
+    <!-- [SF-WEB-20] Compare rail button — two overlapping
          circles (Venn intersection). -->
     <symbol id="icon-compare" viewBox="0 0 24 24">
       <circle cx="9" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -363,11 +357,16 @@
       <button class="rail-btn ui-btn ui-btn--ghost" id="btn-find-path" data-tip="Find path">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg><span class="rl">Find path</span>
       </button>
-      <!-- [SF-WEB-20] Compare mode entry point — enabled once exactly two
-           artists are pinned (object-action-bar's Pin/Unpin, see
-           ui/compare-panel.js::wireComparePinnedButton). -->
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-compare-pinned" data-tip="Compare pinned artists" disabled>
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-compare"/></svg><span class="rl">Compare</span>
+      <!-- [SF-WEB-47] Graph-native Compare mode (vis-adapter/compare-mode.js):
+           click a node to set the first pick, click another to set the
+           second — opens the Compare panel for that pair and also
+           highlights the connecting path on the canvas. Same
+           .rail-btn.active kit the role filters already use for "on" state
+           (see canvas-controls.css). Replaces the old pin-to-select
+           mechanic (object-action-bar's Pin/Unpin, removed) this used to
+           gate on. -->
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-compare-mode" data-tip="Compare mode — click two nodes" aria-pressed="false">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-compare"/></svg><span class="rl">Compare mode</span>
       </button>
 
       <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
@@ -568,14 +567,17 @@
               </div>
             </div>
             <!-- [SF-WEB-27] Mini-actions for the node currently shown in
-                 this node context — expand/focus/genius/pin, wired per-node
+                 this node context — expand/focus/genius, wired per-node
                  by ui/sidebar.js::syncObjectActionBar. Used to be a
                  separately-floating #object-action-bar sitting above the
                  whole companion panel PLUS a standalone .sidebar-genius-btn
                  tile duplicating the Genius action — merged into this one
-                 row, Genius is one of the four icons now. Hidden for edge
-                 context (none of these four apply to an edge) and while
-                 nothing is selected. -->
+                 row, Genius is one of the three icons now. Hidden for edge
+                 context (none of these three apply to an edge) and while
+                 nothing is selected. [SF-WEB-47] The fourth action (pin)
+                 is gone — it only ever existed to gate Compare's old
+                 pinned-pair selection; Compare now picks its pair
+                 graph-natively (see #btn-compare-mode above). -->
             <div class="object-action-bar ui-segment" id="object-action-bar" hidden>
               <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-expand" title="Expand" aria-label="Expand this artist's collaborators">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
@@ -585,9 +587,6 @@
               </button>
               <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-genius" title="Open on Genius" aria-label="Open this artist on Genius">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg>
-              </button>
-              <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-pin" title="Pin in place" aria-label="Pin this artist in place" aria-pressed="false">
-                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pin"/></svg>
               </button>
             </div>
           </div>
@@ -637,7 +636,8 @@
         </div>
 
         <!-- [SF-WEB-20] Compare mode — common immediate collaborators of two
-             pinned artists (see ui/compare-panel.js::showComparePanel).
+             graph-picked artists (see #btn-compare-mode above /
+             vis-adapter/compare-mode.js / ui/compare-panel.js::showComparePanel).
              Same "one companion-panel section visible at a time" pattern as
              #artist-sidebar/#path-panel above. -->
         <div class="compare-panel" id="compare-panel">
@@ -645,6 +645,22 @@
             <div class="path-title" id="compare-title">Compare</div>
             <button class="path-close" id="compare-panel-close" title="Close" aria-label="Close">×</button>
           </div>
+          <!-- [fix] The two compared artists themselves — reported as
+               missing (only the "A × B" text title and the shared-
+               collaborators list existed, no visual trace of WHICH two
+               artists are being compared). Populated by
+               ui/compare-panel.js::showComparePanel, same click-to-focus
+               pattern as .compare-item below. -->
+          <div class="compare-pair" id="compare-pair"></div>
+          <!-- [fix] The trace between the two artists (every hop from the
+               first to the second, inclusive) — reused verbatim from the
+               six-degrees path result (ui/path-result.js::renderHopChain),
+               fed by the same client-side BFS
+               (vis-adapter/compare-mode.js) that also highlights it on the
+               canvas. Reported as confusing when only "No shared
+               collaborators" showed with no trace at all. -->
+          <div class="sidebar-section-label" id="compare-trace-label">Connection</div>
+          <div class="hop-chain" id="compare-hop-chain"></div>
           <div class="compare-list" id="compare-list"></div>
         </div>
 

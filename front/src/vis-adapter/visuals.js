@@ -260,12 +260,7 @@ export function nodeVisual(nodeData) {
     opacity,
     // Новые expanded не фиксируем заранее — placeExpandedNodes вызовет moveNode
     // и только потом зафиксирует. Иначе vis.js ставит их в (0,0) до moveNode.
-    // [SF-WEB-14] State.pinnedNodes ORed in so a user-pinned node (object
-    // action bar's Pin) stays fixed the next time its node item is rebuilt
-    // here (every merge/update) — without this, a pin would silently come
-    // unstuck on the next graph change since this line always recomputes
-    // `fixed` from scratch.
-    fixed: (isSeed || (isExpanded && !nodeData._isNew) || State.pinnedNodes.has(id)) ? { x: true, y: true } : false,
+    fixed: (isSeed || (isExpanded && !nodeData._isNew)) ? { x: true, y: true } : false,
     mass,
     x: isSeed ? 0 : undefined,
     y: isSeed ? 0 : undefined,

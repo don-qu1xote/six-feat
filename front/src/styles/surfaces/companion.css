@@ -109,6 +109,35 @@
   max-height: min(42vh, 100%); overflow-y: auto; flex-shrink: 0;
 }
 .compare-panel.show { display: flex; }
+
+/* [fix] The two compared artists themselves — was only ever text in the
+   title, reported as missing. Same "constellation" glow avatar language as
+   .hop-avatar/.path-node-avatar (SF-WEB-44), just larger — these are the
+   panel's own hero content, not a list row. */
+.compare-pair {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--space-3); padding: var(--space-2) 0;
+}
+.compare-pair-item {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
+  min-width: 0; max-width: 40%; cursor: pointer; border-radius: var(--r-sm);
+  padding: var(--space-1); transition: background .15s;
+}
+.compare-pair-item:hover, .compare-pair-item:focus-visible { background: rgba(var(--panel-rgb), 0.8); }
+.compare-pair-avatar {
+  width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--line);
+  box-shadow: 0 0 10px -2px rgba(var(--signal-rgb), .5);
+}
+.compare-pair-name {
+  font-size: var(--text-xs); font-weight: 600; color: var(--paper);
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.compare-pair-x {
+  font-family: "Space Mono", monospace; font-size: var(--text-sm); color: var(--mist);
+  flex-shrink: 0;
+}
+
 .compare-list { display: flex; flex-direction: column; gap: var(--space-2); }
 .compare-item {
   display: flex; align-items: center; gap: var(--space-2);

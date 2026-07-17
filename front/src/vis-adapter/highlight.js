@@ -55,7 +55,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { State, COLOR, PATH_HIGHLIGHT_LEVELS, DIM_LEVELS } from "../state/state.js";
 import { roleStyle, placeholderFor } from "../state/helpers.js";
-import { edgeWidthForWeight, seedShadow, nodeShadowFor, _imageFieldsFor, resolveEdgeDominantRole, lightenHexColor } from "./visuals.js";
+import { edgeWidthForWeight, seedShadow, nodeShadowFor, _imageFieldsFor, resolveEdgeDominantRole, lightenHexColor, hexToRgba } from "./visuals.js";
 
 // Кэш «дефолтного» состояния нод и рёбер для быстрого mode="default".
 // Заполняется в buildDefaultColorCache() при каждом изменении графа.
@@ -719,6 +719,61 @@ export function selectNode(nodeId) {
 // Escape/focusSeed, sidebar close.
 export function clearSelectedNode() {
   _revertSelectedNode();
+}
+
+// ─── Compare-mode endpoint markers (SF-WEB-47) ─────────────────────────────
+// Deliberately a THIRD marker kind, distinct from selectNode's neon
+// "selected" ring above — the graph-native "click two nodes" Compare mode
+// (vis-adapter/compare-mode.js) needs its own two-color language neither of
+// those overload. Node-only (no edge glow) since a not-yet-connected
+// first/second pair has no shared edge to light up yet.
+const COMPARE_ENDPOINT_BORDER_WIDTH = 5;
+const COMPARE_ENDPOINT_SHADOW_SIZE  = 22;
+const COMPARE_ENDPOINT_COLOR = { first: () => COLOR.amber, second: () => COLOR.signal };
+
+let _compareEndpointNodeIds = new Set();
+
+function _compareEndpointUpdate(nodeId, role) {
+  if (!State.nodesDS) return null;
+  const graphNode = _getNode(nodeId);
+  if (!graphNode) return null;
+  const accent = COMPARE_ENDPOINT_COLOR[role]();
+  return {
+    id: nodeId,
+    ..._imageFieldsFor(graphNode),
+    color: { border: accent, background: COLOR.panel },
+    borderWidth: COMPARE_ENDPOINT_BORDER_WIDTH,
+    shadow: { enabled: true, color: hexToRgba(accent, 0.6), size: COMPARE_ENDPOINT_SHADOW_SIZE, x: 0, y: 0 }
+  };
+}
+
+// Marks nodeId as Compare mode's "first" or "second" endpoint. Safe to call
+// for an id no longer in the current graph (e.g. a stale pick) — _getNode/
+// nodesDS already guard that, same as every other marker here.
+export function markCompareEndpoint(nodeId, role) {
+  const upd = _compareEndpointUpdate(nodeId, role);
+  if (!upd) return;
+  try { State.nodesDS.update(upd); }
+  catch (err) { console.warn("compare endpoint mark failed", err); }
+  _compareEndpointNodeIds.add(nodeId);
+}
+
+// Reverts every node markCompareEndpoint has touched since the last clear
+// back to its resting look (nodeShadowFor — same formula nodeVisual/hover/
+// selection all share). Called on exiting Compare mode for any reason
+// (toggle off, Esc, a completed pick that's about to open the panel anyway).
+export function clearCompareEndpoints() {
+  if (!_compareEndpointNodeIds.size || !State.nodesDS) { _compareEndpointNodeIds.clear(); return; }
+  const updates = [];
+  for (const id of _compareEndpointNodeIds) {
+    const u = _defaultNodeUpdate(id);
+    if (u) updates.push(u);
+  }
+  _compareEndpointNodeIds.clear();
+  if (updates.length) {
+    try { State.nodesDS.update(updates); }
+    catch (err) { console.warn("compare endpoint clear failed", err); }
+  }
 }
 
 // Вызывается из blurNode/blurEdge — это НЕ то же самое, что "снять всю

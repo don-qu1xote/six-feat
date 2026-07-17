@@ -1,8 +1,15 @@
 // ════════════════════════════════════════════════════════════════════════════
 // compare-panel.test.js — [SF-WEB-20] unit tests for the companion panel's
-// compare section (ui/compare-panel.js): the pure intersection helper, the
-// panel render (list + click-to-focus), and the rail button's pinned-count
-// gating.
+// compare section (ui/compare-panel.js): the pure intersection helper and
+// the panel render (pair header + trace + list + click-to-focus).
+// [SF-WEB-47] The pair (and the path between them) is now picked/computed
+// graph-natively (vis-adapter/compare-mode.js) — see compare-mode.test.js
+// for the "click two nodes" flow; this file only covers showComparePanel's
+// own rendering once it's given a pair (+ optional path), which
+// compare-mode.js calls straight into. renderHopChain (path-result.js) is
+// mocked here — its own rendering is covered by path-result.test.js; this
+// file only asserts showComparePanel calls it correctly / falls back
+// correctly when no path is given.
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -11,18 +18,19 @@ vi.mock("./sidebar.js", () => ({
   hideArtistSidebar: vi.fn(),
   showArtistSidebar: vi.fn(),
 }));
-vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
+const renderHopChain = vi.fn();
+vi.mock("./path-result.js", () => ({
+  renderHopChain: (...args) => renderHopChain(...args),
+}));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import {
   neighboursOf, computeCommonCollaborators,
   showComparePanel, closeComparePanel, isComparePanelOpen,
-  wireComparePinnedButton, syncComparePinnedButton,
 } from "./compare-panel.js";
 import { closePathPanel } from "./modals.js";
 import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
-import { showToast } from "./toast.js";
 
 function freshEl(tag = "div") { return document.createElement(tag); }
 
@@ -35,14 +43,14 @@ beforeEach(() => {
   State.graphNodes = [];
   State.graphEdges = [];
   State.network = null;
-  State.pinnedNodes = new Set();
 
   els.companionPanel = freshEl();
   els.comparePanel   = freshEl();
   els.comparePanelClose = freshEl("button");
   els.compareTitle   = freshEl();
+  els.comparePair    = freshEl();
+  els.compareHopChain = freshEl();
   els.compareList    = freshEl();
-  els.btnComparePinned = freshEl("button");
 });
 
 // Two mock neighbourhoods, per the ticket's own test spec: A shares 2 and 4
@@ -134,6 +142,50 @@ describe("showComparePanel", () => {
     showComparePanel(1, 999);
     expect(els.comparePanel.classList.contains("show")).toBe(false);
   });
+
+  // [fix] Reported as missing entirely — only the "A × B" text title
+  // existed, no visual trace of which two artists are being compared.
+  it("shows both compared artists (avatar + name) in the pair header", () => {
+    showComparePanel(1, 5);
+
+    const items = els.comparePair.querySelectorAll(".compare-pair-item");
+    expect(items.length).toBe(2);
+    expect(els.comparePair.textContent).toContain("Artist A");
+    expect(els.comparePair.textContent).toContain("Artist B");
+    expect(els.comparePair.querySelector('[data-node-id="1"]')).toBeTruthy();
+    expect(els.comparePair.querySelector('[data-node-id="5"]')).toBeTruthy();
+  });
+
+  it("clicking either artist in the pair header focuses it and opens its sidebar", () => {
+    State.network = { focus: vi.fn() };
+    showComparePanel(1, 5);
+
+    const second = els.comparePair.querySelector('[data-node-id="5"]');
+    second.dispatchEvent(new Event("click", { bubbles: true }));
+
+    expect(State.network.focus).toHaveBeenCalledWith(5, expect.any(Object));
+    expect(showArtistSidebar).toHaveBeenCalledWith(5);
+  });
+
+  // [fix] Reported as confusing — the panel only ever showed "No shared
+  // collaborators" with no trace at all connecting the two artists, even
+  // though a path (via the seed or otherwise) may well exist.
+  it("renders the trace via renderHopChain (reused from the six-degrees path result) when a path is given", () => {
+    showComparePanel(1, 5, [1, 3, 5]);
+
+    expect(renderHopChain).toHaveBeenCalledWith(
+      [1, 3, 5], [], [],
+      expect.objectContaining({ 1: "Artist A", 5: "Artist B" }),
+      els.compareHopChain,
+    );
+  });
+
+  it("shows a no-connection fallback instead of calling renderHopChain when no path is given", () => {
+    showComparePanel(1, 5); // no 3rd arg — no path found
+
+    expect(renderHopChain).not.toHaveBeenCalled();
+    expect(els.compareHopChain.textContent).toContain("No connecting path");
+  });
 });
 
 describe("closeComparePanel", () => {
@@ -148,39 +200,3 @@ describe("closeComparePanel", () => {
   });
 });
 
-describe("compare-pinned rail button", () => {
-  it("toasts instead of opening the panel unless exactly two nodes are pinned", () => {
-    wireComparePinnedButton();
-    State.pinnedNodes = new Set([1]);
-
-    els.btnComparePinned.dispatchEvent(new Event("click", { bubbles: true }));
-
-    expect(showToast).toHaveBeenCalled();
-    expect(els.comparePanel.classList.contains("show")).toBe(false);
-  });
-
-  it("opens the compare panel for the two pinned nodes", () => {
-    State.graphNodes = [mockNode(1, "A"), mockNode(5, "B")];
-    State.graphEdges = [];
-    State.pinnedNodes = new Set([1, 5]);
-    wireComparePinnedButton();
-
-    els.btnComparePinned.dispatchEvent(new Event("click", { bubbles: true }));
-
-    expect(els.comparePanel.classList.contains("show")).toBe(true);
-  });
-
-  it("syncComparePinnedButton enables the button only at exactly two pins", () => {
-    State.pinnedNodes = new Set();
-    syncComparePinnedButton();
-    expect(els.btnComparePinned.disabled).toBe(true);
-
-    State.pinnedNodes = new Set([1, 5]);
-    syncComparePinnedButton();
-    expect(els.btnComparePinned.disabled).toBe(false);
-
-    State.pinnedNodes = new Set([1, 5, 9]);
-    syncComparePinnedButton();
-    expect(els.btnComparePinned.disabled).toBe(true);
-  });
-});

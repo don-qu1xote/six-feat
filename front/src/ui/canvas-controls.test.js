@@ -26,6 +26,7 @@ vi.mock("../api/api.js", () => ({ searchArtist: vi.fn(), showMoreCollaborations:
 vi.mock("./history.js", () => ({ updateShareableUrl: vi.fn() }));
 vi.mock("../vis-adapter/index.js", () => ({
   clearFocus: vi.fn(), resetCanvasToEmpty: vi.fn(), networkOptions: vi.fn(),
+  isCompareModeActive: vi.fn(() => false), exitCompareMode: vi.fn(),
 }));
 vi.mock("../api/analytics-client.js", () => ({ clearPathHighlight: vi.fn() }));
 vi.mock("../dom/canvas-decorator.js", () => ({ startCanvasDecorator: vi.fn() }));
@@ -413,6 +414,24 @@ describe("clearCanvas", () => {
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("#/graph");
   });
+
+  // [SF-WEB-47] A half-picked Compare-mode start node doesn't carry meaning
+  // onto the graph resetCanvasToEmpty() is about to leave behind — same
+  // reasoning as resetExpansionState clearing State.compareMode itself,
+  // just for the rail toggle's own visible state too.
+  it("exits Compare mode (silently) when it's active", async () => {
+    const { isCompareModeActive, exitCompareMode } = await import("../vis-adapter/index.js");
+    isCompareModeActive.mockReturnValue(true);
+    clearCanvas();
+    expect(exitCompareMode).toHaveBeenCalledWith({ silent: true });
+  });
+
+  it("does not touch Compare mode when it's already inactive", async () => {
+    const { isCompareModeActive, exitCompareMode } = await import("../vis-adapter/index.js");
+    isCompareModeActive.mockReturnValue(false);
+    clearCanvas();
+    expect(exitCompareMode).not.toHaveBeenCalled();
+  });
 });
 
 // [fix] .brand (the logo) used to call clearCanvas() directly — same as the
@@ -445,5 +464,43 @@ describe("goHome", () => {
     State.hasRendered = true;
     goHome();
     expect(State.hasRendered).toBe(false);
+  });
+});
+
+// [SF-WEB-47] Escape's highest priority is handing click semantics back
+// from Compare mode — ahead of every other overlay/panel the same key
+// already closes, since Compare mode has fully taken over what a click on
+// the canvas does while it's on.
+describe("setupKeyboard — Escape and Compare mode", () => {
+  beforeEach(() => {
+    els.nodeSearchOverlay = document.createElement("div");
+    els.network = document.createElement("div");
+  });
+
+  it("exits Compare mode on Escape instead of falling through to any other overlay/panel", async () => {
+    const { isCompareModeActive, exitCompareMode } = await import("../vis-adapter/index.js");
+    isCompareModeActive.mockReturnValue(true);
+    const { isPathPanelOpen } = await import("./modals.js");
+
+    const { setupKeyboard } = await import("./canvas-controls.js");
+    setupKeyboard();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    expect(exitCompareMode).toHaveBeenCalledWith();
+    expect(isPathPanelOpen).not.toHaveBeenCalled();
+  });
+
+  it("Escape falls through to the existing chain when Compare mode is inactive", async () => {
+    const { isCompareModeActive, exitCompareMode } = await import("../vis-adapter/index.js");
+    isCompareModeActive.mockReturnValue(false);
+    const { isPathPanelOpen } = await import("./modals.js");
+    isPathPanelOpen.mockReturnValue(false);
+
+    const { setupKeyboard } = await import("./canvas-controls.js");
+    setupKeyboard();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    expect(exitCompareMode).not.toHaveBeenCalled();
+    expect(isPathPanelOpen).toHaveBeenCalled();
   });
 });

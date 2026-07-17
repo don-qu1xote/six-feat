@@ -13,7 +13,10 @@
 //                  machine (DIM_LEVELS / PATH_HIGHLIGHT_LEVELS from state.js)
 //   events.js    — attachNetworkEvents (click/dblclick/hover/drag handlers),
 //                  setFocus/clearFocus
+//   compare-mode.js — [SF-WEB-47] graph-native Compare mode toggle:
+//                  click-to-pick two artists, reusing showComparePanel/bfsPath
 //
+
 // This file re-exports the exact same public names the old flat
 // vis-adapter.js exposed, so existing imports elsewhere (api.js imports
 // restoreDefaultColors, graph.js imports computeNodeSizes/initNetwork/etc,
@@ -63,11 +66,6 @@ export {
   _fitToExpandedCluster,
   mergeNetwork,
   runFlyoutAnimation,
-  // [SF-WEB-14] object action bar's Pin/Unpin
-  isNodePinned,
-  pinNode,
-  unpinNode,
-  toggleNodePin,
 } from "./physics.js";
 
 export {
@@ -102,3 +100,12 @@ export {
   // [SF-WEB-28] The one entry point for node/edge selection.
   selectObject,
 } from "./events.js";
+
+export {
+  // ── compare-mode.js (SF-WEB-47) ───────────────────────────────────────
+  isCompareModeActive,
+  enterCompareMode,
+  exitCompareMode,
+  toggleCompareMode,
+  setupCompareModeToggle,
+} from "./compare-mode.js";

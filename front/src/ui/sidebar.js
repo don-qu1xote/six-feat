@@ -10,13 +10,13 @@ import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import {
   openGeniusPage, highlightEdgePair, selectNode, selectEdge,
-  clearSelectedEdge, clearSelectedNode, toggleNodePin, isNodePinned,
+  clearSelectedEdge, clearSelectedNode,
 } from "../vis-adapter/index.js";
 import { bfsPath } from "../api/analytics-client.js";
 import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
 import { searchArtist } from "../api/api.js";
 import { showToast } from "./toast.js";
-import { closeComparePanel, syncComparePinnedButton } from "./compare-panel.js";
+import { closeComparePanel } from "./compare-panel.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Helpers: Wrap ROLE_ICON's <use> element in proper <svg> containers
@@ -226,18 +226,21 @@ function buildPathTrackHTML(nodeId, pathInfo) {
 
 /**
  * [SF-WEB-14, merged into the sidebar body by SF-WEB-27] Object action bar —
- * expand / focus / open on Genius / pin, scoped to whichever node is
- * currently shown in node context (this bar is hidden for edge context, see
- * showEdgeSidebar/hideArtistSidebar below — none of these four actions make
- * sense for an edge). Rewires all four buttons' onclick to the given node
- * every call. Reuses the exact same paths as their pre-existing triggers:
+ * expand / focus / open on Genius, scoped to whichever node is currently
+ * shown in node context (this bar is hidden for edge context, see
+ * showEdgeSidebar/hideArtistSidebar below — none of these three actions
+ * make sense for an edge). Rewires all three buttons' onclick to the given
+ * node every call. Reuses the exact same paths as their pre-existing
+ * triggers:
  *   expand → searchArtist(name, true, true), same as double-click.
  *   focus  → network.focus(id, ...), same as a path-chain-card click.
  *   genius → openGeniusPage(nodeId) — the only way to open Genius from the
  *            sidebar now; the separate .sidebar-genius-btn tile SF-WEB-27
  *            removed used to wire this same call independently.
- *   pin    → vis-adapter/physics.js::toggleNodePin (see state.js's
- *            pinnedNodes).
+ * [SF-WEB-47] The fourth action this row used to have — pin, which only
+ * ever existed to gate Compare's old pinned-pair rail button — is gone.
+ * Compare now picks its pair graph-natively (vis-adapter/compare-mode.js),
+ * with nothing left to lock a node's position for.
  */
 function syncObjectActionBar(node) {
   if (!els.objectActionBar) return;
@@ -258,16 +261,6 @@ function syncObjectActionBar(node) {
   }
   if (els.objActionGenius) {
     els.objActionGenius.onclick = () => openGeniusPage(node.id);
-  }
-  if (els.objActionPin) {
-    const syncPinState = () => {
-      const pinned = isNodePinned(node.id);
-      els.objActionPin.classList.toggle("active", pinned);
-      els.objActionPin.setAttribute("aria-pressed", String(pinned));
-      els.objActionPin.title = pinned ? "Unpin" : "Pin in place";
-    };
-    els.objActionPin.onclick = () => { toggleNodePin(node.id); syncPinState(); syncComparePinnedButton(); };
-    syncPinState();
   }
 
   els.objectActionBar.hidden = false;

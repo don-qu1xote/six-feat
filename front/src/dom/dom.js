@@ -76,6 +76,8 @@ export const els = {
   btnExportPng:  $("btn-export-png"),
   btnExportJson: $("btn-export-json"),
   btnFindPath:   $("btn-find-path"),
+  // [SF-WEB-47] Graph-native Compare mode toggle — see vis-adapter/compare-mode.js.
+  btnCompareMode: $("btn-compare-mode"),
   btnSearchOpen: $("btn-search-open"),
 
   // [SF-WEB-14] Compact zoom/fit cluster — the one control cluster the
@@ -93,17 +95,17 @@ export const els = {
   roleFilterSegment: $("role-filter-segment"),
 
   // [SF-WEB-27] Object action bar — mini-actions for the currently selected
-  // node (expand / focus / open on Genius / pin), the last row of
-  // #sidebar-body's grid (was a separately-floating bar above the whole
-  // companion panel, plus a now-removed standalone Genius button — merged
-  // into this one row). Populated per-node by ui/sidebar.js::
-  // showArtistSidebar, hidden by hideArtistSidebar/showEdgeSidebar (these
-  // actions only make sense for a single artist).
+  // node (expand / focus / open on Genius), the last row of #sidebar-body's
+  // grid (was a separately-floating bar above the whole companion panel,
+  // plus a now-removed standalone Genius button — merged into this one
+  // row). Populated per-node by ui/sidebar.js:: showArtistSidebar, hidden
+  // by hideArtistSidebar/showEdgeSidebar (these actions only make sense for
+  // a single artist). [SF-WEB-47] The fourth action (pin) is gone — it
+  // only ever existed to gate Compare's old pinned-pair selection.
   objectActionBar:  $("object-action-bar"),
   objActionExpand:  $("obj-action-expand"),
   objActionFocus:   $("obj-action-focus"),
   objActionGenius:  $("obj-action-genius"),
-  objActionPin:     $("obj-action-pin"),
 
   // [SF-WEB-12] companionPanel is the one shared card — #artist-sidebar and
   // #path-panel (below) are now plain content sections inside it, shown one
@@ -139,12 +141,18 @@ export const els = {
   btnClearPath:   $("btn-clear-path"),
   hopChain:       $("hop-chain"),
 
-  // [SF-WEB-20] Compare mode — common collaborators of two pinned artists.
+  // [SF-WEB-20] Compare mode — common collaborators of two picked artists
+  // (see btnCompareMode above / vis-adapter/compare-mode.js).
   comparePanel:      $("compare-panel"),
   comparePanelClose: $("compare-panel-close"),
   compareTitle:      $("compare-title"),
+  // [fix] The two compared artists themselves, shown above the trace.
+  comparePair:       $("compare-pair"),
+  // [fix] The trace between them (renderHopChain, reused from the
+  // six-degrees path result) — shown above the shared-collaborators list.
+  compareTraceLabel: $("compare-trace-label"),
+  compareHopChain:   $("compare-hop-chain"),
   compareList:       $("compare-list"),
-  btnComparePinned:  $("btn-compare-pinned"),
 
   nodeSearchOverlay: $("node-search-overlay"),
   nodeSearchInput:   $("node-search-input"),

@@ -12,10 +12,9 @@ import {
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   renderChips, exportGraphPng, exportGraphJson, setupThemeToggle, setupDockedPanels,
-  wireComparePinnedButton, syncComparePinnedButton,
   restoreSurfaceFromUrl
 } from "./ui/index.js";
-import { clearFocus } from "./vis-adapter/index.js";
+import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
 import { setupCanvasDecorator, startCanvasDecorator } from "./dom/canvas-decorator.js";
 
@@ -58,11 +57,9 @@ export function init() {
   setupSeedCard();
   setupHelpOverlay();
   setupLoadMoreCollabs();
-  // [SF-WEB-20] Compare mode's rail entry point — enabled once exactly two
-  // artists are pinned (see ui/sidebar.js's Pin button, which calls
-  // syncComparePinnedButton() after every toggle).
-  wireComparePinnedButton();
-  syncComparePinnedButton();
+  // [SF-WEB-47] Compare's graph-native rail toggle — click two nodes to
+  // open the Compare panel for that pair.
+  setupCompareModeToggle();
 
   // ТЗ-D8: idle starfield shown while #network is empty (first visit /
   // after clearCanvas). Mounted once, then just toggled via opacity.

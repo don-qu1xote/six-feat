@@ -13,6 +13,7 @@ import {
   cancelPendingHover, clearSelectedNode, clearSelectedEdge
 } from "./highlight.js";
 import { nudgePhysics } from "./physics.js";
+import { isCompareModeActive, handleCompareModeNodeClick, exitCompareMode } from "./compare-mode.js";
 
 // Порог числа рёбер, при котором на hover перестаём подсвечивать рёбра
 // (см. hoverEdge ниже) — держится в синхроне с тем же порогом в render.js.
@@ -26,14 +27,32 @@ const FAST_RENDER_EDGE_THRESHOLD = 150;
 // hoverNode/hoverEdge/blurNode/blurEdge guards below, so hovering other
 // nodes/edges kept disturbing the view while an edge (but not a node) was
 // selected.
+// [SF-WEB-47] Compare mode's own first/second markers are the same kind of
+// persistent, deliberately-placed color as a selection — ambient hover
+// should stay out of their way for the same reason.
 function isSelectionActive() {
-  return State.focusedNodeId != null || State.selectedEdgeId != null;
+  return State.focusedNodeId != null || State.selectedEdgeId != null || isCompareModeActive();
 }
 
 export function attachNetworkEvents(nameById) {
   const net = State.network;
 
   net.on("click", function(params) {
+    // [SF-WEB-47] Compare mode fully takes over click semantics while
+    // active — a node click picks first/second instead of going through
+    // selectObject; ctrl+click seed switch and the double-click-vs-click
+    // debounce below are both out of scope while picking, same as this
+    // handler already ignores most of itself during a drag. Anything else
+    // clicked (an edge, or empty canvas) isn't a valid pick target — [fix]
+    // that used to just silently do nothing, reported as "stuck" in the
+    // mode with no visible way out short of Esc/the toggle; exiting here
+    // instead gives every click a defined outcome.
+    if (isCompareModeActive()) {
+      if (params.nodes?.length) handleCompareModeNodeClick(params.nodes[0]);
+      else exitCompareMode();
+      return;
+    }
+
     const ctrlKey = params.event && (params.event.ctrlKey || params.event.metaKey);
 
     // [SF-WEB-28] Edge click is otherwise identical to a node click (both

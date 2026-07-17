@@ -34,7 +34,8 @@
 //   canvas-states.js        — [SF-WEB-19] renderEmptyState / renderLoadingState /
 //                            renderErrorState / clearCanvasState
 //   compare-panel.js        — [SF-WEB-20] showComparePanel / closeComparePanel /
-//                            computeCommonCollaborators / wireComparePinnedButton
+//                            computeCommonCollaborators (picked graph-natively
+//                            via vis-adapter/compare-mode.js, SF-WEB-47)
 //   router.js               — [SF-WEB-25] parseSurfaceFromHash / getCurrentSurface /
 //                            navigateToSurface / restoreSurfaceFromUrl / onSurfaceChange
 //
@@ -99,8 +100,7 @@ export {
 
 export {
   neighboursOf, computeCommonCollaborators,
-  isComparePanelOpen, closeComparePanel, showComparePanel,
-  wireComparePinnedButton, syncComparePinnedButton
+  isComparePanelOpen, closeComparePanel, showComparePanel
 } from "./compare-panel.js";
 
 export {

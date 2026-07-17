@@ -7,7 +7,7 @@ import { State } from "../state/state.js";
 import { placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist, showMoreCollaborations } from "../api/api.js";
-import { clearFocus, resetCanvasToEmpty, networkOptions } from "../vis-adapter/index.js";
+import { clearFocus, resetCanvasToEmpty, networkOptions, isCompareModeActive, exitCompareMode } from "../vis-adapter/index.js";
 import { clearPathHighlight } from "../api/analytics-client.js";
 import { startCanvasDecorator } from "../dom/canvas-decorator.js";
 import { showToast, hideToast } from "./toast.js";
@@ -20,7 +20,6 @@ import {
 import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { renderEmptyState } from "./canvas-states.js";
-import { syncComparePinnedButton } from "./compare-panel.js";
 import { navigateToSurface, SURFACE_GRAPH } from "./router.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -409,6 +408,10 @@ export function setupKeyboard() {
     }
 
     if (e.key === "Escape") {
+      // [SF-WEB-47] Highest priority: Compare mode takes over click
+      // semantics while active, so Escape's first job is handing them back,
+      // ahead of any overlay/panel that happens to also be open.
+      if (isCompareModeActive())                            { exitCompareMode();       return; }
       if (els.helpOverlay?.classList.contains("show"))      { els.helpOverlay.classList.remove("show"); return; }
       if (els.candidateOverlay?.classList.contains("show")) { hideCandidatePicker(); return; }
       if (els.nodeSearchOverlay.classList.contains("show")) { closeNodeSearch();      return; }
@@ -460,6 +463,10 @@ function openFullSearchFromEmpty() {
 }
 
 export function clearCanvas() {
+  // [SF-WEB-47] Same reasoning as resetExpansionState clearing
+  // State.compareMode — an in-progress first/second pick doesn't carry
+  // meaning onto the graph resetCanvasToEmpty() is about to leave behind.
+  if (isCompareModeActive()) exitCompareMode({ silent: true });
   resetCanvasToEmpty();
   els.status.hidden = true;
   if (els.truncationBanner) els.truncationBanner.hidden = true;
@@ -480,10 +487,6 @@ export function clearCanvas() {
   hideCandidatePicker();
   els.pathPanel.classList.remove("show");
   if (els.hopChain) els.hopChain.innerHTML = "";
-  // [SF-WEB-20] Pins (and any pending compare) don't survive a Clear —
-  // resetCanvasToEmpty() already clears State.pinnedNodes, reflect that on
-  // the rail button too.
-  syncComparePinnedButton();
   // [fix] Was `history.replaceState(null, "", window.location.pathname)`,
   // which drops the #/graph hash router.js (SF-WEB-25) owns — clicking
   // .brand/Clear left the URL bare (http://host/ instead of .../#/graph).

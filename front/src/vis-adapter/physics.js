@@ -47,47 +47,6 @@ function _prefersReducedMotion() {
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// [SF-WEB-14] PIN / UNPIN — object action bar's manual position lock,
-// independent of the seed/expanded-node auto-fixing nodeVisual() already
-// does. Backed by State.pinnedNodes (see state.js) rather than only the
-// DataSet's own `fixed` field, since nodeVisual() recomputes `fixed` from
-// scratch on every merge/update — a pin recorded only in the live DataSet
-// item would silently come unstuck the next time that node's item is
-// rebuilt. nodeVisual() ORs State.pinnedNodes.has(id) into its own `fixed`
-// computation, so this survives across re-renders.
-// ════════════════════════════════════════════════════════════════════════════
-
-export function isNodePinned(nodeId) {
-  return State.pinnedNodes.has(nodeId);
-}
-
-export function pinNode(nodeId) {
-  State.pinnedNodes.add(nodeId);
-  // Capture the node's CURRENT (physics-settled) position — the DataSet
-  // item's own x/y can be stale if physics has moved it since the last
-  // update(), and fixed:true without fresh x/y would snap it back to that
-  // stale spot instead of locking it where it visually is right now.
-  const pos = State.network?.getPositions([nodeId])?.[nodeId];
-  State.nodesDS?.update({ id: nodeId, fixed: { x: true, y: true }, ...(pos || {}) });
-}
-
-export function unpinNode(nodeId) {
-  State.pinnedNodes.delete(nodeId);
-  // Releasing a seed/still-expanded node shouldn't un-fix it — those have
-  // their own independent reason to stay fixed (see nodeVisual) — only
-  // actually release physics if nothing else is holding this node in place.
-  const gn = State.graphNodes.find(n => n.id === nodeId);
-  const stillFixed = !!gn && (gn.isSeed || (State.expandedNodes.has(nodeId) && !gn._isNew));
-  State.nodesDS?.update({ id: nodeId, fixed: stillFixed ? { x: true, y: true } : false });
-}
-
-export function toggleNodePin(nodeId) {
-  if (isNodePinned(nodeId)) unpinNode(nodeId);
-  else pinNode(nodeId);
-  return isNodePinned(nodeId);
-}
-
 export function scheduleFreeze(ms) {
   clearTimeout(State.physicsTimer);
   State.physicsTimer = setTimeout(() => {

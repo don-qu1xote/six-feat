@@ -178,11 +178,13 @@ const interactionSlice = {
   selectedNodeId: null,
   pathHighlight:  null,
 
-  // [SF-WEB-14] Node ids the user has manually pinned in place (object
-  // action bar's Pin/Unpin) — separate from the seed/expanded-node
-  // auto-fixing already in nodeVisual() (visuals.js), which ORs this set in
-  // so a pin survives the node item being rebuilt on the next merge/update.
-  pinnedNodes: new Set(),
+  // [SF-WEB-47] Graph-native Compare mode: click two nodes to compare them,
+  // instead of the old pin-to-select mechanic (physics.js's node-position
+  // pin was removed along with it — it only ever existed to gate Compare).
+  // compareModeStartId is the first node picked, or null before any pick /
+  // after a completed pick has fired the panel. See vis-adapter/compare-mode.js.
+  compareMode:        false,
+  compareModeStartId: null,
 
   // Баг "тряска графа подвисает": флаг активного перетаскивания ноды —
   // используется, чтобы на время drag'а глушить hover-подсветку и держать
@@ -283,7 +285,8 @@ bridge("songLimit",      graphSlice);
 bridge("focusedNodeId",  interactionSlice);
 bridge("selectedEdgeId", interactionSlice);
 bridge("selectedNodeId", interactionSlice);
-bridge("pinnedNodes",    interactionSlice);
+bridge("compareMode",        interactionSlice);
+bridge("compareModeStartId", interactionSlice);
 bridge("pathHighlight",  interactionSlice);
 bridge("_isDragging",    interactionSlice);
 bridge("_clickTimer",    interactionSlice);
@@ -370,9 +373,15 @@ export function resetExpansionState() {
   graphSlice.expandedNodes.clear();
   graphSlice.lastExpandedId = null;
   interactionSlice._clickedNodeId = null;
-  // [SF-WEB-14] A fresh (non-expansion) search draws a brand-new graph —
-  // pins from whatever was on canvas before don't carry meaning here.
-  interactionSlice.pinnedNodes.clear();
+  // [SF-WEB-47] A fresh (non-expansion) search draws a brand-new graph — a
+  // half-picked Compare-mode start node from the graph being replaced
+  // doesn't carry meaning onto the new one. The rail toggle/markers
+  // themselves are cleared by vis-adapter/compare-mode.js's own
+  // exitCompareMode() at every explicit exit; this is the data-model safety
+  // net for the graph being replaced out from under an in-progress pick
+  // some other way (e.g. a fresh search).
+  interactionSlice.compareMode = false;
+  interactionSlice.compareModeStartId = null;
   netFetchSlice.pendingExpand = null;
   cacheSlice._bfsAdj = null;
   cacheSlice._bfsGraphHash = "";
@@ -403,8 +412,6 @@ export function resetGraphState({ resetHasRendered = true } = {}) {
   setSeed(null);
   setPathHighlight(null);
   interactionSlice._clickedNodeId = null;
-  // [SF-WEB-14] See the matching comment in resetExpansionState above.
-  interactionSlice.pinnedNodes.clear();
 
   netFetchSlice.pendingExpand = null;
 

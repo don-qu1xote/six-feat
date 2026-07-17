@@ -11,13 +11,15 @@
 // once in beforeEach, exactly like the real static markup in index.html,
 // and a document.createElement spy proves sidebar.js never reaches for a
 // fresh one — and (3) the object action bar is visible only for node
-// context, contains Genius as one of its own four buttons (no separate
-// Genius element anymore — see [SF-WEB-27] below), and wires all four
-// buttons to the node it's currently showing.
+// context, contains Genius as one of its own three buttons (no separate
+// Genius element anymore — see [SF-WEB-27] below), and wires all three
+// buttons to the node it's currently showing. [SF-WEB-47] The bar's old
+// fourth button (pin) is gone — it only ever existed to gate Compare's old
+// pinned-pair selection, which compare-mode.js's Compare mode replaced.
 //
 // [SF-WEB-27] Genius used to be a standalone .sidebar-genius-btn wired
 // independently of the object action bar (els.sidebarGenius, since
-// removed); it's now exclusively els.objActionGenius, one of the four
+// removed); it's now exclusively els.objActionGenius, one of the three
 // buttons syncObjectActionBar wires together. The markup-level assertions
 // ("exactly one action row in the page, no leftover .sidebar-genius-btn, no
 // floating #object-action-bar above the panel") live in
@@ -38,8 +40,6 @@ vi.mock("../vis-adapter/index.js", () => ({
   selectEdge: vi.fn(),
   clearSelectedNode: vi.fn(),
   clearSelectedEdge: vi.fn(),
-  toggleNodePin: vi.fn(() => true),
-  isNodePinned: vi.fn(() => false),
 }));
 vi.mock("../api/analytics-client.js", () => ({ bfsPath: vi.fn(() => null) }));
 vi.mock("./modals.js", () => ({
@@ -56,7 +56,7 @@ import { els } from "../dom/dom.js";
 import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar } from "./sidebar.js";
 import { closePathPanel } from "./modals.js";
 import {
-  toggleNodePin, isNodePinned, selectNode, selectEdge,
+  selectNode, selectEdge,
   clearSelectedNode, clearSelectedEdge,
 } from "../vis-adapter/index.js";
 import { searchArtist } from "../api/api.js";
@@ -65,7 +65,6 @@ function freshEl(tag = "div") { return document.createElement(tag); }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  isNodePinned.mockReturnValue(false);
   State.graphNodes = [];
   State.graphEdges = [];
   State.currentSeedId = null;
@@ -94,7 +93,6 @@ beforeEach(() => {
   els.objActionExpand = freshEl("button");
   els.objActionFocus  = freshEl("button");
   els.objActionGenius = freshEl("button");
-  els.objActionPin    = freshEl("button");
 });
 
 function mockNode(overrides = {}) {
@@ -202,24 +200,6 @@ describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
     els.objActionGenius.onclick();
     expect(openGeniusPage).toHaveBeenCalledWith(1);
   });
-
-  it("wires Pin to toggleNodePin(nodeId) and reflects the pressed state", () => {
-    // Simulate the real toggle: isNodePinned() reflects whatever
-    // toggleNodePin() last flipped, same relationship as the real
-    // vis-adapter/physics.js implementation.
-    let pinned = false;
-    isNodePinned.mockImplementation(() => pinned);
-    toggleNodePin.mockImplementation(() => { pinned = !pinned; return pinned; });
-
-    State.graphNodes = [mockNode()];
-    showArtistSidebar(1);
-    expect(els.objActionPin.getAttribute("aria-pressed")).toBe("false");
-
-    els.objActionPin.onclick();
-    expect(toggleNodePin).toHaveBeenCalledWith(1);
-    expect(els.objActionPin.getAttribute("aria-pressed")).toBe("true");
-    expect(els.objActionPin.classList.contains("active")).toBe(true);
-  });
 });
 
 describe("showEdgeSidebar (edge context)", () => {
@@ -302,7 +282,7 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(selectNode).toHaveBeenCalledWith(2);
   });
 
-  it("[SF-WEB-14/SF-WEB-27] hides the object action bar (incl. Genius, now one of its four buttons) — none of its actions apply to an edge", () => {
+  it("[SF-WEB-14/SF-WEB-27] hides the object action bar (incl. Genius, now one of its three buttons) — none of its actions apply to an edge", () => {
     els.objectActionBar.hidden = false;
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", {});
