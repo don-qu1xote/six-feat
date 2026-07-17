@@ -98,16 +98,41 @@
   --space-11:   44px;
   --space-12:   48px;
 
-  /* ─ Motion (SF-WEB-11) — durations/easing were previously repeated as
-     bare literals at every transition: site (.12s/.15s/.18s/.2s/.26s/
-     .28s/.32s scattered across .rail/.hero-mode-thumb/.search button/
-     .rail-btn[data-tip] etc.). Three buckets covering the values already
-     in use, so new + existing transitions can converge on one scale
-     instead of each picking its own number. ─ */
-  --ease-standard: cubic-bezier(.4,0,.2,1); /* already used by .hero-mode-thumb */
-  --duration-fast:  120ms; /* press feedback — .search button:active, .rail-btn[data-tip] */
-  --duration-base:  160ms; /* hover states — the most common transition length here */
-  --duration-slow:  280ms; /* panel/rail expand-style transitions */
+  /* ─ Motion (SF-WEB-11, converged by SF-WEB-47) — durations/easing were
+     scattered as bare literals at nearly every transition/animation site
+     across styles/ AND vis-adapter/physics.js|render.js AND several ui/*.js
+     network.fit()/focus()/moveTo() calls (each one hand-picking its own
+     number: .12s/.15s/.18s/.2s/.26s/.28s/.32s/.38s/.6s/.8s in CSS,
+     220/400/420/500/600/700ms in JS). One scale below, so every site
+     (existing or new) converges on the same handful of values instead of
+     inventing its own. --duration-base was 160ms — nudged 10ms to 150ms,
+     the value the vast majority of un-tokenized transitions already used;
+     imperceptible, and removes the last reason to keep writing ".15s"
+     instead of the token. JS reads these same custom properties live via
+     state.js's MOTION object (same readCssVar pattern COLOR already uses)
+     — one source of truth for both CSS and JS motion, and it re-reads on
+     every call so it can never fall out of sync with a theme/token edit. ─ */
+  --ease-standard:   cubic-bezier(.4,0,.2,1);   /* already used by .hero-mode-thumb */
+  --ease-out:        cubic-bezier(0,0,.58,1);   /* identical curve to the bare "ease-out" keyword it replaces — zero motion change, just token-sourced */
+  --ease-emphasized: cubic-bezier(.16,.9,.3,1); /* hero↔graph FLIP fallback (dom/transition.js) — a more pronounced curve for that one big scene morph */
+
+  --duration-fast:   120ms; /* press feedback — .search button:active, .rail-btn[data-tip] */
+  --duration-base:   150ms; /* hover states — the most common transition length here */
+  --duration-med:     200ms; /* input focus / status-width transitions */
+  --duration-slow:    280ms; /* panel/rail expand-style transitions */
+  --duration-slower:  320ms; /* modal/backdrop enter */
+  --duration-xslow:   380ms; /* hero-mode landing crossfade */
+  --duration-flight:  420ms; /* JS-only (state.js MOTION.flight): the RAF flyout's own duration (vis-adapter/physics.js) AND the hero↔graph FLIP fallback (dom/transition.js) — already identical values in both places before this ticket, now one token instead of two coincidentally-matching literals */
+  --duration-camera:  500ms; /* JS-only (state.js MOTION.camera): network.fit()/focus() view-settle moves */
+  --duration-xxslow:  600ms; /* big, deliberate camera/decorator moves (fit-to-cluster, focus-on-select, canvas-decorator fade) */
+  --duration-loop:    800ms; /* looping animations (loading spinner) */
+
+  /* Staggered-reveal offsets (landing modal's h1/chips/etc cascading in) —
+     same convergence, a much smaller scale since these are relative delays
+     between siblings, not standalone transition lengths. */
+  --stagger-1: 20ms;
+  --stagger-2: 50ms;
+  --stagger-3: 100ms;
 
   /* ─ Elevation scale (SF-WEB-11) — previously a single --shadow used
      everywhere from a 26px status-icon-btn to a full bento-tile panel.

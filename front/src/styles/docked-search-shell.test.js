@@ -76,8 +76,9 @@ describe("SF-WEB-43 docked search shell — one material, one source", () => {
       expect(dockedInput.replace(/\s+/g, ""), token).toContain(token);
       expect(pathInput.replace(/\s+/g, ""), token).toContain(token);
     }
-    expect(dockedInput).toMatch(/transition:\s*border-color\s*\.15s/);
-    expect(pathInput).toMatch(/transition:\s*border-color\s*\.15s/);
+    // [SF-WEB-47 motion] Was a bare ".15s" literal — now var(--duration-base).
+    expect(dockedInput).toMatch(/transition:\s*border-color\s*var\(--duration-base\)\s*var\(--ease-standard\)/);
+    expect(pathInput).toMatch(/transition:\s*border-color\s*var\(--duration-base\)\s*var\(--ease-standard\)/);
   });
 
   it("the docked search button matches .dock-btn's hover/active tokens, not its own literal", () => {

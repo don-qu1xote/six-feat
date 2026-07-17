@@ -24,7 +24,7 @@
 }
 .candidate-close-btn {
   border: 0; background: transparent; color: var(--mist); cursor: pointer;
-  font-size: 20px; line-height: 1; padding: 0 4px; transition: color .15s; flex-shrink: 0;
+  font-size: 20px; line-height: 1; padding: 0 4px; transition: color var(--duration-base) var(--ease-standard); flex-shrink: 0;
 }
 .candidate-close-btn:hover { color: var(--paper); }
 .candidate-list { display: flex; flex-direction: column; gap: var(--space-1); }
@@ -32,7 +32,7 @@
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-2) var(--space-3); border-radius: var(--r-sm);
   border: 1px solid var(--line); background: rgba(var(--panel-rgb),.60);
-  cursor: pointer; transition: border-color .15s, background .15s;
+  cursor: pointer; transition: border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
 .candidate-item:hover { border-color: var(--signal); background: rgba(94,230,197,.06); }
 .candidate-avatar {

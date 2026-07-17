@@ -5,7 +5,7 @@
 // Artist sidebar scope: Tracks / Role breakdown / "1 hop from seed" only
 // (centrality removed entirely; "Roles in this graph" section removed).
 // ════════════════════════════════════════════════════════════════════════════
-import { State, ROLE_ICON } from "../state/state.js";
+import { State, ROLE_ICON, MOTION, visAnimation } from "../state/state.js";
 import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import {
@@ -255,7 +255,7 @@ function syncObjectActionBar(node) {
   if (els.objActionFocus) {
     els.objActionFocus.onclick = () => {
       if (State.network) {
-        State.network.focus(node.id, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+        State.network.focus(node.id, { scale: 1.2, animation: visAnimation(MOTION.flight) });
       }
     };
   }
@@ -352,7 +352,7 @@ export function showArtistSidebar(nodeId) {
       if (targetId == null || String(targetId) === String(nodeId)) return;
       card.addEventListener("click", () => {
         if (State.network) {
-          State.network.focus(targetId, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+          State.network.focus(targetId, { scale: 1.2, animation: visAnimation(MOTION.flight) });
         }
         showArtistSidebar(targetId);
       });
@@ -465,7 +465,7 @@ export function showEdgeSidebar(edgeId, nameById) {
       const targetId = endpointIds[i];
       card.addEventListener("click", () => {
         if (State.network) {
-          State.network.focus(targetId, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+          State.network.focus(targetId, { scale: 1.2, animation: visAnimation(MOTION.flight) });
         }
         showArtistSidebar(targetId);
       });

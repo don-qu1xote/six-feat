@@ -8,7 +8,7 @@
 // "wire it all up into a live vis.Network" part: initNetwork/refreshNetwork/
 // resetCanvasToEmpty/clearGraphForPathSearch.
 // ════════════════════════════════════════════════════════════════════════════
-import { State, COLOR, PHYSICS_SETTLE_MS, resetGraphState } from "../state/state.js";
+import { State, COLOR, PHYSICS_SETTLE_MS, resetGraphState, MOTION, visAnimation } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { forceCloseSearchModal, hideArtistSidebar } from "../ui/index.js";
 import { runHeroGraphTransition } from "../dom/transition.js";
@@ -131,7 +131,9 @@ export function initNetwork(seedId, nameById) {
   // Все ноды выше уже зафиксированы на финальных позициях — стабилизации
   // ждать не от чего, сразу отключаем физику и подгоняем камеру.
   State.network.setOptions({ physics: { enabled: false } });
-  State.network.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+  // [SF-WEB-47] Was its own literal (400) and never checked
+  // prefers-reduced-motion — visAnimation(MOTION.flight) covers both.
+  State.network.fit({ animation: visAnimation(MOTION.flight) });
   clearTimeout(State.physicsTimer);
   State.physicsTimer = null;
 }
@@ -178,12 +180,14 @@ export function initPathNetwork(nameById, targets, fromPos) {
     ids: pathIds,
     fromPos,
     targets,
-    durationMs: 420,
+    durationMs: MOTION.flight,
     onDone: () => {
       if (!State.network) return;
+      // [SF-WEB-47] Was its own literal (500) and never checked
+      // prefers-reduced-motion — visAnimation(MOTION.camera) covers both.
       State.network.fit({
         nodes: pathIds,
-        animation: { duration: 500, easingFunction: "easeInOutQuad" }
+        animation: visAnimation(MOTION.camera)
       });
       const fixAll = State.graphNodes.map(n => ({ id: n.id, fixed: { x: true, y: true } }));
       if (State.nodesDS) State.nodesDS.update(fixAll);

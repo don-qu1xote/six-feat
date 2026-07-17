@@ -186,6 +186,23 @@ describe("SF-WEB-40 design-system CSS bundle", () => {
   });
 });
 
+// [SF-WEB-47 motion] durations/easing/stagger are all defined as tokens in
+// :root — the single source physics.js/render.js's MOTION getters and every
+// CSS transition/animation now read from, instead of scattered literals.
+describe("SF-WEB-47 motion tokens", () => {
+  it("defines every duration/ease/stagger token the motion system relies on", () => {
+    for (const token of [
+      "--ease-standard", "--ease-out", "--ease-emphasized",
+      "--duration-fast", "--duration-base", "--duration-med", "--duration-slow",
+      "--duration-slower", "--duration-xslow", "--duration-flight",
+      "--duration-camera", "--duration-xxslow", "--duration-loop",
+      "--stagger-1", "--stagger-2", "--stagger-3",
+    ]) {
+      expect(css, `token ${token} missing`).toContain(token);
+    }
+  });
+});
+
 function rule(css, selector) {
   const idx = css.indexOf(`${selector} {`);
   if (idx === -1) return null;

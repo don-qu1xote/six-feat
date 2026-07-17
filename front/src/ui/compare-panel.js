@@ -23,7 +23,7 @@
 // to reach beyond the currently-loaded graph (e.g. artists never rendered
 // together), which this mode doesn't need.
 // ════════════════════════════════════════════════════════════════════════════
-import { State } from "../state/state.js";
+import { State, MOTION, visAnimation } from "../state/state.js";
 import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { closePathPanel } from "./modals.js";
@@ -73,7 +73,9 @@ export function closeComparePanel() {
 function _wireActivate(el, targetId) {
   const onActivate = () => {
     if (State.network) {
-      State.network.focus(targetId, { scale: 1.2, animation: { duration: 400, easingFunction: "easeInOutQuad" } });
+      // [SF-WEB-47 motion] Was its own literal (400) and never checked
+      // prefers-reduced-motion — visAnimation(MOTION.flight) covers both.
+      State.network.focus(targetId, { scale: 1.2, animation: visAnimation(MOTION.flight) });
     }
     showArtistSidebar(targetId);
   };

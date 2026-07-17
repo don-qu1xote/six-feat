@@ -16,7 +16,7 @@
 // before, just calling closeOtherDockedPanels() instead of naming the
 // other two's close functions by hand.
 // ════════════════════════════════════════════════════════════════════════════
-import { State } from "../state/state.js";
+import { State, MOTION, visAnimation } from "../state/state.js";
 import { debounce, escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els, $ } from "../dom/dom.js";
 import { setFocus } from "../vis-adapter/index.js";
@@ -246,7 +246,9 @@ function _nsSelect(item) {
   const id = item.getAttribute("data-id");
   closeNodeSearch();
   if (!State.network) return;
-  State.network.focus(id, { scale: 1.5, animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+  // [SF-WEB-47 motion] Was its own literal (600) and never checked
+  // prefers-reduced-motion — visAnimation(MOTION.xxslow) covers both.
+  State.network.focus(id, { scale: 1.5, animation: visAnimation(MOTION.xxslow) });
   setFocus(id);
   showArtistSidebar(id);
 }

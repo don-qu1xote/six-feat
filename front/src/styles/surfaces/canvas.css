@@ -14,15 +14,15 @@
    ставится/снимается вместе с открытием/закрытием search-modal. */
 .app-canvas.search-open #network {
   filter: blur(var(--blur-modal)) brightness(0.55);
-  transition: filter .32s ease;
+  transition: filter var(--duration-slower) var(--ease-standard);
   pointer-events: none;
 }
-#network { transition: filter .32s ease; }
+#network { transition: filter var(--duration-slower) var(--ease-standard); }
 
 .canvas-decorator {
   position: absolute; inset: 0; z-index: var(--z-graph-overlay);
   opacity: 1; pointer-events: none;
-  transition: opacity .6s ease;
+  transition: opacity var(--duration-xxslow) var(--ease-standard);
 }
 .canvas-decorator.is-hidden { opacity: 0; }
 .canvas-decorator svg { width: 100%; height: 100%; display: block; }

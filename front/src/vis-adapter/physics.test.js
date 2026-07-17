@@ -229,3 +229,53 @@ describe("mergeNetwork — expand lands nodes exactly on targets, no live physic
     expect(setTimeoutSpy).not.toHaveBeenCalled();
   });
 });
+
+// [SF-WEB-47 motion] mergeNetwork's flyout used to hardcode durationMs:420 —
+// now MOTION.flight, read live from --duration-flight. Proven behaviorally
+// (not just by inspecting the source): shrink the token to something the
+// old hardcoded 420ms would never finish within, and confirm the flyout
+// completes anyway.
+describe("mergeNetwork — flyout duration comes from MOTION.flight, not a hardcoded literal", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false })); // real RAF flyout, not the reduced-motion shortcut
+    State._expandAnimId = null;
+    State.physicsTimer = null;
+
+    const seedId = 1, poleId = 2, leafA = 100;
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleId]);
+    State.graphNodes = [
+      { id: seedId, isSeed: true, _isNew: false },
+      { id: poleId, isSeed: false, _isNew: false },
+      { id: leafA, isSeed: false, _isNew: true },
+    ];
+    State.graphEdges = [
+      { id: `${seedId}_${poleId}`, from: seedId, to: poleId, weight: 1 },
+      { id: `${poleId}_${leafA}`, from: poleId, to: leafA, weight: 1 },
+    ];
+    State.nodesDS = { getIds: () => [seedId, poleId], add: vi.fn(), update: vi.fn() };
+    State.edgesDS = { getIds: () => [], add: vi.fn(), update: vi.fn() };
+    State.network = {
+      body: { nodes: {} },
+      setOptions: vi.fn(), moveNode: vi.fn(), moveTo: vi.fn(), redraw: vi.fn(),
+    };
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.documentElement.style.removeProperty("--duration-flight");
+  });
+
+  it("finishes (fires onDone's fixAll) within a token-shrunk duration the old hardcoded 420ms never would have", () => {
+    document.documentElement.style.setProperty("--duration-flight", "50ms");
+    mergeNetwork({}, {});
+
+    flushFrame(0);   // t0
+    flushFrame(60);  // elapsed=60ms > the 50ms token -> pct clamps to 1, flyout completes;
+                      // with the old hardcoded 420ms this would only be 14% through.
+    const fixCall = State.nodesDS.update.mock.calls
+      .map(([batch]) => batch)
+      .find(batch => Array.isArray(batch) && batch.length && batch.every(u => u.fixed));
+    expect(fixCall).toBeTruthy();
+  });
+});

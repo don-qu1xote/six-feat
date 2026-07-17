@@ -13,7 +13,7 @@
   font-family: "Space Mono", monospace; font-size: var(--text-xs);
   color: var(--mist); background: transparent;
   border: 1px solid var(--line); border-radius: 999px; padding: var(--space-1) var(--space-3);
-  cursor: pointer; transition: color .15s, border-color .15s, background .15s;
+  cursor: pointer; transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
 .chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
 
@@ -37,7 +37,7 @@
   border: 1px solid var(--line); border-radius: 999px; background: rgba(var(--panel-rgb),.8);
   color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs);
   letter-spacing: .04em; padding: var(--space-2) var(--space-3);
-  transition: color .15s, border-color .15s, background .15s;
+  transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
 .include-roles-summary::-webkit-details-marker { display: none; }
 .include-roles-summary .ri { width: 14px; height: 14px; display: flex; flex-shrink: 0; }
@@ -49,7 +49,7 @@
   display: flex; align-items: center; gap: var(--space-2);
   border: 1px solid var(--line); border-radius: 999px; background: rgba(var(--panel-rgb),.8);
   color: var(--mist); font: inherit; font-size: var(--text-xs); padding: var(--space-2) var(--space-3);
-  cursor: pointer; transition: color .15s, border-color .15s, background .15s;
+  cursor: pointer; transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
 .role-filter-btn .ri { width: 14px; height: 14px; display: flex; flex-shrink: 0; }
 .role-filter-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -116,11 +116,11 @@
   grid-area: 1 / 1;
   display: flex; flex-direction: column; align-items: center; gap: var(--space-5);
   opacity: 0; transform: translateY(8px); visibility: hidden; pointer-events: none;
-  transition: opacity .26s ease, transform .26s ease, visibility 0s linear .26s;
+  transition: opacity var(--duration-slow) var(--ease-standard), transform var(--duration-slow) var(--ease-standard), visibility 0s linear var(--duration-slow);
 }
 .hero-mode-panel.is-active {
   opacity: 1; transform: translateY(0); visibility: visible; pointer-events: auto;
-  transition: opacity .26s ease .04s, transform .26s ease .04s, visibility 0s linear 0s;
+  transition: opacity var(--duration-slow) var(--ease-standard) var(--stagger-2), transform var(--duration-slow) var(--ease-standard) var(--stagger-2), visibility 0s linear 0s;
 }
 /* БАГ (hover/double-click "не долетают" до канвы в ограниченной области
    по центру графа, где раньше был hero-поиск): .hero-mode-panel.is-active
@@ -176,7 +176,7 @@
 .hero-connect-fields .path-input {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
   color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-4) var(--space-5);
-  width: 100%; outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
+  width: 100%; outline: none; transition: border-color var(--duration-med) var(--ease-standard), box-shadow var(--duration-med) var(--ease-standard), background var(--duration-med) var(--ease-standard);
 }
 .hero-connect-fields .path-input:focus {
   background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(var(--signal-rgb), .14);
@@ -189,7 +189,7 @@
   border: 0; border-radius: var(--r-md); padding: var(--space-4) var(--space-6);
   font: inherit; font-weight: 700; font-size: var(--text-base); color: var(--on-accent); cursor: pointer;
   background: linear-gradient(100deg, var(--signal), var(--pulse));
-  transition: transform .12s, filter .18s; white-space: nowrap;
+  transition: transform var(--duration-fast) var(--ease-standard), filter var(--duration-med) var(--ease-standard); white-space: nowrap;
 }
 .hero-connect-run:hover { filter: brightness(1.06); }
 .hero-connect-run:active { transform: translateY(1px); }
@@ -219,7 +219,7 @@
   display: inline-flex; align-items: center; gap: var(--space-1);
   border: 1px solid var(--line); border-radius: 999px; padding: var(--space-1) var(--space-3);
   color: var(--paper); text-decoration: none; font-weight: 600;
-  transition: border-color .15s, background .15s;
+  transition: border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
 .auth-btn:hover { border-color: var(--signal); background: rgba(94,230,197,.08); }
 .auth-user { display: flex; align-items: center; gap: var(--space-3); }

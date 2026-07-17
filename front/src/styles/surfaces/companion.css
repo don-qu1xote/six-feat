@@ -76,7 +76,7 @@
 }
 .path-close {
   border: 0; background: transparent; color: var(--mist); cursor: pointer;
-  font-size: 16px; padding: 0 2px; line-height: 1; transition: color .15s;
+  font-size: 16px; padding: 0 2px; line-height: 1; transition: color var(--duration-base) var(--ease-standard);
 }
 .path-close:hover { color: var(--paper); }
 
@@ -92,7 +92,7 @@
   border: 1px solid var(--line); background: var(--panel-2); color: var(--mist);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   box-shadow: var(--elevation-1);
-  transition: color .15s, border-color .15s, background .15s;
+  transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
 .path-swap-btn .ri { width: 13px; height: 13px; display: flex; flex-shrink: 0; }
 .path-swap-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
@@ -121,7 +121,7 @@
 .compare-pair-item {
   display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
   min-width: 0; max-width: 40%; cursor: pointer; border-radius: var(--r-sm);
-  padding: var(--space-1); transition: background .15s;
+  padding: var(--space-1); transition: background var(--duration-base) var(--ease-standard);
 }
 .compare-pair-item:hover, .compare-pair-item:focus-visible { background: rgba(var(--panel-rgb), 0.8); }
 .compare-pair-avatar {
@@ -142,7 +142,7 @@
 .compare-item {
   display: flex; align-items: center; gap: var(--space-2);
   padding: var(--space-2); border-radius: var(--r-sm);
-  cursor: pointer; transition: background .15s;
+  cursor: pointer; transition: background var(--duration-base) var(--ease-standard);
 }
 .compare-item:hover, .compare-item:focus-visible { background: rgba(var(--panel-rgb), 0.8); }
 .compare-item-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
@@ -152,7 +152,7 @@
 .path-input {
   background: rgba(var(--panel-rgb),.9); border: 1px solid var(--line); border-radius: var(--r-sm);
   color: var(--paper); font: inherit; font-size: var(--text-sm); padding: var(--space-2) var(--space-3); outline: none;
-  width: 100%; transition: border-color .15s;
+  width: 100%; transition: border-color var(--duration-base) var(--ease-standard);
 }
 .path-input:focus { border-color: var(--signal); }
 .path-input::placeholder { color: #5C677C; }
@@ -211,7 +211,7 @@
 .path-clear-btn {
   border: 0; background: transparent; color: var(--mist); cursor: pointer;
   font: inherit; font-size: var(--text-xs); padding: 0 var(--space-2);
-  flex-shrink: 0; transition: color .15s;
+  flex-shrink: 0; transition: color var(--duration-base) var(--ease-standard);
 }
 .path-clear-btn:hover { color: var(--paper); }
 
@@ -260,7 +260,7 @@
 .hop-songs {
   font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
   margin-top: var(--space-1); line-height: 1.5;
-  cursor: pointer; border-radius: var(--r-sm); transition: background .15s, color .15s;
+  cursor: pointer; border-radius: var(--r-sm); transition: background var(--duration-base) var(--ease-standard), color var(--duration-base) var(--ease-standard);
 }
 .hop-songs:hover, .hop-songs:focus-visible {
   background: rgba(var(--signal-rgb), .08); color: var(--paper); outline: none;
@@ -318,13 +318,13 @@
   left: 0;
   background: linear-gradient(to right, var(--panel-2), transparent);
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity var(--duration-med) var(--ease-standard);
 }
 .path-chain-fade--right {
   right: 0;
   background: linear-gradient(to left, var(--panel-2), transparent);
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity var(--duration-med) var(--ease-standard);
 }
 .path-chain-container:hover .path-chain-fade { opacity: 1; }
 
@@ -352,7 +352,7 @@
      имени. Фиксированная width делает все блоки строго одного
      размера. */
   width: 92px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard);
   cursor: default;
 }
 .path-node-card:hover {
@@ -399,7 +399,7 @@
   flex-shrink: 0;
   min-width: 72px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  transition: background var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
 }
 .path-edge-connector:hover {
   background: rgba(var(--signal-rgb), 0.12);
@@ -536,7 +536,7 @@
 .sidebar-avatar {
   width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
   border: 2px solid var(--line);
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color var(--duration-med) var(--ease-standard), box-shadow var(--duration-med) var(--ease-standard);
 }
 /* [SF-WEB-44] Seed glow — toggled by ui/sidebar.js::showArtistSidebar
    (node.isSeed), cleared for edge context (a two-artist combined avatar
@@ -556,7 +556,7 @@
 }
 .sidebar-close {
   border: 0; background: transparent; color: var(--mist); cursor: pointer;
-  font-size: 18px; padding: 0 4px; line-height: 1; flex-shrink: 0; transition: color .15s;
+  font-size: 18px; padding: 0 4px; line-height: 1; flex-shrink: 0; transition: color var(--duration-base) var(--ease-standard);
 }
 .sidebar-close:hover { color: var(--paper); }
 

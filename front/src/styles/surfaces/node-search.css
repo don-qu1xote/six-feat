@@ -53,7 +53,7 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: var(--space-2) var(--space-3); cursor: pointer;
   border-radius: var(--r-md); border: 1px solid var(--line); background: rgba(var(--panel-rgb),.4);
-  transition: background .12s, border-color .12s;
+  transition: background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
 }
 /* [SF-WEB-43] var(--signal-rgb) (tokens.css) replaces the literal
    rgba(94,230,197,...) — same fix as .ac-item/.dock-btn, so every

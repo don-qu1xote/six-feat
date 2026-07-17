@@ -13,6 +13,7 @@ import { els } from "../dom/dom.js";
 import {
   updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles,
   buildShadowNodes, waitForImages, clearCanvas, goHome,
+  fitView, focusSeed, zoomIn, zoomOut,
 } from "./canvas-controls.js";
 import { placeholderFor } from "../state/helpers.js";
 import { showToast } from "./toast.js";
@@ -502,5 +503,53 @@ describe("setupKeyboard — Escape and Compare mode", () => {
 
     expect(exitCompareMode).not.toHaveBeenCalled();
     expect(isPathPanelOpen).toHaveBeenCalled();
+  });
+});
+
+// [SF-WEB-47 motion] fitView/focusSeed/zoomIn/zoomOut used to hardcode their
+// own {duration, easingFunction} literal each and never checked
+// prefers-reduced-motion at all — visAnimation(MOTION.x) now covers both.
+describe("fitView / focusSeed / zoomIn / zoomOut — motion tokens + reduced-motion", () => {
+  beforeEach(() => {
+    State.network = {
+      fit: vi.fn(),
+      focus: vi.fn(),
+      moveTo: vi.fn(),
+      getScale: vi.fn(() => 1),
+    };
+    State.currentSeedId = 42;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fitView passes a real {duration, easingFunction} animation normally", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+    fitView();
+    expect(State.network.fit).toHaveBeenCalledWith({
+      animation: { duration: 500, easingFunction: "easeInOutQuad" },
+    });
+  });
+
+  it("fitView passes animation:false under prefers-reduced-motion", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    fitView();
+    expect(State.network.fit).toHaveBeenCalledWith({ animation: false });
+  });
+
+  it("focusSeed passes animation:false under prefers-reduced-motion", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    focusSeed();
+    expect(State.network.focus).toHaveBeenCalledWith(42, { scale: 1.2, locked: false, animation: false });
+  });
+
+  it("zoomIn/zoomOut pass animation:false under prefers-reduced-motion", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    zoomIn();
+    zoomOut();
+    for (const [call] of State.network.moveTo.mock.calls) {
+      expect(call.animation).toBe(false);
+    }
   });
 });

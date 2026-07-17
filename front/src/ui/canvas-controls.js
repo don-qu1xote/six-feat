@@ -3,7 +3,7 @@
 //                         shortcuts, seed card + help overlay, role-filter
 //                         toggles, clearCanvas (ТЗ-D8), updateStatus
 // ════════════════════════════════════════════════════════════════════════════
-import { State } from "../state/state.js";
+import { State, MOTION, visAnimation } from "../state/state.js";
 import { placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist, showMoreCollaborations } from "../api/api.js";
@@ -166,25 +166,28 @@ export function setupHelpOverlay() {
 // Canvas controls & navigation
 // ════════════════════════════════════════════════════════════════════════════
 
+// [SF-WEB-47] Every network.fit()/focus()/moveTo() below used to hardcode
+// its own {duration, easingFunction} literal and never checked
+// prefers-reduced-motion at all — visAnimation(MOTION.x) covers both.
 export function fitView() {
-  if (State.network) State.network.fit({ animation: { duration: 500, easingFunction: "easeInOutQuad" } });
+  if (State.network) State.network.fit({ animation: visAnimation(MOTION.camera) });
 }
 
 export function focusSeed() {
   if (State.network && State.currentSeedId != null) {
-    State.network.focus(State.currentSeedId, { scale: 1.2, locked: false, animation: { duration: 500, easingFunction: "easeInOutQuad" } });
+    State.network.focus(State.currentSeedId, { scale: 1.2, locked: false, animation: visAnimation(MOTION.camera) });
     clearFocus();
   }
 }
 
 export function zoomIn() {
   if (!State.network) return;
-  State.network.moveTo({ scale: State.network.getScale() * 1.25, animation: { duration: 220, easingFunction: "easeInOutQuad" } });
+  State.network.moveTo({ scale: State.network.getScale() * 1.25, animation: visAnimation(MOTION.med) });
 }
 
 export function zoomOut() {
   if (!State.network) return;
-  State.network.moveTo({ scale: State.network.getScale() * 0.8, animation: { duration: 220, easingFunction: "easeInOutQuad" } });
+  State.network.moveTo({ scale: State.network.getScale() * 0.8, animation: visAnimation(MOTION.med) });
 }
 
 // ════════════════════════════════════════════════════════════════════════════

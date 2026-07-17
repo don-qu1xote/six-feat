@@ -42,7 +42,7 @@
 .ac-item {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-3) var(--space-4); cursor: pointer;
-  transition: background .12s; border-bottom: 1px solid rgba(var(--line-rgb), .3);
+  transition: background var(--duration-fast) var(--ease-standard); border-bottom: 1px solid rgba(var(--line-rgb), .3);
 }
 .ac-item:last-child { border-bottom: none; }
 /* [SF-WEB-43] var(--signal-rgb) (tokens.css) replaces the literal

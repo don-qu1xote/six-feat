@@ -7,7 +7,7 @@
 // Expand/path layout placement math («одуванчики» + «круги Эйлера») lives in
 // layout.js; this file only consumes its output (targets/fromPos maps).
 // ════════════════════════════════════════════════════════════════════════════
-import { State, PHYSICS_SETTLE_MS } from "../state/state.js";
+import { State, PHYSICS_SETTLE_MS, MOTION, prefersReducedMotion, visAnimation } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
 import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
@@ -35,17 +35,13 @@ const LARGE_GRAPH_SETTLE_MS = 500;
 
 // SF-WEB-09: мягкое появление новых нод — короткий scale/opacity поверх уже
 // готовой ноды (не opacity:0 в данных, см. предупреждение в visuals.js о
-// потере circularImage при opacity:0 → 1 partial-update).
-const ENTRANCE_MS            = 220;
+// потере circularImage при opacity:0 → 1 partial-update). Read live from
+// MOTION.med at point of use (below) rather than cached in a module-level
+// const — was its own literal (220ms) before [SF-WEB-47]; MOTION.med is the
+// closest converged bucket (20ms/9% shorter, imperceptible for a
+// sub-animation that's already racing the much longer flyout).
 const ENTRANCE_START_SCALE   = 0.55;
 const ENTRANCE_START_OPACITY = 0.35;
-
-// SF-WEB-09: prefers-reduced-motion → мгновенное размещение вместо RAF-полёта.
-function _prefersReducedMotion() {
-  return typeof window !== "undefined"
-    && typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 export function scheduleFreeze(ms) {
   clearTimeout(State.physicsTimer);
@@ -87,7 +83,9 @@ export function _fitToExpandedCluster() {
   try {
     State.network.fit({
       nodes: nodeIds,
-      animation: { duration: 600, easingFunction: "easeInOutQuad" }
+      // [SF-WEB-47] Was a bare {duration:600,...} literal that never
+      // checked prefers-reduced-motion at all — visAnimation() covers both.
+      animation: visAnimation(MOTION.xxslow)
     });
   } catch(e) { /* ignore */ }
 }
@@ -184,7 +182,7 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     ids: [...targets.keys()],
     fromPos,
     targets,
-    durationMs: 420,
+    durationMs: MOTION.flight,
     entranceTargets,
     onDone: () => {
       // [SF-WEB-29] Раньше здесь снимался fixed со всех нод и на
@@ -233,7 +231,11 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
         net.moveTo({
           position: { x: 0, y: 0 },
           scale:    Math.max(0.14, Math.min(sc, 1.25)),
-          animation: { duration: 700, easingFunction: "easeInOutQuad" }
+          // [SF-WEB-47] Was its own literal (700) and never checked
+          // prefers-reduced-motion — visAnimation(MOTION.xxslow) covers
+          // both (snapped 100ms/14% into the same "big deliberate camera
+          // move" bucket _fitToExpandedCluster above already uses).
+          animation: visAnimation(MOTION.xxslow)
         });
       } catch (e) { /* ignore */ }
     }
@@ -302,7 +304,7 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, entrance
 
   // SF-WEB-09: reduced motion — размещаем все ноды сразу на targets и сразу
   // применяем финальные size/opacity новых нод, без RAF-полёта/появления.
-  if (_prefersReducedMotion() || !ids.length) {
+  if (prefersReducedMotion() || !ids.length) {
     for (const id of ids) {
       const t = targets.get(id);
       if (t && net) net.moveNode(id, t.x, t.y);
@@ -361,7 +363,7 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, entrance
     // источник микро-дёрга при быстрой анимации).
 
     if (!entranceDone) {
-      const ePct = Math.min(elapsed / ENTRANCE_MS, 1);
+      const ePct = Math.min(elapsed / MOTION.med, 1);
       const updates = [];
       for (const [id, v] of entranceTargets) {
         updates.push({

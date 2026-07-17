@@ -23,7 +23,10 @@ const COLOR_DEFAULTS = {
   ink:    "#0B0E14"
 };
 
-function readCssVar(name, fallback) {
+// [SF-WEB-47] Exported so dom/transition.js can read --ease-emphasized the
+// same live way COLOR/MOTION read their own tokens, instead of hardcoding
+// the cubic-bezier() string a second time.
+export function readCssVar(name, fallback) {
   if (typeof document === "undefined" || !document.documentElement) return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || fallback;
@@ -35,6 +38,69 @@ for (const key of Object.keys(COLOR_DEFAULTS)) {
     get: () => readCssVar(`--${key}`, COLOR_DEFAULTS[key]),
     enumerable: true,
   });
+}
+
+// [SF-WEB-47] MOTION — same live-getter-onto-CSS-variable pattern as COLOR
+// above, for the duration tokens (styles/tokens.css). Every
+// network.fit()/focus()/moveTo()/RAF-flyout duration used to be its own
+// hardcoded number, independently picked in physics.js/render.js/several
+// ui/*.js call sites (220/400/420/500/600/700ms) — the exact same
+// "scattered literal" problem tokens.css's own Motion section already
+// solved for CSS. MOTION reads the CSS custom properties directly rather
+// than duplicating their values as JS constants, so a token edit in one
+// place (tokens.css) moves every consumer, CSS or JS, together — it can
+// never fall out of sync the way two independent numbers could.
+const MOTION_DEFAULTS = {
+  fast:   120, base: 150, med: 200, slow: 280, slower: 320,
+  xslow:  380, flight: 420, camera: 500, xxslow: 600, loop: 800,
+};
+
+function readCssVarMs(name, fallbackMs) {
+  if (typeof document === "undefined" || !document.documentElement) return fallbackMs;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!raw) return fallbackMs;
+  const n = parseFloat(raw);
+  if (Number.isNaN(n)) return fallbackMs;
+  return raw.endsWith("ms") ? n : n * 1000; // tokens.css durations are all "Nms", but tolerate "Ns" too
+}
+
+export const MOTION = {};
+for (const key of Object.keys(MOTION_DEFAULTS)) {
+  Object.defineProperty(MOTION, key, {
+    get: () => readCssVarMs(`--duration-${key}`, MOTION_DEFAULTS[key]),
+    enumerable: true,
+  });
+}
+
+// vis.js's own animation.easingFunction is a fixed keyword string (its
+// internal easing table), not a CSS easing value — it can't read
+// --ease-standard's cubic-bezier() the way MOTION reads --duration-*, so
+// this stays a plain exported constant instead of a live getter. Centralized
+// here (instead of the literal "easeInOutQuad" typed out at every
+// network.fit()/focus()/moveTo() call site) purely to kill the copy-pasted-
+// string flavor of the same "scattered literal" problem.
+export const VIS_EASING = "easeInOutQuad";
+
+// [SF-WEB-47] Single shared prefers-reduced-motion check — previously
+// reimplemented independently in vis-adapter/physics.js and
+// dom/transition.js (two copies of the same matchMedia query). vis.js
+// network animations (fit/focus/moveTo) didn't check it AT ALL before this
+// ticket — see visAnimation() below, which is what actually wires this into
+// every one of those call sites.
+export function prefersReducedMotion() {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// Builds the {duration, easingFunction} object every network.fit()/
+// focus()/moveTo() call passes as its `animation` option — or `false` (vis.js's
+// own "skip the animation entirely" value) under prefers-reduced-motion, so
+// the camera/view jumps straight to its destination in one frame instead of
+// animating there. `durationMs` is meant to be one of MOTION's own values
+// (e.g. `visAnimation(MOTION.camera)`), not a fresh literal.
+export function visAnimation(durationMs) {
+  return prefersReducedMotion() ? false : { duration: durationMs, easingFunction: VIS_EASING };
 }
 
 // Все линии сплошные — dashes при большом числе рёбер нечитаемы

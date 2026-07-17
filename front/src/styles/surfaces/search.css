@@ -15,7 +15,7 @@
      над канвасом, а не полупрозрачная плёнка, сквозь которую граф
      продолжает отвлекать внимание. */
   background: var(--scrim-modal);
-  opacity: 1; transition: opacity .32s ease, backdrop-filter .32s ease, background .32s ease;
+  opacity: 1; transition: opacity var(--duration-slower) var(--ease-standard), backdrop-filter var(--duration-slower) var(--ease-standard), background var(--duration-slower) var(--ease-standard);
   backdrop-filter: blur(var(--blur-modal));
 }
 .search-modal h1,
@@ -24,16 +24,16 @@
 .search-modal .hero-mode-stage,
 .search-modal .chips,
 .search-modal .auth-bar {
-  transition: opacity .38s ease, transform .38s ease;
+  transition: opacity var(--duration-xslow) var(--ease-standard), transform var(--duration-xslow) var(--ease-standard);
 }
 .search-modal.is-closed { opacity: 0; pointer-events: none; backdrop-filter: blur(0); }
-.search-modal.is-closed h1       { opacity: 0; transform: translateY(-16px); transition-delay: .02s; }
-.search-modal.is-closed .include-roles-row { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
-.search-modal.is-closed .hero-mode-switch  { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
-.search-modal.is-closed .hero-mode-stage   { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
-.search-modal.is-closed .chips   { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
+.search-modal.is-closed h1       { opacity: 0; transform: translateY(-16px); transition-delay: var(--stagger-1); }
+.search-modal.is-closed .include-roles-row { opacity: 0; transform: translateY(-10px); transition-delay: var(--stagger-2); }
+.search-modal.is-closed .hero-mode-switch  { opacity: 0; transform: translateY(-10px); transition-delay: var(--stagger-2); }
+.search-modal.is-closed .hero-mode-stage   { opacity: 0; transform: translateY(-10px); transition-delay: var(--stagger-2); }
+.search-modal.is-closed .chips   { opacity: 0; transform: translateY(-10px); transition-delay: var(--stagger-2); }
 .search-modal.is-closed .auth-bar{ opacity: 0; transform: translateY(8px);  }
-.search-modal.is-closed .search-wrap { transition: opacity .3s ease .1s; }
+.search-modal.is-closed .search-wrap { transition: opacity var(--duration-slower) var(--ease-standard) var(--stagger-3); }
 .search-modal.is-closed:not(.is-morphing) .search-wrap { opacity: 0; }
 /* is-first-visit: пустой канвас без графа за модалкой — усиленное
    затемнение здесь не нужно, отделять нечего. */
@@ -146,7 +146,7 @@
 .search-modal.docked .search input {
   padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
   border-radius: var(--r-sm); background: rgba(var(--panel-rgb),.9);
-  transition: border-color .15s;
+  transition: border-color var(--duration-base) var(--ease-standard);
 }
 .search-modal.docked .search input:focus { border-color: var(--signal); background: rgba(var(--panel-rgb),.9); box-shadow: none; }
 /* [SF-WEB-43] Matches .dock-btn's (canvas-controls.css) declaration —
@@ -158,7 +158,7 @@
 .search-modal.docked .search button {
   background: rgba(var(--panel-rgb),.80); color: var(--paper); font-weight: 600;
   padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--r-sm);
-  transition: color .15s, border-color .15s, background .15s;
+  transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
 .search-modal.docked .search button:hover { filter: none; color: var(--paper); border-color: var(--pulse); background: var(--hover-tint); }
 
@@ -184,7 +184,7 @@
   flex: 1; min-width: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
   color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-4) var(--space-5);
-  outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
+  outline: none; transition: border-color var(--duration-med) var(--ease-standard), box-shadow var(--duration-med) var(--ease-standard), background var(--duration-med) var(--ease-standard);
 }
 .search input::placeholder { color: #5C677C; }
 .search input:focus { background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(94,230,197,.14); }
@@ -192,7 +192,7 @@
   border: 0; border-radius: var(--r-md); padding: 0 var(--space-6);
   font: inherit; font-weight: 700; color: var(--on-accent); cursor: pointer;
   background: linear-gradient(100deg, var(--signal), var(--pulse));
-  transition: transform .12s, filter .18s; white-space: nowrap; font-size: var(--text-base);
+  transition: transform var(--duration-fast) var(--ease-standard), filter var(--duration-med) var(--ease-standard); white-space: nowrap; font-size: var(--text-base);
 }
 .search button:hover { filter: brightness(1.06); }
 .search button:active { transform: translateY(1px); }
