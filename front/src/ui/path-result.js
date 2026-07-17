@@ -20,11 +20,11 @@ import {
   cacheNodeCollaborations, computeNodeDominantRoles, refreshNodeDimBorders
 } from "../graph.js";
 import { highlightPath } from "../api/analytics-client.js";
-import { showToast } from "./toast.js";
+import { showToast, showRetryToast } from "./toast.js";
 import { updateStatus } from "./canvas-controls.js";
 import { showEdgeSidebarByPathEdgeId } from "./sidebar.js";
 import { apiFetch, isTransientStatus, messageForStatus, redirectToLogin } from "../api/net.js";
-import { renderLoadingState, renderErrorState } from "./canvas-states.js";
+import { showLoading } from "./loading.js";
 
 function wrapRoleIconGraph(roleIconUseString) {
   // For graph tooltips, edge displays: compact 20×20
@@ -35,18 +35,23 @@ function wrapRoleIconGraph(roleIconUseString) {
 // TASK 1: SERVER PATH ENDPOINT
 // ════════════════════════════════════════════════════════════════════════════
 
-// targetEls.resultEl lets callers other than the .path-panel (e.g. the
-// landing hero's own find-path block, which isn't inside .path-panel and
-// has no reason to be — it renders straight into the canvas the same way
-// a regular hero search does) show loading/error state in their own
-// element instead of the panel's. targetEls.chainEl likewise lets callers
-// render the hop chain into their own container (e.g. the hero's Connect
-// panel, IDEA-41) via the same renderHopChain markup/CSS instead of the
-// rail's #hop-chain. Both default to the .path-panel's own elements so the
-// existing call sites (setupPathPanel) are unaffected.
-export async function runServerPath(fromParam, toParam, targetEls = {}) {
-  const resultEl = targetEls.resultEl ?? els.pathResult;
-  const chainEl  = targetEls.chainEl  ?? els.hopChain;
+// [fix] Was renderLoadingState/renderErrorState into a resultEl embedded
+// inside the caller's own panel (.path-result) — reported as the path
+// search process feeling "bolted into the window", unlike regular artist
+// search, which never shows its loading/error state inside the hero
+// search box: it always uses the canvas-wide #loading overlay
+// (ui/loading.js::showLoading) for loading and a toast
+// (ui/toast.js::showToast/showRetryToast) for errors. runServerPath now
+// goes through the exact same two mechanisms, so both search flows read
+// as one consistent language instead of two. opts.chainEl still lets
+// callers other than .path-panel (the hero Connect panel) render the hop
+// chain into their own container via the same renderHopChain markup/CSS
+// — that part of the panel (the actual RESULT, not the search process)
+// stays inline, unchanged. opts.loadingMessage lets each caller phrase
+// the overlay's text with the actual From/To names it already has on hand.
+export async function runServerPath(fromParam, toParam, opts = {}) {
+  const chainEl = opts.chainEl ?? els.hopChain;
+  const loadingMessage = opts.loadingMessage;
 
   if (State.pathInFlight) {
     // ТЗ-4: abort any in-flight path request before starting a new one.
@@ -56,9 +61,7 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
   const signal = State._pathAbortController.signal;
   State.pathInFlight = true;
 
-  // [SF-WEB-19] Unified loading state — same .spinner markup the canvas-wide
-  // overlay uses, via ui/canvas-states.js.
-  if (resultEl) renderLoadingState(resultEl, "Finding path…");
+  showLoading(true, null, loadingMessage);
   if (chainEl) chainEl.innerHTML = "";
 
   const roles = [...State.activeFilters].join(",");
@@ -88,14 +91,12 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
         msg = messageForStatus(res.status, {
           503: "Genius is temporarily unavailable — please try again in a minute, recovery is underway.",
         });
-        // [SF-WEB-19] Retry lives on the unified error card itself now —
-        // no separate toast duplicating the same action.
-        retry = () => runServerPath(fromParam, toParam, targetEls);
+        retry = () => runServerPath(fromParam, toParam, opts);
       } else if (data?.error === "resolve_failed" && msg.includes("ambiguous")) {
         msg = msg.replace(/^'(from|to)': /, "") +
               " — please select an artist from the suggestions dropdown.";
       }
-      if (resultEl) renderErrorState(resultEl, msg, retry);
+      retry ? showRetryToast(msg, retry) : showToast(msg);
       return;
     }
 
@@ -114,7 +115,7 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
       // Retry re-runs the exact same search (harmless if it fails
       // identically, and covers the case where it was a transient blip on
       // the server's own BFS/enrichment side rather than a real dead end).
-      if (resultEl) renderErrorState(resultEl, "No path found.", () => runServerPath(fromParam, toParam, targetEls));
+      showRetryToast("No path found.", () => runServerPath(fromParam, toParam, opts));
       return;
     }
 
@@ -126,14 +127,6 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
     // Also use names from the response directly
     (data.nodes || []).forEach(n => { nameById[n.id] = n.name ?? n.label ?? ""; });
 
-    // ТЗ-205: path-result is loading/error/no-path only — the successful
-    // path itself is rendered exclusively by the hop chain below now, so we
-    // just clear any stale loading/error state here.
-    if (resultEl) {
-      resultEl.className   = "path-result";
-      resultEl.textContent = "";
-    }
-
     // Task 1: render hop chain
     renderHopChain(path, data.edges || [], data.nodes || [], nameById, chainEl);
 
@@ -142,11 +135,12 @@ export async function runServerPath(fromParam, toParam, targetEls = {}) {
     // [SF-WEB-19] "сеть" — the third unified error trigger. Retry only for
     // transient (network/502/503) failures, same condition the old
     // showRetryToast call used.
-    const retry = err.transient ? () => runServerPath(fromParam, toParam, targetEls) : null;
-    if (resultEl) renderErrorState(resultEl, "Request failed: " + (err.message || "network error"), retry);
+    const msg = "Request failed: " + (err.message || "network error");
+    err.transient ? showRetryToast(msg, () => runServerPath(fromParam, toParam, opts)) : showToast(msg);
   } finally {
     State._pathAbortController = null;
     State.pathInFlight = false;
+    showLoading(false);
   }
 }
 

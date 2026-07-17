@@ -202,8 +202,29 @@ body.view-home .role-filter-segment {
   white-space: nowrap; line-height: 1;
   display: flex; align-items: center; gap: var(--space-1);
 }
-.dock-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
-.dock-btn.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
+/* [SF-WEB-43] var(--hover-tint)/var(--active-tint) (tokens.css) replace
+   the literal rgba(185,138,255,.10)/rgba(94,230,197,.12) — the same
+   "hardcoded to dark theme's hex" fix SF-WEB-42 already applied to
+   .ui-btn/.ui-chip, extended here to .dock-btn (a surface-level control,
+   out of SF-WEB-42's shell-only scope, but the docked search button
+   above now matches it exactly and needs it to actually match). */
+.dock-btn:hover { color: var(--paper); border-color: var(--pulse); background: var(--hover-tint); }
+.dock-btn.active { color: var(--paper); border-color: var(--signal); background: var(--active-tint); }
+/* [fix] Docked panels keep the "graph is hero, chrome stays calm" rule
+   (no bright accent-gradient fill on docked buttons — see .search-modal
+   .docked .search button's own comment) — but with every action in a
+   row sharing the exact same neutral .dock-btn recipe, nothing signals
+   which one is the actual submit action vs. a secondary control (Find
+   path vs. Clear). A signal-coloured border/icon does that without
+   breaking the calm-chrome rule: still no fill, still not competing with
+   the canvas, just legible as "this is the one that does the thing". */
+.dock-btn--primary {
+  border-color: rgba(var(--signal-rgb), .5); color: var(--paper);
+  justify-content: center;
+}
+.dock-btn--primary .ri { width: 14px; height: 14px; display: flex; flex-shrink: 0; color: var(--signal); }
+.dock-btn--primary .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.dock-btn--primary:hover { border-color: var(--signal); }
 
 .status {
   position: absolute; left: calc(56px + var(--space-4) * 2); bottom: var(--space-4); z-index: var(--z-graph-overlay);

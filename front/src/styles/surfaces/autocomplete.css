@@ -21,11 +21,19 @@
    полю. Более крупные строки (--space-4 отступы, 44px аватар) не
    нужно втискивать в узкий столбец — карточка сама шире инпута
    (min-width), а не 1:1 с ним. */
+/* [SF-WEB-43] The exact .ui-panel recipe (components/panel.css) — same
+   background/box-shadow as .search-modal.docked .search-wrap/.node-
+   search-box/.companion-panel, instead of the opaque var(--panel-2) +
+   flat var(--shadow) this predated (both SF-WEB-40 extractions,
+   untouched by SF-WEB-42's later glass pass). Shared by hero AND docked
+   search alike (#hero-input's one dropdown), so unifying it here is what
+   makes "hero и docked читаются как одно продолжение" (SF-WEB-24 п.4)
+   hold for the dropdown too, not just the input/button around it. */
 .ac-dropdown {
   position: absolute; top: calc(100% + 8px); left: 0;
   min-width: 100%; width: max-content; max-width: min(400px, 90vw);
-  background: var(--panel-2); border: 1px solid var(--line);
-  border-radius: var(--r-lg); box-shadow: var(--shadow);
+  background: var(--glass-fill); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--elevation-2), var(--glass-glow);
   backdrop-filter: blur(var(--blur-scrim));
   z-index: var(--z-dropdown); display: none; flex-direction: column; overflow: hidden;
   max-height: 360px; overflow-y: auto;
@@ -34,10 +42,14 @@
 .ac-item {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-3) var(--space-4); cursor: pointer;
-  transition: background .12s; border-bottom: 1px solid rgba(40,48,68,.3);
+  transition: background .12s; border-bottom: 1px solid rgba(var(--line-rgb), .3);
 }
 .ac-item:last-child { border-bottom: none; }
-.ac-item:hover, .ac-item.ac-active { background: rgba(94,230,197,.07); }
+/* [SF-WEB-43] var(--signal-rgb) (tokens.css) replaces the literal
+   rgba(94,230,197,.07) — same "hardcoded to dark theme's hex" fix as
+   .dock-btn/.ns-item below, so every docked/hero result-row hover uses
+   the same theme-aware source instead of each re-pinning the dark hex. */
+.ac-item:hover, .ac-item.ac-active { background: rgba(var(--signal-rgb), .07); }
 .ac-icon {
   display: flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; flex-shrink: 0;

@@ -82,13 +82,22 @@
 .search-modal.docked .auth-bar {
   display: none;
 }
+/* [SF-WEB-43] The exact .ui-panel recipe (components/panel.css) —
+   background/border/radius/box-shadow/backdrop-filter/padding all
+   literally the same var() chain, not a parallel one that happens to
+   read close. Was background: var(--panel-2) (opaque) + box-shadow:
+   var(--elevation-2) alone — pre-dated SF-WEB-42's glass pass on
+   .ui-panel and never got the --glass-fill/--glass-glow update, so this
+   card alone stayed the old flat material while .node-search-box/
+   .companion-panel (both already on .ui-panel) picked it up. One shell,
+   one source now — see search.css/node-search.css/panel.css sharing the
+   same tokens, checked in observatory.test.js. */
 .search-modal.docked .search-wrap {
   width: 100%; margin: 0;
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
-  /* [SF-WEB-24] --elevation-2 (not the older --shadow, still the exact
-     same value — see the token block up top) to name this the same
-     shell recipe .ui-panel/.node-search-box use. */
-  box-shadow: var(--elevation-2); backdrop-filter: blur(var(--blur-scrim));
+  border-radius: var(--r-lg);
+  background: var(--glass-fill); border: 1px solid var(--line);
+  box-shadow: var(--elevation-2), var(--glass-glow);
+  backdrop-filter: blur(var(--blur-scrim));
   padding: var(--space-4);
 }
 .search-modal.docked .hero-mode-stage {
@@ -121,16 +130,37 @@
    .rail-btn — везде компактно и приглушённо). Ниже переопределяем
    визуал ТОЛЬКО внутри .docked — сама вёрстка и вся JS-логика (тот же
    #hero-input, тот же submit) не меняются. */
+/* [SF-WEB-43] Matches .path-input's (companion.css) declaration value-
+   for-value — same field, same surface family (both live in a docked
+   card over the graph). Was close but not literal: same padding/radius/
+   background idle, but inherited the base hero .search input's .18s
+   triple transition and panel-swap-on-focus (background: var(--panel-2)
+   + a 4px signal glow) instead of .path-input's single border-color-only
+   transition/focus — a docked field that behaved subtly differently from
+   every other docked field next to it. #node-search-input already
+   carries the literal .path-input class (see index.html) for the exact
+   same reason; #hero-input can't (it's shared with the full-screen
+   landing mode, where the larger .search input recipe is correct), so
+   the values are mirrored here via the .docked descendant selector
+   instead. */
 .search-modal.docked .search input {
   padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
   border-radius: var(--r-sm); background: rgba(var(--panel-rgb),.9);
+  transition: border-color .15s;
 }
-.search-modal.docked .search input:focus { box-shadow: none; }
+.search-modal.docked .search input:focus { border-color: var(--signal); background: rgba(var(--panel-rgb),.9); box-shadow: none; }
+/* [SF-WEB-43] Matches .dock-btn's (canvas-controls.css) declaration —
+   the same compact docked-action-button role .node-search-box/.path-
+   panel's own buttons already use. Was its own background/hover/border
+   recipe (rgba(255,255,255,.05) hover — a plain white tint, not the
+   shared --hover-tint token every other docked/kit control hovers with)
+   instead of the one .dock-btn already establishes. */
 .search-modal.docked .search button {
-  background: rgba(var(--panel-rgb),.8); color: var(--paper); font-weight: 600;
+  background: rgba(var(--panel-rgb),.80); color: var(--paper); font-weight: 600;
   padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--r-sm);
+  transition: color .15s, border-color .15s, background .15s;
 }
-.search-modal.docked .search button:hover { filter: none; background: rgba(255,255,255,.05); border-color: var(--pulse); }
+.search-modal.docked .search button:hover { filter: none; color: var(--paper); border-color: var(--pulse); background: var(--hover-tint); }
 
 /* [SF-WEB-31 follow-up] Вордмарк = логотип (Google/Yandex-референс —
    один текстовый элемент, не иконка + слоган отдельно). Тот же

@@ -67,7 +67,6 @@ export const els = {
   btnHeroRunPath:     $("btn-hero-run-path"),
   btnHeroSwapPath:    $("btn-hero-swap-path"),
   btnHeroClearPath:   $("btn-hero-clear-path"),
-  heroPathResult:     $("hero-path-result"),
   heroHopChain:       $("hero-hop-chain"),
 
   themeToggle: $("theme-toggle"),
@@ -135,9 +134,9 @@ export const els = {
   pathPanelClose: $("path-panel-close"),
   pathFromInput:  $("path-from-input"),
   pathToInput:    $("path-to-input"),
+  btnSwapPath:    $("btn-swap-path"),
   btnRunPath:     $("btn-run-path"),
   btnClearPath:   $("btn-clear-path"),
-  pathResult:     $("path-result"),
   hopChain:       $("hop-chain"),
 
   // [SF-WEB-20] Compare mode — common collaborators of two pinned artists.

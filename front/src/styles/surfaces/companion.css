@@ -47,10 +47,24 @@
    of any of it. Its display:none/.show instant toggle is the same
    deliberate, unchanged mechanism as .node-search-overlay's (see the
    comment there). */
+/* [fix] Was max-height: 60% — a bare percentage of .companion-panel's own
+   height, which is itself auto/shrink-to-fit (content-determined, capped
+   only by max-height: min(70vh,100%) — see below). A percentage height
+   against an indefinite-height ancestor is a classic CSS circular
+   reference: the browser can't resolve "60% of however tall my content
+   makes me" in one pass, and the two-pass result left a large dead gap
+   under the actual From/To fields + Find path/Clear/status content
+   (reported: "не нравится пустое место"), confirmed via getBoundingClientRect
+   — .companion-panel measured ~221px tall while .path-panel's own content
+   only needed ~112px. .artist-sidebar (below) already avoids exactly this
+   with min(70vh,100%) — the 100% only matters if 70vh is somehow larger,
+   so it never actually depends on the indefinite ancestor height in
+   practice. min(42vh,100%) here is the same escape hatch, scaled to
+   match the original 60%-of-70vh proportion. */
 .path-panel {
   display: none;
   flex-direction: column; gap: var(--space-3);
-  max-height: 60%; overflow-y: auto; flex-shrink: 0;
+  max-height: min(42vh, 100%); overflow-y: auto; flex-shrink: 0;
 }
 .path-panel.show { display: flex; }
 .path-panel-header {
@@ -66,13 +80,33 @@
 }
 .path-close:hover { color: var(--paper); }
 
+/* [fix] Rebuilt (variant B of 5 mockups): was two bare .path-input-wrap
+   rows stacked with no visual link between them. A swap button sits at
+   the fields' shared right edge, vertically centered between the two —
+   functional (actually swaps From/To, see ui/path-panel.js), not just
+   decorative, and adds zero extra height to the panel. */
+.path-panel-fields { position: relative; display: flex; flex-direction: column; gap: var(--space-3); }
+.path-swap-btn {
+  position: absolute; right: var(--space-2); top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; border-radius: 50%; z-index: 1;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--mist);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: var(--elevation-1);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.path-swap-btn .ri { width: 13px; height: 13px; display: flex; flex-shrink: 0; }
+.path-swap-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.path-swap-btn:hover { color: var(--paper); border-color: var(--pulse); background: var(--hover-tint); }
+
 /* [SF-WEB-20] Compare mode — same section-of-.companion-panel mechanics
    as .path-panel just above (shares its header/close-button styling via
    .path-panel-header/.path-title/.path-close). */
+/* [fix] Same circular-percentage bug as .path-panel above — see its
+   comment. */
 .compare-panel {
   display: none;
   flex-direction: column; gap: var(--space-3);
-  max-height: 60%; overflow-y: auto; flex-shrink: 0;
+  max-height: min(42vh, 100%); overflow-y: auto; flex-shrink: 0;
 }
 .compare-panel.show { display: flex; }
 .compare-list { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -130,19 +164,27 @@
   display: none;
 }
 
-.path-actions { display: flex; gap: var(--space-2); }
-.path-result {
-  font-size: var(--text-xs); color: var(--neon); line-height: 1.6;
-  min-height: 18px; word-break: break-word;
+/* [fix] The panel's own "in-progress"/"failed" status used to render into
+   a .path-result element (loading spinner, error card) that lived right
+   here, squeezed between the actions row and the hop chain — reported as
+   the search process feeling "bolted into the window". runServerPath
+   (ui/path-result.js) now shows loading on the same canvas-wide overlay
+   regular artist search uses, and errors as a toast — the exact two
+   mechanisms searchArtist already relies on — so .path-result and its
+   markup are gone; the panel only ever shows its actual RESULT (the hop
+   chain below) once a path is found. */
+.path-actions { display: flex; align-items: center; gap: var(--space-3); }
+#btn-run-path { flex: 1; justify-content: center; }
+/* [fix] Clear demoted to a plain text link (was a second .dock-btn pill,
+   equal visual weight to Find path) — variant B pairs the one signal-
+   bordered primary action with the lightest possible secondary control
+   instead of two same-weight pills side by side. */
+.path-clear-btn {
+  border: 0; background: transparent; color: var(--mist); cursor: pointer;
+  font: inherit; font-size: var(--text-xs); padding: 0 var(--space-2);
+  flex-shrink: 0; transition: color .15s;
 }
-/* [SF-WEB-19] .is-error/.is-loading modifiers removed — loading/error
-   content rendered into .path-result is now the unified
-   .ui-state-loading-row / .ui-panel.ui-state-card (see
-   ui/canvas-states.js), both self-styled, so .path-result itself no
-   longer needs its own state-specific color rules. */
-.path-result.ui-state--error .ui-state-card {
-  align-items: flex-start; text-align: left; max-width: none; padding: var(--space-3);
-}
+.path-clear-btn:hover { color: var(--paper); }
 
 /* ТЗ-205: .hop-chain — horizontal scrollable track by default (wide
    panels), with a fade mask at both edges like .path-chain-track.

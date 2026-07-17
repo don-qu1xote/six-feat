@@ -28,14 +28,16 @@
   display: none; padding: 0; width: 380px; max-width: calc(100vw - 88px);
 }
 .node-search-overlay.show { display: flex; }
+/* [SF-WEB-43] The exact .ui-panel recipe (components/panel.css) —
+   background/box-shadow now literally match .search-modal.docked
+   .search-wrap/.companion-panel (search.css/panel.css) instead of the
+   opaque pre-SF-WEB-42 --panel-2 fill this predated. One shell, one
+   source — see observatory.test.js. */
 .node-search-box {
-  background: var(--panel-2); border: 1px solid var(--line);
+  background: var(--glass-fill); border: 1px solid var(--line);
   border-radius: var(--r-lg); padding: var(--space-4); width: 100%;
   backdrop-filter: blur(var(--blur-scrim));
-  /* [SF-WEB-24] --elevation-2, same value as --shadow (see the token
-     block up top) — names this the same shell recipe .ui-panel/
-     .search-modal.docked .search-wrap use. */
-  box-shadow: var(--elevation-2); display: flex; flex-direction: column; gap: var(--space-3);
+  box-shadow: var(--elevation-2), var(--glass-glow); display: flex; flex-direction: column; gap: var(--space-3);
 }
 .node-search-hint {
   font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
@@ -53,8 +55,11 @@
   border-radius: var(--r-md); border: 1px solid var(--line); background: rgba(var(--panel-rgb),.4);
   transition: background .12s, border-color .12s;
 }
+/* [SF-WEB-43] var(--signal-rgb) (tokens.css) replaces the literal
+   rgba(94,230,197,...) — same fix as .ac-item/.dock-btn, so every
+   docked-surface result row hovers with the same theme-aware source. */
 .ns-item:hover,
-.ns-item.ns-active { background: rgba(94,230,197,.08); border-color: rgba(94,230,197,.4); }
+.ns-item.ns-active { background: rgba(var(--signal-rgb), .08); border-color: rgba(var(--signal-rgb), .4); }
 .ns-name { color: var(--paper); font-size: var(--text-sm); }
 .ns-weight { color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs); }
 .ns-empty { color: var(--mist); font-size: var(--text-sm); padding: var(--space-2) var(--space-3); }

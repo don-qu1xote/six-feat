@@ -260,7 +260,13 @@
           </div>
         </div>
 
-        <div class="hero-mode-panel hero-connect-panel bento-tile bento-tile--md" id="hero-mode-panel-connect" role="tabpanel" aria-labelledby="hero-mode-tab-connect">
+        <!-- [fix] Was also bento-tile bento-tile--md — the only hero-mode
+             panel wrapped in its own boxed card; Explore's panel floats
+             its fields directly on the canvas with no such box, so
+             Connect visually stuck out as a heavier, separate surface
+             next to it. Dropped so both panels read as the same kind of
+             thing (see hero.css's own comment on .hero-connect-panel). -->
+        <div class="hero-mode-panel hero-connect-panel" id="hero-mode-panel-connect" role="tabpanel" aria-labelledby="hero-mode-tab-connect">
           <div class="hero-connect-row">
             <div class="hero-route-rail">
               <span class="hero-route-dot hero-route-dot--from" aria-hidden="true">●</span>
@@ -292,7 +298,10 @@
             <button type="button" class="dock-btn" id="btn-hero-clear-path">Clear</button>
           </div>
 
-          <div class="path-result" id="hero-path-result"></div>
+          <!-- [fix] Was also a #hero-path-result div here — loading/error
+               states now go through the shared canvas-wide overlay/toast
+               (ui/loading.js, ui/toast.js), same as regular artist search,
+               instead of an element embedded in this panel. -->
           <div class="hop-chain" id="hero-hop-chain"></div>
         </div>
       </div>
@@ -589,23 +598,41 @@
             <div class="path-title">Six degrees of separation</div>
             <button class="path-close" id="path-panel-close" title="Close" aria-label="Close">×</button>
           </div>
-          <div class="path-input-wrap">
-            <label class="sr-only" for="path-from-input">From artist</label>
-            <input class="path-input" id="path-from-input" type="text"
-              placeholder="From artist…" autocomplete="off" />
-            <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
-          </div>
-          <div class="path-input-wrap">
-            <label class="sr-only" for="path-to-input">To artist</label>
-            <input class="path-input" id="path-to-input" type="text"
-              placeholder="To artist…" autocomplete="off" />
-            <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+          <!-- [fix] Rebuilt (variant B, picked from 5 mockups): the swap
+               button sits between the two fields and actually does
+               something (swaps From/To), instead of the two bare stacked
+               fields this used to be — no reserved space for a loading
+               state anywhere here, that's the canvas-wide overlay now
+               (see runServerPath's own comment, ui/path-result.js). -->
+          <div class="path-panel-fields">
+            <div class="path-input-wrap">
+              <label class="sr-only" for="path-from-input">From artist</label>
+              <input class="path-input" id="path-from-input" type="text"
+                placeholder="From artist…" autocomplete="off" />
+              <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
+            </div>
+            <div class="path-input-wrap">
+              <label class="sr-only" for="path-to-input">To artist</label>
+              <input class="path-input" id="path-to-input" type="text"
+                placeholder="To artist…" autocomplete="off" />
+              <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+            </div>
+            <button type="button" class="path-swap-btn" id="btn-swap-path" title="Swap From/To" aria-label="Swap From and To artists">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-swap"/></svg>
+            </button>
           </div>
           <div class="path-actions">
-            <button class="dock-btn" id="btn-run-path" style="flex:1">Find path</button>
-            <button class="dock-btn" id="btn-clear-path">Clear</button>
+            <button class="dock-btn dock-btn--primary" id="btn-run-path">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
+              <span>Find path</span>
+            </button>
+            <button class="path-clear-btn" id="btn-clear-path">Clear</button>
           </div>
-          <div class="path-result" id="path-result"></div>
+          <!-- [fix] Was also a #path-result div here — loading/error states
+               now go through the shared canvas-wide overlay/toast
+               (ui/loading.js, ui/toast.js), same as regular artist search,
+               instead of an element embedded in this panel (reported as
+               the search process feeling "bolted into the window"). -->
           <div class="hop-chain" id="hop-chain"></div>
         </div>
 

@@ -149,12 +149,20 @@
    vertical "route" line (● origin → ◎ destination), a big primary
    "Trace the path" action, and compact Swap/Clear controls. The
    result renders inline via the shared .hop-chain markup/CSS
-   (see renderHopChain in ui/path-result.js) — no bespoke result UI. */
+   (see renderHopChain in ui/path-result.js) — no bespoke result UI.
+   [fix] Was also wrapped in its own bento-tile card (see index.html) —
+   the only hero-mode panel with a boxed background/border/shadow of its
+   own, next to Explore's borderless floating field. Unwrapped; the
+   fields/route-rail/actions below now float directly on the canvas the
+   same way Explore's .search-wrap does. Field/button padding and
+   font-size bumped from --text-sm/--space-3 to --text-base/--space-4-5
+   to match .search input/.search button's scale too — was visibly
+   smaller than "Map it" next to it, not just boxed differently. */
 .hero-connect-panel { width: 100%; text-align: left; align-items: stretch; }
 .hero-connect-row { display: flex; gap: var(--space-4); }
 .hero-route-rail {
   display: flex; flex-direction: column; align-items: center;
-  width: 20px; flex-shrink: 0; padding: var(--space-4) 0;
+  width: 20px; flex-shrink: 0; padding: var(--space-5) 0;
 }
 .hero-route-dot { font-size: 13px; line-height: 1; }
 .hero-route-dot--from { color: var(--signal); }
@@ -167,18 +175,18 @@
 .hero-connect-fields .path-input-wrap { position: relative; }
 .hero-connect-fields .path-input {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
-  color: var(--paper); font: inherit; font-size: var(--text-sm); padding: var(--space-3) var(--space-4);
+  color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-4) var(--space-5);
   width: 100%; outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
 }
 .hero-connect-fields .path-input:focus {
-  background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(94,230,197,.14);
+  background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(var(--signal-rgb), .14);
 }
 .hero-connect-fields .path-input::placeholder { color: #5C677C; }
 
 .hero-connect-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .hero-connect-run {
   flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: var(--space-2);
-  border: 0; border-radius: var(--r-md); padding: var(--space-3) var(--space-6);
+  border: 0; border-radius: var(--r-md); padding: var(--space-4) var(--space-6);
   font: inherit; font-weight: 700; font-size: var(--text-base); color: var(--on-accent); cursor: pointer;
   background: linear-gradient(100deg, var(--signal), var(--pulse));
   transition: transform .12s, filter .18s; white-space: nowrap;
@@ -188,7 +196,11 @@
 .hero-connect-run .ri { width: 18px; height: 18px; display: flex; flex-shrink: 0; }
 .hero-connect-run .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .hero-connect-actions .dock-btn { flex-shrink: 0; }
-.hero-connect-panel .path-result { text-align: left; }
+/* [fix] Was also `.hero-connect-panel .path-result { ... }` here — the
+   loading/error status that used to render inline into that element now
+   goes through the shared canvas-wide overlay/toast instead (see
+   runServerPath's own comment, ui/path-result.js); .path-result and its
+   markup are gone. */
 .hero-connect-panel .hop-chain { width: 100%; }
 @media (max-width: 640px) {
   .hero-connect-actions { flex-direction: column; align-items: stretch; }

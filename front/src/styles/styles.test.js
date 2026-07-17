@@ -121,6 +121,69 @@ describe("SF-WEB-40 design-system CSS bundle", () => {
     const lightOnAccent = lightBlockRaw.match(/--on-accent:\s*(#[0-9a-fA-F]{6})/)[1];
     expect(lightOnAccent.toLowerCase()).not.toBe(darkOnAccent.toLowerCase());
   });
+
+  // [fix] The "Six degrees of separation" panel's search status
+  // (.path-result: loading spinner, error card) used to render embedded
+  // in the panel itself — reported as the search process feeling "bolted
+  // into the window". runServerPath (ui/path-result.js) now shows
+  // loading on the same canvas-wide overlay regular artist search uses
+  // (#loading) and errors as a toast (#toast), the exact two mechanisms
+  // searchArtist already relies on — so .path-result and its markup are
+  // gone entirely, not just restyled.
+  it(".path-result is gone — path search loading/errors go through #loading/#toast, not an embedded element", () => {
+    expect(css).not.toMatch(/(?:^|\n)\.path-result\s*[.{]/);
+    expect(css).not.toContain(".hero-connect-panel .path-result");
+  });
+
+  // [fix] .path-panel/.compare-panel had max-height: 60% — a bare
+  // percentage of .companion-panel's own height, which is itself auto/
+  // shrink-to-fit. Percentage height against an indefinite-height
+  // ancestor is a circular reference the browser can't resolve in one
+  // pass: measured live, .companion-panel rendered ~221px tall while
+  // .path-panel's actual content only needed ~112px, leaving a ~75-100px
+  // dead gap under the From/To fields (reported: "не нравится пустое
+  // место"). .artist-sidebar already sidesteps this with
+  // min(70vh,100%) — the 100% only matters if 70vh were somehow bigger,
+  // so resolution never actually depends on the indefinite ancestor.
+  // Same fix applied to both, verified live (.path-panel's rect now
+  // matches .companion-panel's full content height, no gap).
+  it(".path-panel/.compare-panel use min(Xvh, 100%), not a bare percentage max-height", () => {
+    for (const selector of [".path-panel", ".compare-panel"]) {
+      const block = rule(css, selector);
+      expect(block, `${selector} rule missing`).toBeTruthy();
+      expect(block, `${selector} still has a bare percentage max-height`).not.toMatch(/max-height:\s*\d+%/);
+      expect(block).toMatch(/max-height:\s*min\(\d+vh,\s*100%\)/);
+    }
+  });
+
+  // [fix] Rebuilt docked "Six degrees of separation" panel — was reported
+  // as unchanged-looking after only the loading/error mechanism moved out
+  // ("ничего не изменилось"). Picked variant B of 5 mockups: a functional
+  // swap button (.path-swap-btn, actually swaps From/To — see
+  // ui/path-panel.js) sits between the two fields instead of decorative
+  // connector dots, the submit action (.dock-btn--primary) gets a
+  // signal-coloured border so it reads as the CTA next to a demoted plain-
+  // text Clear link (.path-clear-btn) — no reserved idle space anywhere,
+  // the panel is exactly as tall as its fields + actions.
+  it(".path-swap-btn exists and is a real (non-decorative) circular icon control", () => {
+    const block = rule(css, ".path-swap-btn");
+    expect(block, ".path-swap-btn rule missing").toBeTruthy();
+    expect(block).toMatch(/border-radius:\s*50%/);
+  });
+
+  it(".dock-btn--primary distinguishes the submit action with a signal border, not a fill", () => {
+    const block = rule(css, ".dock-btn--primary");
+    expect(block, ".dock-btn--primary rule missing").toBeTruthy();
+    expect(block).toMatch(/border-color:\s*rgba\(var\(--signal-rgb\)/);
+    expect(block).not.toMatch(/background:\s*linear-gradient/);
+  });
+
+  it(".path-clear-btn is a plain text link, not a second bordered pill matching Find path", () => {
+    const block = rule(css, ".path-clear-btn");
+    expect(block, ".path-clear-btn rule missing").toBeTruthy();
+    expect(block).toMatch(/border:\s*0/);
+    expect(block).toMatch(/background:\s*transparent/);
+  });
 });
 
 function rule(css, selector) {

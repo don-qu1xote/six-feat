@@ -63,6 +63,17 @@ export function setupPathPanel() {
   els.pathFromInput?.addEventListener("input", () => { _pathFromId = null; });
   els.pathToInput  ?.addEventListener("input", () => { _pathToId   = null; });
 
+  // [fix] Variant B (of 5 mockups) swaps the decorative route-rail for a
+  // functional swap button sitting between the two fields — same swap
+  // logic setupHeroPathFinder's own #btn-hero-swap-path already uses.
+  els.btnSwapPath?.addEventListener("click", () => {
+    const fromVal = els.pathFromInput.value;
+    const toVal   = els.pathToInput.value;
+    els.pathFromInput.value = toVal;
+    els.pathToInput.value   = fromVal;
+    [_pathFromId, _pathToId] = [_pathToId, _pathFromId];
+  });
+
   els.btnRunPath?.addEventListener("click", async () => {
     const fromRaw = (els.pathFromInput.value || "").trim();
     const toRaw   = (els.pathToInput.value   || "").trim();
@@ -72,7 +83,7 @@ export function setupPathPanel() {
     // backend skips fuzzy-resolve entirely (no ambiguous error possible).
     const fromParam = (_pathFromId != null) ? String(_pathFromId) : fromRaw;
     const toParam   = (_pathToId   != null) ? String(_pathToId)   : toRaw;
-    await runServerPath(fromParam, toParam);
+    await runServerPath(fromParam, toParam, { loadingMessage: `Tracing a path from ${fromRaw} to ${toRaw}…` });
   });
 
   // Task 4: clear path button
@@ -174,8 +185,13 @@ export function setupHeroPathFinder() {
     // A successful path builds its own graph on canvas and closes the
     // landing modal (see mergePathData → initGraphOnCanvas), same as a
     // regular hero search. The hop chain itself renders inline into the
-    // Connect panel (heroHopChain), reusing renderHopChain's own markup/CSS.
-    await runServerPath(fromParam, toParam, { resultEl: els.heroPathResult, chainEl: els.heroHopChain });
+    // Connect panel (heroHopChain), reusing renderHopChain's own markup/CSS
+    // — loading/errors go through the shared canvas overlay/toast instead
+    // (see runServerPath's own comment).
+    await runServerPath(fromParam, toParam, {
+      chainEl: els.heroHopChain,
+      loadingMessage: `Tracing a path from ${fromRaw} to ${toRaw}…`,
+    });
   });
 
   // IDEA-41: compact Swap/Clear controls next to "Trace the path".
@@ -192,8 +208,7 @@ export function setupHeroPathFinder() {
     els.heroPathToInput.value   = "";
     _fromId = null;
     _toId   = null;
-    if (els.heroPathResult) { els.heroPathResult.className = "path-result"; els.heroPathResult.textContent = ""; }
-    if (els.heroHopChain)   els.heroHopChain.innerHTML = "";
+    if (els.heroHopChain) els.heroHopChain.innerHTML = "";
     els.heroPathFromInput?.focus();
   });
 }
