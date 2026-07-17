@@ -262,16 +262,31 @@ body.view-home .role-filter-segment {
   max-width: 180px;
 }
 
+/* [SF-WEB-48] Was a permanently-visible "N/M req/s" text pill — raw and
+   always on the eye. Now a quiet micro dot: calm (dim, static) while
+   there's headroom, the raw reading moved to a hover-only `title` (see
+   updateRateLimitIndicator in canvas-controls.js). .rate-limit-badge--low
+   is the exact same class/threshold the old text-recolor used — it just
+   "wakes" the dot instead (brighter + a soft pulse) rather than tinting
+   text nobody was reading at a glance anyway. */
 .rate-limit-badge {
-  font-family: "Space Mono", monospace; font-size: var(--text-xs);
-  color: var(--paper); opacity: .55; white-space: nowrap;
-  background: var(--chip-bg); border: 1px solid var(--line); border-radius: 999px;
-  padding: 2px var(--space-2); backdrop-filter: blur(var(--blur-chip));
-  transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), opacity var(--duration-base) var(--ease-standard);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
 }
 .rate-limit-badge[hidden] { display: none !important; }
-.rate-limit-badge--low {
-  color: var(--warn); border-color: rgba(255,143,163,.5); opacity: .9;
+.rate-limit-badge-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--mist); opacity: .45;
+  transition: background var(--duration-base) var(--ease-standard),
+              opacity var(--duration-base) var(--ease-standard);
+}
+.rate-limit-badge--low .rate-limit-badge-dot {
+  background: var(--warn); opacity: 1;
+  animation: rate-limit-pulse var(--duration-loop) var(--ease-standard) infinite;
+}
+@keyframes rate-limit-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,143,163,.5); }
+  50%      { box-shadow: 0 0 0 5px rgba(255,143,163,0); }
 }
 
 /* [SF-WEB-05] Same pill shape as .rate-limit-badge — icon + short text,

@@ -547,7 +547,13 @@ export function updateRateLimitIndicator(remaining, limit) {
   if (!els.rateLimitBadge) return;
   if (!Number.isFinite(remaining) || !Number.isFinite(limit) || limit <= 0) return;
 
-  els.rateLimitBadge.textContent = `${remaining}/${limit} req/s`;
+  // [SF-WEB-48] Was a permanently-visible "N/M req/s" text pill — the raw
+  // reading now only surfaces on hover (title), same idiom
+  // .scan-status-badge/.truncation-icon-btn already use elsewhere in this
+  // row (see canvas-controls.css). The always-on visual is just the quiet
+  // dot (.rate-limit-badge-dot) — calm by default, .rate-limit-badge--low
+  // (same class/threshold as before) "wakes" it up instead of recoloring text.
+  els.rateLimitBadge.title = `${remaining}/${limit} requests remaining this window`;
   els.rateLimitBadge.hidden = false;
 
   const low = remaining / limit <= RATE_LIMIT_WARN_RATIO;

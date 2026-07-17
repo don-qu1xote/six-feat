@@ -453,7 +453,17 @@
         <span id="scan-status-text"></span>
       </span>
 
-      <span class="rate-limit-badge" id="rate-limit-badge" hidden></span>
+      <!-- [SF-WEB-48] Quiet live rate-limit indicator — was a permanently-
+           visible "N/M req/s" text pill (raw, always on-screen); now a
+           small dot, calm with headroom, that "wakes up" (see
+           .rate-limit-badge--low in canvas-controls.css) only when close
+           to the limit. The raw reading moved to the native `title`
+           tooltip (see updateRateLimitIndicator in canvas-controls.js) —
+           same idiom .scan-status-badge/.truncation-icon-btn already use
+           for their own descriptive text. -->
+      <span class="rate-limit-badge" id="rate-limit-badge" hidden>
+        <span class="rate-limit-badge-dot"></span>
+      </span>
 
       <!-- [style pass] Collapsed to an info-btn-shaped icon (was a
            permanently-expanded text pill). Clicking it IS "show more

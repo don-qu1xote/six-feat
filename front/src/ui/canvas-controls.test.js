@@ -13,7 +13,7 @@ import { els } from "../dom/dom.js";
 import {
   updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles,
   buildShadowNodes, waitForImages, clearCanvas, goHome,
-  fitView, focusSeed, zoomIn, zoomOut,
+  fitView, focusSeed, zoomIn, zoomOut, updateRateLimitIndicator,
 } from "./canvas-controls.js";
 import { placeholderFor } from "../state/helpers.js";
 import { showToast } from "./toast.js";
@@ -551,5 +551,62 @@ describe("fitView / focusSeed / zoomIn / zoomOut — motion tokens + reduced-mot
     for (const [call] of State.network.moveTo.mock.calls) {
       expect(call.animation).toBe(false);
     }
+  });
+});
+
+// [SF-WEB-48] The badge itself is now a quiet dot (see canvas-controls.css)
+// — calm by default, .rate-limit-badge--low (unchanged class/threshold)
+// "wakes" it via CSS instead of the old always-visible "N/M req/s" text.
+// The function's own logic (reading, threshold, once-per-drop toast) is
+// untouched — these tests cover what actually changed: the DOM it writes.
+describe("updateRateLimitIndicator — quiet live dot ([SF-WEB-48])", () => {
+  beforeEach(() => {
+    els.rateLimitBadge = document.createElement("span");
+    els.rateLimitBadge.hidden = true;
+    // Normalizes the module-private "already warned" latch before each
+    // test drives its own scenario — a plain headroom call always clears it.
+    updateRateLimitIndicator(100, 100);
+    showToast.mockClear();
+  });
+
+  it("stays calm (no --low class, no toast) with plenty of headroom", () => {
+    updateRateLimitIndicator(90, 100);
+    expect(els.rateLimitBadge.hidden).toBe(false);
+    expect(els.rateLimitBadge.classList.contains("rate-limit-badge--low")).toBe(false);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("'wakes up' (adds --low) once remaining crosses the warn threshold", () => {
+    updateRateLimitIndicator(15, 100); // 15% <= the 20% warn ratio
+    expect(els.rateLimitBadge.classList.contains("rate-limit-badge--low")).toBe(true);
+  });
+
+  it("goes calm again once headroom is restored", () => {
+    updateRateLimitIndicator(15, 100);
+    expect(els.rateLimitBadge.classList.contains("rate-limit-badge--low")).toBe(true);
+    updateRateLimitIndicator(80, 100);
+    expect(els.rateLimitBadge.classList.contains("rate-limit-badge--low")).toBe(false);
+  });
+
+  it("no longer renders the raw 'N/M req/s' as visible text — moves it to the hover title instead", () => {
+    updateRateLimitIndicator(3, 100);
+    expect(els.rateLimitBadge.textContent.trim()).toBe("");
+    expect(els.rateLimitBadge.title).toContain("3");
+    expect(els.rateLimitBadge.title).toContain("100");
+  });
+
+  it("toast threshold/behavior is unchanged: fires once on crossing into --low, not on every subsequent still-low update", () => {
+    updateRateLimitIndicator(15, 100);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    updateRateLimitIndicator(10, 100); // still low — no repeat
+    expect(showToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-fires the toast after recovering and dropping low again", () => {
+    updateRateLimitIndicator(15, 100);
+    expect(showToast).toHaveBeenCalledTimes(1);
+    updateRateLimitIndicator(80, 100); // recovers
+    updateRateLimitIndicator(15, 100); // drops low again
+    expect(showToast).toHaveBeenCalledTimes(2);
   });
 });
