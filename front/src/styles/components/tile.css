@@ -16,11 +16,20 @@
    Deliberately reuses the existing --panel-2/--line/--shadow palette —
    bento is about composition/grid, not a new colour system. Canvas/
    vis.js nodes are untouched; this only applies to surrounding panels. */
+/* [SF-WEB-42] Same glass treatment as .ui-panel (components/panel.css) —
+   translucent --glass-fill (not the old opaque var(--panel-2)) plus
+   backdrop-filter actually has something to blur now, and --glass-glow
+   gives the hairline border its accent bloom. .bento-tile predates
+   .ui-panel (ТЗ-206 vs SF-WEB-11) and never got a backdrop-filter of its
+   own before this — every current .bento-tile consumer (seed/status
+   card, sidebar tiles, path-chain cards) floats over the canvas exactly
+   like .ui-panel's own consumer does, so it gets the identical shell. */
 .bento-tile {
   border-radius: var(--r-lg);
-  background: var(--panel-2);
+  background: var(--glass-fill);
   border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), var(--glass-glow);
+  backdrop-filter: blur(var(--blur-scrim));
   padding: var(--space-4);
   min-width: 0; /* allow grid children to shrink instead of overflowing */
 }

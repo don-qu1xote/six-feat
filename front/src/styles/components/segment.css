@@ -16,9 +16,15 @@
    overlaps whatever sits above/below it (regression found in review).
    A segment control is a single-row-only pattern; a wrapping group
    isn't one, no matter how similar the buttons inside look. */
+/* [SF-WEB-42] backdrop-filter added — same glass language as .ui-panel/
+   .bento-tile (components/panel.css, tile.css): this container's own
+   fill was already translucent (rgba(var(--panel-rgb),.8)), it just
+   never had anything blurring what showed through it. Background/border/
+   padding/gap otherwise unchanged. */
 .ui-segment {
   display: inline-flex; position: relative;
   border: 1px solid var(--line); border-radius: 999px;
   background: rgba(var(--panel-rgb),.8); padding: 3px; gap: var(--space-1);
+  backdrop-filter: blur(var(--blur-chip));
 }
 

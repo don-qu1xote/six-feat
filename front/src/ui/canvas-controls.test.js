@@ -12,7 +12,7 @@ import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import {
   updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles,
-  buildShadowNodes, waitForImages, clearCanvas,
+  buildShadowNodes, waitForImages, clearCanvas, goHome,
 } from "./canvas-controls.js";
 import { placeholderFor } from "../state/helpers.js";
 import { showToast } from "./toast.js";
@@ -347,10 +347,11 @@ describe("waitForImages — SF-WEB-32", () => {
 
 // [SF-WEB-19] clearCanvas() no longer morphs back to the hero/landing modal —
 // it stays on the graph page (never touches document.body's view-home/
-// view-graph classes) with an empty-state card on the canvas instead. Its
-// only search entry point is the docked search (same as the rail's own
-// "Search artist" button over an already-rendered graph), never the
-// full-screen landing modal.
+// view-graph classes) with an empty-state card on the canvas instead. [fix]
+// That card's own action used to open the docked search (same as the
+// rail's "Search artist" button over an already-rendered graph) — now
+// opens the full-screen landing modal instead (see the test below and
+// clearCanvas's own comment for why).
 describe("clearCanvas", () => {
   beforeEach(() => {
     document.body.className = "view-graph";
@@ -378,9 +379,71 @@ describe("clearCanvas", () => {
     expect(els.canvasState.querySelector(".ui-panel.ui-state-card")).toBeTruthy();
   });
 
-  it("the empty-state card's action opens docked search, never the full-screen landing modal", () => {
+  // [fix] Was docked search (openSearchModal({ docked: true })) — its own
+  // history/autocomplete dropdown wasn't styled for sitting over a blank
+  // canvas. The full-screen landing modal is already styled for exactly
+  // this "nothing on the canvas yet" moment, so the empty-state card's
+  // action opens that instead now.
+  it("the empty-state card's action opens the full-screen landing modal, not docked search", () => {
     clearCanvas();
     els.canvasState.querySelector(".ui-state-action").click();
-    expect(openSearchModal).toHaveBeenCalledWith({ docked: true });
+    expect(openSearchModal).toHaveBeenCalledWith();
+  });
+
+  // [fix] resetCanvasToEmpty() keeps State.hasRendered true (mocked here,
+  // so this test sets it directly to simulate that) — graph.js's render
+  // pipeline only calls initGraphOnCanvas() (which closes the search
+  // modal) `if (!State.hasRendered)`. Without resetting the flag when the
+  // empty-state card opens the full-screen modal, the next successful
+  // search would never close it — reported as "после Map it поиск не
+  // сворачивается" when reached via Clear → "Search an artist".
+  it("the empty-state card's action resets hasRendered so the next search closes the modal again", () => {
+    State.hasRendered = true;
+    clearCanvas();
+    els.canvasState.querySelector(".ui-state-action").click();
+    expect(State.hasRendered).toBe(false);
+  });
+
+  // [fix] Was `history.replaceState(null, "", window.location.pathname)`,
+  // which dropped the #/graph hash router.js (SF-WEB-25) owns — clicking
+  // .brand/Clear left the URL bare (http://host/) instead of .../#/graph.
+  it("clears the shareable query string but keeps #/graph, not a bare pathname", () => {
+    history.pushState(null, "", "/?artist=Test&seed=123#/graph");
+    clearCanvas();
+    expect(window.location.search).toBe("");
+    expect(window.location.hash).toBe("#/graph");
+  });
+});
+
+// [fix] .brand (the logo) used to call clearCanvas() directly — same as the
+// rail's dedicated "Clear graph" button — landing on the graph page's
+// empty-state card rather than an actual "home" experience. goHome() is
+// what .brand is wired to now: the same canvas reset, followed immediately
+// by the full-screen landing modal (not an intermediate card to click
+// through).
+describe("goHome", () => {
+  beforeEach(() => {
+    document.body.className = "view-graph";
+    els.status = document.createElement("div");
+    els.truncationBanner = document.createElement("div");
+    els.canvasState = document.createElement("div");
+    els.heroInput = document.createElement("input");
+    els.pathPanel = document.createElement("div");
+    els.hopChain = document.createElement("div");
+  });
+
+  it("resets the canvas (same as clearCanvas) and opens the full-screen landing modal", () => {
+    goHome();
+    expect(resetCanvasToEmpty).toHaveBeenCalledTimes(1);
+    expect(openSearchModal).toHaveBeenCalledWith();
+  });
+
+  // [fix] Same reasoning as clearCanvas()'s empty-state action above — see
+  // that test's comment. Without this, the modal reported as staying open
+  // after "Map it" was exactly this path (goHome() via the logo).
+  it("resets hasRendered so the next search closes the modal again", () => {
+    State.hasRendered = true;
+    goHome();
+    expect(State.hasRendered).toBe(false);
   });
 });

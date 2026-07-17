@@ -81,7 +81,7 @@
   padding: var(--space-2); border-radius: var(--r-sm);
   cursor: pointer; transition: background .15s;
 }
-.compare-item:hover, .compare-item:focus-visible { background: rgba(20, 26, 40, 0.8); }
+.compare-item:hover, .compare-item:focus-visible { background: rgba(var(--panel-rgb), 0.8); }
 .compare-item-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .compare-item-name { font-size: var(--text-sm); color: var(--paper); }
 
@@ -187,7 +187,7 @@
   cursor: pointer; border-radius: var(--r-sm); transition: background .15s, color .15s;
 }
 .hop-songs:hover, .hop-songs:focus-visible {
-  background: rgba(94,230,197,.08); color: var(--paper); outline: none;
+  background: rgba(var(--signal-rgb), .08); color: var(--paper); outline: none;
 }
 .hop-role-icon { display: inline-flex; vertical-align: -2px; margin-right: 3px; }
 .hop-role-icon .role-icon { width: 11px; height: 11px; }
@@ -208,7 +208,7 @@
   margin-top: var(--space-3);
   overflow: hidden;
   border-radius: var(--r-sm);
-  background: rgba(20, 26, 40, 0.4);
+  background: rgba(var(--panel-rgb), 0.4);
   border: 1px solid var(--line);
 }
 
@@ -251,8 +251,16 @@
   gap: var(--space-2);
   padding: var(--space-2);
   border-radius: var(--r-sm);
-  background: rgba(20, 26, 40, 0.6);
-  border: 1px solid rgba(40, 48, 68, 0.5);
+  /* [fix] Was a dark-theme --panel-2/--line hex spelled out as its own
+     literal rgba() triplet right here, instead of a theme-aware token — so
+     this card (and every similarly-spelled-out accent/panel/line literal
+     elsewhere in this file: compare-item, path-edge-connector, role-chip--*,
+     hop-songs, hop-row/sidebar-track dividers) stayed dark-styled even
+     under :root[data-theme="light"], instead of following --panel-rgb/
+     --line-rgb/--signal-rgb/--pulse-rgb the way .path-input two rules up
+     already did. */
+  background: rgba(var(--panel-rgb), 0.6);
+  border: 1px solid rgba(var(--line-rgb), 0.5);
   flex-shrink: 0;
   /* Баг: карточки в "1 hop from seed" (и в общем path-chain-track)
      были разной ширины — min/max-width давали диапазон 80–100px, но
@@ -264,7 +272,7 @@
   cursor: default;
 }
 .path-node-card:hover {
-  background: rgba(20, 26, 40, 0.8);
+  background: rgba(var(--panel-rgb), 0.8);
   border-color: var(--line);
 }
 
@@ -293,17 +301,17 @@
   gap: var(--space-1);
   padding: var(--space-2);
   border-radius: var(--r-sm);
-  background: rgba(20, 26, 40, 0.4);
-  border: 1px solid rgba(94, 230, 197, 0.3);
+  background: rgba(var(--panel-rgb), 0.4);
+  border: 1px solid rgba(var(--signal-rgb), 0.3);
   flex-shrink: 0;
   min-width: 72px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .path-edge-connector:hover {
-  background: rgba(94, 230, 197, 0.12);
+  background: rgba(var(--signal-rgb), 0.12);
   border-color: var(--signal);
-  box-shadow: 0 0 8px rgba(94, 230, 197, 0.15);
+  box-shadow: 0 0 8px rgba(var(--signal-rgb), 0.15);
 }
 .path-edge-connector:active {
   transform: scale(0.98);
@@ -334,13 +342,13 @@
 
 .role-chip--featured {
   color: var(--signal);
-  border-color: rgba(94, 230, 197, 0.4);
-  background: rgba(94, 230, 197, 0.08);
+  border-color: rgba(var(--signal-rgb), 0.4);
+  background: rgba(var(--signal-rgb), 0.08);
 }
 .role-chip--producer {
   color: var(--pulse);
-  border-color: rgba(185, 138, 255, 0.4);
-  background: rgba(185, 138, 255, 0.08);
+  border-color: rgba(var(--pulse-rgb), 0.4);
+  background: rgba(var(--pulse-rgb), 0.08);
 }
 .role-chip--writer {
   color: var(--amber);
@@ -386,7 +394,7 @@
   .hop-row {
     flex-direction: row; align-items: flex-start; text-align: left;
     width: 100%;
-    padding: var(--space-1) 0; border-bottom: 1px solid rgba(40,48,68,.3);
+    padding: var(--space-1) 0; border-bottom: 1px solid rgba(var(--line-rgb), .3);
   }
   .hop-row:last-child { border-bottom: none; }
   .hop-connector {
@@ -492,7 +500,7 @@
 }
 .sidebar-track {
   display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2);
-  padding: var(--space-1) 0; border-bottom: 1px solid rgba(40,48,68,.35);
+  padding: var(--space-1) 0; border-bottom: 1px solid rgba(var(--line-rgb), .35);
 }
 .sidebar-track:last-child { border-bottom: none; }
 .sidebar-track-name { font-size: var(--text-xs); color: var(--paper); line-height: 1.3; flex: 1; min-width: 0; }

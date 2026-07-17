@@ -21,6 +21,7 @@ import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { renderEmptyState } from "./canvas-states.js";
 import { syncComparePinnedButton } from "./compare-panel.js";
+import { navigateToSurface, SURFACE_GRAPH } from "./router.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // Role filter toggles
@@ -442,16 +443,37 @@ export function setupKeyboard() {
 // поиск (та же кнопка, что и над уже нарисованным графом), не полноэкранная
 // домашняя модалка.
 // ════════════════════════════════════════════════════════════════════════════
+// [fix] resetCanvasToEmpty() (called by clearCanvas() below) deliberately
+// KEEPS State.hasRendered true — SF-WEB-19's "Clear stays on the graph
+// page" design assumes the canvas is still "on scene". But the empty-state
+// action and goHome() both open the FULL-SCREEN (non-docked) landing
+// modal — conceptually "back to the start" — and graph.js's render
+// pipeline only calls initGraphOnCanvas() (which is what closes the
+// search modal again, via forceCloseSearchModal()) `if (!State.
+// hasRendered)`. Leaving the flag true meant that gate never fired on the
+// next successful search, so the modal stayed open on top of the newly
+// drawn graph (reported: "после Map it поиск не сворачивается"). Reset it
+// here so the next search is treated as a genuine first render again.
+function openFullSearchFromEmpty() {
+  State.hasRendered = false;
+  openSearchModal();
+}
+
 export function clearCanvas() {
   resetCanvasToEmpty();
   els.status.hidden = true;
   if (els.truncationBanner) els.truncationBanner.hidden = true;
   if (els.scanStatusBadge) els.scanStatusBadge.hidden = true;
   startCanvasDecorator();
-  // [SF-WEB-19] Canvas is empty again — onboarding card, docked search (not
-  // the full-screen landing modal) as its action so Clear never leaves the
-  // graph page.
-  renderEmptyState(els.canvasState, { onAction: () => openSearchModal({ docked: true }) });
+  // [fix] Was docked search (`openSearchModal({ docked: true })`, per
+  // SF-WEB-19's original "Clear never leaves the graph page" framing) —
+  // the docked flow's own history/autocomplete dropdown isn't styled for
+  // being shown over a blank canvas (reported as an unstyled floating
+  // list). The full-screen landing modal already exists and is properly
+  // styled for exactly this "nothing on the canvas yet" moment, so the
+  // empty-state card's own action now opens that instead (see
+  // openFullSearchFromEmpty()'s own comment for why hasRendered resets).
+  renderEmptyState(els.canvasState, { onAction: openFullSearchFromEmpty });
   els.heroInput.value = "";
   hideToast();
   hideArtistSidebar();
@@ -462,7 +484,34 @@ export function clearCanvas() {
   // resetCanvasToEmpty() already clears State.pinnedNodes, reflect that on
   // the rail button too.
   syncComparePinnedButton();
-  history.replaceState(null, "", window.location.pathname);
+  // [fix] Was `history.replaceState(null, "", window.location.pathname)`,
+  // which drops the #/graph hash router.js (SF-WEB-25) owns — clicking
+  // .brand/Clear left the URL bare (http://host/ instead of .../#/graph).
+  // Harmless while "graph" stays the only real surface (a missing hash
+  // still resolves to it), but it broke the router's own invariant that
+  // the URL always reflects what's showing, and would misbehave the
+  // moment a second surface (game mode) exists. Still clear the shareable
+  // query string the same way as before, but hand the hash back to
+  // navigateToSurface() — the same call every other surface change goes
+  // through — instead of hand-rolling a bare replaceState.
+  const url = new URL(window.location.href);
+  url.search = "";
+  history.replaceState(null, "", url.toString());
+  navigateToSurface(SURFACE_GRAPH, { replace: true });
+}
+
+// [fix] .brand (the logo) used to call clearCanvas() directly — same as
+// the rail's "Clear graph" button — which (per SF-WEB-19) only clears the
+// canvas and stays on the graph page with an empty-state card. Reported
+// separately: clicking the logo is expected to act like a real "back to
+// home" action, landing straight on the full-screen search experience,
+// not an intermediate empty-state card the user has to click through.
+// Composes the same clearCanvas() reset with openFullSearchFromEmpty()
+// (same hasRendered-reset reasoning as the empty-state card's own action
+// above — without it, the modal doesn't close after the next search).
+export function goHome() {
+  clearCanvas();
+  openFullSearchFromEmpty();
 }
 
 export function updateStatus(graph) {

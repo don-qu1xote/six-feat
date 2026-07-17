@@ -14,6 +14,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect } from "vitest";
 import { buildSync } from "esbuild";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -80,4 +81,51 @@ describe("SF-WEB-40 design-system CSS bundle", () => {
       expect(css, `state hook ${cls} missing`).toContain(cls);
     }
   });
+
+  // [fix] companion.css's "1 hop from seed" / path-chain / compare-item
+  // cards hardcoded rgba(20,26,40,...)/(40,48,68,...)/(94,230,197,...)/
+  // (185,138,255,...) — the dark theme's own hex, pinned regardless of
+  // which theme was active — instead of the theme-aware --panel-rgb/
+  // --line-rgb/--signal-rgb/--pulse-rgb triplets .path-input right next to
+  // them already used. Result: those cards stayed dark-styled under
+  // :root[data-theme="light"]. Guards against the literals creeping back
+  // (checks the raw source, not the bundle — tokens.css/button.css's own
+  // prose comments mention these exact numbers when explaining past fixes,
+  // which would false-positive a bundle-wide check).
+  it("companion.css's path/compare cards use RGB-triplet tokens, not dark-pinned literals", () => {
+    const companionSrc = readFileSync(join(here, "surfaces/companion.css"), "utf8");
+    for (const literal of [
+      /rgba\(\s*20,\s*26,\s*40/, /rgba\(\s*40,\s*48,\s*68/,
+      /rgba\(\s*94,\s*230,\s*197/, /rgba\(\s*185,\s*138,\s*255/,
+    ]) {
+      expect(companionSrc, `dark-pinned literal ${literal} still present`).not.toMatch(literal);
+    }
+  });
+
+  it("defines a theme-aware --line-rgb triplet, redefined per theme", () => {
+    expect(css).toContain("--line-rgb");
+  });
+
+  // [fix] --on-accent (text on the signal→pulse accent gradient — the
+  // primary button, hero-mode thumb, etc.) used to be a single fixed
+  // near-black value shared by both themes. Light theme's --signal/--pulse
+  // are darker/more saturated than dark theme's, so that near-black text
+  // read as low-contrast there — light theme now overrides --on-accent to
+  // a near-white value instead of inheriting the dark one.
+  it("light theme overrides --on-accent instead of inheriting the dark near-black default", () => {
+    const lightBlockRaw = rule(css, ':root[data-theme="light"]') || rule(css, ":root[data-theme=light]");
+    expect(lightBlockRaw, "light theme :root block not found").toBeTruthy();
+    expect(lightBlockRaw).toMatch(/--on-accent:\s*#[0-9a-fA-F]{6}/);
+    const rootBlock = rule(css, ":root");
+    const darkOnAccent  = rootBlock.match(/--on-accent:\s*(#[0-9a-fA-F]{6})/)[1];
+    const lightOnAccent = lightBlockRaw.match(/--on-accent:\s*(#[0-9a-fA-F]{6})/)[1];
+    expect(lightOnAccent.toLowerCase()).not.toBe(darkOnAccent.toLowerCase());
+  });
 });
+
+function rule(css, selector) {
+  const idx = css.indexOf(`${selector} {`);
+  if (idx === -1) return null;
+  const end = css.indexOf("}", idx);
+  return css.slice(idx, end + 1);
+}

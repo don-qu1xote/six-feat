@@ -19,7 +19,27 @@ import {
 } from "./overlay-root.js";
 
 const _here = dirname(fileURLToPath(import.meta.url));
-const HTML = readFileSync(resolve(_here, "../../index.html"), "utf8");
+const stylesDir = resolve(_here, "../styles");
+
+// [fix] SF-WEB-40 (this ticket's own stated dependency) already extracted
+// every rule out of index.html's inline <style> into src/styles/*.css
+// *before* SF-WEB-41 landed — index.html has had no :root/selector CSS to
+// read since that ticket. Reading HTML here always found `:root {`, the
+// `.ac-dropdown {`, etc. nowhere, and every assertion in this describe
+// silently checked the empty string instead of the real rules — a
+// regression the CI run after commit caught (4 failures: "--z-canvas:
+// expected undefined", ".ac-dropdown ... to match ..." not matching, etc.),
+// even though the actual --z-*/overlay-root implementation in
+// src/styles/tokens.css + surfaces/*.css is correct. Fixed by resolving
+// index.css's own @import list (the real, load-bearing bundle order — see
+// that file's header comment) and reading the concatenated source, the same
+// CSS esbuild would bundle, instead of the now CSS-less HTML document.
+function loadBundledCssSource() {
+  const entry = readFileSync(resolve(stylesDir, "index.css"), "utf8");
+  const files = [...entry.matchAll(/@import\s+"\.\/([^"]+)";/g)].map(m => m[1]);
+  return files.map(f => readFileSync(resolve(stylesDir, f), "utf8")).join("\n");
+}
+const CSS = loadBundledCssSource();
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -92,7 +112,7 @@ describe("[SF-WEB-41] overlay-root portal — дропдаун не обреза
 describe("[SF-WEB-41] z-index из токенов, а не magic-чисел", () => {
   // Разбор блока :root { ... } до первого :root[...] — все --z-* объявления.
   function zTokens() {
-    const root = HTML.slice(HTML.indexOf(":root {"));
+    const root = CSS.slice(CSS.indexOf(":root {"));
     const body = root.slice(0, root.indexOf("}"));
     const out = {};
     for (const m of body.matchAll(/--z-([\w-]+):\s*(\d+);/g)) out[m[1]] = Number(m[2]);
@@ -107,15 +127,15 @@ describe("[SF-WEB-41] z-index из токенов, а не magic-чисел", ()
   });
 
   it(".ac-dropdown и #overlay-root берут z-index из --z-dropdown", () => {
-    expect(HTML).toMatch(/\.ac-dropdown\s*\{[^}]*z-index:\s*var\(--z-dropdown\)/s);
-    expect(HTML).toMatch(/#overlay-root\s*\{[^}]*z-index:\s*var\(--z-dropdown\)/s);
+    expect(CSS).toMatch(/\.ac-dropdown\s*\{[^}]*z-index:\s*var\(--z-dropdown\)/s);
+    expect(CSS).toMatch(/#overlay-root\s*\{[^}]*z-index:\s*var\(--z-dropdown\)/s);
   });
 
   it("ключевые слои переведены на токены, magic-чисел z-index у них не осталось", () => {
     for (const sel of [".toast", ".candidate-overlay", ".help-overlay",
                        ".search-modal", ".node-search-overlay", "#network"]) {
-      const at = HTML.indexOf(sel + " ") >= 0 ? HTML.indexOf(sel + " ") : HTML.indexOf(sel + "\n");
-      const block = HTML.slice(HTML.indexOf(sel), HTML.indexOf("}", HTML.indexOf(sel)));
+      const at = CSS.indexOf(sel + " ") >= 0 ? CSS.indexOf(sel + " ") : CSS.indexOf(sel + "\n");
+      const block = CSS.slice(CSS.indexOf(sel), CSS.indexOf("}", CSS.indexOf(sel)));
       const zLine = block.match(/z-index:\s*([^;]+);/);
       if (zLine) expect(zLine[1], `${sel} z-index`).toContain("var(--z-");
       expect(at).toBeGreaterThan(0);
@@ -125,7 +145,7 @@ describe("[SF-WEB-41] z-index из токенов, а не magic-чисел", ()
 
 describe("[SF-WEB-41] один порядок истины: нет двух полос на одном z без явного порядка", () => {
   it("шкала строго возрастает и значения различны", () => {
-    const root = HTML.slice(HTML.indexOf(":root {"));
+    const root = CSS.slice(CSS.indexOf(":root {"));
     const body = root.slice(0, root.indexOf("}"));
     const order = ["canvas", "graph-overlay", "panel", "docked", "dropdown", "overlay", "toast"];
     const vals = order.map(n => {

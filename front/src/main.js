@@ -7,7 +7,7 @@ import {
   loadHistory, setupFilterToggles, setupNodeSearch, setupPathPanel,
   setupHeroPathFinder, setupHeroModeSwitch,
   createGeniusAc, attachGeniusAutocomplete, closeDropdown,
-  loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas,
+  loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas, goHome,
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
@@ -107,9 +107,14 @@ export function init() {
   }
 
   if (els.brand) {
-    els.brand.addEventListener("click", clearCanvas);
+    // [fix] Was clearCanvas() — the same handler as the rail's dedicated
+    // "Clear graph" button — which (SF-WEB-19) deliberately stays on the
+    // graph page with an empty-state card. The logo is expected to behave
+    // like an actual "back to home" action instead, landing straight on
+    // the full-screen search experience. See goHome()'s own comment.
+    els.brand.addEventListener("click", goHome);
   } else {
-    console.warn("[init] .brand element not found; brand-click-to-clear disabled.");
+    console.warn("[init] .brand element not found; brand-click-to-home disabled.");
   }
 
   if (els.sidebarClose) {

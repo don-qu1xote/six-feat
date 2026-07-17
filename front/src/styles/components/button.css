@@ -32,16 +32,27 @@
               background var(--duration-fast) var(--ease-standard),
               box-shadow var(--duration-fast) var(--ease-standard);
 }
-.ui-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
+/* [SF-WEB-42] var(--hover-tint)/var(--active-tint) (tokens.css) replace
+   the literal rgba(185,138,255,.10)/rgba(94,230,197,.12) below and in
+   .active/[aria-pressed]/[aria-selected] — themed the same way
+   --focus-ring is, see that rule's own comment. */
+.ui-btn:hover { color: var(--paper); border-color: var(--pulse); background: var(--hover-tint); }
+/* [SF-WEB-42] var(--focus-ring) (tokens.css) replaces the literal
+   rgba(94,230,197,.35) — same value in the dark theme, but now themed
+   (built from --signal-rgb, which flips per theme) instead of pinned to
+   dark's signal hex regardless of which theme is active. One token
+   shared by every kit component's focus-visible ring instead of each
+   copy-pasting its own box-shadow literal — the actual "единый ...
+   focus-ring на ките" this ticket asks for. */
 .ui-btn:focus-visible {
   outline: none; border-color: var(--signal);
-  box-shadow: 0 0 0 3px rgba(94,230,197,.35);
+  box-shadow: var(--focus-ring);
 }
 .ui-btn:active { transform: translateY(1px); }
 .ui-btn.active,
 .ui-btn[aria-pressed="true"],
 .ui-btn[aria-selected="true"] {
-  color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12);
+  color: var(--paper); border-color: var(--signal); background: var(--active-tint);
 }
 .ui-btn:disabled { opacity: .55; cursor: progress; }
 
@@ -56,7 +67,10 @@
   color: var(--on-accent); border-color: transparent; filter: brightness(1.06);
   background: linear-gradient(100deg, var(--signal), var(--pulse));
 }
-.ui-btn--primary:focus-visible { box-shadow: 0 0 0 3px rgba(94,230,197,.45); }
+/* [SF-WEB-42] --focus-ring-strong (tokens.css) — same rationale as
+   .ui-btn:focus-visible above, deliberately the louder of the two ring
+   tokens since this sits on its own bright accent-gradient fill. */
+.ui-btn--primary:focus-visible { box-shadow: var(--focus-ring-strong); }
 
 /* Ghost — chromeless until interacted with (rail buttons, in-panel
    secondary actions). */

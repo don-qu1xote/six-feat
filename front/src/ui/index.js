@@ -89,7 +89,7 @@ export {
 export {
   setupFilterToggles, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   fitView, focusSeed, zoomIn, zoomOut, setupKeyboard,
-  clearCanvas, updateStatus, updateRateLimitIndicator, updateTruncationBanner,
+  clearCanvas, goHome, updateStatus, updateRateLimitIndicator, updateTruncationBanner,
   updateScanStatus, exportGraphPng, exportGraphJson, buildGraphExportData
 } from "./canvas-controls.js";
 
