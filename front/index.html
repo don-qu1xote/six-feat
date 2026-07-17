@@ -178,7 +178,17 @@
            градиент, что раньше подсвечивал только "features", теперь на
            всё название — сервис становится узнаваемым по одному
            взгляду. -->
-      <h1><span class="grad">Six Feet</span></h1>
+      <div class="hero-header">
+        <h1><span class="grad">Six Feet</span></h1>
+        <!-- [SF-WEB-50] One quiet thesis line under the wordmark — not the
+             old instructional paragraph ("Search an artist to map who
+             they've made songs with", removed in SF-WEB-31 for competing
+             with the search field itself). States what the product IS,
+             doesn't tell the user what to do; styled small/muted
+             (.hero-tagline, hero.css) so weight stays on the search field
+             below, per this ticket's own brief. -->
+        <p class="hero-tagline">Six degrees of collaboration.</p>
+      </div>
 
       <!-- IDEA-41: segmented Explore/Connect switch sits above the hero
            search. "Explore" (default) is the existing single-artist graph

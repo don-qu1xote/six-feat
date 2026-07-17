@@ -18,7 +18,7 @@
   opacity: 1; transition: opacity var(--duration-slower) var(--ease-standard), backdrop-filter var(--duration-slower) var(--ease-standard), background var(--duration-slower) var(--ease-standard);
   backdrop-filter: blur(var(--blur-modal));
 }
-.search-modal h1,
+.search-modal .hero-header,
 .search-modal .include-roles-row,
 .search-modal .hero-mode-switch,
 .search-modal .hero-mode-stage,
@@ -27,7 +27,11 @@
   transition: opacity var(--duration-xslow) var(--ease-standard), transform var(--duration-xslow) var(--ease-standard);
 }
 .search-modal.is-closed { opacity: 0; pointer-events: none; backdrop-filter: blur(0); }
-.search-modal.is-closed h1       { opacity: 0; transform: translateY(-16px); transition-delay: var(--stagger-1); }
+/* [SF-WEB-50] .hero-header wraps h1 + the new .hero-tagline (index.html) —
+   was just "h1" before this ticket; same selector role (the fade/rise
+   treatment used to target h1 directly), now targets the wrapper so the
+   tagline fades with it as one unit instead of needing its own rule. */
+.search-modal.is-closed .hero-header { opacity: 0; transform: translateY(-16px); transition-delay: var(--stagger-1); }
 .search-modal.is-closed .include-roles-row { opacity: 0; transform: translateY(-10px); transition-delay: var(--stagger-2); }
 .search-modal.is-closed .hero-mode-switch  { opacity: 0; transform: translateY(-10px); transition-delay: var(--stagger-2); }
 .search-modal.is-closed .hero-mode-stage   { opacity: 0; transform: translateY(-10px); transition-delay: var(--stagger-2); }
@@ -76,7 +80,7 @@
   transition: transform var(--duration-slow) var(--ease-standard);
 }
 .search-modal.docked.is-closed { transform: translateY(-6px); }
-.search-modal.docked h1,
+.search-modal.docked .hero-header,
 .search-modal.docked .chips-label,
 .search-modal.docked .chips,
 .search-modal.docked .auth-bar {
@@ -176,6 +180,16 @@
 .search-modal h1 .grad {
   background: linear-gradient(100deg, var(--signal), var(--pulse));
   -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* [SF-WEB-50] Wraps h1 + the one thesis line (.hero-tagline) so they pair
+   tightly under their own small gap, independent of .search-modal's own
+   (larger) gap between major blocks — the tagline reads as part of the
+   headline, not a separate section. */
+.hero-header { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); }
+.hero-tagline {
+  font-size: var(--text-sm); font-weight: 500; color: var(--mist);
+  letter-spacing: .01em;
 }
 
 .search-wrap { position: relative; width: min(680px, 92vw); margin-top: var(--space-1); }

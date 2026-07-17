@@ -74,3 +74,17 @@
   .decor-dot { animation: none; }
 }
 
+/* [SF-WEB-50] "Dandelion" motif — a few static nodes wired to the implied
+   seed center, layered under the ambient .decor-dot starfield (drawn
+   first in the SVG — see canvas-decorator.js). Deliberately understated:
+   thin, low-opacity lines and a slightly larger but still faint node so
+   the whole thing reads as atmosphere, not a second thing competing with
+   the h1/search field for attention. Neither element animates (no
+   prefers-reduced-motion branch needed — they were never in motion). */
+.decor-edge {
+  stroke: var(--signal); stroke-width: 1; opacity: .1;
+}
+.decor-node {
+  fill: var(--signal); opacity: .45;
+}
+

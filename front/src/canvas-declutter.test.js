@@ -139,3 +139,38 @@ describe("[SF-WEB-31 follow-up 2] landing wordmark replaces the eyebrow+slogan",
     expect(html).toContain('<h1><span class="grad">Six Feet</span></h1>');
   });
 });
+
+// [SF-WEB-50] Landing folded into Observatory — absorbs SF-WEB-31 (no
+// longer a separate ticket). Brand (wordmark) stays, one short thesis line
+// joins it, every existing entry point (Explore/Connect switch, role
+// filters, chips, auth) stays present and reachable — nothing removed, the
+// first screen just gains one quiet line of copy under the wordmark.
+describe("[SF-WEB-50] landing folded into Observatory", () => {
+  it("pairs the wordmark with exactly one short thesis line, not a return to the old explanatory paragraph", () => {
+    expect(html).toContain('<div class="hero-header">');
+    expect(html).toMatch(/<p class="hero-tagline">[^<]{1,60}<\/p>/);
+    // The old instructional/slogan copy this ticket explicitly does NOT
+    // want back — see the SF-WEB-31/SF-WEB-31-follow-up describes above.
+    expect(html).not.toContain("Search an artist to map who they've made songs with");
+    expect(html).not.toContain("Trace the people behind the");
+  });
+
+  it("keeps every landing entry point present: search field, Explore/Connect switch, role filters, chips, auth", () => {
+    expect(html).toContain('id="hero-input"');
+    expect(html).toContain('id="hero-mode-switch"');
+    expect(html).toContain('id="hero-mode-tab-explore"');
+    expect(html).toContain('id="hero-mode-tab-connect"');
+    expect(html).toContain('id="hero-filter-featured"');
+    expect(html).toContain('id="hero-filter-producer"');
+    expect(html).toContain('id="hero-filter-writer"');
+    expect(html).toContain('id="chips"');
+    expect(html).toContain('id="auth-bar"');
+  });
+
+  it("still renders the dandelion/starfield decorator mount behind the landing", () => {
+    expect(html).toContain('id="canvas-decorator"');
+    // Decorator markup sits before search-modal in document order — it's
+    // the atmosphere BEHIND the landing, not drawn after/over it.
+    expect(html.indexOf('id="canvas-decorator"')).toBeLessThan(html.indexOf('id="search-modal"'));
+  });
+});

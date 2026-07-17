@@ -298,6 +298,40 @@ describe("[SF-WEB-49] theme contrast — text-bearing accents clear AA (4.5:1) i
   });
 });
 
+// [SF-WEB-50] Landing atmosphere: the drifting starfield dots must stop
+// under prefers-reduced-motion (a real user preference, not a nice-to-have)
+// — the dandelion's own nodes/edges (.decor-node/.decor-edge) never had an
+// `animation` in the first place, so there's nothing for that media query
+// to need to override for them; only .decor-dot's own `animation: ...`
+// declaration (canvas.css) needs a matching `animation: none` inside
+// `@media (prefers-reduced-motion: reduce)`.
+describe("[SF-WEB-50] landing decorator — reduced-motion stops the drift", () => {
+  it(".decor-dot animates by default", () => {
+    const block = rule(css, ".decor-dot");
+    expect(block, ".decor-dot rule missing").toBeTruthy();
+    expect(block).toMatch(/animation:\s*decor-drift/);
+  });
+
+  it("prefers-reduced-motion turns .decor-dot's animation off", () => {
+    const mq = css.indexOf("@media (prefers-reduced-motion: reduce)");
+    expect(mq, "no prefers-reduced-motion: reduce block found").toBeGreaterThan(-1);
+    // A generous fixed slice rather than brace-matching the media query's
+    // own close — esbuild's unminified nesting/indentation isn't a format
+    // worth depending on precisely, and .decor-dot's override is the very
+    // next rule in this block regardless of exact whitespace.
+    const mqBlock = css.slice(mq, mq + 300);
+    expect(mqBlock).toMatch(/\.decor-dot\s*\{[^}]*animation:\s*none/);
+  });
+
+  it("the dandelion's own nodes/edges never declare an animation to begin with — nothing to gate", () => {
+    for (const selector of [".decor-node", ".decor-edge"]) {
+      const block = rule(css, selector);
+      expect(block, `${selector} rule missing`).toBeTruthy();
+      expect(block).not.toMatch(/animation:/);
+    }
+  });
+});
+
 function rule(css, selector) {
   const idx = css.indexOf(`${selector} {`);
   if (idx === -1) return null;
