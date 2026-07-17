@@ -55,7 +55,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { State, COLOR, PATH_HIGHLIGHT_LEVELS, DIM_LEVELS } from "../state/state.js";
 import { roleStyle, placeholderFor } from "../state/helpers.js";
-import { edgeWidthForWeight, seedShadow, _imageFieldsFor, resolveEdgeDominantRole, lightenHexColor } from "./visuals.js";
+import { edgeWidthForWeight, seedShadow, nodeShadowFor, _imageFieldsFor, resolveEdgeDominantRole, lightenHexColor } from "./visuals.js";
 
 // Кэш «дефолтного» состояния нод и рёбер для быстрого mode="default".
 // Заполняется в buildDefaultColorCache() при каждом изменении графа.
@@ -99,7 +99,11 @@ export function buildDefaultColorCache() {
       // срабатывает где-то в проде — меняем его на приглушённый вариант
       // --primary2, а не на цвет линий канвы.
       border: n._dimBorder || "rgba(143,166,201,0.25)",
-      shadow: n.isSeed ? seedShadow() : { enabled: false }
+      // [SF-WEB-45] Was `n.isSeed ? seedShadow() : {enabled:false}` — wiped
+      // out expanded/leaf nodes' own resting glow (see nodeShadowFor) every
+      // time this cache got rebuilt, so it's the same formula nodeVisual
+      // uses, not a second hardcoded rule.
+      shadow: nodeShadowFor(n)
     });
   }
   for (const e of State.graphEdges) {
@@ -627,7 +631,10 @@ function _defaultNodeUpdate(nodeId) {
   if (!graphNode) return null;
   const isExpanded = State.expandedNodes.has(graphNode.id);
   const borderWidth = graphNode.isSeed ? 5 : (isExpanded ? 4 : 2);
-  const shadow = graphNode.isSeed ? seedShadow() : { enabled: false };
+  // [SF-WEB-45] Same nodeShadowFor formula as buildDefaultColorCache above —
+  // reverting to "resting" after a hover/selection must restore the same
+  // glow nodeVisual painted on first render, not always {enabled:false}.
+  const shadow = nodeShadowFor(graphNode);
   const border = graphNode._dimBorder || "rgba(143,166,201,0.25)";
   return {
     id: nodeId,

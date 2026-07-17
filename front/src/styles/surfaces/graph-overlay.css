@@ -43,12 +43,18 @@
 }
 .toast-retry-btn:hover { background: rgba(0,0,0,.08); }
 
+/* [SF-WEB-45] Same glass-shell recipe as .ui-panel (components/panel.css) —
+   the graph's tooltip floats over the canvas exactly like the companion
+   panel / docked search shells, so it gets the same treatment instead of
+   the old solid --panel fill. */
 div.vis-tooltip {
   position: absolute;
-  background: var(--panel) !important; color: var(--paper) !important;
-  border: 1px solid var(--line) !important; border-radius: var(--r-md) !important;
+  background: var(--glass-fill) !important; color: var(--paper) !important;
+  border: 1px solid var(--line) !important; border-radius: var(--r-lg) !important;
+  backdrop-filter: blur(var(--blur-scrim)) !important;
   padding: 0 !important; font-family: "Inter", system-ui, sans-serif !important;
-  font-size: var(--text-sm) !important; box-shadow: 0 16px 40px rgba(0,0,0,.55) !important;
+  font-size: var(--text-sm) !important;
+  box-shadow: var(--elevation-2), var(--glass-glow) !important;
   white-space: normal !important; max-width: 320px !important;
   pointer-events: none; z-index: var(--z-dropdown);
 }

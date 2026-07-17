@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State, COLOR, DIM_LEVELS } from "../state/state.js";
-import { seedShadow } from "./visuals.js";
+import { seedShadow, nodeShadowFor } from "./visuals.js";
 import {
   buildDefaultColorCache,
   invalidateColorCache,
@@ -55,9 +55,13 @@ describe("buildDefaultColorCache + applyDimState('default')", () => {
     expect(byId[1].shadow).toEqual(seedShadow());
     expect(byId[1].opacity).toBe(DIM_LEVELS.off);
 
-    // Non-seed node: explicit _dimBorder used verbatim, no shadow.
+    // [SF-WEB-45] Non-seed node: explicit _dimBorder used verbatim; leaf
+    // nodes now carry their own (softer) resting glow — see nodeShadowFor,
+    // the single formula this cache, nodeVisual, and the hover/selection
+    // revert path all share.
     expect(byId[2].color.border).toBe("#111111");
-    expect(byId[2].shadow).toEqual({ enabled: false });
+    expect(byId[2].shadow).toEqual(nodeShadowFor(State.graphNodes[1]));
+    expect(byId[2].shadow.enabled).toBe(true);
 
     const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
     expect(edgeUpdates).toEqual([

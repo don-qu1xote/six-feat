@@ -9,12 +9,54 @@ import { State, COLOR, ROLE_PRIORITY } from "../state/state.js";
 import { placeholderFor, roleStyle } from "../state/helpers.js";
 import { buildNodeTooltip, buildEdgeTooltip } from "./tooltips.js";
 
+// [SF-WEB-45] hexToRgba — same #RRGGBB parsing lightenHexColor already does
+// below, reused here so glow colors can carry an explicit alpha instead of
+// the `${hex}NN` string-concat shorthand used elsewhere in this file (that
+// shorthand only works because those NN suffixes are hand-picked valid hex
+// pairs; seedShadow's hero-glow wants a value tuned in normal 0–1 terms).
+export function hexToRgba(hex, alpha) {
+  hex = hex.replace("#", "");
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 // Централити (betweenness) полностью убрана по запросу — раньше здесь была
 // betweennessGlow(nodeData), вычислявшая glow-тень по _betweennessNorm.
-// Seed теперь просто получает свой фиксированный акцентный glow (см.
-// seedShadow ниже), остальные узлы — без свечения вообще.
+// Seed получает выраженный hero-glow (см. seedShadow), остальные узлы — свой
+// собственный, более сдержанный halo (см. nodeShadowFor) — оба через
+// border+shadow, никогда не через opacity в данных ноды (см. большой
+// комментарий "Структурный фикс" ниже: opacity:0 на входе исторически ломал
+// circularImage — тот баг про fade-in, но урок общий, glow это тоже не
+// opacity).
+//
+// [SF-WEB-45] color берётся из COLOR.signal (живой геттер на CSS-переменную
+// --signal, см. state.js) вместо прежнего захардкоженного rgba(94,230,197,…)
+// — тот хардкод был ровно тёмной темы, так что seed-glow в светлой теме
+// молча оставался тёмно-бирюзовым вместо светлотемного --signal.
 export function seedShadow() {
-  return { enabled: true, color: "rgba(94,230,197,0.45)", size: 22, x: 0, y: 0 };
+  return { enabled: true, color: hexToRgba(COLOR.signal, 0.55), size: 26, x: 0, y: 0 };
+}
+
+// [SF-WEB-45] Единая точка входа для "дефолтного" (не hover, не selected)
+// shadow-поля ноды — используется и nodeVisual (первичная сборка), и
+// highlight.js (buildDefaultColorCache/_defaultNodeUpdate, т.е. кэш и откат
+// к состоянию покоя после hover/selection). Раньше это правило было
+// продублировано в nodeVisual один раз и в highlight.js — дважды, каждая
+// копия жёстко трактовала любую не-seed ноду как shadow:{enabled:false};
+// расширять glow на expanded/leaf-ноды пришлось бы в трёх местах и рано или
+// поздно рассинхронизировать. Теперь расширять/менять — только здесь.
+export function nodeShadowFor(nodeData) {
+  if (nodeData.isSeed) return seedShadow();
+  const isExpired = nodeData.isExpired || nodeData.dataExpired || false;
+  if (isExpired) return { enabled: false };
+  const isExpanded = State.expandedNodes.has(nodeData.id);
+  const domRole = nodeData._dominantRole || "primary";
+  const accent  = roleStyle(domRole).color;
+  return isExpanded
+    ? { enabled: true, color: `${accent}30`, size: 12, x: 0, y: 0 }
+    : { enabled: true, color: `${accent}22`, size: 6, x: 0, y: 0 };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -178,23 +220,14 @@ export function nodeVisual(nodeData) {
   const opacity = isExpired ? 0.6 : 1.0;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FIX #3: Shadow/glow based on node importance
+  // FIX #3 / [SF-WEB-45]: Shadow/glow based on node importance — seed gets
+  // its pronounced hero-glow, expanded/leaf nodes get their own softer halo,
+  // expired nodes stay glow-free (reads as "secondary/stale"). See
+  // nodeShadowFor above — same formula highlight.js's default-color cache
+  // and hover/selection revert use, so the glow this function paints on
+  // first render is exactly what those paths restore afterwards.
   // ─────────────────────────────────────────────────────────────────────────
-  let shadow;
-  if (isSeed) {
-    shadow = seedShadow();  // Turquoise glow for seed
-  } else if (isExpanded) {
-    // Subtle glow for expanded nodes
-    shadow = {
-      enabled: true,
-      color: `${accent}30`,
-      size: 12,
-      x: 0,
-      y: 0
-    };
-  } else {
-    shadow = { enabled: false };
-  }
+  const shadow = nodeShadowFor(nodeData);
 
   // Seed: mass=1 т.к. он зафиксирован (fixed:true) и масса не влияет на физику.
   // Expanded: высокая масса — притягивают листья, но сами не улетают.

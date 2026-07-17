@@ -6,7 +6,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, beforeEach } from "vitest";
 import { State } from "../state/state.js";
-import { nodeVisual } from "./visuals.js";
+import { nodeVisual, seedShadow, nodeShadowFor } from "./visuals.js";
 import { buildNodeTooltip } from "./tooltips.js";
 
 beforeEach(() => {
@@ -19,6 +19,51 @@ describe("nodeVisual", () => {
     const v = nodeVisual({ id: 1, name: "Kendrick Lamar", isSeed: true, computedRadius: 22 });
     expect(v).not.toHaveProperty("label");
     expect(v).not.toHaveProperty("font");
+  });
+
+  // [SF-WEB-45] never opacity in node data for the glow — this file's big
+  // "Структурный фикс" comment documents why opacity:0 historically broke
+  // circularImage, so opacity must stay a fixed 1.0/0.6 (seed/leaf vs.
+  // expired), independent of whatever nodeShadowFor decides for `shadow`.
+  it("keeps opacity fixed (never used to express glow) and never loses circularImage", () => {
+    const seed = nodeVisual({ id: 1, name: "Seed", isSeed: true, computedRadius: 22 });
+    const leaf = nodeVisual({ id: 2, name: "Leaf", computedRadius: 22 });
+    const expired = nodeVisual({ id: 3, name: "Old", isExpired: true, computedRadius: 22 });
+    for (const v of [seed, leaf, expired]) {
+      expect(v.shape).toBe("circularImage");
+      expect(v.image).toBeTruthy();
+      expect(v.brokenImage).toBeTruthy();
+    }
+    expect(seed.opacity).toBe(1.0);
+    expect(leaf.opacity).toBe(1.0);
+    expect(expired.opacity).toBe(0.6);
+  });
+
+  it("gives every non-expired node a role-token-colored glow, disabled only for expired nodes", () => {
+    const leaf = nodeVisual({ id: 1, name: "Leaf", computedRadius: 22 });
+    expect(leaf.shadow.enabled).toBe(true);
+    expect(leaf.shadow.color).toContain(leaf._accent.replace("#", ""));
+
+    const expired = nodeVisual({ id: 2, name: "Old", isExpired: true, computedRadius: 22 });
+    expect(expired.shadow.enabled).toBe(false);
+  });
+
+  it("gives the seed a distinctly more pronounced hero-glow than a regular leaf", () => {
+    const seed = nodeVisual({ id: 1, name: "Seed", isSeed: true, computedRadius: 22 });
+    const leaf = nodeVisual({ id: 2, name: "Leaf", computedRadius: 22 });
+    expect(seed.shadow.enabled).toBe(true);
+    expect(seed.shadow.size).toBeGreaterThan(leaf.shadow.size);
+    expect(seed.shadow).toEqual(seedShadow());
+  });
+
+  it("gives an expanded node a stronger glow than a plain leaf, via the same shared formula highlight.js reuses", () => {
+    State.expandedNodes = new Set([1]);
+    const expanded = nodeVisual({ id: 1, name: "Hub", computedRadius: 22 });
+    const leaf = nodeVisual({ id: 2, name: "Leaf", computedRadius: 22 });
+    expect(expanded.shadow.size).toBeGreaterThan(leaf.shadow.size);
+    // nodeShadowFor is the single source of truth nodeVisual, and
+    // highlight.js's default-color cache / hover-revert, all read from.
+    expect(nodeShadowFor({ id: 1 })).toEqual(expanded.shadow);
   });
 });
 

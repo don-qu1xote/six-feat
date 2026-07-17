@@ -8,7 +8,7 @@
 // "wire it all up into a live vis.Network" part: initNetwork/refreshNetwork/
 // resetCanvasToEmpty/clearGraphForPathSearch.
 // ════════════════════════════════════════════════════════════════════════════
-import { State, PHYSICS_SETTLE_MS, resetGraphState } from "../state/state.js";
+import { State, COLOR, PHYSICS_SETTLE_MS, resetGraphState } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { forceCloseSearchModal, hideArtistSidebar } from "../ui/index.js";
 import { runHeroGraphTransition } from "../dom/transition.js";
@@ -17,9 +17,56 @@ import { clearCanvasState } from "../ui/canvas-states.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
 import { nudgePhysics, updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
-import { nodeVisual, edgeVisual, networkOptions } from "./visuals.js";
+import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
-import { placeExpandedNodes } from "./layout.js";
+import { placeExpandedNodes, LEAF_R } from "./layout.js";
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-45] RING-GUIDES — a light, draw-only echo of the dandelion-ring
+// layout math in layout.js (SF-WEB-29). LEAF_R is the exact radius that
+// math places the first ring of a hub's exclusive leaves at; drawing a
+// faint circle at that same radius around every hub (seed + expanded
+// nodes), read live off State.network each frame via getPosition(), can
+// never drift out of sync with the real placement — and, being draw-only,
+// never feeds back into it (the dynamic layout mechanism itself is
+// untouched). Skipped above LARGE_GRAPH_NODE_THRESHOLD: cheap per hub, but
+// no reason to spend it on graphs that are already trading fidelity for
+// interaction speed elsewhere (see networkOptions/FAST_RENDER_EDGE_THRESHOLD
+// below).
+// ════════════════════════════════════════════════════════════════════════════
+function _drawRingGuides(ctx) {
+  if (!State.network || !State.graphNodes.length) return;
+  if (State.graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD) return;
+  const hubIds = new Set(State.expandedNodes);
+  if (State.currentSeedId != null) hubIds.add(State.currentSeedId);
+  if (!hubIds.size) return;
+  ctx.save();
+  ctx.strokeStyle = hexToRgba(COLOR.signal, 0.12);
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 7]);
+  for (const id of hubIds) {
+    // [fix] vis.js's Network.getPosition() THROWS (ReferenceError, not just
+    // undefined/null) for a node id its internal registry doesn't know —
+    // State.expandedNodes/currentSeedId can briefly hold an id from just
+    // before a refresh/collapse/clear finishes propagating (this runs on
+    // every beforeDrawing frame, so it can land mid-transition). Checking
+    // nodesDS.get() first avoids the throw for the common case (id already
+    // gone from the DataSet); the try/catch covers the rarer window where
+    // the DataSet has it but vis.js's own body.nodes hasn't caught up yet.
+    if (!State.nodesDS || !State.nodesDS.get(id)) continue;
+    let pos;
+    try {
+      pos = State.network.getPosition(id);
+    } catch {
+      continue;
+    }
+    if (!pos) continue;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, LEAF_R, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // NETWORK LIFECYCLE — init / refresh / destroy
@@ -69,6 +116,12 @@ export function initNetwork(seedId, nameById) {
   if (seedId != null) {
     State.network.moveNode(seedId, 0, 0);
   }
+
+  // [SF-WEB-45] One listener for the network's lifetime — refreshNetwork()
+  // reuses this same State.network instance (only its DataSets get
+  // cleared/rebuilt), so ring-guides stay wired through expand/search
+  // without needing to reattach.
+  State.network.on("beforeDrawing", _drawRingGuides);
 
   updateEdgeRenderMode();
   _attachZoomThrottle();
