@@ -7,13 +7,14 @@
 // getter onto the same kind of CSS custom property.
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { MOTION, VIS_EASING, prefersReducedMotion, visAnimation } from "./state.js";
+import { MOTION, VIS_EASING, prefersReducedMotion, visAnimation, scaledDuration, State } from "./state.js";
 
 afterEach(() => {
   for (const key of ["fast", "base", "med", "slow", "slower", "xslow", "flight", "camera", "xxslow", "loop"]) {
     document.documentElement.style.removeProperty(`--duration-${key}`);
   }
   vi.unstubAllGlobals();
+  State.network = null;
 });
 
 describe("MOTION", () => {
@@ -68,5 +69,52 @@ describe("visAnimation", () => {
   it("returns false (vis.js's own 'skip the animation' value) under prefers-reduced-motion", () => {
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
     expect(visAnimation(MOTION.camera)).toBe(false);
+  });
+});
+
+// [SF-WEB-53] Duration scales with the current network zoom (getScale()) —
+// more "cropped" (zoomed-in) views get longer/smoother durations, more
+// zoomed-out views stay short/snappy, since a given graph-space movement
+// covers proportionally more/fewer screen pixels per frame.
+describe("scaledDuration (zoom-aware)", () => {
+  it("leaves duration unchanged with no network mounted (baseline scale)", () => {
+    State.network = null;
+    expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
+  });
+
+  it("leaves duration unchanged at the baseline scale (1x)", () => {
+    State.network = { getScale: () => 1 };
+    expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
+  });
+
+  it("lengthens the duration when zoomed in (scale > 1)", () => {
+    State.network = { getScale: () => 3 };
+    expect(scaledDuration(MOTION.camera)).toBeGreaterThan(MOTION.camera);
+  });
+
+  it("shortens the duration when zoomed out (scale < 1)", () => {
+    State.network = { getScale: () => 0.35 };
+    expect(scaledDuration(MOTION.camera)).toBeLessThan(MOTION.camera);
+  });
+
+  it("clamps the multiplier so extreme scales don't blow past sane bounds", () => {
+    State.network = { getScale: () => 100 };
+    expect(scaledDuration(MOTION.camera)).toBeLessThanOrEqual(MOTION.camera * 2);
+    State.network = { getScale: () => 0.0001 };
+    expect(scaledDuration(MOTION.camera)).toBeGreaterThanOrEqual(MOTION.camera * 0.6);
+  });
+
+  it("tolerates a broken/non-finite getScale by falling back to baseline", () => {
+    State.network = { getScale: () => NaN };
+    expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
+  });
+
+  it("visAnimation()'s duration reflects the same zoom scaling as scaledDuration", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+    State.network = { getScale: () => 3 };
+    expect(visAnimation(MOTION.camera)).toEqual({
+      duration: scaledDuration(MOTION.camera),
+      easingFunction: "easeInOutQuad",
+    });
   });
 });

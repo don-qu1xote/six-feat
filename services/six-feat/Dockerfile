@@ -26,7 +26,7 @@ FROM ${USERVER_IMAGE} AS builder
 # processes competing for RAM at once, which OOM-kills the compiler on
 # memory-constrained Docker Desktop VMs. Override with
 # --build-arg BUILD_JOBS=<n> if your machine has RAM to spare.
-ARG BUILD_JOBS=4
+ARG BUILD_JOBS=8
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -51,7 +51,7 @@ RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
     --mount=type=cache,id=six-feat-build,target=/src/build,sharing=locked \
     cmake -S services/six-feat -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
  && cmake --build build -j"${BUILD_JOBS}" \
- && cmake --install build
+ && cmake --install build --strip
 
 # ════════════════════════════════════════════════════════════════════════════
 # Stage 2 — JS Bundle

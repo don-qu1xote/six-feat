@@ -8,7 +8,7 @@
 // "wire it all up into a live vis.Network" part: initNetwork/refreshNetwork/
 // resetCanvasToEmpty/clearGraphForPathSearch.
 // ════════════════════════════════════════════════════════════════════════════
-import { State, COLOR, PHYSICS_SETTLE_MS, resetGraphState, MOTION, visAnimation } from "../state/state.js";
+import { State, COLOR, resetGraphState, MOTION, visAnimation } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { forceCloseSearchModal, hideArtistSidebar } from "../ui/index.js";
 import { runHeroGraphTransition } from "../dom/transition.js";
@@ -16,10 +16,29 @@ import { stopCanvasDecorator } from "../dom/canvas-decorator.js";
 import { clearCanvasState } from "../ui/canvas-states.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
-import { nudgePhysics, updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
+import { updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
 import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
 import { placeExpandedNodes, LEAF_R } from "./layout.js";
+
+// [SF-WEB-51] Один общий движок детерминированной раскладки для инициала И
+// re-search: и initNetwork, и refreshNetwork прогоняют граф через
+// placeExpandedNodes (collision-solved targets) и фиксируют ноды ровно там,
+// вместо того чтобы полагаться на физику. Возвращает массив нод-объектов с
+// впечатанными x/y/fixed — вызывающий строит из них DataSet (init) или
+// clear()+add() (refresh). Полюса/сид приколоты (fixed:true) солвером и
+// здесь; листья без target (не должно случаться, но на всякий) остаются
+// нефиксированными, чтобы не «замерзать» в (0,0).
+function _layoutNodeItems(nameById, savedPositions = {}) {
+  const { targets } = placeExpandedNodes(savedPositions);
+  const nodeItems = State.graphNodes.map(n => {
+    const v = nodeVisual(n);
+    const t = n.isSeed ? { x: 0, y: 0 } : targets.get(n.id);
+    return t ? { ...v, x: t.x, y: t.y, fixed: { x: true, y: true } } : v;
+  });
+  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+  return { nodeItems, edgeItems };
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // [SF-WEB-45] RING-GUIDES — a light, draw-only echo of the dandelion-ring
@@ -78,29 +97,16 @@ export function initNetwork(seedId, nameById) {
   // setSeed() in graph.js::finalizeGraphState, too late for this call.
   State.currentSeedId = seedId;
 
-  // Раньше сид и его прямые соседи получали позиции только от свободной
-  // vis.js-физики (barnesHut, см. networkOptions ниже) — её
-  // springLength/gravitationalConstant никогда не подгонялись под
-  // LEAF_R/LEAF_GAP из layout.js, так что при expand'е кольца листьев
-  // получались заметно компактнее, чем самый первый (сидовый) круг связей —
-  // визуально несогласованные размеры. placeExpandedNodes уже умеет
-  // раскладывать «одуванчик» листьев вокруг любого узла в (0,0); при пустом
-  // State.expandedNodes (свежий поиск, ничего ещё не раскрыто) её шаг 5
-  // («seed-only листья») естественно берёт на себя ВСЕХ прямых соседей сида
-  // — тот же путь, каким расходятся листья вокруг expand-полюса.
-  const { targets } = placeExpandedNodes({});
-
-  const nodeItems = State.graphNodes.map(n => {
-    const v = nodeVisual(n);
-    const t = targets.get(n.id);
-    // Точную, не перекрывающуюся геометрическую позицию фиксируем сразу —
-    // тот же принцип, что и post-flyout fixAll в mergeNetwork (physics.js):
-    // если оставить живую физику поверх уже готовой раскладки, barnesHut
-    // растащит её обратно к своему собственному равновесию, сведя на нет
-    // весь смысл прогона через placeExpandedNodes.
-    return t ? { ...v, x: t.x, y: t.y, fixed: { x: true, y: true } } : v;
-  });
-  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+  // [SF-WEB-51] Сид и его прямые соседи получают детерминированную
+  // collision-решённую раскладку через общий движок (_layoutNodeItems →
+  // placeExpandedNodes) — тот же путь, что и re-search (refreshNetwork) и
+  // expand (mergeNetwork). Физика больше не основной решатель: раньше сид и
+  // соседи держались только на свободном barnesHut, чьи springLength/
+  // gravitationalConstant никогда не подгонялись под LEAF_R/LEAF_GAP, отсюда
+  // и разъезжающиеся кольца. Точную, не пересекающуюся геометрию фиксируем
+  // сразу (fixed:true) — оставить физику поверх готовой раскладки значило бы
+  // растащить её обратно к barnesHut-равновесию.
+  const { nodeItems, edgeItems } = _layoutNodeItems(nameById);
 
   State.nodesDS = new vis.DataSet(nodeItems);
   State.edgesDS = new vis.DataSet(edgeItems);
@@ -224,7 +230,18 @@ export function _attachZoomThrottle() {
   });
 }
 
-export function refreshNetwork(nameById, savedPositions) {
+// [SF-WEB-51] refreshNetwork — re-search: НОВЫЙ граф заменяет уже
+// нарисованный (тот же State.network, только DataSets пересобираются). Раньше
+// это был единственный physics-only путь: ноды клались по savedPositions
+// (позициям СТАРОГО графа — бессмысленным для нового артиста) + nudgePhysics
+// как раскладка, без детерминированных targets и без гарантии неперекрытия.
+// Теперь идёт через тот же движок, что initNetwork/mergeNetwork
+// (_layoutNodeItems → placeExpandedNodes → collision-solver): детерминированная
+// не пересекающаяся раскладка, зафиксированная сразу, никакой физики.
+// seedId принимается явно (как в initNetwork) и ставится ДО placeExpandedNodes
+// — тот читает State.currentSeedId, а setSeed() в finalizeGraphState вызывается
+// позже, после этой функции.
+export function refreshNetwork(seedId, nameById, savedPositions) {
   // См. комментарий у resetHoverState()/destroyNetwork(): nodesDS/edgesDS
   // здесь очищаются и пересобираются с нуля (новый поиск поверх уже
   // нарисованного графа) — если в момент вызова висел незавершённый
@@ -240,36 +257,40 @@ export function refreshNetwork(nameById, savedPositions) {
   // конца, и без явного сброса здесь стабильно ловил этот краш.
   resetHoverState();
 
-  const nodeItems = State.graphNodes.map(n => nodeVisual(n));
-  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+  if (seedId != null) State.currentSeedId = seedId;
+
+  // savedPositions passed through so any node that DOES carry over from the
+  // previous graph animates from its old spot; brand-new nodes (the usual
+  // case for a different artist) get the fresh deterministic dandelion.
+  const { nodeItems, edgeItems } = _layoutNodeItems(nameById, savedPositions);
 
   State.nodesDS.clear();
   State.edgesDS.clear();
   State.nodesDS.add(nodeItems);
   State.edgesDS.add(edgeItems);
 
-  for (const n of State.graphNodes) {
-    const p = savedPositions[n.id];
-    if (p && !n._isNew) State.network.moveNode(n.id, p.x, p.y);
-  }
-
-  // Seed всегда в (0,0).
+  // Ноды уже несут x/y/fixed из _layoutNodeItems, но add() на УЖЕ
+  // существующем network не всегда телепортирует внутренние body.nodes на
+  // новые data-координаты — moveNode гарантирует позицию до первого redraw
+  // (physics off, так что это дёшево: просто запись координаты, без
+  // симуляции). Seed всегда в (0,0), остальные — на свои collision-решённые
+  // targets.
   if (State.currentSeedId != null) {
     State.network.moveNode(State.currentSeedId, 0, 0);
   }
+  for (const item of nodeItems) {
+    if (item.x != null && item.y != null && item.id !== State.currentSeedId) {
+      State.network.moveNode(item.id, item.x, item.y);
+    }
+  }
 
-  // Восстанавливаем fixed для expanded нод (они могли стать !fixed после nodeVisual rebuild).
-  // Батчим в один update() вместо отдельного вызова на каждую ноду —
-  // при большом числе expanded-нод цикл отдельных update() дорог.
-  const expandedFixUpdates = [];
-  State.expandedNodes.forEach(nodeId => {
-    if (nodeId === State.currentSeedId) return;
-    const pos = State.network.getPosition(nodeId);
-    if (pos) expandedFixUpdates.push({ id: nodeId, fixed: { x: true, y: true } });
-  });
-  if (expandedFixUpdates.length) State.nodesDS.update(expandedFixUpdates);
-
-  nudgePhysics(PHYSICS_SETTLE_MS);
+  // Физика демотирована: детерминированная раскладка финальна и не
+  // пересекается — никакого nudgePhysics/стабилизации как решателя. Просто
+  // держим её выключенной и подгоняем камеру (как initNetwork).
+  State.network.setOptions({ physics: { enabled: false } });
+  State.network.fit({ animation: visAnimation(MOTION.flight) });
+  clearTimeout(State.physicsTimer);
+  State.physicsTimer = null;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

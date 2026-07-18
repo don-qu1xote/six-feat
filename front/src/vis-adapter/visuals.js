@@ -340,82 +340,44 @@ export function resolveEdgeDominantRole(e) {
 // NETWORK OPTIONS
 // ════════════════════════════════════════════════════════════════════════════
 
-// Пороги размера графа (число узлов) для выбора solver'а и объёма стабилизации.
-// barnesHut пересчитывает силы через octree на каждый physics-тик — дёшево
-// для малых/средних графов, но на 150+ узлах даёт заметные просадки FPS.
-// "repulsion" (O(n²), но без octree overhead) дешевле в этом диапазоне.
-// SF-WEB-07: exported so physics.js can shorten the live-physics settle
-// window on the same graphs this already treats as "large" for solver
-// choice — one threshold, not two independently-tuned magic numbers.
+// Порог размера графа (число узлов). SF-WEB-07: exported so physics.js can
+// shorten the live-physics settle window and render.js can skip ring-guides
+// on the same graphs this treats as "large" — one threshold, not several
+// independently-tuned magic numbers.
 export const LARGE_GRAPH_NODE_THRESHOLD = 150;
 
-// Итерации стабилизации пропорциональны размеру графа вместо фиксированных
-// 200 всегда — на маленьких seed-графах это избыточно и просто тратит время
-// до первого кадра, на больших может быть недостаточно для того чтобы разойтись.
-function computeStabilizationIterations(nodeCount) {
-  const n = nodeCount || State.graphNodes.length || 0;
-  if (n <= 20)  return 120;
-  if (n <= 60)  return 200;
-  if (n <= 150) return 260;
-  // Большие графы: не наращиваем дальше линейно — дороже, чем выигрыш от
-  // лучшей стабилизации; пользователь всё равно быстро начнёт двигать граф.
-  return 320;
-}
-
 export function networkOptions() {
-  const nodeCount  = State.graphNodes.length || 0;
-  const isLarge    = nodeCount > LARGE_GRAPH_NODE_THRESHOLD;
-  const iterations = computeStabilizationIterations(nodeCount);
-
-  // Все ноды теперь одного фиксированного радиуса (22px, см. FIXED_NODE_RADIUS
-  // в computeNodeSizes) — spacing подобран под этот единый размер вместо
-  // прежнего диапазона 10–52px.
-  const physics = isLarge
-    ? {
-        enabled: true,
-        solver: "repulsion",
-        repulsion: {
-          centralGravity:  0.05,
-          springLength:    170,
-          springConstant:  0.04,
-          nodeDistance:    130,
-          damping:         0.88
-        },
-        stabilization: {
-          enabled:        true,
-          iterations,
-          updateInterval: 50,
-          fit:            false
-        },
-        timestep:         0.35,
-        adaptiveTimestep: true,
-        maxVelocity:      60,
-        minVelocity:      0.8
-      }
-    : {
-        enabled: true,
-        solver: "barnesHut",
-        barnesHut: {
-          // Начальная стабилизация (initNetwork): мягко разводим seed-граф.
-          // При expand эти параметры переопределяются через setOptions.
-          gravitationalConstant: -6000,
-          centralGravity:        0.05,
-          springLength:          170,
-          springConstant:        0.04,
-          damping:               0.88,
-          avoidOverlap:          0.9
-        },
-        stabilization: {
-          enabled:        true,
-          iterations,
-          updateInterval: 50,
-          fit:            false
-        },
-        timestep:         0.35,
-        adaptiveTimestep: true,
-        maxVelocity:      60,
-        minVelocity:      0.8
-      };
+  // [SF-WEB-51] Физика ДЕМОТИРОВАНА до опционального органик-доводчика и
+  // больше НЕ основной решатель раскладки: initNetwork/refreshNetwork/
+  // mergeNetwork кладут ноды детерминированно через layout.js
+  // (placeExpandedNodes + collision-solver) и сразу фиксируют — стабилизация
+  // как раскладка не запускается (enabled:false ниже; init/refresh к тому же
+  // явно выключают физику). Раньше на больших графах (>150) выбирался solver
+  // "repulsion", у которого В КОНФИГЕ НЕТ avoidOverlap вообще — overlap-
+  // избегания в режиме больших графов было ноль. Теперь везде barnesHut с
+  // avoidOverlap: 1.0 (единственный overlap-aware solver у vis) и size из
+  // nodeVisual (FIXED_NODE_RADIUS) — так короткий пост-drag settle
+  // (events.js → nudgePhysics включает физику через setOptions) считает
+  // столкновения по реальному радиусу и не даёт нодам налезать, независимо
+  // от размера графа. Гарантию неперекрытия при этом даёт не физика, а
+  // детерминированный солвер в layout.js — физика лишь мягко доводит.
+  const physics = {
+    enabled: false,
+    solver: "barnesHut",
+    barnesHut: {
+      gravitationalConstant: -6000,
+      centralGravity:        0.05,
+      springLength:          170,
+      springConstant:        0.04,
+      damping:               0.88,
+      avoidOverlap:          1.0
+    },
+    stabilization: { enabled: false },
+    timestep:         0.35,
+    adaptiveTimestep: true,
+    maxVelocity:      60,
+    minVelocity:      0.8
+  };
 
   return {
     autoResize: true,

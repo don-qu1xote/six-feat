@@ -93,14 +93,77 @@ export function prefersReducedMotion() {
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+// [SF-WEB-53] Масштаб (network.getScale()) не влияет на длительность
+// анимации 1:1 — иначе на очень мелком zoom-out анимация станет неоправданно
+// долгой, а на очень крупном zoom-in — неоправданно короткой. clamp() держит
+// множитель в разумном коридоре: на «крупном плане» (scale выше базового
+// SCALE_BASELINE, т.е. картинка сильнее «кроплена») то же перемещение в
+// координатах графа покрывает больше экранных пикселей за кадр — там дольше
+// длящаяся анимация даёт больше кадров на тот же путь и заметно меньше «рвёт
+// глаз»; на мелком zoom-out то же перемещение — единицы экранных пикселей,
+// и там урезанная длительность незаметна и не тратит время пользователя
+// впустую. SCALE_MIN/MAX ограничивают влияние сверху и снизу, чтобы крайние
+// значения scale (глубокий зум в толпу листьев / общий обзор всего графа) не
+// давали анимацию, ощутимо длиннее ~2x или короче ~0.6x исходной MOTION-
+// длительности.
+const SCALE_BASELINE = 1;
+const SCALE_MIN = 0.35;
+const SCALE_MAX = 3;
+const DURATION_MULT_MIN = 0.6;
+const DURATION_MULT_MAX = 2;
+
+// Читает текущий zoom сети (если она уже смонтирована — State.network может
+// быть ещё null при самом первом рендере, тогда просто используем baseline,
+// т.е. никакого масштабирования длительности).
+function _currentScale() {
+  const net = State.network;
+  if (!net || typeof net.getScale !== "function") return SCALE_BASELINE;
+  const s = net.getScale();
+  return Number.isFinite(s) && s > 0 ? s : SCALE_BASELINE;
+}
+
+// Множитель длительности как функция текущего zoom: линейно по log(scale)
+// (используем log, а не сам scale, потому что зум типично меняется в разы —
+// 0.5x/2x/4x — а не на константу, так что "на сколько кропнута картинка"
+// естественнее мерить в логарифмической шкале), затем зажат в
+// [DURATION_MULT_MIN, DURATION_MULT_MAX].
+function _durationMultiplier() {
+  const scale = clamp(_currentScale(), SCALE_MIN, SCALE_MAX);
+  const t = Math.log(scale / SCALE_BASELINE) / Math.log(SCALE_MAX / SCALE_BASELINE);
+  // t ∈ [-1, 1] относительно baseline; проецируем в [MIN, MAX] вокруг 1.0
+  const mult = t >= 0
+    ? 1 + t * (DURATION_MULT_MAX - 1)
+    : 1 + t * (1 - DURATION_MULT_MIN);
+  return clamp(mult, DURATION_MULT_MIN, DURATION_MULT_MAX);
+}
+
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+// [SF-WEB-53] Тот же множитель длительности, что и внутри visAnimation() —
+// вынесен отдельной экспортируемой функцией для вызовов, которые не
+// проходят через vis.js animation-option (например, RAF-полёт нод в
+// physics.js::runFlyoutAnimation), но должны точно так же удлиняться на
+// крупном плане и укорачиваться на общем обзоре. prefers-reduced-motion
+// сюда не встроен намеренно — у не-vis.js вызывающих кода (RAF-цикл) нет
+// vis.js-эквивалента animation:false ("один кадр"), они сами решают, как
+// коротко считать анимацию неотличимой от мгновенной, поэтому здесь только
+// zoom-множитель, а не полная политика reduced-motion.
+export function scaledDuration(durationMs) {
+  return Math.round(durationMs * _durationMultiplier());
+}
+
 // Builds the {duration, easingFunction} object every network.fit()/
 // focus()/moveTo() call passes as its `animation` option — or `false` (vis.js's
 // own "skip the animation entirely" value) under prefers-reduced-motion, so
 // the camera/view jumps straight to its destination in one frame instead of
 // animating there. `durationMs` is meant to be one of MOTION's own values
 // (e.g. `visAnimation(MOTION.camera)`), not a fresh literal.
+// [SF-WEB-53] Длительность дополнительно масштабируется по текущему zoom
+// сети (см. _durationMultiplier) — «на большом растоянии [сильный zoom-in]
+// малое количество кадров заметнее, чем на маленьком [zoom-out]».
 export function visAnimation(durationMs) {
-  return prefersReducedMotion() ? false : { duration: durationMs, easingFunction: VIS_EASING };
+  if (prefersReducedMotion()) return false;
+  return { duration: scaledDuration(durationMs), easingFunction: VIS_EASING };
 }
 
 // Все линии сплошные — dashes при большом числе рёбер нечитаемы

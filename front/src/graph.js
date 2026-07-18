@@ -259,7 +259,9 @@ export function finalizeGraphState(seedId, nameById, savedPositions, graph, isMe
   } else if (isMerge) {
     mergeNetwork(nameById, savedPositions);
   } else {
-    refreshNetwork(nameById, savedPositions);
+    // [SF-WEB-51] refreshNetwork теперь принимает seedId явно — оно нужно
+    // ему ДО placeExpandedNodes, а setSeed() ниже вызывается позже.
+    refreshNetwork(seedId, nameById, savedPositions);
   }
 
   if (!isMerge) {

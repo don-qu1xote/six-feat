@@ -16,7 +16,7 @@ FROM ${USERVER_IMAGE} AS builder
 # BUILD_JOBS caps compiler parallelism — see services/six-feat/Dockerfile
 # for the full rationale (parallel `docker compose up -d` across 4 services
 # oversubscribes memory at raw nproc parallelism).
-ARG BUILD_JOBS=4
+ARG BUILD_JOBS=8
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -36,7 +36,7 @@ RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
     --mount=type=cache,id=six-feat-auth-build,target=/src/build,sharing=locked \
     cmake -S services/auth -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
  && cmake --build build -j"${BUILD_JOBS}" \
- && cmake --install build
+ && cmake --install build --strip
 
 # ════════════════════════════════════════════════════════════════════════════
 # Stage 2 — Runtime

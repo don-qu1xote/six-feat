@@ -7,7 +7,7 @@
 // Expand/path layout placement math («одуванчики» + «круги Эйлера») lives in
 // layout.js; this file only consumes its output (targets/fromPos maps).
 // ════════════════════════════════════════════════════════════════════════════
-import { State, PHYSICS_SETTLE_MS, MOTION, prefersReducedMotion, visAnimation } from "../state/state.js";
+import { State, PHYSICS_SETTLE_MS, MOTION, prefersReducedMotion, visAnimation, scaledDuration } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
 import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
@@ -182,7 +182,11 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     ids: [...targets.keys()],
     fromPos,
     targets,
-    durationMs: MOTION.flight,
+    // [SF-WEB-53] Тот же zoom-множитель, что и у vis.js camera-анимаций
+    // (visAnimation) — на крупном плане то же перемещение в координатах
+    // графа покрывает больше экранных пикселей за кадр, поэтому там нужен
+    // более длинный полёт, чтобы не «рвать» его на глаз.
+    durationMs: scaledDuration(MOTION.flight),
     entranceTargets,
     onDone: () => {
       // [SF-WEB-29] Раньше здесь снимался fixed со всех нод и на

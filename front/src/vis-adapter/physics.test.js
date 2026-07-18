@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State } from "../state/state.js";
 import { runFlyoutAnimation, nudgePhysics, mergeNetwork } from "./physics.js";
 import { LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
+import { placeExpandedNodes } from "./layout.js";
 
 function mockNetwork(ids) {
   const nodes = {};
@@ -227,6 +228,26 @@ describe("mergeNetwork — expand lands nodes exactly on targets, no live physic
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     mergeNetwork({}, {});
     expect(setTimeoutSpy).not.toHaveBeenCalled();
+  });
+
+  // [SF-WEB-51] The flyout's final positions ARE the collision-solved engine
+  // targets — nothing drifts them afterwards (physics is demoted). Under
+  // reduced-motion the flyout is synchronous, so moveNode lands each node on
+  // exactly the coordinate placeExpandedNodes computed for it.
+  it("lands every node on exactly its collision-solved placeExpandedNodes target (no post-drift)", () => {
+    // Independently compute what the engine will produce for this same State.
+    const { targets: expected } = placeExpandedNodes({});
+
+    const moveCalls = new Map();
+    State.network.moveNode = vi.fn((id, x, y) => moveCalls.set(id, { x, y }));
+
+    mergeNetwork({}, {});
+
+    for (const [id, pos] of expected) {
+      expect(moveCalls.get(id), `node ${id} never placed`).toBeTruthy();
+      expect(moveCalls.get(id).x).toBeCloseTo(pos.x, 6);
+      expect(moveCalls.get(id).y).toBeCloseTo(pos.y, 6);
+    }
   });
 });
 
