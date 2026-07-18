@@ -20,6 +20,7 @@ import { updateEdgeRenderMode, runFlyoutAnimation, pokeFastRenderMode, resetFast
 import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
 import { placeExpandedNodes, LEAF_R } from "./layout.js";
+import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from "./edge-render.js";
 
 // [SF-WEB-51] Один общий движок детерминированной раскладки для инициала И
 // re-search: и initNetwork, и refreshNetwork прогоняют граф через
@@ -29,14 +30,24 @@ import { placeExpandedNodes, LEAF_R } from "./layout.js";
 // clear()+add() (refresh). Полюса/сид приколоты (fixed:true) солвером и
 // здесь; листья без target (не должно случаться, но на всякий) остаются
 // нефиксированными, чтобы не «замерзать» в (0,0).
+//
+// [SF-WEB-55] edgeClass (SF-WEB-52-секторная intra/cross-классификация,
+// см. layout.js) сразу уходит в setEdgeCache() — собственный canvas-слой
+// (edge-render.js) рисует ВСЕ рёбра сам, поэтому нативная vis.js-линия для
+// КАЖДОГО закешированного ребра гасится до opacity:0 прямо здесь (только
+// hit-testing/hover/selectEdge у vis.js остаются рабочими, см. шапку
+// edge-render.js) — edgeVisual() сам по себе не тронут, чтобы шестистепенный
+// path-режим (initPathNetwork, свой набор рёбер, БЕЗ edgeClass) остался
+// видимым как раньше.
 function _layoutNodeItems(nameById, savedPositions = {}) {
-  const { targets } = placeExpandedNodes(savedPositions);
+  const { targets, edgeClass } = placeExpandedNodes(savedPositions);
   const nodeItems = State.graphNodes.map(n => {
     const v = nodeVisual(n);
     const t = n.isSeed ? { x: 0, y: 0 } : targets.get(n.id);
     return t ? { ...v, x: t.x, y: t.y, fixed: { x: true, y: true } } : v;
   });
-  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+  const edgeItems = State.graphEdges.map(e => suppressNativeEdgeColor(edgeVisual(e, nameById)));
+  setEdgeCache(edgeClass);
   return { nodeItems, edgeItems };
 }
 
@@ -132,6 +143,11 @@ export function initNetwork(seedId, nameById) {
   // cleared/rebuilt), so ring-guides stay wired through expand/search
   // without needing to reattach.
   State.network.on("beforeDrawing", _drawRingGuides);
+  // [SF-WEB-55] Same lifetime story — drawEdges reads whatever setEdgeCache()
+  // last stored (_layoutNodeItems above already called it for this exact
+  // graph) and re-reads live node positions every frame, so refreshNetwork()
+  // reusing this same instance needs no re-registration either.
+  State.network.on("beforeDrawing", drawEdges);
 
   updateEdgeRenderMode();
   _attachZoomThrottle();
@@ -343,6 +359,7 @@ export function initGraphOnCanvas() {
 // должен отработать до resetHoverState()/hideArtistSidebar()).
 function _resetGraphState({ keepRendered = false, clearCache = false, invalidateColors = false } = {}) {
   resetFastRenderMode();
+  clearEdgeCache();
   resetGraphState({ resetHasRendered: !keepRendered });
   if (clearCache) {
     // ТЗ-5: clear the graph cache when the user resets the canvas.

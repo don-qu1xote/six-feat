@@ -249,6 +249,41 @@ describe("mergeNetwork — expand lands nodes exactly on targets, no live physic
       expect(moveCalls.get(id).y).toBeCloseTo(pos.y, 6);
     }
   });
+
+  // [SF-WEB-55/56] Native vis.js edges stay in the DataSet (hit-testing/
+  // hover/selectEdge keep working) but their own color renders nothing —
+  // the custom canvas layer (edge-render.js) is the only thing drawing
+  // visible edge graphics now. Strengthened beyond a bare opacity:0 check —
+  // the original SF-WEB-55 version only zeroed color.opacity, which
+  // highlight.js's own hover/selection color writes (a SEPARATE, later
+  // edgesDS.update() with its own {color:{color,opacity:1}}) could still
+  // make visible again, producing exactly the "two edges" (native straight
+  // line + our arc) visual bug reported against the live app.
+  // suppressNativeEdgeColor() now also forces a fully-transparent color
+  // string and zeroes the hover/highlight sub-objects too — belt and
+  // suspenders against however vis.js actually resolves edge alpha
+  // internally.
+  it("adds every new edge fully invisible (opacity:0, transparent color, hover/highlight zeroed too)", () => {
+    mergeNetwork({}, {});
+
+    const addCall = State.edgesDS.add.mock.calls.find(([batch]) => Array.isArray(batch) && batch.length);
+    expect(addCall).toBeTruthy();
+    for (const edgeItem of addCall[0]) {
+      expect(edgeItem.color.opacity).toBe(0);
+      expect(edgeItem.color.color).toBe("rgba(0,0,0,0)");
+      expect(edgeItem.color.hover.opacity).toBe(0);
+      expect(edgeItem.color.highlight.opacity).toBe(0);
+    }
+  });
+
+  it("populates the edge-render.js cache with every edge, classified", async () => {
+    const { _edgeCacheSize, clearEdgeCache } = await import("./edge-render.js");
+    clearEdgeCache();
+    mergeNetwork({}, {});
+    expect(_edgeCacheSize()).toBe(State.graphEdges.length);
+    // Guard against test pollution leaking into later files in this run.
+    clearEdgeCache();
+  });
 });
 
 // [SF-WEB-47 motion] mergeNetwork's flyout used to hardcode durationMs:420 —

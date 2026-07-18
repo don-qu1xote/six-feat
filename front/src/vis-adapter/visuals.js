@@ -419,8 +419,16 @@ export function networkOptions() {
       zoomView:            true,
       tooltipDelay:        120,
       hoverConnectedEdges: true,
-      hideEdgesOnDrag:     true,
-      hideEdgesOnZoom:     true,
+      // [SF-WEB-55] Отменяет прежний SF-WEB-53 — раньше это было ЕДИНСТВЕННОЙ
+      // защитой от FPS-просадки на pan/zoom (прятать нативные рёбра целиком),
+      // ценой того, что связи буквально исчезали во время взаимодействия.
+      // Теперь нативные рёбра и так всегда прозрачны (см. render.js::
+      // _layoutNodeItems/physics.js::mergeNetwork — opacity:0 для
+      // закешированных edge-render.js рёбер), так что скрывать тут физически
+      // нечего — весь видимый рисунок держит свой canvas-слой
+      // (edge-render.js), который рисует ВСЕ рёбра ВСЕГДА, без скрытия.
+      hideEdgesOnDrag:     false,
+      hideEdgesOnZoom:     false,
       navigationButtons:   false,
       // F-43: keyboard pan/zoom for the canvas itself. bindToWindow:false
       // scopes the arrow/+/- keys to the network canvas (active only once

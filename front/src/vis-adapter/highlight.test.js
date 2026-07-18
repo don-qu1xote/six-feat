@@ -20,6 +20,8 @@ import {
   clearSelectedNode,
   selectEdge,
   clearSelectedEdge,
+  highlightEdgePair,
+  recolorInPlace,
 } from "./highlight.js";
 
 function mockDataSet() {
@@ -631,5 +633,135 @@ describe("[SF-WEB-28] selectNode/selectEdge mutual exclusion", () => {
     const nodeUpdates = State.nodesDS.update.mock.calls.map(c => c[0]);
     const revertedNode4 = nodeUpdates.find(u => u.id === 4);
     expect(revertedNode4.color.border).toBe("#333333");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-56 follow-up] Edges edge-render.js draws itself (State.
+// suppressedEdgeIds, set by edge-render.js::setEdgeCache) must NEVER get a
+// visible native color from ANY of highlight.js's own edge-recoloring
+// paths — hover, persistent edge selection, a node's incident-edge
+// selection, path highlighting, a full default-state batch reset, and
+// theme recolor all independently compute a color for the SAME edge, and
+// each one used to write it straight to the DataSet without knowing the
+// edge already has its own (invisible-by-design) native fill. That gap
+// was the actual cause of "a second line appears on hover" reported
+// against the live app — suppressNativeEdgeColor() only covers the
+// moment an edge is first created, not any of these later re-colors.
+// ════════════════════════════════════════════════════════════════════════════
+describe("[SF-WEB-56 follow-up] suppressed (canvas-drawn) edges stay invisible through every recolor path", () => {
+  function graphWithSuppressedEdge() {
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },
+    ];
+    State.graphEdges = [{ id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 }];
+    invalidateColorCache();
+    State.nodesDS = mockDataSet();
+    State.edgesDS = { update: vi.fn(), get: id => ({ id, _brightColor: "#fff", _color: "#000" }) };
+    State.selectedNodeId = null;
+    State.selectedEdgeId = null;
+    State.suppressedEdgeIds = new Set(["1_2"]);
+  }
+
+  afterEach(() => {
+    State.suppressedEdgeIds = undefined;
+  });
+
+  it("stays invisible on hover (highlightEdgePair)", () => {
+    vi.stubGlobal("requestAnimationFrame", cb => { cb(0); return 1; });
+    graphWithSuppressedEdge();
+
+    highlightEdgePair("1_2");
+
+    const call = State.edgesDS.update.mock.calls.flatMap(c => c[0]).find(u => u.id === "1_2");
+    expect(call).toBeTruthy();
+    expect(call.color.opacity).toBe(0);
+    vi.unstubAllGlobals();
+  });
+
+  it("stays invisible when persistently selected (selectEdge)", () => {
+    graphWithSuppressedEdge();
+
+    selectEdge("1_2");
+
+    const call = State.edgesDS.update.mock.calls.find(([arg]) => !Array.isArray(arg) && arg.id === "1_2");
+    expect(call).toBeTruthy();
+    expect(call[0].color.opacity).toBe(0);
+  });
+
+  it("stays invisible when reverted to default (clearSelectedEdge)", () => {
+    graphWithSuppressedEdge();
+    selectEdge("1_2");
+    State.edgesDS.update.mockClear();
+
+    clearSelectedEdge();
+
+    const call = State.edgesDS.update.mock.calls.find(([arg]) => !Array.isArray(arg) && arg.id === "1_2");
+    expect(call).toBeTruthy();
+    expect(call[0].color.opacity).toBe(0);
+  });
+
+  it("stays invisible when lit up as a selected node's incident edge (selectNode)", () => {
+    graphWithSuppressedEdge();
+
+    selectNode(2);
+
+    const call = State.edgesDS.update.mock.calls.flatMap(c => c[0]).find(u => u.id === "1_2");
+    expect(call).toBeTruthy();
+    expect(call.color.opacity).toBe(0);
+  });
+
+  it("stays invisible in a full default-state batch reset (applyDimState('default'))", () => {
+    graphWithSuppressedEdge();
+    buildDefaultColorCache();
+
+    applyDimState("default", {});
+
+    const call = State.edgesDS.update.mock.calls.flatMap(c => c[0]).find(u => u.id === "1_2");
+    expect(call).toBeTruthy();
+    expect(call.color.opacity).toBe(0);
+  });
+
+  it("stays invisible in path highlighting, even for the onPath edge itself", () => {
+    graphWithSuppressedEdge();
+    State.nodesDS = { update: vi.fn(), getIds: () => [1, 2] };
+    State.edgesDS = { update: vi.fn(), getIds: () => ["1_2"] };
+
+    applyDimState("path", { path: [1, 2] });
+
+    const call = State.edgesDS.update.mock.calls.flatMap(c => c[0]).find(u => u.id === "1_2");
+    expect(call).toBeTruthy();
+    expect(call.color.opacity).toBe(0);
+  });
+
+  it("stays invisible after a theme recolor (recolorInPlace)", () => {
+    graphWithSuppressedEdge();
+
+    recolorInPlace({});
+
+    const call = State.edgesDS.update.mock.calls.flatMap(c => c[0]).find(u => u.id === "1_2");
+    expect(call).toBeTruthy();
+    expect(call.color.opacity).toBe(0);
+    // The role color cache fields (used by edge-render.js next time it
+    // rebuilds its own cache) must still update normally — suppression
+    // only hides the native DataSet color, not our own bookkeeping.
+    expect(call._color).toBeTruthy();
+    expect(call._brightColor).toBeTruthy();
+  });
+
+  it("a NON-suppressed edge in the same graph is unaffected (still gets its normal visible color)", () => {
+    graphWithSuppressedEdge();
+    State.graphEdges.push({ id: "2_3", from: 2, to: 3, dominantRole: "primary", weight: 1 });
+    State.graphNodes.push({ id: 3, isSeed: false });
+    invalidateColorCache();
+    State.suppressedEdgeIds = new Set(["1_2"]);  // only edge 1_2 is canvas-drawn
+
+    recolorInPlace({});
+
+    const suppressed = State.edgesDS.update.mock.calls.flatMap(c => c[0]).find(u => u.id === "1_2");
+    const normal      = State.edgesDS.update.mock.calls.flatMap(c => c[0]).find(u => u.id === "2_3");
+    expect(suppressed.color.opacity).toBe(0);
+    expect(normal.color.opacity).toBe(0.40);
   });
 });

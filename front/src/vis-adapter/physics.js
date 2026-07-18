@@ -12,6 +12,7 @@ import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
 import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD, _imageFieldsFor } from "./visuals.js";
 import { placeExpandedNodes } from "./layout.js";
+import { setEdgeCache, suppressNativeEdgeColor } from "./edge-render.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHYSICS HELPERS
@@ -168,20 +169,35 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   const dsEdgeIds = new Set(State.edgesDS.getIds());
 
   const freshNodes = State.graphNodes.filter(n => n._isNew && !dsNodeIds.has(n.id));
-  const newEdgeItems  = State.graphEdges
-    .filter(e => !dsEdgeIds.has(e.id))
-    .map(e => edgeVisual(e, nameById));
 
   // ── Детерминированный старт ────────────────────────────────────────────────
   // ВАЖНО: вычисляем fromPos ДО nodesDS.add(), чтобы vis.js никогда не видел
   // ноды в (0,0). Каждая нода получает x/y прямо в объекте данных.
-  let targets, fromPos;
+  // [SF-WEB-55] edgeClass приходит отсюда же (placeExpandedNodes) — только в
+  // обычном expand-режиме, не в path-режиме (options.pathTargets/pathFromPos
+  // уже готовы заранее и мимо placeExpandedNodes не идут — там свой,
+  // видимый нативный рендер рёбер, без нашего canvas-слоя).
+  let targets, fromPos, edgeClass;
   if (options.pathTargets && options.pathFromPos) {
     targets = options.pathTargets;
     fromPos = options.pathFromPos;
   } else {
-    ({ targets, fromPos } = placeExpandedNodes(savedPositions));
+    ({ targets, fromPos, edgeClass } = placeExpandedNodes(savedPositions));
   }
+
+  // [SF-WEB-55] Только НОВЫЕ (только что добавляемые) рёбра гасим до
+  // opacity:0 — уже существующие в DataSet рёбра получили это ещё при первом
+  // добавлении (initNetwork/refreshNetwork/более раннем mergeNetwork),
+  // трогать их снова незачем. В path-режиме (edgeClass отсутствует) рёбра
+  // остаются такими, какими их построил edgeVisual() — видимыми, без
+  // нашего слоя.
+  const newEdgeItems = State.graphEdges
+    .filter(e => !dsEdgeIds.has(e.id))
+    .map(e => {
+      const v = edgeVisual(e, nameById);
+      return edgeClass ? suppressNativeEdgeColor(v) : v;
+    });
+  if (edgeClass) setEdgeCache(edgeClass);
 
   // Сначала фиксируем seed — он уже в DS, просто обновляем координату и fixed.
   // Это делается до add() чтобы vis.js не двигал его при добавлении соседей.

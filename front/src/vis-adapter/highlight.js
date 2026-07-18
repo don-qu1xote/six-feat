@@ -361,6 +361,12 @@ function _clearHoveredNode() {
 let _hoveredEdgeIds = new Set();
 let _pendingHoverEdgeIds = new Set();
 
+// [SF-WEB-55] Read-only accessor for edge-render.js — its own canvas draw
+// layer needs to know which edges are currently hovered to draw them
+// brighter, but has no other reason to import the rest of this module's
+// (much heavier, DOM/vis.js-mutating) hover machinery.
+export function getHoveredEdgeIds() { return _hoveredEdgeIds; }
+
 // Фиксированная прибавка к базовой ширине ребра (edgeWidthForWeight) для
 // hover-подсветки. Раньше ширина считалась приращением к ТЕКУЩЕЙ ширине из
 // DataSet ((ed.width || 1.5) + 2) — при повторных наведениях на одну и ту
@@ -375,6 +381,24 @@ const HOVER_EDGE_WIDTH_DELTA = 2;
 // выбранного (кликнутого) ребра — больше, чем hover-дельта, чтобы "выбрано"
 // визуально отличалось от простого наведения на другое ребро.
 const SELECTED_EDGE_WIDTH_DELTA = 3;
+
+// [SF-WEB-56 follow-up] Рёбра, которые рисует свой canvas-слой
+// (edge-render.js — см. State.suppressedEdgeIds, выставляется в
+// setEdgeCache/clearEdgeCache там) должны оставаться визуально невидимыми
+// в НАТИВНОМ DataSet ВСЕГДА, а не только в стартовом состоянии
+// (suppressNativeEdgeColor обрабатывает только момент создания). Каждая из
+// трёх точек ниже (_hoverEdgeUpdate/_defaultEdgeUpdate/_applyPath) пишет
+// СВОЙ отдельный, видимый {color:{color,opacity:1|0.45|...}} — раньше это
+// делало нативное ребро видимым ЗАНОВО на hover/blur/path-подсветке,
+// поверх нашей дуги (замеченный на живом графе баг: "по два ребра
+// появляется при наведении"). Сама подсветка (кто hover, что выбрано, что
+// на пути) при этом остаётся ПОЛНОСТЬЮ рабочей — edge-render.js читает то
+// же самое состояние (State.selectedEdgeId/getHoveredEdgeIds/
+// State.pathHighlight) независимо и рисует нужный цвет/яркость САМ; здесь
+// достаточно просто не пускать нативную заливку становиться видимой.
+function _isSuppressedEdge(edgeId) {
+  return !!(State.suppressedEdgeIds && State.suppressedEdgeIds.has(edgeId));
+}
 
 // ТЗ (контраст hover): раньше на hover ребро просто поднималось до
 // opacity:1 в своём обычном (приглушённом) цвете роли — разница с
@@ -402,9 +426,16 @@ function _hoverEdgeUpdate(edgeId) {
   const edgeColor = ed._brightColor || ed._color || COLOR.pulse;
   const graphEdge = _getEdge(edgeId);
   const weight = graphEdge && Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1;
+  // [SF-WEB-56 follow-up] Update-объект (и, что важнее, "этот id теперь в
+  // _hoveredEdgeIds" — см. вызывающие _hoverNodeEdgeUpdates/
+  // _applyHoverEdge) остаётся тем же самым — edge-render.js по-прежнему
+  // должен узнать "это ребро сейчас под hover" и нарисовать САМ его ярче
+  // (getHoveredEdgeIds()). Меняется только НАТИВНАЯ заливка — она остаётся
+  // невидимой (см. _isSuppressedEdge выше), а не становится цветной.
+  const suppressed = _isSuppressedEdge(edgeId);
   return {
     id: edgeId,
-    color: { color: edgeColor, opacity: 1 },
+    color: suppressed ? { color: "rgba(0,0,0,0)", opacity: 0 } : { color: edgeColor, opacity: 1 },
     width: edgeWidthForWeight(weight) + HOVER_EDGE_WIDTH_DELTA
   };
 }
@@ -472,6 +503,11 @@ function _defaultEdgeUpdate(edgeId) {
   const color = _defaultEdgeColors.get(edgeId) || (ed._color || COLOR.pulse);
   const graphEdge = _getEdge(edgeId);
   const weight = graphEdge ? (Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1) : 1;
+  // [SF-WEB-56 follow-up] См. _isSuppressedEdge выше — та же причина: не
+  // делать нативную заливку видимой заново на hover-blur/снятии выбора.
+  if (_isSuppressedEdge(edgeId)) {
+    return { id: edgeId, color: { color: "rgba(0,0,0,0)", opacity: 0 }, width: edgeWidthForWeight(weight) };
+  }
   return { id: edgeId, color: { color, opacity: 0.45 }, width: edgeWidthForWeight(weight) };
 }
 
@@ -510,9 +546,14 @@ function _selectedEdgeUpdate(edgeId) {
   if (!ed) return null;
   const graphEdge = _getEdge(edgeId);
   const weight = graphEdge && Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1;
+  // [SF-WEB-56 follow-up] См. _isSuppressedEdge выше — State.selectedEdgeId
+  // всё так же выставляется как обычно (edge-render.js читает его
+  // независимо и рисует выбранное ребро ярче сам), меняется только
+  // НАТИВНАЯ заливка.
+  const suppressed = _isSuppressedEdge(edgeId);
   return {
     id: edgeId,
-    color: { color: COLOR.neon, opacity: 1 },
+    color: suppressed ? { color: "rgba(0,0,0,0)", opacity: 0 } : { color: COLOR.neon, opacity: 1 },
     width: edgeWidthForWeight(weight) + SELECTED_EDGE_WIDTH_DELTA
   };
 }
@@ -616,6 +657,10 @@ function _selectedNodeEdgeUpdate(edgeId) {
   if (!ed) return null;
   const graphEdge = _getEdge(edgeId);
   const weight = graphEdge && Number(graphEdge.weight) > 0 ? Number(graphEdge.weight) : 1;
+  // [SF-WEB-56 follow-up] См. _isSuppressedEdge выше.
+  if (_isSuppressedEdge(edgeId)) {
+    return { id: edgeId, color: { color: "rgba(0,0,0,0)", opacity: 0 }, width: edgeWidthForWeight(weight) + SELECTED_EDGE_WIDTH_DELTA };
+  }
   return {
     id: edgeId,
     color: { color: COLOR.neon, opacity: 1 },
@@ -890,7 +935,10 @@ function _applyDefault() {
     // SF-WEB-15: same treatment for edges lit up by the persistently
     // selected node's marker — only clearSelectedNode reverts these.
     if (_selectedNodeEdgeIds.has(id)) return;
-    eU.push({ id, color: { color, opacity: 0.45 } });
+    // [SF-WEB-56 follow-up] См. _isSuppressedEdge выше.
+    eU.push(_isSuppressedEdge(id)
+      ? { id, color: { color: "rgba(0,0,0,0)", opacity: 0 } }
+      : { id, color: { color, opacity: 0.45 } });
   });
   if (nU.length) State.nodesDS.update(nU);
   if (eU.length) State.edgesDS.update(eU);
@@ -952,9 +1000,13 @@ export function recolorInPlace(nameById) {
   const eU = State.graphEdges.map(e => {
     const color       = roleStyle(resolveEdgeDominantRole(e)).color;
     const brightColor = lightenHexColor(color, 0.35);
+    // [SF-WEB-56 follow-up] См. _isSuppressedEdge выше — тема меняется, а
+    // роль-цвет ребра (._color/._brightColor) всё так же нужен нашему
+    // canvas-слою (setEdgeCache читает его заново при следующей смене
+    // раскладки) — суппрессия трогает ТОЛЬКО видимую нативную заливку.
     return {
       id: e.id,
-      color: { color, opacity: 0.40 },
+      color: _isSuppressedEdge(e.id) ? { color: "rgba(0,0,0,0)", opacity: 0 } : { color, opacity: 0.40 },
       _color:       color,
       _brightColor: brightColor
     };
@@ -1033,6 +1085,15 @@ function _applyPath(path) {
     // an O(1) equivalent of the old O(E) find() that recomputed lo_hi for
     // every edge to match it against `id`.
     const edgeObj = _getEdge(id);
+
+    // [SF-WEB-56 follow-up] См. _isSuppressedEdge выше — путь-подсветка
+    // тоже пишет видимый нативный цвет по умолчанию; для рёбер, которые
+    // рисует свой canvas-слой, нативная заливка остаётся невидимой (сам
+    // слой независимо читает State.pathHighlight и подсвечивает onPath
+    // сам — см. edge-render.js::drawEdges).
+    if (_isSuppressedEdge(id)) {
+      return { id, color: { color: "rgba(0,0,0,0)", opacity: 0 }, width: 1 };
+    }
 
     if (!edgeObj) {
       return { id, color: { color: "rgba(40,48,68,0.02)", opacity: 0.02 }, width: 1 };

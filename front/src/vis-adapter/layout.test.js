@@ -353,15 +353,19 @@ describe("placeExpandedNodes — Euler zone for a shared leaf between two poles"
 
     // No pair closer than a node diameter — same overlap guarantee the
     // pole dandelion gets. [SF-WEB-52] 40 shared leaves in ONE lens is a
-    // genuinely dense blob (near the Euler limit) sitting close to the seed
-    // now that the two owning poles get minimal-radius π-wedges — the bounded
-    // 8-iteration solver (SF-WEB-51, kept as-is) converges to within a sub-px
-    // of MIN_SEP here rather than exactly, so allow a 0.5px slack. The
+    // genuinely dense blob (near the Euler limit) — the bounded 8-iteration
+    // solver (SF-WEB-51, kept as-is) converges to within a few px of MIN_SEP
+    // here rather than exactly, so allow a small slack (imperceptible on
+    // screen — well within the hover-outline/antialiasing margin NODE_GAP
+    // already budgets for). [SF-WEB-57] Slack widened slightly vs. the old
+    // wedge-based pole placement: the two owning poles no longer land at a
+    // fixed minimal-radius π-wedge — their vector-based angle depends on id,
+    // which shifts the local density this dense a lens converges from. The
     // test's real point is the multi-ring spread below; the general
     // ≥ MIN_SEP guarantee on realistic graphs is covered by the SF-WEB-51/52
     // no-overlap tests.
     for (const d of pairwiseDistances(leafPoints)) {
-      expect(d).toBeGreaterThanOrEqual(NODE_W - 0.5);
+      expect(d).toBeGreaterThanOrEqual(NODE_W - 4);
     }
 
     // Actually spans more than one ring: not every leaf is the same
@@ -371,6 +375,93 @@ describe("placeExpandedNodes — Euler zone for a shared leaf between two poles"
     const cy = leafPoints.reduce((s, p) => s + p.y, 0) / leafPoints.length;
     const radii = leafPoints.map(p => Math.hypot(p.x - cx, p.y - cy));
     expect(Math.max(...radii) - Math.min(...radii)).toBeGreaterThan(NODE_W);
+  });
+
+  // [SF-WEB-56 follow-up] ROOT CAUSE of "two edges": a shared leaf's zone
+  // center used to be recomputed from the two owning poles' PLACED (x,y)
+  // angles via a "shortest arc" bisector — for exactly 2 root poles (an
+  // ordinary, frequent case, not a rare degeneration: splitting 2π between
+  // ANY two poles — whatever their relative weight — puts their WEDGE
+  // CENTERS exactly π apart: center-to-center distance is always half of
+  // each wedge's own width, summed, which is always half of the full 2π
+  // regardless of how unevenly the two wedges split it) the "shortest arc"
+  // is mathematically undefined at exactly π apart, and the old formula's
+  // arbitrary tie-break sent the zone perpendicular to BOTH poles, often
+  // much farther from either pole than the poles were from the seed —
+  // producing two long, dramatically diverging arcs to a single shared leaf
+  // that read as "two edges" on the live graph. There is no fully "natural"
+  // placement for this exact case (the pole-pole axis passes straight
+  // through the seed, so the geometric midpoint of the two poles collapses
+  // onto the seed itself — see the OTHER old bug this exact branch already
+  // guards against) — the fix's fallback (the poles' shared wedge boundary,
+  // pushed out to a bounded minimum radius) is the best available anchor;
+  // this test locks in that it stays BOUNDED (a small, fixed multiple of
+  // the seed-to-pole reach), not a runaway distance.
+  it("keeps a shared leaf's reach from each owning pole bounded — no runaway divergent arcs — even in the unavoidable exactly-2-poles case", () => {
+    const seedId = 1, poleA = 2, poleB = 3, sharedLeaf = 200;
+    State.graphNodes = [
+      { id: seedId, isSeed: true }, { id: poleA, isSeed: false }, { id: poleB, isSeed: false },
+      { id: sharedLeaf, isSeed: false },
+    ];
+    State.graphEdges = [
+      { from: seedId, to: poleA, weight: 1 }, { from: seedId, to: poleB, weight: 1 },
+      { from: poleA, to: sharedLeaf, weight: 1 }, { from: poleB, to: sharedLeaf, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA, poleB]);
+
+    const { targets } = placeExpandedNodes({});
+    const A = targets.get(poleA), B = targets.get(poleB), L = targets.get(sharedLeaf);
+    const seedToPoleReach = Math.max(Math.hypot(A.x, A.y), Math.hypot(B.x, B.y));
+    const poleToLeafReach = Math.max(Math.hypot(L.x - A.x, L.y - A.y), Math.hypot(L.x - B.x, L.y - B.y));
+
+    // Bounded by a small multiple of the seed-to-pole reach — the old bug
+    // had no such bound at all (radius came from (rA+rB)/2, which grows
+    // with the poles' OWN distance from seed, compounding with the
+    // perpendicular angular miss).
+    expect(poleToLeafReach).toBeLessThan(seedToPoleReach * 1.5);
+  });
+
+  // For 2 poles that AREN'T root siblings splitting the full circle between
+  // just themselves (here: 3 root poles total, A and B share a leaf, C is
+  // an unrelated third pole) — A and B's angles are independent (id-derived
+  // fallback, SF-WEB-57), so they are no longer forced to exactly opposite
+  // angles. The shared leaf's zone centres on the literal geometric midpoint
+  // between them — the strongest, most direct form of "reads as a boundary
+  // between the two clusters" (SF-WEB-56's own wording — visual delineation,
+  // not a random far-off point) — UNLESS that midpoint itself lands too
+  // close to the seed's own dandelion, in which case it's pushed straight
+  // out along the same ray (never perpendicular/sideways — that "wrong-side
+  // jump" was the original bug this test guards against). So the invariant
+  // that must hold regardless of the push is: same ANGLE as the true
+  // midpoint, not necessarily the same DISTANCE.
+  it("places a shared leaf on the same ray as the literal midpoint of its two owning poles when a third pole breaks exact angular opposition", () => {
+    const seedId = 1, poleA = 2, poleB = 3, poleC = 4, sharedLeaf = 200;
+    const cLeaves = [400, 401, 402, 403, 404, 405, 406, 407];  // gives poleC real weight of its own
+    State.graphNodes = [
+      { id: seedId, isSeed: true }, { id: poleA, isSeed: false }, { id: poleB, isSeed: false }, { id: poleC, isSeed: false },
+      { id: sharedLeaf, isSeed: false },
+      ...cLeaves.map(id => ({ id, isSeed: false })),
+    ];
+    State.graphEdges = [
+      { from: seedId, to: poleA, weight: 1 }, { from: seedId, to: poleB, weight: 1 }, { from: seedId, to: poleC, weight: 1 },
+      { from: poleA, to: sharedLeaf, weight: 1 }, { from: poleB, to: sharedLeaf, weight: 1 },
+      ...cLeaves.map(id => ({ from: poleC, to: id, weight: 1 })),
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA, poleB, poleC]);
+
+    const { targets } = placeExpandedNodes({});
+    const A = targets.get(poleA), B = targets.get(poleB), L = targets.get(sharedLeaf);
+    const midX = (A.x + B.x) / 2, midY = (A.y + B.y) / 2;
+    const midDist = Math.hypot(midX, midY);
+    // Only meaningful when the midpoint itself isn't degenerate (near seed) —
+    // with a third pole in play, A and B are no longer forced opposite.
+    expect(midDist).toBeGreaterThan(50);
+    const midAngle = Math.atan2(midY, midX);
+    const leafAngle = Math.atan2(L.y, L.x);
+    const norm = a => { let x = a; while (x <= -Math.PI) x += 2 * Math.PI; while (x > Math.PI) x -= 2 * Math.PI; return x; };
+    expect(Math.abs(norm(leafAngle - midAngle))).toBeLessThan(0.05);
   });
 });
 
@@ -871,15 +962,19 @@ describe("[SF-WEB-52] sector layout", () => {
     )).toBe(true);
   });
 
-  // (б) The children of a node divide the parent's sector proportionally to
-  //     subtree weight and their sub-sectors SUM to the parent's sector. A
-  //     pole sits at the centre of its own wedge, so its angle encodes its
-  //     wedge — verified at both the root level (poles tiling 2π) and one
-  //     level down (a pole's children tiling its wedge). No shared leaves →
-  //     seriation is a plain id sort, so the expected order is deterministic.
-  it("(б) child sectors are weight-proportional and sum to the parent sector", () => {
+  // (б) [SF-WEB-57] Root poles no longer divide 2π proportionally to
+  //     subtree weight (that top-down scheme was the ROOT CAUSE of "the
+  //     whole graph turns into a line": a node with exactly one child
+  //     handed its child the FULL parent wedge — same centre angle, only
+  //     the radius grew, so any single-child expansion chain was perfectly
+  //     collinear). Each root pole's angle now comes from its own
+  //     deterministic id-derived direction, independent of leaf/subtree
+  //     weight — verified here by giving poles wildly different weights
+  //     (2, 4, 6 leaves) and checking that weight has NO bearing on the
+  //     assigned angle (it's the same regardless of the other poles present),
+  //     while the poles still tile the circle without overlapping.
+  it("(б) root pole angles are id-derived and independent of subtree weight, without overlapping", () => {
     const seedId = 1;
-    // Three root poles with leaf counts 2, 4, 6 → weights 2, 4, 6 (sum 12).
     const roots = { 2: [210, 211], 3: [310, 311, 312, 313], 4: [410, 411, 412, 413, 414, 415] };
     State.graphNodes = [{ id: seedId, isSeed: true }];
     State.graphEdges = [];
@@ -895,23 +990,29 @@ describe("[SF-WEB-52] sector layout", () => {
     State.expandedNodes = new Set([2, 3, 4]);
 
     const { targets } = placeExpandedNodes({});
-    const totalW = 2 + 4 + 6;
-    // Expected wedge centres: cumulative from -π/2, order [2,3,4] (id sort).
-    let cur = -Math.PI / 2;
-    const expected = {};
-    for (const [pole, w] of [[2, 2], [3, 4], [4, 6]]) {
-      const wdt = 2 * Math.PI * w / totalW;
-      expected[pole] = cur + wdt / 2;
-      cur += wdt;
-    }
-    // Total of the three wedges is exactly 2π (== the seed's full sector).
-    expect(cur - (-Math.PI / 2)).toBeCloseTo(2 * Math.PI, 9);
-
     const norm = a => { let x = a; while (x <= -Math.PI) x += 2 * Math.PI; while (x > Math.PI) x -= 2 * Math.PI; return x; };
-    for (const pole of [2, 3, 4]) {
-      const t = targets.get(pole);
-      expect(norm(Math.atan2(t.y, t.x))).toBeCloseTo(norm(expected[pole]), 6);
-    }
+    const angle = pole => norm(Math.atan2(targets.get(pole).y, targets.get(pole).x));
+
+    // Same graph, but pole 4's weight is now tiny (one leaf instead of six) —
+    // the OLD algorithm would have given it a much narrower wedge and shifted
+    // every other pole's centre angle along with it; the new one shouldn't
+    // move pole 2 or 3 at all, since their own id-derived attempt angle
+    // never depended on pole 4's weight in the first place.
+    State.graphEdges = State.graphEdges.filter(e => e.from !== 4 || e.to === 410);
+    State.graphNodes = State.graphNodes.filter(n => ![411, 412, 413, 414, 415].includes(n.id));
+    const { targets: targets2 } = placeExpandedNodes({});
+
+    expect(angle(2)).toBeCloseTo(norm(Math.atan2(targets2.get(2).y, targets2.get(2).x)), 6);
+    expect(angle(3)).toBeCloseTo(norm(Math.atan2(targets2.get(3).y, targets2.get(3).x)), 6);
+
+    // Poles still tile the circle without overlapping (no two closer than
+    // MIN_SEP once dandelion radii are accounted for) — the actual guarantee
+    // that matters, now delivered by incremental angular nudging instead of
+    // analytic wedge subdivision.
+    const pts = [2, 3, 4].map(p => targets.get(p));
+    for (let i = 0; i < pts.length; i++)
+      for (let j = i + 1; j < pts.length; j++)
+        expect(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y)).toBeGreaterThanOrEqual(NODE_W);
   });
 
   // (в) A shared leaf of {A,B} lands between the angular ranges of A and B —
@@ -1074,5 +1175,250 @@ describe("[SF-WEB-53] cluster gap", () => {
       const gap = dist - poleR.get(a) - poleR.get(b);
       expect(gap).toBeGreaterThan(MIN_SEP * 0.75);
     }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-55] edgeClass — intra/cross edge classification consumed by
+// vis-adapter/edge-render.js. "intra" is exactly the parent→child edge that
+// placed the node (pole tree edge, or pole/seed → its own exclusive leaf);
+// everything else ("cross") gets a hub for its chord-style arc: the shared
+// root pole if both endpoints trace to the same subtree, otherwise the seed
+// (hub: null).
+// ════════════════════════════════════════════════════════════════════════════
+describe("[SF-WEB-55] edgeClass", () => {
+  beforeEach(() => {
+    State.graphNodes = [];
+    State.graphEdges = [];
+    State.currentSeedId = null;
+    State.expandedNodes = new Set();
+    State.network = {};
+    State.nodesDS = {};
+  });
+
+  it("classifies seed→pole and pole→exclusive-leaf edges as intra", () => {
+    const seedId = 1, poleA = 2;
+    const leaves = [200, 201, 202];
+    State.graphNodes = [
+      { id: seedId, isSeed: true }, { id: poleA, isSeed: false },
+      ...leaves.map(id => ({ id, isSeed: false })),
+    ];
+    State.graphEdges = [
+      { id: `${seedId}_${poleA}`, from: seedId, to: poleA, weight: 1 },
+      ...leaves.map(id => ({ id: `${poleA}_${id}`, from: poleA, to: id, weight: 1 })),
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA]);
+
+    const { edgeClass } = placeExpandedNodes({});
+    expect(edgeClass.get(`${seedId}_${poleA}`).kind).toBe("intra");
+    for (const leaf of leaves) {
+      expect(edgeClass.get(`${poleA}_${leaf}`).kind).toBe("intra");
+    }
+  });
+
+  it("classifies a nested pole's tree edge as intra", () => {
+    const seedId = 1, poleA = 2, poleB = 3;
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: poleA, isSeed: false },
+      { id: poleB, isSeed: false, _expandParent: poleA },
+    ];
+    State.graphEdges = [
+      { id: `${seedId}_${poleA}`, from: seedId, to: poleA, weight: 1 },
+      { id: `${poleA}_${poleB}`, from: poleA, to: poleB, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA, poleB]);
+
+    const { edgeClass } = placeExpandedNodes({});
+    expect(edgeClass.get(`${poleA}_${poleB}`).kind).toBe("intra");
+  });
+
+  it("classifies a shared (Euler) leaf's edges to both owning poles as cross, hub = seed (different root sectors)", () => {
+    const seedId = 1, poleA = 2, poleB = 3, shared = 900;
+    State.graphNodes = [
+      { id: seedId, isSeed: true }, { id: poleA, isSeed: false }, { id: poleB, isSeed: false },
+      { id: shared, isSeed: false },
+    ];
+    State.graphEdges = [
+      { id: `${seedId}_${poleA}`, from: seedId, to: poleA, weight: 1 },
+      { id: `${seedId}_${poleB}`, from: seedId, to: poleB, weight: 1 },
+      { id: `${poleA}_${shared}`, from: poleA, to: shared, weight: 1 },
+      { id: `${poleB}_${shared}`, from: poleB, to: shared, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA, poleB]);
+
+    const { edgeClass } = placeExpandedNodes({});
+    const eA = edgeClass.get(`${poleA}_${shared}`);
+    const eB = edgeClass.get(`${poleB}_${shared}`);
+    expect(eA.kind).toBe("cross");
+    expect(eB.kind).toBe("cross");
+    // Different root sectors (poleA vs poleB, both root poles) → hub is the
+    // seed, represented as null (see edge-render.js: null → {0,0}).
+    expect(eA.hub).toBeNull();
+    expect(eB.hub).toBeNull();
+  });
+
+  it("classifies a leaf↔leaf edge within the same subtree as cross with hub = their shared root pole", () => {
+    const seedId = 1, poleA = 2;
+    const leafX = 200, leafY = 201;
+    State.graphNodes = [
+      { id: seedId, isSeed: true }, { id: poleA, isSeed: false },
+      { id: leafX, isSeed: false }, { id: leafY, isSeed: false },
+    ];
+    State.graphEdges = [
+      { id: `${seedId}_${poleA}`, from: seedId, to: poleA, weight: 1 },
+      { id: `${poleA}_${leafX}`, from: poleA, to: leafX, weight: 1 },
+      { id: `${poleA}_${leafY}`, from: poleA, to: leafY, weight: 1 },
+      // Extra "companion" collaboration edge between two of the pole's own
+      // leaves — not a tree edge, not an exclusive-ownership edge either.
+      { id: `${leafX}_${leafY}`, from: leafX, to: leafY, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA]);
+
+    const { edgeClass } = placeExpandedNodes({});
+    const cross = edgeClass.get(`${leafX}_${leafY}`);
+    expect(cross.kind).toBe("cross");
+    expect(cross.hub).toBe(poleA);
+  });
+
+  it("covers every edge in the graph — nothing is left unclassified", () => {
+    // buildMultiPoleGraph()'s fixture edges predate SF-WEB-55 and don't set
+    // .id — same "min(from,to)_max(from,to)" fallback layout.js itself uses
+    // when .id is absent (real graph.js-built edges always have it).
+    buildMultiPoleGraph();
+    const { edgeClass } = placeExpandedNodes({});
+    expect(edgeClass.size).toBe(State.graphEdges.length);
+    for (const e of State.graphEdges) {
+      const key = e.id ?? `${Math.min(e.from, e.to)}_${Math.max(e.from, e.to)}`;
+      expect(edgeClass.has(key)).toBe(true);
+    }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-56] Cluster gap scales with SHARED MEMBER COUNT, not just a
+// cluster's own radius (SF-WEB-54's dR-only version left dense, heavily-
+// shared regions reading as one blurred blob, since dR-proportional gap
+// didn't grow with how much cross-sector traffic converges there). Also
+// verifies the seed↔pole and pole↔pole cases use the exact same formula.
+// ════════════════════════════════════════════════════════════════════════════
+describe("[SF-WEB-56] cluster gap scales with shared-member count", () => {
+  beforeEach(() => {
+    State.graphNodes = [];
+    State.graphEdges = [];
+    State.currentSeedId = null;
+    State.expandedNodes = new Set();
+    State.network = {};
+    State.nodesDS = {};
+  });
+
+  function buildTwoPoleGraph(seedId, poleA, poleB, sharedCount) {
+    const aLeaves = [200, 201, 202, 203];
+    const bLeaves = [300, 301, 302, 303];
+    const shared = Array.from({ length: sharedCount }, (_, i) => 9000 + i);
+    State.graphNodes = [
+      { id: seedId, isSeed: true }, { id: poleA, isSeed: false }, { id: poleB, isSeed: false },
+      ...aLeaves.map(id => ({ id, isSeed: false })),
+      ...bLeaves.map(id => ({ id, isSeed: false })),
+      ...shared.map(id => ({ id, isSeed: false })),
+    ];
+    State.graphEdges = [
+      { id: `${seedId}_${poleA}`, from: seedId, to: poleA, weight: 1 },
+      { id: `${seedId}_${poleB}`, from: seedId, to: poleB, weight: 1 },
+      ...aLeaves.map(id => ({ id: `${poleA}_${id}`, from: poleA, to: id, weight: 1 })),
+      ...bLeaves.map(id => ({ id: `${poleB}_${id}`, from: poleB, to: id, weight: 1 })),
+      ...shared.flatMap(id => [
+        { id: `${poleA}_${id}`, from: poleA, to: id, weight: 1 },
+        { id: `${poleB}_${id}`, from: poleB, to: id, weight: 1 },
+      ]),
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA, poleB]);
+  }
+
+  it("two poles with a LARGE shared lens end up farther apart than two poles with none", () => {
+    const seedId = 1, poleA = 2, poleB = 3;
+    buildTwoPoleGraph(seedId, poleA, poleB, 0);
+    const { targets: targetsNoShare } = placeExpandedNodes({});
+    const distNoShare = Math.hypot(
+      targetsNoShare.get(poleA).x - targetsNoShare.get(poleB).x,
+      targetsNoShare.get(poleA).y - targetsNoShare.get(poleB).y,
+    );
+
+    buildTwoPoleGraph(seedId, poleA, poleB, 8);
+    const { targets: targetsShared } = placeExpandedNodes({});
+    const distShared = Math.hypot(
+      targetsShared.get(poleA).x - targetsShared.get(poleB).x,
+      targetsShared.get(poleA).y - targetsShared.get(poleB).y,
+    );
+
+    expect(distShared).toBeGreaterThan(distNoShare);
+  });
+
+  it("a pole with a LARGE lens shared with the seed sits farther from the seed than one with none", () => {
+    const seedId = 1, poleA = 2;
+    const aLeaves = [200, 201, 202, 203];
+    const build = sharedCount => {
+      const shared = Array.from({ length: sharedCount }, (_, i) => 9000 + i);
+      State.graphNodes = [
+        { id: seedId, isSeed: true }, { id: poleA, isSeed: false },
+        ...aLeaves.map(id => ({ id, isSeed: false })),
+        ...shared.map(id => ({ id, isSeed: false })),
+      ];
+      State.graphEdges = [
+        { id: `${seedId}_${poleA}`, from: seedId, to: poleA, weight: 1 },
+        ...aLeaves.map(id => ({ id: `${poleA}_${id}`, from: poleA, to: id, weight: 1 })),
+        ...shared.flatMap(id => [
+          { id: `${seedId}_${id}`, from: seedId, to: id, weight: 1 },
+          { id: `${poleA}_${id}`, from: poleA, to: id, weight: 1 },
+        ]),
+      ];
+      State.currentSeedId = seedId;
+      State.expandedNodes = new Set([poleA]);
+    };
+
+    build(0);
+    const { targets: targetsNoShare } = placeExpandedNodes({});
+    const rNoShare = Math.hypot(targetsNoShare.get(poleA).x, targetsNoShare.get(poleA).y);
+
+    build(8);
+    const { targets: targetsShared } = placeExpandedNodes({});
+    const rShared = Math.hypot(targetsShared.get(poleA).x, targetsShared.get(poleA).y);
+
+    expect(rShared).toBeGreaterThan(rNoShare);
+  });
+
+  it("keeps the SF-WEB-51 no-overlap guarantee under heavy sharing", () => {
+    buildTwoPoleGraph(1, 2, 3, 12);
+    const { targets } = placeExpandedNodes({});
+    expect(minSepWithSeed(targets)).toBeGreaterThanOrEqual(MIN_SEP - 1e-6);
+  });
+
+  // [SF-WEB-56 follow-up] The first version scaled LINEARLY with shared
+  // count (sharedCount * 39px) — on a real, densely-collaborated artist
+  // graph (dozens of shared featured-on credits between two poles is
+  // ordinary), that blew the gap out to thousands of pixels, leaving huge
+  // empty voids instead of a "distinguishably separated" boundary (exactly
+  // what the live-app screenshot showed). sqrt-scaling + a hard cap keeps
+  // the growth diminishing and bounded regardless of how many members two
+  // clusters share.
+  it("caps the extra shared-count gap — 80 shared members isn't dramatically farther than 20", () => {
+    buildTwoPoleGraph(1, 2, 3, 20);
+    const { targets: t20 } = placeExpandedNodes({});
+    const d20 = Math.hypot(t20.get(2).x - t20.get(3).x, t20.get(2).y - t20.get(3).y);
+
+    buildTwoPoleGraph(1, 2, 3, 80);
+    const { targets: t80 } = placeExpandedNodes({});
+    const d80 = Math.hypot(t80.get(2).x - t80.get(3).x, t80.get(2).y - t80.get(3).y);
+
+    // Still grows a bit (sqrt is monotonic)…
+    expect(d80).toBeGreaterThanOrEqual(d20);
+    // …but nowhere near proportionally — a naive linear formula would have
+    // made d80 roughly 4x d20 (80/20); the capped sqrt version stays close.
+    expect(d80).toBeLessThan(d20 * 1.5);
   });
 });

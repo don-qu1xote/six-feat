@@ -12,10 +12,13 @@
 //    MIN_SEP    — минимальная дистанция центр-в-центр любой пары нод (px)
 //    LEAF_R     — радиус первого кольца листьев (px)
 //    LEAF_GAP   — шаг между кольцами листьев (px)
-//    clusterGap(dR) — зазор между одуванчиками/линзами соседних полюсов (px)
+//    clusterGap(dR, sharedCount) — зазор между одуванчиками/линзами соседних
+//      полюсов (px); растёт и с dR, и с числом общих участников (SF-WEB-56)
 //
 //  Публичные функции:
-//    placeExpandedNodes(savedPositions) → {targets, fromPos}  (инициал + expand)
+//    placeExpandedNodes(savedPositions) → {targets, fromPos, edgeClass}
+//      (инициал + expand; edgeClass — [SF-WEB-55] intra/cross-классификация
+//      рёбер + хаб пары секторов, потребитель — vis-adapter/edge-render.js)
 //    placePathNodes(path, savedPositions) → {targets, fromPos}
 //    resolveCollisions(targets, pinnedIds, extraPinned)       (общий солвер)
 //    mergeNetwork/refreshNetwork/initNetwork используют targets как финальные
@@ -59,35 +62,74 @@ export const NODE_W = MIN_SEP;
 // не подбором числа.
 export const LEAF_R = 150;   // px: радиус первого кольца листьев
 const LEAF_GAP      = 58;    // px: базовый шаг между кольцами (см. floor в _adaptiveRingGap)
-// [SF-WEB-53] Зазор МЕЖДУ КЛАСТЕРАМИ (одуванчик-одуванчик, одуванчик-линза)
-// — отдельная, заметно бОльшая величина, чем MIN_SEP. MIN_SEP — это порог
-// нода-в-ноду ВНУТРИ одного кольца/облака (плотная упаковка листьев одного
-// одуванчика); clusterGap() — зазор между КРАЯМИ соседних облаков целиком.
+// [SF-WEB-53/54/56] Зазор МЕЖДУ КЛАСТЕРАМИ (одуванчик-одуванчик, одуванчик-
+// линза) — отдельная, заметно бОльшая величина, чем MIN_SEP. MIN_SEP — это
+// порог нода-в-ноду ВНУТРИ одного кольца/облака (плотная упаковка листьев
+// одного одуванчика); clusterGap() — зазор между КРАЯМИ соседних облаков
+// целиком.
 //
-// Первая версия использовала фиксированную константу (MIN_SEP*2) — но на
-// плотных графах (много полюсов делят узкие угловые клинья, см.
-// placePole/fitR ниже) реальный тангенциальный зазор между соседними
-// одуванчиками определяется НЕ этой константой вообще, а тем, насколько
-// точно fitR подгоняет полюс под ширину его клина: при узком клине
-// dR/sin(half) даёт РОВНО касание границ клина, без единого пикселя
-// запаса — сколько бы ни был POLE_GAP, он тут ни на что не влияет (это
-// чисто радиальный отступ ОТ РОДИТЕЛЯ, а не от соседей). Поэтому зазор
-// сделан (а) пропорциональным собственному радиусу одуванчика dR — большие
-// кластеры расталкиваются заметнее, чем при фиксированном пикселе — и (б)
-// применяется ОБОИМИ путями: и в baseR (радиальный отступ от
-// seed/родителя), и как «воротник» вокруг dR в fitR (см. placePole) — так
-// зазор реально виден даже в тесных клиньях, а не только между широко
-// расставленными полюсами.
-const CLUSTER_GAP_FLOOR    = MIN_SEP * 2;   // px: минимум даже для маленьких одуванчиков
-const CLUSTER_GAP_FRACTION = 0.45;          // доля от dR: чем крупнее кластер, тем шире просвет
-function clusterGap(dR) {
-  return Math.max(CLUSTER_GAP_FLOOR, dR * CLUSTER_GAP_FRACTION);
-}
+// Первая версия (SF-WEB-53) использовала фиксированную константу
+// (MIN_SEP*2) — но на плотных графах (много полюсов делят узкие угловые
+// клинья, см. placePole/fitR ниже) реальный тангенциальный зазор между
+// соседними одуванчиками определяется НЕ этой константой вообще, а тем,
+// насколько точно fitR подгоняет полюс под ширину его клина: при узком
+// клине dR/sin(half) даёт РОВНО касание границ клина, без единого пикселя
+// запаса. SF-WEB-54 сделала зазор пропорциональным dR (крупный кластер —
+// шире просвет) — лучше, но всё ещё не решала главную причину «путаницы
+// между блоками»: граница читается нечётко именно там, где МНОГО общих
+// участников (Эйлеровы линзы) сходятся в одну зону — там гуще всего
+// кросс-секторных рёбер (SF-WEB-55), и они визуально «склеивают» соседние
+// кластеры в одно пятно, сколько бы просто-геометрического зазора там ни
+// было. SF-WEB-56: зазор берёт МАКСИМУМ из трёх нижних оценок, включая
+// новую — пропорциональную числу листьев, общих у узла с его родителем
+// (sharedCountBetween, см. ниже, внутри placeExpandedNodes — данные по
+// линзам известны только на конкретный граф, не константа уровня модуля).
+// ОДНА формула для ОБОИХ случаев (родитель — сид ИЛИ другой полюс) —
+// гарантирует, что зазор сид↔полюс и полюс↔полюс считаются одинаково.
+const CLUSTER_GAP_FLOOR    = MIN_SEP * 4;    // px: минимум даже без общих участников
+const CLUSTER_GAP_FRACTION = 0.45;           // доля от dR: крупный кластер — шире просвет
+// [SF-WEB-56 follow-up] Первая версия росла ЛИНЕЙНО (sharedCount*39px) —
+// на плотных реальных графах (десятки общих фичерящих у популярного
+// артиста — обычное дело) это разгоняло зазор до тысяч пикселей, оставляя
+// гигантские пустые дыры вместо «чуть заметнее раздвинутых» кластеров.
+// sqrt(sharedCount) даёт УБЫВАЮЩУЮ отдачу (разница между 0 и 4 общими
+// заметна, между 40 и 44 — почти нет) плюс жёсткий верхний КАП
+// (SHARED_GAP_MAX) — сколько бы общих участников ни было, лишний зазор от
+// них никогда не превышает несколько MIN_SEP.
+const SHARED_GAP_STEP      = MIN_SEP * 0.6;  // px за sqrt(общих участников)
+const SHARED_GAP_MAX       = MIN_SEP * 4;    // жёсткий потолок extra-зазора от общих участников
 
 const PATH_NODE_GAP    = 200;   // px: шаг между узлами пути
 
 function _easeOut3(t) { return 1 - Math.pow(1 - t, 3); }
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function _normAngle(a) {
+  let x = a;
+  while (x <= -Math.PI) x += 2 * Math.PI;
+  while (x > Math.PI) x -= 2 * Math.PI;
+  return x;
+}
+
+// [SF-WEB-57] Золотой угол (филлотаксис) — тот же приём, что и раньше
+// использовался только внутри _placeZoneLeafRings для рассеивания
+// избыточных колец общих листьев (см. `rotate` там). Теперь это ЕДИНЫЙ
+// источник детерминированного «запасного» направления везде, где реальный
+// вектор (к родителю / сумма векторов к нескольким родителям) вырождается
+// в ноль — см. _fallbackAngle ниже и заголовочный комментарий у placeChildren.
+const GOLDEN_ANGLE = 2.399963229728653; // рад, ≈137.5°
+
+// [SF-WEB-57] Детерминированный угол для узла/зоны, у которых нет ни одного
+// осмысленного направляющего вектора (полюс, чей единственный родитель —
+// сид в начале координат; общая линза, чьи владельцы легли строго напротив
+// друг друга и их векторы взаимно уничтожились). seed — любое число,
+// однозначно определяющее узел/зону (id полюса, сумма id владельцев зоны):
+// один и тот же вход всегда даёт один и тот же угол, без обхода графа и без
+// зависимости от того, сколько ещё узлов уже размещено — новый узел не
+// сдвигает уже поставленные соседи, только сам получает следующий угол в
+// детерминированной, визуально хорошо рассеивающейся последовательности.
+function _fallbackAngle(seed) {
+  return _normAngle(seed * GOLDEN_ANGLE);
+}
 
 // [SF-WEB-51] ГАРАНТИЯ отсутствия наложений — жёсткий кап итераций.
 // Детерминированное размещение (шаги 1–5 ниже) уже почти-решение, так что
@@ -280,7 +322,7 @@ function _placeZoneLeafRings(leaves, cx, cy, targets, fromPos, getFrom) {
     // которое эта раскладка должна была исключить. GOLDEN_ANGLE-сдвиг на
     // кольцо (тот же приём, что филлотаксис у растений) гарантирует, что
     // ни одно кольцо не повторяет направление предыдущего.
-    const rotate = k * 2.399963;
+    const rotate = k * GOLDEN_ANGLE;
     batch.forEach((leaf, i) => {
       const ang = rotate + (2 * Math.PI * i) / batch.length;
       targets.set(leaf, { x: cx + Math.cos(ang) * r, y: cy + Math.sin(ang) * r });
@@ -411,6 +453,43 @@ export function placeExpandedNodes(savedPositions) {
     }
   }
 
+  // [SF-WEB-56] Число листьев, общих для ЛЮБОЙ пары «сосед» (полюс/сид) —
+  // считается один раз на весь текущий граф (не константа уровня модуля,
+  // как CLUSTER_GAP_FLOOR/FRACTION выше — зависит от конкретных sharedLeaves
+  // ЭТОГО вызова placeExpandedNodes). placeChildren (шаг 2, ниже) и
+  // clusterGap (эта же секция) читают ОДНУ и ту же таблицу — не две
+  // рассинхронизирующиеся копии одного и того же прохода по sharedLeaves.
+  const sharedCountCache = new Map();  // "loId_hiId" → число общих листьев
+  for (const { owners } of sharedLeaves) {
+    const os = [...owners].sort((a, b) => a - b);
+    for (let i = 0; i < os.length; i++)
+      for (let j = i + 1; j < os.length; j++) {
+        const k = os[i] + "_" + os[j];
+        sharedCountCache.set(k, (sharedCountCache.get(k) || 0) + 1);
+      }
+  }
+  function sharedCountBetween(a, b) {
+    return sharedCountCache.get(Math.min(a, b) + "_" + Math.max(a, b)) || 0;
+  }
+
+  // [SF-WEB-56] Зазор для узла с собственным радиусом dR, чей сосед-родитель
+  // делит с ним sharedCount общих листьев — максимум из трёх оценок:
+  // (1) безусловный пол, (2) пропорция от dR (SF-WEB-54), (3) пропорция от
+  // sharedCount (см. заголовочный комментарий у CLUSTER_GAP_FLOOR выше).
+  // sharedCount передаётся вызывающей стороной — placePole ниже берёт его из
+  // sharedCountBetween(id, parent) (пара полюс↔сид/полюс↔полюс), а
+  // Эйлер-линза (шаг 4 ниже) — напрямую leaves.length своей зоны (общее
+  // число листьев у пары владельцев зоны — та же величина по построению, но
+  // без лишнего похода через sharedCountBetween ради ровно того же числа).
+  function clusterGap(dR, sharedCount) {
+    const sharedExtra = Math.min(Math.sqrt(Math.max(0, sharedCount)) * SHARED_GAP_STEP, SHARED_GAP_MAX);
+    return Math.max(
+      CLUSTER_GAP_FLOOR,
+      dR * CLUSTER_GAP_FRACTION,
+      CLUSTER_GAP_FLOOR + sharedExtra
+    );
+  }
+
   // Seed-only листья (см. блок 5 ниже) — считаем заранее, до размещения
   // полюсов: их «одуванчик» вокруг seed занимает радиус dRSeed, и полюса не
   // должны садиться ближе dRSeed + собственного радиуса (см. minDist ниже),
@@ -422,21 +501,40 @@ export function placeExpandedNodes(savedPositions) {
   }
   const dRSeed = _dandelionR(seedLeaves.length);
 
-  // ── 2. [SF-WEB-52] СЕКТОРНАЯ РАСКЛАДКА ПОЛЮСОВ («пирог») ──────────────────────
+  // ── 2. [SF-WEB-57] ВЕКТОРНАЯ РАСКЛАДКА ПОЛЮСОВ ─────────────────────────────
   //
-  // Отказ от «плоской борьбы за одну плоскость» (SF-WEB-51 расталкивал полюса
-  // углами постфактум) в пользу РЕКУРСИВНОЙ нарезки 2π на непересекающиеся
-  // клинья. Дерево раскрытий: корень = seed, родитель полюса = ближайший
-  // раскрытый предок (poleParent, разбор вложенных ниже — как в SF-WEB-29).
-  // Корень владеет полными 2π; дети узла делят его клин ПРОПОРЦИОНАЛЬНО весу
-  // поддерева (лист = 1, под-полюс = сумма поддерева), но не уже собственной
-  // угловой «нужды» (footprint одуванчика). Рекурсивно на любую глубину;
-  // радиус узла растёт с глубиной (кольцо на хоп). Так ВСЁ поддерево любого
-  // узла целиком лежит в своём клине → два одуванчика физически не могут
-  // пересечься, в каком бы порядке и от какой бы ноды граф ни рос. Кольца
-  // листьев (_ringCap/_dandelionR, шаг 3), классификацию линз (шаг 4) и
-  // финальный resolveCollisions (шаг 6) НЕ трогаем — меняется только правило
-  // выбора {x,y} полюсов здесь и целевая точка линзы (на «границу секторов»).
+  // БАГ (структурный, «весь граф выстраивается в линию»): предыдущая
+  // раскладка (SF-WEB-52) резала 2π на непересекающиеся клинья ПРОПОРЦИОНАЛЬНО
+  // весу поддерева и всегда ставила узел в ЦЕНТР своего клина. У узла с РОВНО
+  // одним ребёнком клин ребёнка (вес/сумма весов = 1) получал ВСЮ ширину
+  // родительского клина целиком — тот же центр, тот же угол. Любая цепочка
+  // «раскрыли одного, у него раскрыли одного, у того ещё одного» (самый
+  // обычный сценарий навигации) садилась на ОДИН И ТОТ ЖЕ луч от seed, только
+  // радиус рос — идеально коллинеарные точки, визуально «всё в линию».
+  //
+  // Новая модель — не абстрактная геометрия клиньев, а буквально то, что
+  // описано в тикете: у каждого узла есть НАПРАВЛЕНИЕ (простая тригонометрия
+  // от позиции родителя(ей) — сумма векторов, если родителей несколько, см.
+  // eulerZones ниже) и РАССТОЯНИЕ по этому направлению (уже решённая раньше
+  // цепочка «одуванчик-из-которого + зазор + линза + зазор + одуванчик-в-
+  // который», см. baseR ниже — не менялась). Направление от ОДНОГО родителя —
+  // это направление НА родителя от seed (продолжение того же луча наружу);
+  // единственный случай, где такого вектора нет вообще — родитель это сам
+  // seed (позиция (0,0), направления не существует) — детерминированный
+  // запасной угол на этот случай см. _fallbackAngle выше («никогда не рисуем
+  // с нулевым вектором, но на этот случай — резервное решение»).
+  //
+  // Несколько узлов с ОДНИМ и тем же родителем (сиблинги) наивно получили бы
+  // ОДИНАКОВОЕ направление — тут в дело вступает избежание наложений
+  // (тикет: «если пересекаются — сначала сдвиг по углу, если не помогает —
+  // по расстоянию»): каждый следующий сиблинг размещается ПО ОЧЕРЕДИ
+  // (детерминированный порядок — сортировка по id), пробуя сначала свой
+  // «естественный» угол, при коллизии со уже поставленными в этом же раунде
+  // сиблингами — нудж по углу в обе стороны, и только если совсем не
+  // помещается — увеличение радиуса (см. placeChildren ниже). Никакого
+  // отдельного обхода графа под это не требуется — соседи уже под рукой в P
+  // (Map, доступ O(1)), между собой сиблинги перебираются один раз за проход,
+  // не по всему графу.
   const poleParent = new Map();  // poleId → parentId (seedId либо другой poleId)
   const poleSet = new Set(poles);
   const graphNodeById = new Map(State.graphNodes.map(n => [n.id, n]));
@@ -478,54 +576,23 @@ export function placeExpandedNodes(savedPositions) {
     }
   }
 
-  // Вес узла = размер его поддерева в «листовых слотах»: лист = 1, под-полюс
-  // = сумма его поддерева. Пол в 1, чтобы полюс без листьев и без детей всё
-  // равно получил ненулевой клин.
-  const weightCache = new Map();
-  function subtreeWeight(id) {
-    if (weightCache.has(id)) return weightCache.get(id);
-    let w = exclusive.get(id).length;
-    for (const c of (poleChildren.get(id) || [])) w += subtreeWeight(c);
-    w = Math.max(1, w);
-    weightCache.set(id, w);
-    return w;
-  }
-
-  // [SF-WEB-52 §3] Сериация верхнеуровневых полюсов: ставим рядом тех, кто
-  // делит больше общих листьев (простая жадная цепочка по матрице общих) —
-  // тогда границы линз чистые и кросс-рёбер меньше. Детерминированно (обходы
-  // отсортированы, тайбрейки по id).
-  function orderRootPoles(ids) {
-    if (ids.length <= 2) return [...ids].sort((a, b) => a - b);
-    const idset = new Set(ids);
-    const shared = new Map(); // "a_b" → число общих листьев
-    const deg = new Map(ids.map(id => [id, 0]));
-    for (const { owners } of sharedLeaves) {
-      const os = [...owners].filter(o => idset.has(o)).sort((a, b) => a - b);
-      for (let i = 0; i < os.length; i++)
-        for (let j = i + 1; j < os.length; j++) {
-          const k = os[i] + "_" + os[j];
-          shared.set(k, (shared.get(k) || 0) + 1);
-          deg.set(os[i], deg.get(os[i]) + 1);
-          deg.set(os[j], deg.get(os[j]) + 1);
-        }
-    }
-    const sc = (a, b) => shared.get(Math.min(a, b) + "_" + Math.max(a, b)) || 0;
-    const remaining = new Set(ids);
-    let start = [...ids].sort((a, b) => (deg.get(b) - deg.get(a)) || (a - b))[0];
-    const order = [start];
-    remaining.delete(start);
-    while (remaining.size) {
-      const last = order[order.length - 1];
-      let best = null, bestC = -1;
-      for (const c of [...remaining].sort((a, b) => a - b)) {
-        const cc = sc(last, c);
-        if (cc > bestC) { bestC = cc; best = c; }
+  // [SF-WEB-56] Для КАЖДОГО полюса — максимум sharedCountBetween с любым его
+  // "соседом по уровню" (другим полюсом с ТЕМ ЖЕ родителем — то есть тем,
+  // с кем он реально делит угловую границу клина). Это отдельный сигнал от
+  // sharedCountBetween(id, parent) (общее с РОДИТЕЛЕМ, актуально в первую
+  // очередь для зазора сид↔полюс) — путаница между двумя СОСЕДНИМИ
+  // клиньями определяется тем, сколько они делят МЕЖДУ СОБОЙ, а не с общим
+  // предком; ровно ту зону (общая линза двух соседних полюсов) и накрывает
+  // clusterGap ниже через Math.max(...) обоих сигналов.
+  const maxSiblingShared = new Map();
+  for (const group of [rootPoleIds, ...poleChildren.values()]) {
+    for (const id of group) {
+      let m = 0;
+      for (const other of group) {
+        if (other !== id) m = Math.max(m, sharedCountBetween(id, other));
       }
-      order.push(best);
-      remaining.delete(best);
+      maxSiblingShared.set(id, m);
     }
-    return order;
   }
 
   const P = new Map();   // poleId → {x, y, dR}  (плюс сам seedId, см. ниже)
@@ -533,64 +600,85 @@ export function placeExpandedNodes(savedPositions) {
   // позиция всегда (0,0), «радиус облака» — dRSeed.
   P.set(seedId, { x: 0, y: 0, dR: dRSeed });
 
-  // Рекурсивная нарезка. Узел id владеет клином [lo,hi]; ставим его в ЦЕНТР
-  // клина. Клин детей делится СТРОГО ПРОПОРЦИОНАЛЬНО весу поддерева и в сумме
-  // равен клину родителя (тест §б). РАДИУС узла адаптируется под ширину его
-  // клина: одуванчик радиуса Rp виден из seed под углом 2·asin(Rp/r), и чтобы
-  // он целиком уместился в клин полуширины `half`, нужно asin(Rp/r) ≤ half ⟺
-  // r ≥ Rp/sin(half). Так секторы ВСЕГДА непересекающиеся (это чистая нарезка
-  // угла), а «тесно» решается не наложением, а выносом полюса ДАЛЬШЕ — узкий
-  // клин просто уезжает по радиусу, пока его одуванчик не влезет. baseR держит
-  // минимум (клир seed-облака / родителя) и «кольцо на хоп». parentR — уже
-  // вычисленный (с учётом выноса) радиус родителя.
-  function placePole(id, lo, hi, parentR) {
-    const half = (hi - lo) / 2;
-    const center = (lo + hi) / 2;
-    const dR = poleDR.get(id);
-    const parent = poleParent.get(id);
-    const gap = clusterGap(dR);
-    const baseR = parent === seedId
-      ? dRSeed + dR + gap
-      : parentR + poleDR.get(parent) + dR + gap;
-    // [SF-WEB-53] «Воротник» gap/2 вокруг dR при подгонке под клин — в узких
-    // клиньях именно fitR (не baseR) определяет итоговый радиус, так что
-    // без этого воротника соседние одуванчики касались бы границ своих
-    // клиньев вплотную (нулевой зазор, см. clusterGap() выше).
-    const fitR = half >= Math.PI / 2 ? 0 : (dR + gap / 2) / Math.sin(half);
-    const r = Math.max(baseR, fitR);
-    const x = Math.cos(center) * r, y = Math.sin(center) * r;
-    P.set(id, { x, y, dR });
-    targets.set(id, { x, y });
-    fromPos.set(id, getFrom(id));
+  // Минимальный угловой зазор между footprint-ами двух соседей — поверх
+  // asin(...)-половинок ниже, чтобы не полагаться на точное касание.
+  const ANGULAR_GAP = 0.02;
 
-    const kids = [...(poleChildren.get(id) || [])].sort((a, b) => a - b);
-    if (!kids.length) return;
-    let sumW = 0;
-    for (const c of kids) sumW += subtreeWeight(c);
-    let cur = lo;
-    for (const c of kids) {
-      const wdt = (hi - lo) * subtreeWeight(c) / sumW;
-      placePole(c, cur, cur + wdt, r);
-      cur += wdt;
+  // Половина угла, под которым облако радиуса dR (плюс зазор gap) видно с
+  // расстояния r — та же формула, что раньше использовал fitR (SF-WEB-53),
+  // здесь же используется для проверки коллизий между сиблингами, а не для
+  // нарезки клина.
+  function _footprintHalf(dR, gap, r) {
+    if (r < 1e-6) return Math.PI;
+    return Math.min(Math.PI - 1e-3, Math.asin(clamp((dR + gap / 2) / r, -1, 1)) + ANGULAR_GAP);
+  }
+  function _angularSep(a, b) {
+    return Math.abs(_normAngle(a - b));
+  }
+
+  // [SF-WEB-57] Размещает всех детей parentId (корневые полюсы — дети сида)
+  // по одному, в детерминированном порядке (id). У каждого — «естественное»
+  // направление (направление на parentId от seed; для сида это направления
+  // не существует — _fallbackAngle) и расстояние baseR (та же
+  // clusterGap-цепочка, что и раньше, без изменений). Коллизия с уже
+  // поставленным в ЭТОМ ЖЕ раунде сиблингом решается СНАЧАЛА нуджем угла
+  // (в обе стороны от естественного направления), и только если это не
+  // помогает за разумное число попыток — увеличением радиуса (тикет: «сперва
+  // угол, потом длина»).
+  function placeChildren(parentId, childIds, parentR) {
+    if (!childIds.length) return;
+    const isRoot = parentId === seedId;
+    const parentPos = P.get(parentId);
+    const naturalAngle = isRoot ? null : Math.atan2(parentPos.y, parentPos.x);
+    const sorted = [...childIds].sort((a, b) => a - b);
+    const placedThisRound = [];  // { angle, half }
+
+    for (const id of sorted) {
+      const dR = poleDR.get(id);
+      // [SF-WEB-56] Оба сигнала: сколько id делит с РОДИТЕЛЕМ и сколько — с
+      // самым "делящимся" сиблингом по тому же уровню — больший побеждает.
+      const sharedCount = Math.max(sharedCountBetween(id, parentId), maxSiblingShared.get(id) || 0);
+      const gap = clusterGap(dR, sharedCount);
+      const baseR = isRoot ? dRSeed + dR + gap : parentR + poleDR.get(parentId) + dR + gap;
+      const attemptAngle = naturalAngle == null ? _fallbackAngle(id) : naturalAngle;
+
+      let r = baseR;
+      let angle = attemptAngle;
+      let half = _footprintHalf(dR, gap, r);
+      let ok = placedThisRound.every(s => _angularSep(angle, s.angle) >= half + s.half);
+
+      let tries = 0;
+      while (!ok && tries < 24) {
+        tries++;
+        const k = Math.ceil(tries / 2);
+        const sign = tries % 2 === 1 ? 1 : -1;
+        angle = _normAngle(attemptAngle + sign * k * (half + ANGULAR_GAP) * 1.3);
+        ok = placedThisRound.every(s => _angularSep(angle, s.angle) >= half + s.half);
+      }
+      if (!ok) {
+        // Углом не разошлись за разумное число попыток (типично — очень
+        // много сиблингов с большими облаками вокруг одного узкого родителя)
+        // — жертвуем расстоянием: растим радиус, пока собственный footprint
+        // не сузится настолько, что ИСХОДНЫЙ угол уже ни с кем не пересекается.
+        angle = attemptAngle;
+        for (let grow = 0; grow < 32 && !ok; grow++) {
+          r *= 1.15;
+          half = _footprintHalf(dR, gap, r);
+          ok = placedThisRound.every(s => _angularSep(angle, s.angle) >= half + s.half);
+        }
+      }
+
+      const x = Math.cos(angle) * r, y = Math.sin(angle) * r;
+      P.set(id, { x, y, dR });
+      targets.set(id, { x, y });
+      fromPos.set(id, getFrom(id));
+      placedThisRound.push({ angle, half });
+
+      placeChildren(id, poleChildren.get(id) || [], r);
     }
   }
 
-  // Корень (seed) владеет полными 2π; делим их между корневыми полюсами
-  // (сериированный порядок) СТРОГО пропорционально весу поддерева. Сид-only
-  // листья (шаг 5) живут во ВНУТРЕННЕМ кольце вокруг (0,0) и в дележе 2π не
-  // участвуют — они радиально ближе seed'а, чем любой корневой полюс, так что
-  // за угол с полюсами не спорят.
-  if (rootPoleIds.length) {
-    const ordered = orderRootPoles(rootPoleIds);
-    let sumW = 0;
-    for (const p of ordered) sumW += subtreeWeight(p);
-    let cur = -Math.PI / 2; // старт «вверх», детерминированно
-    for (const p of ordered) {
-      const wdt = 2 * Math.PI * subtreeWeight(p) / sumW;
-      placePole(p, cur, cur + wdt, 0);
-      cur += wdt;
-    }
-  }
+  placeChildren(seedId, rootPoleIds, 0);
 
   // ── 3. Эксклюзивные листья: концентрические кольца («одуванчик») ──────────────
   for (const [poleId, leaves] of exclusive) {
@@ -629,58 +717,38 @@ export function placeExpandedNodes(savedPositions) {
     const valid = owners.filter(o => P.has(o));
     if (!valid.length) continue;
 
-    // БАГ (реальный, отдельный от "seed прыгает"): когда полюсов ровно два
-    // и оба свежие (без сохранённой позиции), угловое размещение (шаг 2)
-    // ставит второй полюс в «наибольший зазор» — а для двух полюсов это
-    // ровно 180° от первого. Середина отрезка между двумя точками,
-    // расположенными строго по разные стороны от seed на одинаковом
-    // расстоянии, геометрически совпадает с seed (0,0). Раньше это было не
-    // видно только потому, что тот же баг классификации листьев (см. выше)
-    // ошибочно добавлял сам seed в тот же eulerZone как «лишний» общий
-    // лист — из-за этого массив leaves был длиннее на 1, и формула сдвига
-    // случайно уводила настоящий общий лист от центра. После фикса
-    // классификации при ОДНОМ реальном общем листе центр зоны совпадал с
-    // seed и лист визуально "исчезал" под ним. Фикс: отталкиваем центр зоны
-    // (и центроид для 3+) от seed на safe-радиус, если он оказался ближе
-    // dRSeed (радиус собственного одуванчика seed'а) + минимальный зазор.
-    const minRFromSeed = dRSeed + clusterGap(dRSeed) * 0.5;
-    let cx, cy;
+    // [SF-WEB-57] Центр линзы — векторная сумма позиций ВСЕХ её владельцев
+    // (сид включительно, если он один из них — P.get(seedId) всегда (0,0),
+    // так что его вклад в сумму нулевой, но он честно участвует как любой
+    // другой владелец), делённая на их число — учитывает и длину, и
+    // направление каждого вектора, ОДНА формула что для 2, что для 3+
+    // владельцев (раньше 2-владельца были отдельным веткой через середину
+    // отрезка/грань клиньев — с отказом от клиньев как понятия эта ветка
+    // не нужна, центроид даёт то же самое: для двух точек центроид И есть
+    // середина отрезка).
+    //
+    // Единственный случай, где эта сумма вырождается в (0,0) — владельцы
+    // легли строго по разные стороны от сида и взаимно «погасили» друг
+    // друга (тот самый «никогда не рисуем линзу с нулевым вектором» из
+    // тикета) — тогда угол берём из детерминированного запасного источника
+    // (_fallbackAngle, тот же, что и для корневых полюсов у сида), а не
+    // теряем лист в начале координат.
+    // [SF-WEB-56] leaves.length — число листьев именно ЭТОЙ линзы, тот же
+    // sharedCount, что clusterGap ждёт от placeChildren (см. его заголовок)
+    // — чем крупнее сама линза, тем дальше её отталкивает от сида.
+    const minRFromSeed = dRSeed + clusterGap(dRSeed, leaves.length) * 0.5;
 
-    if (valid.length === 2) {
-      // [SF-WEB-52 §4] Два владельца → лист(ья) на УГЛОВОЙ ГРАНИЦЕ между
-      // секторами A и B (после сериации они обычно соседи, так что это ровно
-      // шов их клиньев). Целевой угол — биссектриса по КОРОТКОЙ дуге между
-      // угловыми положениями A и B (т.е. «между их угловыми диапазонами»);
-      // радиус — средний между двумя полюсами. Классификацию линз
-      // (eulerZones/leafOwners) не трогаем — меняется только эта точка.
-      const A = P.get(valid[0]), B = P.get(valid[1]);
-      const rA = Math.hypot(A.x, A.y), rB = Math.hypot(B.x, B.y);
-      // Если один из владельцев — сид (в начале координат, угол не
-      // определён), лист(ья) садятся на ЛУЧ seed→другой полюс (его угол), т.е.
-      // «на границе» между внутренним seed-облаком и сектором полюса. Иначе —
-      // биссектриса по короткой дуге между угловыми положениями A и B.
-      let thA = Math.atan2(A.y, A.x), thB = Math.atan2(B.y, B.x);
-      if (rA < 1e-6) thA = thB;
-      if (rB < 1e-6) thB = thA;
-      let dth = thB - thA;
-      while (dth >  Math.PI) dth -= 2 * Math.PI;
-      while (dth < -Math.PI) dth += 2 * Math.PI;
-      const thMid = thA + dth / 2;
-      const rMid  = Math.max(minRFromSeed, (rA + rB) / 2);
-      cx = Math.cos(thMid) * rMid;
-      cy = Math.sin(thMid) * rMid;
-    } else {
-      // Три+ владельца: центроид позиций всех полюсов зоны.
-      cx = 0; cy = 0;
-      valid.forEach(o => { cx += P.get(o).x; cy += P.get(o).y; });
-      cx /= valid.length; cy /= valid.length;
+    let cx = 0, cy = 0;
+    valid.forEach(o => { cx += P.get(o).x; cy += P.get(o).y; });
+    cx /= valid.length; cy /= valid.length;
 
-      const rFromSeed = Math.hypot(cx, cy);
-      if (rFromSeed < minRFromSeed) {
-        const pushAng = rFromSeed > 1e-6 ? Math.atan2(cy, cx) : 0;
-        cx = Math.cos(pushAng) * minRFromSeed;
-        cy = Math.sin(pushAng) * minRFromSeed;
-      }
+    const rFromSeed = Math.hypot(cx, cy);
+    if (rFromSeed < minRFromSeed) {
+      const pushAng = rFromSeed > 1e-6
+        ? Math.atan2(cy, cx)
+        : _fallbackAngle(valid.reduce((a, b) => a + b, 0) + 1);
+      cx = Math.cos(pushAng) * minRFromSeed;
+      cy = Math.sin(pushAng) * minRFromSeed;
     }
 
     // [SF-WEB-29 follow-up] Общие листья садятся концентрическими кольцами
@@ -759,7 +827,61 @@ export function placeExpandedNodes(savedPositions) {
   const pinnedIds = new Set(poles);
   resolveCollisions(targets, pinnedIds, new Map([[seedId, { x: 0, y: 0 }]]));
 
-  return { targets, fromPos };
+  // ── 7. [SF-WEB-55] Классификация рёбер для собственного слоя отрисовки ────
+  // (vis-adapter/edge-render.js) — геометрию узлов выше НЕ меняет, только
+  // помечает уже готовые рёбра. "intra" — РОВНО та связь родитель→ребёнок
+  // (poleParent-дерево ИЛИ полюс/сид → его СОБСТВЕННЫЙ эксклюзивный лист,
+  // leafOwners.size===1), которая и определила позицию узла на шагах 2-5 —
+  // короткая кривая внутри клина. Всё остальное (общие/линза-листья, лист↔
+  // лист, полюс↔неродственный полюс) — "cross": дуга к общему хабу пары
+  // секторов. Хаб пары — общий родительский полюс, если оба конца лежат в
+  // одном и том же поддереве (rootSectorOf), иначе seed (hub:null — центр).
+  const poleSetForClass = new Set(poles);
+  function rootSectorOf(poleId) {
+    let cur = poleId, guard = 0;
+    while (poleParent.get(cur) !== seedId) {
+      cur = poleParent.get(cur);
+      if (++guard > poles.length + 1) return seedId;
+    }
+    return cur;
+  }
+  function sectorOf(id) {
+    if (id === seedId) return seedId;
+    if (poleSetForClass.has(id)) return rootSectorOf(id);
+    const owners = leafOwners.get(id);
+    // Ровно один владелец → сектор его дерева. Ноль (нет ни одной owner-
+    // связи) ИЛИ 2+ (общий/линза-лист — сидит на ГРАНИЦЕ секторов, у него
+    // нет одного законного дерева) — трактуем как принадлежащий сиду:
+    // хаб дуги для рёбер такого узла — центр, а не произвольно выбранный
+    // один из его нескольких владельцев.
+    if (!owners || owners.size !== 1) return seedId;
+    const [owner] = owners;
+    return owner === seedId ? seedId : rootSectorOf(owner);
+  }
+  const edgeClass = new Map();
+  for (const e of State.graphEdges) {
+    const a = e.from, b = e.to;
+    const isTreeEdge = poleParent.get(a) === b || poleParent.get(b) === a;
+    const ownersA = leafOwners.get(a), ownersB = leafOwners.get(b);
+    const isExclusiveEdge =
+      (ownersA && ownersA.size === 1 && [...ownersA][0] === b) ||
+      (ownersB && ownersB.size === 1 && [...ownersB][0] === a);
+    const kind = (isTreeEdge || isExclusiveEdge) ? "intra" : "cross";
+    let hub = null;  // null = хаб-по-умолчанию (seed, {0,0})
+    if (kind === "cross") {
+      const sa = sectorOf(a), sb = sectorOf(b);
+      hub = (sa === sb && sa !== seedId) ? sa : null;
+    }
+    // edge.id — тот же "min(from,to)_max(from,to)" формат, что buildEdgeState
+    // в graph.js даёт каждому ребру (см. комментарий в highlight.js о
+    // _edgeById) — на реальных данных всегда присутствует; фоллбэк ниже
+    // только для случаев, где его нет (напр. некоторые старые фикстуры в
+    // layout.test.js, никогда не имевшие причины его выставлять).
+    const key = e.id ?? `${Math.min(a, b)}_${Math.max(a, b)}`;
+    edgeClass.set(key, { from: a, to: b, kind, hub });
+  }
+
+  return { targets, fromPos, edgeClass };
 }
 
 // SF-WEB-17: floor on node spacing — comfortably larger than the biggest
