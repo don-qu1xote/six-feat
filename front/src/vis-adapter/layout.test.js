@@ -1023,4 +1023,56 @@ describe("[SF-WEB-53] cluster gap", () => {
     const { targets } = placeExpandedNodes({});
     expect(minSepWithSeed(targets)).toBeGreaterThanOrEqual(MIN_SEP - 1e-6);
   });
+
+  // Dense/narrow-wedge case: many sibling poles crowding the full circle
+  // (the exact "many small leaf-poles around a hub" shape from the app
+  // screenshot that motivated this ticket). Here each pole's own wedge is
+  // narrow, so fitR — not baseR — decides the radius, and a fixed additive
+  // gap constant on baseR alone would have zero effect (adjacent dandelions
+  // would sit tangent to their wedge boundary with no slack at all). This
+  // is the case the plain-additive-constant version of clusterGap silently
+  // failed on; the fitR "collar" (dR + gap/2) is what fixes it.
+  it("clears a distinguishable gap even with many narrow-wedge sibling poles", () => {
+    const seedId = 1;
+    const N = 10;
+    State.graphNodes = [{ id: seedId, isSeed: true }];
+    State.graphEdges = [];
+    const poles = [];
+    for (let p = 0; p < N; p++) {
+      const poleId = 100 + p;
+      poles.push(poleId);
+      State.graphNodes.push({ id: poleId, isSeed: false });
+      State.graphEdges.push({ from: seedId, to: poleId, weight: 1 });
+      for (let l = 0; l < 3; l++) {
+        const leafId = 1000 + p * 10 + l;
+        State.graphNodes.push({ id: leafId, isSeed: false });
+        State.graphEdges.push({ from: poleId, to: leafId, weight: 1 });
+      }
+    }
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set(poles);
+
+    const { targets } = placeExpandedNodes({});
+    // Each pole's own dandelion radius: farthest of its 3 leaves from it.
+    const poleR = new Map(poles.map(poleId => {
+      const P = targets.get(poleId);
+      const leafIds = [0, 1, 2].map(l => 1000 + (poleId - 100) * 10 + l);
+      const r = Math.max(...leafIds.map(id => {
+        const t = targets.get(id);
+        return Math.hypot(t.x - P.x, t.y - P.y);
+      }));
+      return [poleId, r];
+    }));
+    // Compare every ADJACENT pair by angle (they're the ones whose wedges
+    // actually touch) rather than all pairs.
+    const byAngle = [...poles].sort((a, b) =>
+      Math.atan2(targets.get(a).y, targets.get(a).x) - Math.atan2(targets.get(b).y, targets.get(b).x));
+    for (let i = 0; i < byAngle.length; i++) {
+      const a = byAngle[i], b = byAngle[(i + 1) % byAngle.length];
+      const A = targets.get(a), B = targets.get(b);
+      const dist = Math.hypot(A.x - B.x, A.y - B.y);
+      const gap = dist - poleR.get(a) - poleR.get(b);
+      expect(gap).toBeGreaterThan(MIN_SEP * 0.75);
+    }
+  });
 });

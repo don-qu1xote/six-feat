@@ -16,7 +16,7 @@ import { stopCanvasDecorator } from "../dom/canvas-decorator.js";
 import { clearCanvasState } from "../ui/canvas-states.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
-import { updateEdgeRenderMode, runFlyoutAnimation } from "./physics.js";
+import { updateEdgeRenderMode, runFlyoutAnimation, pokeFastRenderMode, resetFastRenderMode } from "./physics.js";
 import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
 import { placeExpandedNodes, LEAF_R } from "./layout.js";
@@ -92,6 +92,10 @@ function _drawRingGuides(ctx) {
 // ════════════════════════════════════════════════════════════════════════════
 
 export function initNetwork(seedId, nameById) {
+  // [SF-WEB-54] Свежий DataSet ниже — сбрасываем fast-render-флаг, иначе
+  // застрявшее "true" из предыдущего графа помешает первому pan/zoom на
+  // НОВОМ графе снова переключить ноды в fast-режим (см. resetFastRenderMode).
+  resetFastRenderMode();
   // [SF-WEB-29 follow-up] currentSeedId must be set BEFORE placeExpandedNodes
   // runs below (it reads State.currentSeedId) — normally set later by
   // setSeed() in graph.js::finalizeGraphState, too late for this call.
@@ -207,6 +211,10 @@ const FAST_RENDER_EDGE_THRESHOLD = 150;
 let _zoomThrottleTimer = null;
 export function _attachZoomThrottle() {
   if (!State.network) return;
+  // [SF-WEB-54] Continuous zoom (wheel/pinch) fires "zoom" on every tick —
+  // pokeFastRenderMode() itself no-ops past the first call until the idle
+  // timer runs out (see its own comment), so this is cheap on every tick.
+  State.network.on("zoom", () => pokeFastRenderMode());
   State.network.on("zoom", () => {
     if (State.graphEdges.length < 120) return;
     // При быстром зуме: дебаунсим redraw чтобы не перерисовывать каждый тик.
@@ -242,6 +250,10 @@ export function _attachZoomThrottle() {
 // — тот читает State.currentSeedId, а setSeed() в finalizeGraphState вызывается
 // позже, после этой функции.
 export function refreshNetwork(seedId, nameById, savedPositions) {
+  // [SF-WEB-54] Тот же сброс, что и в initNetwork — DataSets ниже
+  // clear()+add()'ятся заново, застрявший fast-render-флаг иначе не даст
+  // включиться на новом графе.
+  resetFastRenderMode();
   // См. комментарий у resetHoverState()/destroyNetwork(): nodesDS/edgesDS
   // здесь очищаются и пересобираются с нуля (новый поиск поверх уже
   // нарисованного графа) — если в момент вызова висел незавершённый
@@ -330,6 +342,7 @@ export function initGraphOnCanvas() {
 // был в обеих функциях по отдельности (важно для vis.js: resetGraphState()
 // должен отработать до resetHoverState()/hideArtistSidebar()).
 function _resetGraphState({ keepRendered = false, clearCache = false, invalidateColors = false } = {}) {
+  resetFastRenderMode();
   resetGraphState({ resetHasRendered: !keepRendered });
   if (clearCache) {
     // ТЗ-5: clear the graph cache when the user resets the canvas.

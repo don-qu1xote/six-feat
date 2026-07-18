@@ -10,7 +10,7 @@
 import { State, PHYSICS_SETTLE_MS, MOTION, prefersReducedMotion, visAnimation, scaledDuration } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
-import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
+import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD, _imageFieldsFor } from "./visuals.js";
 import { placeExpandedNodes } from "./layout.js";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -55,6 +55,61 @@ export function updateEdgeRenderMode() {
   if (!State.network) return;
   // Кривые рёбра (continuous): без виртуальных узлов, без спиралей.
   State.network.setOptions({ edges: { smooth: { enabled: true, type: "continuous", roundness: 0.45 } } });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-54] FAST RENDER MODE — на графах больше LARGE_GRAPH_NODE_THRESHOLD
+// низкий FPS при активном pan/zoom (то, что уже смягчено для рёбер через
+// hideEdgesOnDrag/hideEdgesOnZoom, networkOptions.js) упирается в САМИ ноды:
+// shape:"circularImage" с interpolation:true/useBorderWithImage:true
+// (networkOptions) — самая дорогая часть перерисовки, а vis.js гоняет
+// полный canvas-редрав КАЖДЫЙ rAF-кадр, пока идёт взаимодействие, и рёберный
+// fast-path тут не помогает вообще.
+//
+// pokeFastRenderMode() — тот же приём, что hideEdgesOnDrag/Zoom, только
+// руками и для нод: на время активного pan/zoom ноды временно превращаются
+// в дешёвый "dot" (заливка без изображения/интерполяции, тот же size), а
+// через FAST_MODE_EXIT_DELAY простоя без новых poke — возвращаются к
+// circularImage. Вызывать на каждый dragStart/dragging/dragEnd/zoom тик —
+// сам nodesDS.update() (дорогая часть) происходит РОВНО один раз на вход и
+// один раз на выход, все промежуточные poke — это просто clearTimeout+
+// setTimeout (дёшево).
+//
+// Восстановление ПОЛНЫМ _imageFieldsFor() (shape+image+brokenImage), а не
+// одним shape — см. его же комментарий в visuals.js: партиальный update
+// одного shape на circularImage-ноде у vis.js на практике иногда не
+// переживает серию апдейтов и аватарка не возвращается.
+// ════════════════════════════════════════════════════════════════════════════
+const FAST_MODE_EXIT_DELAY = 220;
+let _fastRenderActive = false;
+let _fastRenderExitTimer = null;
+
+export function pokeFastRenderMode() {
+  if (!State.network || !State.nodesDS) return;
+  if (State.graphNodes.length <= LARGE_GRAPH_NODE_THRESHOLD) return;
+  if (!_fastRenderActive) {
+    _fastRenderActive = true;
+    State.nodesDS.update(State.graphNodes.map(n => ({ id: n.id, shape: "dot" })));
+  }
+  if (_fastRenderExitTimer) clearTimeout(_fastRenderExitTimer);
+  _fastRenderExitTimer = setTimeout(() => {
+    _fastRenderExitTimer = null;
+    _fastRenderActive = false;
+    if (State.nodesDS) {
+      State.nodesDS.update(State.graphNodes.map(n => ({ id: n.id, ..._imageFieldsFor(n) })));
+    }
+  }, FAST_MODE_EXIT_DELAY);
+}
+
+// Сбрасывает fast-render-состояние без анимации/апдейта DataSet — вызывать
+// при полной пересборке графа (initNetwork/refreshNetwork/destroyNetwork),
+// иначе застрявший _fastRenderActive=true не даст следующему poke() снова
+// переключить в "dot" НОВЫЙ (уже пересозданный, снова circularImage)
+// набор нод, а зависший таймер попытается писать в уже мёртвый nodesDS.
+export function resetFastRenderMode() {
+  if (_fastRenderExitTimer) clearTimeout(_fastRenderExitTimer);
+  _fastRenderExitTimer = null;
+  _fastRenderActive = false;
 }
 
 export function nudgePhysics(ms, noFit) {

@@ -8,7 +8,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State } from "../state/state.js";
-import { runFlyoutAnimation, nudgePhysics, mergeNetwork } from "./physics.js";
+import { runFlyoutAnimation, nudgePhysics, mergeNetwork, pokeFastRenderMode, resetFastRenderMode } from "./physics.js";
 import { LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 import { placeExpandedNodes } from "./layout.js";
 
@@ -298,5 +298,93 @@ describe("mergeNetwork — flyout duration comes from MOTION.flight, not a hardc
       .map(([batch]) => batch)
       .find(batch => Array.isArray(batch) && batch.length && batch.every(u => u.fixed));
     expect(fixCall).toBeTruthy();
+  });
+});
+
+// [SF-WEB-54] FAST RENDER MODE — pan/zoom on graphs bigger than
+// LARGE_GRAPH_NODE_THRESHOLD swaps nodes to cheap "dot" shape while the
+// interaction is active, restoring circularImage once it goes idle.
+describe("pokeFastRenderMode / resetFastRenderMode", () => {
+  function bigGraphNodes(n) {
+    return Array.from({ length: n }, (_, i) => ({ id: i, name: `n${i}`, isSeed: i === 0 }));
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    State.nodesDS = { update: vi.fn() };
+    resetFastRenderMode();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    resetFastRenderMode();
+  });
+
+  it("does nothing on graphs at or below LARGE_GRAPH_NODE_THRESHOLD", () => {
+    State.graphNodes = bigGraphNodes(LARGE_GRAPH_NODE_THRESHOLD);
+    State.network = {};
+    pokeFastRenderMode();
+    expect(State.nodesDS.update).not.toHaveBeenCalled();
+  });
+
+  it("swaps every node to shape:dot exactly once on entry, even across repeated pokes", () => {
+    State.graphNodes = bigGraphNodes(LARGE_GRAPH_NODE_THRESHOLD + 10);
+    State.network = {};
+    pokeFastRenderMode();
+    pokeFastRenderMode();
+    pokeFastRenderMode();
+
+    const dotCalls = State.nodesDS.update.mock.calls.filter(([batch]) =>
+      Array.isArray(batch) && batch.every(u => u.shape === "dot"));
+    expect(dotCalls.length).toBe(1);
+    expect(dotCalls[0][0].length).toBe(LARGE_GRAPH_NODE_THRESHOLD + 10);
+  });
+
+  it("restores full circularImage fields (not just shape) after the idle delay", () => {
+    State.graphNodes = bigGraphNodes(LARGE_GRAPH_NODE_THRESHOLD + 5);
+    State.network = {};
+    pokeFastRenderMode();
+    State.nodesDS.update.mockClear();
+
+    vi.advanceTimersByTime(500);
+
+    expect(State.nodesDS.update).toHaveBeenCalledTimes(1);
+    const restored = State.nodesDS.update.mock.calls[0][0];
+    expect(restored.length).toBe(LARGE_GRAPH_NODE_THRESHOLD + 5);
+    for (const u of restored) {
+      expect(u.shape).toBe("circularImage");
+      expect(typeof u.image).toBe("string");
+      expect(typeof u.brokenImage).toBe("string");
+    }
+  });
+
+  it("each poke during an ongoing interaction pushes the exit further out", () => {
+    State.graphNodes = bigGraphNodes(LARGE_GRAPH_NODE_THRESHOLD + 5);
+    State.network = {};
+    pokeFastRenderMode();
+    State.nodesDS.update.mockClear();
+
+    vi.advanceTimersByTime(150);
+    pokeFastRenderMode(); // still mid-interaction — pushes the idle timer out again
+    vi.advanceTimersByTime(150);
+    // 300ms of wall time since entry, but never 220ms uninterrupted — no exit yet.
+    expect(State.nodesDS.update).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
+    expect(State.nodesDS.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("resetFastRenderMode lets a fresh graph re-enter fast mode immediately", () => {
+    State.graphNodes = bigGraphNodes(LARGE_GRAPH_NODE_THRESHOLD + 5);
+    State.network = {};
+    pokeFastRenderMode();
+    State.nodesDS.update.mockClear();
+
+    resetFastRenderMode();
+    pokeFastRenderMode();
+
+    const dotCalls = State.nodesDS.update.mock.calls.filter(([batch]) =>
+      Array.isArray(batch) && batch.every(u => u.shape === "dot"));
+    expect(dotCalls.length).toBe(1);
   });
 });

@@ -12,7 +12,7 @@ import {
   highlightNeighborhood, highlightEdgePair, restoreDefaultColors, clearHoverHighlight,
   cancelPendingHover, clearSelectedNode, clearSelectedEdge
 } from "./highlight.js";
-import { nudgePhysics } from "./physics.js";
+import { nudgePhysics, pokeFastRenderMode } from "./physics.js";
 import { isCompareModeActive, handleCompareModeNodeClick, exitCompareMode } from "./compare-mode.js";
 
 // Порог числа рёбер, при котором на hover перестаём подсвечивать рёбра
@@ -159,13 +159,27 @@ export function attachNetworkEvents(nameById) {
   // подавление только когда drag реально тащит узел (params.nodes.length>0),
   // и физику морозим тоже только в этом случае — панорамирование вида саму
   // физику не трогает и не должно её выключать.
+  // [SF-WEB-54] pokeFastRenderMode() здесь — БЕЗУСЛОВНО, до params.nodes.length
+  // раннего выхода ниже: панорамирование вида (params.nodes пустой) — это
+  // именно тот "скролл" на большом графе, который проседает по FPS (см.
+  // physics.js::pokeFastRenderMode) — узловой drag тоже им покрывается
+  // заодно, но не он был основной жалобой.
   net.on("dragStart", function(params) {
+    pokeFastRenderMode();
     if (!params.nodes?.length) return;
     State._isDragging = true;
     cancelPendingHover();
     if (State.network) State.network.setOptions({ physics: { enabled: false } });
   });
+  // Продолжает "поджигать" fast-render на каждый тик реального перетаскивания
+  // (и узла, и панорамирования) — сам poke() почти бесплатен после первого
+  // вызова (см. его комментарий), это просто продлевает окно до выхода из
+  // fast-режима, пока взаимодействие ещё активно.
+  net.on("dragging", function() {
+    pokeFastRenderMode();
+  });
   net.on("dragEnd", function(params) {
+    pokeFastRenderMode();
     if (!State._isDragging) return;
     State._isDragging = false;
     // Однонодовый drag (не панорамирование вида) — мягко досчитываем физику,
