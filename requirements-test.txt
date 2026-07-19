@@ -7,7 +7,7 @@
 
 pytest>=7.4.0
 requests>=2.31.0
-pytest-timeout>=2.1.0
+pytest-timeout>=2.4.0
 pytest-cov>=4.1.0
 
 # [ТЗ-6] Required by tests/session_crypto.py — mints AES-256-GCM session
