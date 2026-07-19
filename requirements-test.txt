@@ -5,7 +5,7 @@
 #
 # For CI, pin versions to avoid flaky builds.
 
-pytest>=7.4.0
+pytest>=9.1.1
 requests>=2.31.0
 pytest-timeout>=2.1.0
 pytest-cov>=4.1.0
