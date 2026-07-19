@@ -1,657 +1,862 @@
-diff --git a/pytest.ini b/pytest.ini
-index 29ec005..cca3635 100644
---- a/pytest.ini
-+++ b/pytest.ini
-@@ -22,6 +22,7 @@ markers =
-     rate_limit_store: tests for the shared/Postgres-backed rate-limit-store backend (SF-SEC-04, two six-feat replicas sharing one budget)
-     artist_endpoint: tests for /api/v1/artist (SF-API-03 artist metadata + fetch_state, L1/L2 only)
-     openapi_endpoint: tests for /api/v1/openapi.json (SF-API-05 static OpenAPI 3.1 document)
-+    game_profile: tests for /api/v1/game/profile (SF-GAME-12 player profile over the Genius session; needs the docker-compose stack)
+diff --git a/front/index.html b/front/index.html
+index d4c84ac..4f9cbc6 100644
+--- a/front/index.html
++++ b/front/index.html
+@@ -138,6 +138,15 @@
+       <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.5 2" stroke-linecap="round"/>
+     </symbol>
  
- # Output options
- addopts =
-diff --git a/schemas/handlers/game/profile_handler.yaml b/schemas/handlers/game/profile_handler.yaml
++    <!-- [SF-GAME-01] Connect game rail button — a path of nodes with a play
++         triangle: "play the connect-the-artists game". -->
++    <symbol id="icon-game" viewBox="0 0 24 24">
++      <circle cx="4" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
++      <circle cx="20" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
++      <line x1="5.6" y1="16.6" x2="9" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
++      <path d="M11 15.5v-5l4 2.5z" fill="currentColor" stroke="none"/>
++    </symbol>
++
+     <!-- [SF-WEB-61] BubbleSet toggle rail button — three soft overlapping
+          circles, echoing the haze-per-sector visual it turns on/off. -->
+     <symbol id="icon-haze" viewBox="0 0 24 24">
+@@ -398,6 +407,13 @@
+         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-haze"/></svg><span class="rl">BubbleSets</span>
+       </button>
+ 
++      <!-- [SF-GAME-01] Enter the "Connect" game surface (#/game). Navigates
++           via the router, same as goHome()'s SURFACE_GRAPH call — wired in
++           src/game/connect.js. -->
++      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-game-mode" data-tip="Connect game — link two artists">
++        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-game"/></svg><span class="rl">Connect game</span>
++      </button>
++
+       <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
+            visible on the canvas) — this was the rail's duplicate.
+            Fit view moved to .canvas-zoom-cluster (same #btn-fit-view id,
+@@ -741,6 +757,62 @@
+ 
+   </main>
+ 
++  <!-- [SF-GAME-01] "Connect" game surface — split layout shown only on the
++       #/game route (ui/router.js, SF-WEB-25): a live chain-graph on the left
++       (canvas, src/game/chain-graph.js) and a docked track panel on the right.
++       Pick a start + goal artist, then build the collaboration chain between
++       them one intermediate at a time. Controller: src/game/connect.js; chain
++       logic: connect-model.js. No validation/scoring yet (SF-GAME-14/15). -->
++  <section id="connect-surface" class="connect-surface" aria-label="Connect game" hidden>
++    <!-- Left: live chain visualization -->
++    <div class="connect-stage" id="connect-stage">
++      <canvas id="connect-canvas" role="img" aria-label="Current collaboration chain"></canvas>
++      <div class="connect-topline">
++        <button id="connect-back" class="ui-btn ui-btn--ghost connect-back" type="button">← Back to graph</button>
++        <span class="connect-wordmark">Connect<span class="cw-dot">.</span></span>
++      </div>
++    </div>
++
++    <!-- Right: docked track panel -->
++    <aside class="connect-dock" aria-label="Connect controls">
++      <header class="connect-dock-head">
++        <span class="connect-eyebrow">Build the line</span>
++        <p class="connect-sub">Link two artists through their collaborations — one hop at a time.</p>
++      </header>
++
++      <div class="connect-endpoints">
++        <label class="connect-field">
++          <span class="connect-label">From</span>
++          <input id="connect-start-input" class="ui-input" type="text" autocomplete="off"
++                 placeholder="Start artist…" aria-label="Start artist" />
++          <div id="connect-start-ac" class="ac-dropdown" role="listbox"></div>
++        </label>
++        <label class="connect-field">
++          <span class="connect-label">To</span>
++          <input id="connect-goal-input" class="ui-input" type="text" autocomplete="off"
++                 placeholder="Goal artist…" aria-label="Goal artist" />
++          <div id="connect-goal-ac" class="ac-dropdown" role="listbox"></div>
++        </label>
++      </div>
++
++      <div id="connect-chain" class="connect-chain" aria-live="polite"></div>
++      <p id="connect-status" class="connect-status" aria-live="polite"></p>
++
++      <div class="connect-builder">
++        <label class="connect-field connect-field--grow">
++          <span class="connect-label">Add artist</span>
++          <input id="connect-add-input" class="ui-input" type="text" autocomplete="off"
++                 placeholder="Next collaborator…" aria-label="Add intermediate artist" disabled />
++          <div id="connect-add-ac" class="ac-dropdown" role="listbox"></div>
++        </label>
++        <div class="connect-actions">
++          <button id="connect-undo" class="ui-btn ui-btn--ghost" type="button" disabled>Undo</button>
++          <button id="connect-reset" class="ui-btn ui-btn--ghost" type="button" disabled>Reset</button>
++        </div>
++      </div>
++    </aside>
++  </section>
++
+   <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+ 
+   <!-- [SF-WEB-41] Portal mount for anchored floating layers — see #overlay-root
+diff --git a/front/src/dom/dom.js b/front/src/dom/dom.js
+index 0229090..0772f97 100644
+--- a/front/src/dom/dom.js
++++ b/front/src/dom/dom.js
+@@ -165,5 +165,22 @@ export const els = {
+   // F-43: hidden-but-accessible DOM twin of the canvas graph.
+   graphA11yNodeList:         $("graph-a11y-node-list"),
+   graphA11yNeighborList:     $("graph-a11y-neighbor-list"),
+-  graphA11yNeighborsHeading: $("graph-a11y-neighbors-heading")
++  graphA11yNeighborsHeading: $("graph-a11y-neighbors-heading"),
++
++  // [SF-GAME-01] "Connect" game surface (#/game) — see src/game/connect.js.
++  btnGameMode:       $("btn-game-mode"),
++  connectSurface:    $("connect-surface"),
++  connectStage:      $("connect-stage"),
++  connectCanvas:     $("connect-canvas"),
++  connectBack:       $("connect-back"),
++  connectStartInput: $("connect-start-input"),
++  connectStartAc:    $("connect-start-ac"),
++  connectGoalInput:  $("connect-goal-input"),
++  connectGoalAc:     $("connect-goal-ac"),
++  connectChain:      $("connect-chain"),
++  connectStatus:     $("connect-status"),
++  connectAddInput:   $("connect-add-input"),
++  connectAddAc:      $("connect-add-ac"),
++  connectUndo:       $("connect-undo"),
++  connectReset:      $("connect-reset")
+ };
+diff --git a/front/src/game/chain-graph.js b/front/src/game/chain-graph.js
 new file mode 100644
-index 0000000..33a6c9c
+index 0000000..472176c
 --- /dev/null
-+++ b/schemas/handlers/game/profile_handler.yaml
-@@ -0,0 +1,4 @@
-+type: object
-+description: Game-service player profile handler (GET/PATCH /api/v1/game/profile)
-+additionalProperties: false
-+properties: {}
-diff --git a/services/game/CMakeLists.txt b/services/game/CMakeLists.txt
-index f8b8ef0..2dfd89a 100644
---- a/services/game/CMakeLists.txt
-+++ b/services/game/CMakeLists.txt
-@@ -30,16 +30,20 @@ include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
- six_feat_embed_schema(handlers/game/readiness_handler kGameReadinessHandlerSchema GAME_READINESS_HANDLER_SCHEMA_HEADER)
- # [SF-GAME-11] game-store component config schema (dbname).
- six_feat_embed_schema(components/game_store kGameStoreComponentSchema GAME_STORE_COMPONENT_SCHEMA_HEADER)
-+# [SF-GAME-12] profile handler config schema.
-+six_feat_embed_schema(handlers/game/profile_handler kGameProfileHandlerSchema GAME_PROFILE_HANDLER_SCHEMA_HEADER)
- 
- add_custom_target(six_feat_game_schema_headers DEPENDS
-     ${GAME_READINESS_HANDLER_SCHEMA_HEADER}
-     ${GAME_STORE_COMPONENT_SCHEMA_HEADER}
-+    ${GAME_PROFILE_HANDLER_SCHEMA_HEADER}
- )
- 
- add_executable(six_feat_game
-     main.cpp
-     internal_handlers.cpp
-     game_store.cpp
-+    profile_handler.cpp
- )
- 
- target_link_libraries(six_feat_game
-diff --git a/services/game/docker-entrypoint.sh b/services/game/docker-entrypoint.sh
-index fee3309..1a43822 100644
---- a/services/game/docker-entrypoint.sh
-+++ b/services/game/docker-entrypoint.sh
-@@ -8,10 +8,15 @@ set -euo pipefail
- # ready exactly like services/enrichment/docker-entrypoint.sh, so SF-GAME-11's
- # store component only has to read the already-plumbed db_connection_string.
- #
--# APP_SECRET (session decryption, SF-GAME-12) and ENRICHMENT_INTERNAL_SECRET
--# (internal-mesh calls, SF-GAME-13) are passed in by docker-compose.yml but not
--# consumed yet — their `: "${VAR:?...}"` guards get added by the ticket that
--# first needs them, exactly as they were for services/auth and enrichment.
-+# [SF-GAME-12] APP_SECRET is read directly from the environment by
-+# session_crypto::KeyFromEnv() to decrypt the six_feat_session cookie locally
-+# (no HTTP to six-feat-auth) — it MUST be the exact same value the rest of the
-+# mesh uses, or the game service can't read sessions the other services minted.
-+# Fail fast here instead of throwing deep in ProfileHandler's constructor.
-+: "${APP_SECRET:?APP_SECRET env var is required for session decryption — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
++++ b/front/src/game/chain-graph.js
+@@ -0,0 +1,148 @@
++// ════════════════════════════════════════════════════════════════════════════
++// game/chain-graph.js — [SF-GAME-01] Canvas visualization of the Connect chain.
++//
++// The left pane of the split "Connect" surface (layout: graph + track panel).
++// Draws the current chain [start, …hops, goal] as an Observatory-styled path —
++// monogram node discs (mint start, violet goal, amber intermediates) joined by
++// gently bowed edges with a soft glow — so the game reads as part of the same
++// graph world as the explorer, not a separate product.
++//
++// Deliberately NOT a vis-network instance: at SF-GAME-01 there's no backend and
++// no real collaboration graph for arbitrary typed names (that arrives with the
++// anti-cheat/ideal-path tickets), so this is a self-contained, theme-aware
++// canvas render of just the chain the player is building. Pure drawing — no
++// state, no DOM beyond the passed <canvas>; the controller calls draw() on
++// every chain change and on resize.
++// ════════════════════════════════════════════════════════════════════════════
 +
-+# ENRICHMENT_INTERNAL_SECRET (internal-mesh calls, SF-GAME-13) is passed in by
-+# docker-compose.yml but not consumed yet — its guard gets added by SF-GAME-13.
- 
- DB_HOST="${DB_HOST:-postgres}"
- DB_PORT="${DB_PORT:-5432}"
-diff --git a/services/game/game_session.hpp b/services/game/game_session.hpp
++function initials(name) {
++  return String(name || "")
++    .split(/\s+/)
++    .map(w => w[0])
++    .join("")
++    .slice(0, 2)
++    .toUpperCase();
++}
++
++// Reads a theme token off :root so both light/dark themes render correctly.
++function tok(name) {
++  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
++}
++
++function rgba(hex, a) {
++  let h = String(hex || "").replace("#", "");
++  if (h.length === 3) h = h.split("").map(c => c + c).join("");
++  const r = parseInt(h.slice(0, 2), 16) || 0;
++  const g = parseInt(h.slice(2, 4), 16) || 0;
++  const b = parseInt(h.slice(4, 6), 16) || 0;
++  return `rgba(${r},${g},${b},${a})`;
++}
++
++// chain: { start, goal, hops:[], completed } or null.
++// Draws into `canvas`, sizing its backing store to its CSS box (dpr-aware).
++export function drawChain(canvas, chain) {
++  if (!canvas || !canvas.getContext) return;
++  const dpr = Math.min(2, window.devicePixelRatio || 1);
++  const W = canvas.clientWidth || 1;
++  const H = canvas.clientHeight || 1;
++  canvas.width = Math.round(W * dpr);
++  canvas.height = Math.round(H * dpr);
++  const ctx = canvas.getContext("2d");
++  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
++  ctx.clearRect(0, 0, W, H);
++
++  const signal = tok("--signal") || "#5EE6C5";
++  const pulse = tok("--pulse") || "#B98AFF";
++  const amber = tok("--amber") || "#FFD27A";
++  const paper = tok("--paper") || "#EDEFF4";
++  const mist = tok("--mist") || "#8A94A6";
++  const line = tok("--line") || "#283044";
++
++  if (!chain || !chain.start || !chain.goal) {
++    ctx.fillStyle = mist;
++    ctx.font = '500 14px "Inter", system-ui, sans-serif';
++    ctx.textAlign = "center";
++    ctx.textBaseline = "middle";
++    ctx.fillText("Pick a start and a goal artist to begin.", W / 2, H / 2);
++    return;
++  }
++
++  const seq = [
++    { name: chain.start, role: "start" },
++    ...chain.hops.map(n => ({ name: n, role: "hop" })),
++    { name: chain.goal, role: "goal" },
++  ];
++
++  const n = seq.length;
++  const padX = Math.min(90, W * 0.14);
++  const midY = H * 0.5;
++  // Positions: evenly spaced left→right, with a gentle vertical wave so the
++  // path reads as an organic route rather than a ruler-straight line.
++  const pts = seq.map((_, i) => {
++    const t = n === 1 ? 0.5 : i / (n - 1);
++    const x = padX + t * (W - 2 * padX);
++    const wave = Math.sin(t * Math.PI) * Math.min(46, H * 0.12);
++    const y = midY - wave + (i % 2 === 0 ? 0 : Math.min(24, H * 0.06));
++    return { x, y };
++  });
++
++  const rFor = role => (role === "start" ? 26 : role === "goal" ? 24 : 20);
++  const colorFor = role => (role === "start" ? signal : role === "goal" ? pulse : amber);
++
++  // Edges (behind nodes): bowed quadratic, bright accent-blend, soft glow.
++  for (let i = 0; i < n - 1; i++) {
++    const a = pts[i], b = pts[i + 1];
++    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
++    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
++    const bow = Math.min(30, len * 0.16);
++    const cx = mx - (dy / len) * bow, cy = my + (dx / len) * bow;
++    ctx.beginPath();
++    ctx.moveTo(a.x, a.y);
++    ctx.quadraticCurveTo(cx, cy, b.x, b.y);
++    ctx.strokeStyle = rgba(paper, 0.35);
++    ctx.lineWidth = 2;
++    ctx.shadowColor = rgba(signal, 0.5);
++    ctx.shadowBlur = 8;
++    ctx.stroke();
++    ctx.shadowBlur = 0;
++  }
++
++  // Nodes.
++  seq.forEach((st, i) => {
++    const p = pts[i];
++    const r = rFor(st.role);
++    const col = colorFor(st.role);
++    // glow halo
++    ctx.beginPath();
++    ctx.arc(p.x, p.y, r + 7, 0, Math.PI * 2);
++    ctx.fillStyle = rgba(col, 0.16);
++    ctx.fill();
++    // disc
++    ctx.beginPath();
++    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
++    ctx.fillStyle = col;
++    ctx.shadowColor = rgba(col, 0.7);
++    ctx.shadowBlur = 14;
++    ctx.fill();
++    ctx.shadowBlur = 0;
++    // monogram
++    ctx.fillStyle = "#0B0E14";
++    ctx.font = `800 ${r > 22 ? 13 : 11}px "Space Mono", ui-monospace, monospace`;
++    ctx.textAlign = "center";
++    ctx.textBaseline = "middle";
++    ctx.fillText(initials(st.name), p.x, p.y);
++    // name label
++    ctx.fillStyle = paper;
++    ctx.font = '600 12px "Inter", system-ui, sans-serif';
++    ctx.textBaseline = "top";
++    ctx.fillText(st.name, p.x, p.y + r + 5);
++    // START / GOAL tag
++    if (st.role !== "hop") {
++      ctx.fillStyle = col;
++      ctx.font = '700 9px "Inter", system-ui, sans-serif';
++      ctx.textBaseline = "bottom";
++      ctx.fillText(st.role === "start" ? "START" : "GOAL", p.x, p.y - r - 5);
++    }
++    void line;
++  });
++}
+diff --git a/front/src/game/connect-model.js b/front/src/game/connect-model.js
 new file mode 100644
-index 0000000..55bb6dd
+index 0000000..561f676
 --- /dev/null
-+++ b/services/game/game_session.hpp
-@@ -0,0 +1,70 @@
-+#pragma once
-+
++++ b/front/src/game/connect-model.js
+@@ -0,0 +1,101 @@
 +// ════════════════════════════════════════════════════════════════════════════
-+// game_session.hpp — [SF-GAME-12] Identify the current player from the Genius
-+// OAuth session, entirely locally.
++// game/connect-model.js — [SF-GAME-01] Pure chain model for "Connect" mode.
 +//
-+// Reuses the same primitives six-feat's services/six-feat/src/auth/
-+// token_router.hpp uses (session_crypto::Decrypt over the six_feat_session
-+// cookie, keyed by the shared APP_SECRET) — NO HTTP call to six-feat-auth to
-+// validate a session, exactly like six-feat itself. The one difference: the
-+// game service has no Genius OAuth app config (GENIUS_CLIENT_ID/SECRET), so it
-+// derives the session key straight from APP_SECRET via
-+// session_crypto::KeyFromEnv() instead of going through OAuthConfig.
++// The Connect game: the player is given a fixed start and goal artist and
++// builds a collaboration chain between them by entering intermediate artists
++// one at a time, WITHOUT seeing our own ideal path. This module is only the
++// data model of that chain — no DOM, no network, no validation/scoring
++// (those are separate, backend-gated tickets: SF-GAME-14 server-side
++// anti-cheat validation, SF-GAME-15 scoring/ELO). Keeping the model pure and
++// framework-free is what lets the whole "build a chain" mechanic be unit-
++// tested without a canvas, a running game-service, or a real mousemove.
 +//
-+// The decrypted SessionData carries only {access_token, name} — there is no
-+// numeric Genius id anywhere in the local session (see /auth/me, which returns
-+// just {authenticated, name}). game_profiles.user_id is therefore a STABLE
-+// 63-bit hash of the Genius username: deterministic (same user → same row) and
-+// available without any network round-trip. If the session payload ever starts
-+// carrying the real numeric Genius id, StableUserId is the single place to swap.
++// A chain is `{ start, goal, hops, completed }`:
++//   - start / goal   — the two fixed endpoints (normalized artist names).
++//   - hops           — ordered intermediate artist names the player added,
++//                      EXCLUDING the goal (the goal is always the endpoint,
++//                      never stored as a hop — see addHop's goal branch).
++//   - completed      — the player connected the last hop to the goal.
++// The full visible chain is always [start, ...hops, goal] (chainNodes) so the
++// goal shows as the target endpoint whether or not it's been reached yet.
 +//
-+// Header-only, no component — same shape as token_router.hpp.
++// Artist identity here is by NAME, not id: SF-GAME-01 has no backend, and the
++// autocomplete (ui/autocomplete.js) hands back a name string on select — so
++// the model honestly keys on the same thing the UI actually has. Genius-id
++// resolution + real hop validation arrive with SF-GAME-13/14.
 +// ════════════════════════════════════════════════════════════════════════════
 +
-+#include "auth/session_crypto.hpp"
-+
-+#include <array>
-+#include <cstdint>
-+#include <optional>
-+#include <string>
-+
-+#include <userver/server/http/http_request.hpp>
-+
-+namespace six_feat::game {
-+
-+struct Player {
-+    std::int64_t user_id;
-+    std::string  name;  // Genius username (may be empty → "Genius User" default)
-+};
-+
-+// FNV-1a 64-bit over the username, masked to a positive 63-bit BIGINT. Stable
-+// and collision-resistant enough for a display-only player key; two distinct
-+// usernames colliding just means two players would share a row, astronomically
-+// unlikely at this scale and never a correctness/security boundary (the row is
-+// gated by the session, not by the id).
-+inline std::int64_t StableUserId(std::string_view name) {
-+    std::uint64_t h = 1469598103934665603ULL;  // FNV offset basis
-+    for (unsigned char c : name) {
-+        h ^= c;
-+        h *= 1099511628211ULL;                  // FNV prime
-+    }
-+    return static_cast<std::int64_t>(h & 0x7FFFFFFFFFFFFFFFULL);
++// Collapse surrounding/inner whitespace and drop empties — the same light
++// touch the search input already tolerates, so "  Drake " and "Drake" are one
++// artist. Case is preserved for display but compared case-insensitively (eq).
++function norm(name) {
++  return String(name || "").replace(/\s+/g, " ").trim();
 +}
 +
-+// Decrypts six_feat_session locally and resolves the player. nullopt when
-+// there's no cookie or it's invalid/expired — the caller returns 401.
-+inline std::optional<Player> ResolvePlayer(
-+    const userver::server::http::HttpRequest& request,
-+    const std::array<unsigned char, 32>&      session_key)
-+{
-+    const std::string cookie = request.GetCookie("six_feat_session");
-+    if (cookie.empty()) return std::nullopt;
-+
-+    const auto session = auth::Decrypt(cookie, session_key);
-+    if (!session) return std::nullopt;
-+
-+    return Player{StableUserId(session->name), session->name};
++function eq(a, b) {
++  return norm(a).toLowerCase() === norm(b).toLowerCase();
 +}
 +
-+} // namespace six_feat::game
-diff --git a/services/game/game_store.cpp b/services/game/game_store.cpp
-index 776b170..7c501f5 100644
---- a/services/game/game_store.cpp
-+++ b/services/game/game_store.cpp
-@@ -2,6 +2,7 @@
- 
- #include <algorithm>
- #include <chrono>
-+#include <optional>
- #include <stdexcept>
- #include <string>
- #include <vector>
-@@ -243,6 +244,68 @@ bool GameStore::Ping() const {
-     }
- }
- 
-+// ════════════════════════════════════════════════════════════════════════════
-+// Profile API — [SF-GAME-12]
-+// ════════════════════════════════════════════════════════════════════════════
-+
-+namespace {
-+
-+// 1-based leaderboard rank by elo descending: how many profiles strictly
-+// out-rank this one, plus one. Ties share the higher rank (COUNT of strictly
-+// greater elo), which is fine for a display rank.
-+int RankFor(const storages::postgres::ClusterPtr& cluster, int elo) {
-+    auto res = cluster->Execute(
-+        storages::postgres::ClusterHostType::kMaster,
-+        "SELECT COUNT(*) FROM game_profiles WHERE elo > $1", elo);
-+    return static_cast<int>(res.Front()[0].As<std::int64_t>()) + 1;
++export function createConnectChain(startName, goalName) {
++  return { start: norm(startName), goal: norm(goalName), hops: [], completed: false };
 +}
 +
-+Profile ReadProfile(const storages::postgres::ClusterPtr& cluster,
-+                    std::int64_t user_id) {
-+    auto res = cluster->Execute(
-+        storages::postgres::ClusterHostType::kMaster,
-+        "SELECT user_id, display_name, avatar_url, elo, games "
-+        "FROM game_profiles WHERE user_id = $1", user_id);
-+    const auto row = res.Front();  // caller guarantees the row exists
-+    Profile p;
-+    p.user_id      = row[0].As<std::int64_t>();
-+    p.display_name = row[1].As<std::optional<std::string>>().value_or("");
-+    p.avatar_url   = row[2].As<std::optional<std::string>>().value_or("");
-+    p.elo          = row[3].As<int>();
-+    p.games        = row[4].As<int>();
-+    p.rank         = RankFor(cluster, p.elo);
-+    return p;
++// The full visible chain, endpoints included: [start, ...hops, goal].
++export function chainNodes(game) {
++  return [game.start, ...game.hops, game.goal];
 +}
 +
-+} // namespace
-+
-+Profile GameStore::EnsureAndGetProfile(std::int64_t user_id,
-+                                       const std::string& display_name_default,
-+                                       const std::string& avatar_url_default) const {
-+    const std::int64_t now =
-+        std::chrono::duration_cast<std::chrono::seconds>(
-+            std::chrono::system_clock::now().time_since_epoch()).count();
-+    // First-sight create; existing rows keep their stored values (DO NOTHING).
-+    impl_->cluster->Execute(
-+        storages::postgres::ClusterHostType::kMaster,
-+        "INSERT INTO game_profiles (user_id, display_name, avatar_url, created_ts) "
-+        "VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO NOTHING",
-+        user_id,
-+        display_name_default.empty() ? std::string{"Genius User"} : display_name_default,
-+        avatar_url_default.empty() ? std::optional<std::string>{} : std::optional<std::string>{avatar_url_default},
-+        now);
-+    return ReadProfile(impl_->cluster, user_id);
++export function hopCount(game) {
++  return game.hops.length;
 +}
 +
-+Profile GameStore::SetDisplayName(std::int64_t user_id,
-+                                  const std::string& display_name) const {
-+    impl_->cluster->Execute(
-+        storages::postgres::ClusterHostType::kMaster,
-+        "UPDATE game_profiles SET display_name = $2 WHERE user_id = $1",
-+        user_id, display_name);
-+    return ReadProfile(impl_->cluster, user_id);
++export function isComplete(game) {
++  return game.completed === true;
 +}
 +
- // static
- yaml_config::Schema GameStore::GetStaticConfigSchema() {
-     return yaml_config::MergeSchemas<components::ComponentBase>(
-diff --git a/services/game/game_store.hpp b/services/game/game_store.hpp
-index 23d8d38..1284818 100644
---- a/services/game/game_store.hpp
-+++ b/services/game/game_store.hpp
-@@ -20,7 +20,9 @@
- // reflects live DB reachability via Ping().
- // ════════════════════════════════════════════════════════════════════════════
- 
-+#include <cstdint>
- #include <memory>
-+#include <string>
- #include <string_view>
- 
- #include <userver/components/component_base.hpp>
-@@ -31,6 +33,17 @@
- 
- namespace six_feat::game {
- 
-+// [SF-GAME-12] A player's game profile row (game_profiles) plus their computed
-+// leaderboard rank (1-based, by elo descending).
-+struct Profile {
-+    std::int64_t user_id{0};
-+    std::string  display_name;
-+    std::string  avatar_url;
-+    int          elo{0};
-+    int          games{0};
-+    int          rank{0};
-+};
++// Adds an intermediate artist to the chain. Returns { ok, reason?, completed }.
++//   - empty/whitespace name         → rejected ("empty")
++//   - same as the current tail node → rejected ("duplicate"): a self-loop
++//     A→A is never a real collaboration hop, and the one guard that's true
++//     without any backend (you can't collaborate with yourself in the same
++//     step). The tail is the last hop, or the start if there are no hops yet.
++//   - equals the goal               → does NOT push a hop (the goal is the
++//     endpoint, not an intermediate); marks the chain completed instead.
++//   - anything else                 → appended as the newest hop.
++// Adding to an already-completed chain is a no-op ("completed") — undo first.
++export function addHop(game, rawName) {
++  if (game.completed) return { ok: false, reason: "completed" };
++  const name = norm(rawName);
++  if (!name) return { ok: false, reason: "empty" };
 +
- class GameStore final : public userver::components::ComponentBase {
- public:
-     static constexpr std::string_view kName = "game-store";
-@@ -51,6 +64,22 @@ public:
-     // (see internal_handlers.cpp).
-     bool Ping() const;
- 
-+    // [SF-GAME-12] Profile API. Throw storages::postgres::Error on a DB
-+    // failure (the handler maps that to 5xx); never on "row absent".
++  const tail = game.hops.length ? game.hops[game.hops.length - 1] : game.start;
++  if (eq(name, tail)) return { ok: false, reason: "duplicate" };
 +
-+    // Creates the profile on first sight (INSERT ... ON CONFLICT DO NOTHING,
-+    // defaults from game_migrations: elo=1200, games=0), then returns it with
-+    // its current leaderboard rank filled in. The *_default args are used only
-+    // when the row is created — an existing row keeps its stored values.
-+    Profile EnsureAndGetProfile(std::int64_t user_id,
-+                                const std::string& display_name_default,
-+                                const std::string& avatar_url_default) const;
++  if (eq(name, game.goal)) {
++    game.completed = true;
++    return { ok: true, completed: true };
++  }
 +
-+    // Updates an existing profile's display name and returns the refreshed
-+    // Profile (with rank). The caller ensures the row exists first
-+    // (EnsureAndGetProfile) — this is a plain UPDATE ... RETURNING.
-+    Profile SetDisplayName(std::int64_t user_id, const std::string& display_name) const;
++  game.hops.push(name);
++  return { ok: true, completed: false };
++}
 +
-     static userver::yaml_config::Schema GetStaticConfigSchema();
- 
- private:
-diff --git a/services/game/main.cpp b/services/game/main.cpp
-index 4550d78..6291e31 100644
---- a/services/game/main.cpp
-+++ b/services/game/main.cpp
-@@ -23,6 +23,7 @@
- #include "game_store.hpp"
- #include "http/health_handler.hpp"
- #include "internal_handlers.hpp"
-+#include "profile_handler.hpp"
- 
- using namespace userver;
- 
-@@ -47,6 +48,9 @@ int main(int argc, char* argv[]) {
-             // game store's Postgres cluster (see internal_handlers.cpp), the
-             // service's one runtime-degradable dependency since SF-GAME-11.
-             .Append<six_feat::game::ReadinessHandler>()
-+            // [SF-GAME-12] GET/PATCH /api/v1/game/profile — player profile
-+            // over the Genius session (decrypted locally, no HTTP to auth).
-+            .Append<six_feat::game::ProfileHandler>()
-             // [IDEA-27 pattern] Internal metrics endpoint — bound to
-             // listener-monitor (see static_config.yaml), never the public
-             // listener.
-diff --git a/services/game/profile_handler.cpp b/services/game/profile_handler.cpp
++// Removes the most recent step. If the chain was completed, the first undo
++// re-opens it (drops the goal connection) without touching hops; otherwise it
++// pops the last hop. Returns what was undone (the goal sentinel "goal",
++// a hop name, or null when there was nothing to undo).
++export function undoHop(game) {
++  if (game.completed) {
++    game.completed = false;
++    return { undone: "goal" };
++  }
++  const popped = game.hops.length ? game.hops.pop() : null;
++  return { undone: popped };
++}
++
++// Clears every intermediate + the completion flag, keeping the two fixed
++// endpoints — "start over on the same challenge", not "pick new artists".
++export function resetChain(game) {
++  game.hops = [];
++  game.completed = false;
++}
+diff --git a/front/src/game/connect-model.test.js b/front/src/game/connect-model.test.js
 new file mode 100644
-index 0000000..4329e86
+index 0000000..d73d90a
 --- /dev/null
-+++ b/services/game/profile_handler.cpp
-@@ -0,0 +1,144 @@
-+#include "profile_handler.hpp"
++++ b/front/src/game/connect-model.test.js
+@@ -0,0 +1,111 @@
++// ════════════════════════════════════════════════════════════════════════════
++// game/connect-model.test.js — [SF-GAME-01] the pure Connect-mode chain model.
++// No DOM, no network, no game-service — the whole point of connect-model.js
++// being framework-free (see its header) is that the "build a chain" mechanic
++// is testable exactly like this.
++// ════════════════════════════════════════════════════════════════════════════
++import { describe, it, expect } from "vitest";
++import {
++  createConnectChain, chainNodes, hopCount, isComplete,
++  addHop, undoHop, resetChain,
++} from "./connect-model.js";
 +
-+#include "game_session.hpp"
-+#include "game_store.hpp"
-+#include "auth/session_crypto.hpp"
-+#include "core/error_response.hpp"
-+#include "core/request_id.hpp"
-+#include "core/security_headers.hpp"
-+#include "schemas/handlers/game/profile_handler_schema.hpp"
++describe("createConnectChain / chainNodes", () => {
++  it("starts with the two fixed endpoints and nothing between them", () => {
++    const g = createConnectChain("Drake", "Adele");
++    expect(chainNodes(g)).toEqual(["Drake", "Adele"]);
++    expect(hopCount(g)).toBe(0);
++    expect(isComplete(g)).toBe(false);
++  });
 +
-+#include <algorithm>
-+#include <array>
-+#include <cctype>
-+#include <optional>
-+#include <string>
++  it("normalizes endpoint whitespace on creation", () => {
++    const g = createConnectChain("  Drake  ", "A  d  ele");
++    expect(g.start).toBe("Drake");
++    expect(g.goal).toBe("A d ele");
++  });
++});
 +
-+#include <userver/components/component_config.hpp>
-+#include <userver/components/component_context.hpp>
-+#include <userver/formats/json/serialize.hpp>
-+#include <userver/formats/json/value_builder.hpp>
-+#include <userver/http/content_type.hpp>
-+#include <userver/server/http/http_method.hpp>
-+#include <userver/server/http/http_request.hpp>
-+#include <userver/server/http/http_status.hpp>
-+#include <userver/yaml_config/merge_schemas.hpp>
++describe("addHop", () => {
++  it("appends intermediates in order between start and goal", () => {
++    const g = createConnectChain("Drake", "Adele");
++    expect(addHop(g, "Rihanna")).toEqual({ ok: true, completed: false });
++    expect(addHop(g, "Paul Epworth")).toEqual({ ok: true, completed: false });
++    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Paul Epworth", "Adele"]);
++    expect(hopCount(g)).toBe(2);
++  });
 +
-+namespace six_feat::game {
++  it("rejects an empty or whitespace-only hop", () => {
++    const g = createConnectChain("Drake", "Adele");
++    expect(addHop(g, "   ")).toEqual({ ok: false, reason: "empty" });
++    expect(hopCount(g)).toBe(0);
++  });
 +
-+using namespace userver;
++  it("rejects a hop identical to the current tail (no self-loop), case-insensitively", () => {
++    const g = createConnectChain("Drake", "Adele");
++    // tail is the start when there are no hops yet
++    expect(addHop(g, "drake")).toEqual({ ok: false, reason: "duplicate" });
++    addHop(g, "Rihanna");
++    // tail is now the last hop
++    expect(addHop(g, "RIHANNA")).toEqual({ ok: false, reason: "duplicate" });
++    expect(hopCount(g)).toBe(1);
++  });
 +
-+namespace {
++  it("marks the chain completed when the goal is added, without storing it as a hop", () => {
++    const g = createConnectChain("Drake", "Adele");
++    addHop(g, "Rihanna");
++    expect(addHop(g, "Adele")).toEqual({ ok: true, completed: true });
++    expect(isComplete(g)).toBe(true);
++    expect(hopCount(g)).toBe(1); // goal did NOT become a hop
++    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Adele"]); // goal shown once
++  });
 +
-+constexpr std::size_t kMaxDisplayName = 32;
++  it("allows a direct start→goal connection with no intermediates", () => {
++    const g = createConnectChain("Drake", "Adele");
++    expect(addHop(g, "Adele")).toEqual({ ok: true, completed: true });
++    expect(chainNodes(g)).toEqual(["Drake", "Adele"]);
++  });
 +
-+// [SF-GAME-12] display_name validation: length + a light-touch censor. Returns
-+// the normalized name on success, or an error message on rejection. A starter
-+// blocklist (substring, case-insensitive) — the point is that the seam exists,
-+// not that it's exhaustive; a real deployment swaps in a maintained list.
-+const char* const kBlocked[] = {"nigger", "faggot", "retard"};
++  it("is a no-op once completed until undone", () => {
++    const g = createConnectChain("Drake", "Adele");
++    addHop(g, "Adele");
++    expect(addHop(g, "Rihanna")).toEqual({ ok: false, reason: "completed" });
++  });
++});
 +
-+std::optional<std::string> ValidateDisplayName(const std::string& raw,
-+                                               std::string& error) {
-+    // Trim surrounding whitespace.
-+    std::size_t b = raw.find_first_not_of(" \t\r\n");
-+    std::size_t e = raw.find_last_not_of(" \t\r\n");
-+    if (b == std::string::npos) { error = "display_name must not be blank"; return std::nullopt; }
-+    std::string name = raw.substr(b, e - b + 1);
++describe("undoHop", () => {
++  it("pops the last hop", () => {
++    const g = createConnectChain("Drake", "Adele");
++    addHop(g, "Rihanna");
++    addHop(g, "Paul Epworth");
++    expect(undoHop(g)).toEqual({ undone: "Paul Epworth" });
++    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Adele"]);
++  });
 +
-+    if (name.size() > kMaxDisplayName) {
-+        error = "display_name must be at most 32 characters";
-+        return std::nullopt;
-+    }
-+    for (unsigned char c : name) {
-+        if (std::iscntrl(c)) { error = "display_name contains control characters"; return std::nullopt; }
-+    }
-+    std::string lower = name;
-+    std::transform(lower.begin(), lower.end(), lower.begin(),
-+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-+    for (const char* bad : kBlocked) {
-+        if (lower.find(bad) != std::string::npos) {
-+            error = "display_name is not allowed";
-+            return std::nullopt;
-+        }
-+    }
-+    return name;
-+}
++  it("re-opens a completed chain on the first undo without dropping a hop", () => {
++    const g = createConnectChain("Drake", "Adele");
++    addHop(g, "Rihanna");
++    addHop(g, "Adele"); // completes
++    expect(undoHop(g)).toEqual({ undone: "goal" });
++    expect(isComplete(g)).toBe(false);
++    expect(hopCount(g)).toBe(1); // hop kept
++    // now a second undo pops the real hop
++    expect(undoHop(g)).toEqual({ undone: "Rihanna" });
++  });
 +
-+std::string ProfileJson(const Profile& p) {
-+    formats::json::ValueBuilder b(formats::json::Type::kObject);
-+    b["user_id"]      = p.user_id;
-+    b["display_name"] = p.display_name;
-+    b["avatar_url"]   = p.avatar_url;
-+    b["elo"]          = p.elo;
-+    b["games"]        = p.games;
-+    b["rank"]         = p.rank;
-+    return formats::json::ToString(b.ExtractValue());
-+}
++  it("returns null when there is nothing to undo", () => {
++    const g = createConnectChain("Drake", "Adele");
++    expect(undoHop(g)).toEqual({ undone: null });
++  });
++});
 +
-+} // namespace
-+
-+ProfileHandler::ProfileHandler(const components::ComponentConfig&  config,
-+                               const components::ComponentContext& context)
-+    : HttpHandlerBase(config, context)
-+    , store_(context.FindComponent<GameStore>())
-+    // Session key derived straight from APP_SECRET (KeyFromEnv) — the game
-+    // service has no Genius OAuth app config, and decryption is local, so it
-+    // never needs OAuthConfig. Computed once; APP_SECRET is fixed per process.
-+    , session_key_(auth::KeyFromEnv())
-+{}
-+
-+std::string ProfileHandler::HandleRequestThrow(
-+    const server::http::HttpRequest&  request,
-+    server::request::RequestContext& /*context*/) const
-+{
-+    EnsureRequestId(request);
-+    ApplySecurityHeaders(request);
-+
-+    auto& response = request.GetHttpResponse();
-+
-+    const auto player = ResolvePlayer(request, session_key_);
-+    if (!player) {
-+        response.SetStatus(server::http::HttpStatus::kUnauthorized);
-+        return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized,
-+                                "not authenticated");
-+    }
-+
-+    response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
-+
-+    // GET — own profile (created on first sight).
-+    if (request.GetMethod() == server::http::HttpMethod::kGet) {
-+        return ProfileJson(store_.EnsureAndGetProfile(player->user_id, player->name, ""));
-+    }
-+
-+    // PATCH — change display_name.
-+    std::string parse_error;
-+    std::string requested;
-+    try {
-+        const auto body = formats::json::FromString(request.RequestBody());
-+        requested = body["display_name"].As<std::string>("");
-+    } catch (const std::exception&) {
-+        response.SetStatus(server::http::HttpStatus::kBadRequest);
-+        return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
-+                                "body must be JSON with a display_name field");
-+    }
-+
-+    std::string error;
-+    const auto valid = ValidateDisplayName(requested, error);
-+    if (!valid) {
-+        response.SetStatus(server::http::HttpStatus::kBadRequest);
-+        return BuildProblemJson(request, server::http::HttpStatus::kBadRequest, error);
-+    }
-+
-+    // Ensure the row exists (first PATCH before any GET), then update it.
-+    store_.EnsureAndGetProfile(player->user_id, player->name, "");
-+    return ProfileJson(store_.SetDisplayName(player->user_id, *valid));
-+}
-+
-+// static
-+yaml_config::Schema ProfileHandler::GetStaticConfigSchema() {
-+    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
-+        kGameProfileHandlerSchema);
-+}
-+
-+} // namespace six_feat::game
-diff --git a/services/game/profile_handler.hpp b/services/game/profile_handler.hpp
++describe("resetChain", () => {
++  it("clears all hops and completion but keeps the endpoints", () => {
++    const g = createConnectChain("Drake", "Adele");
++    addHop(g, "Rihanna");
++    addHop(g, "Adele");
++    resetChain(g);
++    expect(hopCount(g)).toBe(0);
++    expect(isComplete(g)).toBe(false);
++    expect(chainNodes(g)).toEqual(["Drake", "Adele"]);
++  });
++});
+diff --git a/front/src/game/connect.js b/front/src/game/connect.js
 new file mode 100644
-index 0000000..0a6423d
+index 0000000..f2fcbba
 --- /dev/null
-+++ b/services/game/profile_handler.hpp
-@@ -0,0 +1,48 @@
-+#pragma once
-+
++++ b/front/src/game/connect.js
+@@ -0,0 +1,176 @@
 +// ════════════════════════════════════════════════════════════════════════════
-+// profile_handler.hpp — [SF-GAME-12] GET/PATCH /api/v1/game/profile.
++// game/connect.js — [SF-GAME-01] "Connect" game surface controller (split
++// layout: live chain-graph on the left, docked track panel on the right).
 +//
-+// One handler serving both methods (static_config `method: GET, PATCH`,
-+// branched on request.GetMethod()):
-+//   GET   — the caller's own profile {user_id, display_name, elo, games, rank};
-+//           the row is created on first sight (EnsureAndGetProfile).
-+//   PATCH — change display_name (length + censorship validation); persists and
-+//           returns the refreshed profile.
++// Pick a start + goal artist, then build the collaboration chain between them
++// one intermediate at a time. The left pane renders the current chain as an
++// Observatory-styled graph (chain-graph.js) — same visual world as the
++// explorer; the right dock is the structured track panel (endpoints, the chain
++// as a list, the add-artist field, undo/reset, status). Both drive the same
++// pure, unit-tested model (connect-model.js).
 +//
-+// Auth: the six_feat_session cookie is decrypted locally (game_session.hpp) —
-+// no HTTP to six-feat-auth. Anonymous (no/invalid cookie) → 401 in the unified
-+// RFC 7807 envelope (core/error_response.hpp, SF-API-11). Invalid display_name
-+// → 400 in the same envelope.
++// No validation or scoring yet (SF-GAME-14/15 — those need the game-service):
++// this is purely the input mechanic on the existing design kit, on the #/game
++// surface the router (ui/router.js, SF-WEB-25) already knows about. Every
++// field also accepts a plain typed name on Enter, so it works even with no
++// backend reachable (the Genius autocomplete needs one; the mechanic doesn't).
++// The whole game lives in State.connect (per the ticket) — no module-local
++// game state.
 +// ════════════════════════════════════════════════════════════════════════════
++import { State } from "../state/state.js";
++import { els } from "../dom/dom.js";
++import { escapeHtml } from "../state/helpers.js";
++import { onSurfaceChange, getCurrentSurface, navigateToSurface, SURFACE_GAME, SURFACE_GRAPH } from "../ui/router.js";
++import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
++import {
++  createConnectChain, chainNodes, hopCount, isComplete,
++  addHop, undoHop, resetChain,
++} from "./connect-model.js";
++import { drawChain } from "./chain-graph.js";
 +
-+#include <array>
-+#include <string_view>
++function slice() {
++  if (!State.connect) State.connect = { startName: "", goalName: "", game: null };
++  return State.connect;
++}
 +
-+#include <userver/components/component_fwd.hpp>
-+#include <userver/server/handlers/http_handler_base.hpp>
-+#include <userver/yaml_config/schema.hpp>
++function endpointsReady() {
++  const s = slice();
++  return s.startName.trim().length > 0 && s.goalName.trim().length > 0;
++}
 +
-+namespace six_feat::game {
++// (Re)build the chain model whenever both endpoints are set — a changed
++// endpoint invalidates any half-built chain against the old pair, so this
++// starts fresh.
++function syncGame() {
++  const s = slice();
++  s.game = endpointsReady() ? createConnectChain(s.startName, s.goalName) : null;
++}
 +
-+class GameStore;
++// ── Rendering ───────────────────────────────────────────────────────────────
 +
-+class ProfileHandler final : public userver::server::handlers::HttpHandlerBase {
-+public:
-+    static constexpr std::string_view kName = "handler-game-profile";
++function renderChainList() {
++  const s = slice();
++  if (!els.connectChain) return;
++  if (!s.game) {
++    els.connectChain.innerHTML = `<p class="connect-empty">Choose a start and a goal to begin.</p>`;
++    return;
++  }
++  const nodes = chainNodes(s.game);
++  const last = nodes.length - 1;
++  els.connectChain.innerHTML = nodes.map((name, i) => {
++    const role = i === 0 ? "start" : i === last ? "goal" : "hop";
++    const ini = name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
++    const tag = role === "start" ? '<span class="ct-tag ct-start">Start</span>'
++      : role === "goal" ? '<span class="ct-tag ct-goal">Goal</span>' : "";
++    return `<div class="ct-row ct-${role}${i > 0 ? " ct-link" : ""}">` +
++      `<span class="ct-node">${escapeHtml(ini)}</span>` +
++      `<span class="ct-name">${escapeHtml(name)}${tag}</span></div>`;
++  }).join("");
++}
 +
-+    ProfileHandler(const userver::components::ComponentConfig&  config,
-+                   const userver::components::ComponentContext& context);
++function renderStatus() {
++  const s = slice();
++  if (!els.connectStatus) return;
++  if (!s.game) { els.connectStatus.textContent = ""; return; }
++  els.connectStatus.textContent = isComplete(s.game)
++    ? `Connected in ${hopCount(s.game)} hop${hopCount(s.game) === 1 ? "" : "s"}.`
++    : `${hopCount(s.game)} hop${hopCount(s.game) === 1 ? "" : "s"} — reach ${s.goalName}.`;
++}
 +
-+    std::string HandleRequestThrow(
-+        const userver::server::http::HttpRequest&  request,
-+        userver::server::request::RequestContext&  context) const override;
++function renderControls() {
++  const s = slice();
++  const active = !!s.game;
++  const completed = active && isComplete(s.game);
++  if (els.connectAddInput) els.connectAddInput.disabled = !active || completed;
++  if (els.connectUndo) els.connectUndo.disabled = !active || (hopCount(s.game) === 0 && !completed);
++  if (els.connectReset) els.connectReset.disabled = !active || (hopCount(s.game) === 0 && !completed);
++}
 +
-+    static userver::yaml_config::Schema GetStaticConfigSchema();
++function draw() {
++  if (els.connectCanvas) drawChain(els.connectCanvas, slice().game);
++}
 +
-+private:
-+    const GameStore&               store_;
-+    std::array<unsigned char, 32>  session_key_;
-+};
++function render() {
++  renderChainList();
++  renderStatus();
++  renderControls();
++  draw();
++}
 +
-+} // namespace six_feat::game
-diff --git a/services/game/static_config.yaml b/services/game/static_config.yaml
-index 2063add..b5d8942 100644
---- a/services/game/static_config.yaml
-+++ b/services/game/static_config.yaml
-@@ -96,6 +96,14 @@ components_manager:
-       method: GET
-       task_processor: *main_tp
++// ── Interactions (exported for direct driving in tests/harnesses) ────────────
++
++export function setStartArtist(name) { slice().startName = String(name || ""); syncGame(); render(); }
++export function setGoalArtist(name) { slice().goalName = String(name || ""); syncGame(); render(); }
++
++export function commitHop(name) {
++  const s = slice();
++  if (!s.game) return null;
++  const res = addHop(s.game, name);
++  if (res.ok && els.connectAddInput) els.connectAddInput.value = "";
++  render();
++  return res;
++}
++
++export function undoLast() { const s = slice(); if (s.game) { undoHop(s.game); render(); } }
++export function resetGame() { const s = slice(); if (s.game) { resetChain(s.game); render(); } }
++
++// Test/introspection hook — the current chain snapshot (never mutate).
++export function _currentChain() { return slice().game; }
++
++// ── Wiring ───────────────────────────────────────────────────────────────
++
++let _wired = false;
++
++function commitField(inputEl, apply) {
++  const v = (inputEl?.value || "").trim();
++  if (v) apply(v);
++}
++
++export function setupConnectMode() {
++  if (!els.connectSurface) return;   // no surface markup (e.g. jsdom unit context)
++
++  if (els.connectStartInput) {
++    attachGeniusAutocomplete(els.connectStartInput, els.connectStartAc,
++      name => { els.connectStartInput.value = name; setStartArtist(name); });
++    els.connectStartInput.addEventListener("keydown", e => {
++      if (e.key === "Enter") { e.preventDefault(); commitField(els.connectStartInput, setStartArtist); }
++    });
++  }
++  if (els.connectGoalInput) {
++    attachGeniusAutocomplete(els.connectGoalInput, els.connectGoalAc,
++      name => { els.connectGoalInput.value = name; setGoalArtist(name); });
++    els.connectGoalInput.addEventListener("keydown", e => {
++      if (e.key === "Enter") { e.preventDefault(); commitField(els.connectGoalInput, setGoalArtist); }
++    });
++  }
++  if (els.connectAddInput) {
++    attachGeniusAutocomplete(els.connectAddInput, els.connectAddAc, name => { commitHop(name); });
++    els.connectAddInput.addEventListener("keydown", e => {
++      if (e.key === "Enter") { e.preventDefault(); commitHop(els.connectAddInput.value); }
++    });
++  }
++
++  els.connectUndo?.addEventListener("click", undoLast);
++  els.connectReset?.addEventListener("click", resetGame);
++  els.btnGameMode?.addEventListener("click", () => navigateToSurface(SURFACE_GAME));
++  els.connectBack?.addEventListener("click", () => navigateToSurface(SURFACE_GRAPH));
++
++  // The chain-graph canvas is sized to its (flex) stage, so it must be
++  // redrawn once the surface is visible and laid out, and on window resize.
++  if (!_wired) {
++    _wired = true;
++    window.addEventListener("resize", () => { if (getCurrentSurface() === SURFACE_GAME) draw(); });
++  }
++
++  const applySurface = surface => {
++    const on = surface === SURFACE_GAME;
++    els.connectSurface.classList.toggle("show", on);
++    els.connectSurface.hidden = !on;
++    document.body.classList.toggle("surface-game", on);
++    if (on) requestAnimationFrame(draw);   // stage now has a real size
++  };
++  onSurfaceChange(applySurface);
++  applySurface(getCurrentSurface());
++
++  render();
++}
+diff --git a/front/src/main.js b/front/src/main.js
+index 1ca7f19..1c4a2c9 100644
+--- a/front/src/main.js
++++ b/front/src/main.js
+@@ -15,6 +15,7 @@ import {
+   restoreSurfaceFromUrl, setupBubbleSetsToggle
+ } from "./ui/index.js";
+ import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
++import { setupConnectMode } from "./game/connect.js";
+ import { checkAuth, initLogout } from "./api/auth.js";
+ import { setupCanvasDecorator, startCanvasDecorator } from "./dom/canvas-decorator.js";
  
-+    # [SF-GAME-12] Player profile — GET reads/creates the caller's profile,
-+    # PATCH renames it. One handler, both methods (branched on GetMethod).
-+    # nginx proxies /api/v1/game/* here, so the public path is the same.
-+    handler-game-profile:
-+      path: /api/v1/game/profile
-+      method: GET, PATCH
-+      task_processor: *main_tp
+@@ -62,6 +63,11 @@ export function init() {
+   setupCompareModeToggle();
+   // [SF-WEB-61] Manual BubbleSet toggle — off by default, user-controlled.
+   setupBubbleSetsToggle();
++  // [SF-GAME-01] "Connect" game surface (#/game) — wires its endpoint/hop
++  // pickers and subscribes to surface changes. No-op if the surface markup
++  // isn't present. Called after restoreSurfaceFromUrl() above, so it syncs
++  // the initial surface itself (see setupConnectMode's own comment).
++  setupConnectMode();
+ 
+   // ТЗ-D8: idle starfield shown while #network is empty (first visit /
+   // after clearCanvas). Mounted once, then just toggled via opacity.
+diff --git a/front/src/state/state.js b/front/src/state/state.js
+index 6d6a7bb..eff8fba 100644
+--- a/front/src/state/state.js
++++ b/front/src/state/state.js
+@@ -338,12 +338,16 @@ const interactionSlice = {
+   // read on the next load instead of persisting. See setupThemeToggle.
+   theme: "dark",
+ 
+-  // [SF-WEB-25] Which top-level "surface" is active — "graph" (default,
+-  // current/only real behavior) or "game" (not built yet; this is just the
+-  // routing groundwork for it). Driven by ui/router.js's URL hash
+-  // (#/graph, #/game), never set directly outside that module.
++  // [SF-WEB-25] Which top-level "surface" is active — "graph" (default) or
++  // "game" (the Connect surface, SF-GAME-01). Driven by ui/router.js's URL
++  // hash (#/graph, #/game), never set directly outside that module.
+   surface: "graph",
+ 
++  // [SF-GAME-01] Connect game state: the two fixed endpoint names and the
++  // pure chain model (game/connect-model.js) once both are chosen. Owned by
++  // game/connect.js; null game means no challenge in progress.
++  connect: { startName: "", goalName: "", game: null },
 +
-     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
-     handler-server-monitor:
-       path: /metrics
-diff --git a/tests/test_game_profile.py b/tests/test_game_profile.py
+   // [SF-WEB-61] BubbleSets are now a manual, user-controlled toggle — OFF by
+   // default, never auto-shown/hidden by node count (the old
+   // CONTOUR_MAX_TOTAL_MEMBERS LOD threshold from SF-WEB-58/59 is removed;
+diff --git a/front/src/styles/index.css b/front/src/styles/index.css
+index dc8f8f6..f02e73f 100644
+--- a/front/src/styles/index.css
++++ b/front/src/styles/index.css
+@@ -32,4 +32,5 @@
+ @import "./surfaces/candidate.css";
+ @import "./surfaces/node-search.css";
+ @import "./surfaces/graph-overlay.css";
++@import "./surfaces/connect.css";
+ @import "./surfaces/responsive.css";
+diff --git a/front/src/styles/surfaces/connect.css b/front/src/styles/surfaces/connect.css
 new file mode 100644
-index 0000000..8785bc2
+index 0000000..64206de
 --- /dev/null
-+++ b/tests/test_game_profile.py
-@@ -0,0 +1,123 @@
-+"""
-+test_game_profile.py — [SF-GAME-12] integration tests for the game service's
-+GET/PATCH /api/v1/game/profile.
++++ b/front/src/styles/surfaces/connect.css
+@@ -0,0 +1,112 @@
++/* ══════════════════════════════════════════════════════════════════════════
++   surfaces/connect.css — [SF-GAME-01] "Connect" game surface (#/game).
++   Split layout on the Observatory kit: a live chain-graph on the left, a
++   docked track panel on the right. Hidden until the router switches to the
++   game surface (connect.js toggles .show). Built on the existing design
++   tokens / ui-kit (ui-input, ui-btn), theme-aware via --ink/--paper.
++   ══════════════════════════════════════════════════════════════════════════ */
 +
-+The game service identifies the player by decrypting the six_feat_session
-+cookie locally (same APP_SECRET/session_crypto as the rest of the mesh), so a
-+cookie minted here — exactly as tests/conftest.py's auth_cookie fixture does,
-+with the same TEST_APP_SECRET the docker-compose stack launches every service
-+with — authenticates end-to-end with no real Genius OAuth round-trip.
++.connect-surface {
++  position: absolute;
++  inset: 0;
++  z-index: var(--z-surface, 20);
++  display: none;
++  background: var(--ink);
++}
++.connect-surface.show { display: flex; }
 +
-+Unlike the six-feat integration tests (which run against a per-test
-+service_proc subprocess fixture), the game service needs Postgres, so these
-+run against the running docker-compose stack: point GAME_SERVICE_ORIGIN at the
-+public nginx origin (default http://localhost:8080, which proxies /api/v1/game/
-+→ six-feat-game). The module skips itself if that origin isn't reachable, so a
-+`pytest` run without the stack up doesn't fail collection.
++/* ── Left: chain-graph stage ─────────────────────────────────────────────── */
++.connect-stage {
++  position: relative;
++  flex: 1 1 auto;
++  min-width: 0;
++  overflow: hidden;
++  background:
++    radial-gradient(900px 520px at 30% -10%, color-mix(in srgb, var(--pulse) 12%, transparent), transparent 60%),
++    radial-gradient(circle, color-mix(in srgb, var(--paper) 4%, transparent) 1px, transparent 1px);
++  background-size: auto, 22px 22px;
++}
++.connect-stage canvas { display: block; width: 100%; height: 100%; }
 +
-+Scenarios (per the ticket):
-+  1. valid session → profile is created on first sight and readable (GET).
-+  2. no cookie → 401 in the unified RFC 7807 envelope (SF-API-11).
-+  3. PATCH display_name persists (a follow-up GET reflects the new name).
-+Plus: PATCH validation rejects an over-long / disallowed name with 400.
-+"""
++.connect-topline {
++  position: absolute;
++  top: 16px; left: 16px; right: 16px;
++  display: flex; align-items: center; gap: 14px;
++  pointer-events: none;
++}
++.connect-topline .connect-back { pointer-events: auto; }
++.connect-wordmark {
++  font-family: "Syne", var(--font-display, sans-serif);
++  font-weight: 800; font-size: 20px; letter-spacing: -.02em; color: var(--paper);
++  margin-left: auto;
++}
++.connect-wordmark .cw-dot { color: var(--signal); }
 +
-+from __future__ import annotations
++/* ── Right: docked track panel ───────────────────────────────────────────── */
++.connect-dock {
++  flex: 0 0 clamp(320px, 32vw, 420px);
++  display: flex;
++  flex-direction: column;
++  gap: var(--space-4);
++  padding: var(--space-6) var(--space-5);
++  overflow-y: auto;
++  background: linear-gradient(180deg, var(--panel), var(--panel-2));
++  border-left: 1px solid var(--line);
++  box-shadow: var(--shadow);
++}
++.connect-dock-head { display: flex; flex-direction: column; gap: 4px; }
++.connect-eyebrow {
++  font-size: var(--text-xs); font-weight: 700; letter-spacing: .14em;
++  text-transform: uppercase; color: var(--mist);
++}
++.connect-sub { font-size: var(--text-sm); color: var(--mist); margin: 0; }
 +
-+import os
-+import time
++.connect-endpoints { display: flex; flex-direction: column; gap: var(--space-3); }
++.connect-field { position: relative; display: flex; flex-direction: column; gap: var(--space-1); }
++.connect-field--grow { flex: 1; }
++.connect-label {
++  font-size: var(--text-xs); font-weight: 500; color: var(--mist);
++  text-transform: uppercase; letter-spacing: .04em;
++}
 +
-+import pytest
-+import requests
++/* Chain as a track list */
++.connect-chain {
++  display: flex; flex-direction: column;
++  min-height: 60px;
++  padding: var(--space-2) var(--space-3);
++  border: 1px solid var(--line); border-radius: var(--r-md);
++  background: rgba(255, 255, 255, 0.02);
++}
++.connect-empty { color: var(--mist); font-size: var(--text-sm); margin: var(--space-2) 0; }
++.ct-row { position: relative; display: flex; align-items: center; gap: var(--space-3); padding: 7px 0; }
++.ct-row.ct-link::before {
++  content: ""; position: absolute; left: 15px; top: -9px; height: 18px; width: 2px; background: var(--line);
++}
++.ct-node {
++  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
++  display: grid; place-items: center; font-size: 11px; font-weight: 800;
++  font-family: var(--font-mono, monospace);
++  color: var(--ink); background: transparent; border: 2px solid var(--line);
++}
++.ct-start .ct-node { border-color: var(--signal); color: var(--signal); }
++.ct-goal  .ct-node { border-color: var(--pulse);  color: var(--pulse); }
++.ct-hop   .ct-node { border-color: var(--amber);  color: var(--amber); }
++.ct-name { font-weight: 600; font-size: var(--text-sm); color: var(--paper); }
++.ct-tag {
++  font-size: 9.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
++  padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; margin-left: 8px; vertical-align: middle;
++}
++.ct-tag.ct-start { color: var(--signal); }
++.ct-tag.ct-goal  { color: var(--pulse); }
 +
-+import session_crypto
++.connect-status { font-size: var(--text-sm); color: var(--mist); margin: 0; min-height: 1.2em; }
 +
-+TEST_APP_SECRET = "f" * 64  # same as tests/conftest.py's TEST_APP_SECRET
-+ORIGIN = os.environ.get("GAME_SERVICE_ORIGIN", "http://localhost:8080")
-+PROFILE_URL = f"{ORIGIN}/api/v1/game/profile"
++.connect-builder { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; }
++.connect-actions { display: flex; gap: var(--space-2); }
++.connect-actions .ui-btn { flex: 1; }
 +
-+pytestmark = pytest.mark.game_profile
-+
-+
-+def _valid_cookie(name: str = "Test User") -> str:
-+    return session_crypto.make_cookie(
-+        TEST_APP_SECRET, access_token="test-genius-access-token",
-+        ttl_seconds=3600, name=name,
-+    )
-+
-+
-+def _skip_if_unreachable() -> None:
-+    try:
-+        # An unauthenticated hit should answer 401 quickly if the service is up.
-+        requests.get(PROFILE_URL, timeout=2)
-+    except requests.exceptions.RequestException:
-+        pytest.skip(f"game service not reachable at {ORIGIN} — start docker compose")
-+
-+
-+@pytest.fixture(scope="module", autouse=True)
-+def _require_service() -> None:
-+    _skip_if_unreachable()
-+
-+
-+def _get(cookie: str | None):
-+    sess = requests.Session()
-+    if cookie is not None:
-+        sess.cookies.update({"six_feat_session": cookie})
-+    return sess.get(PROFILE_URL, timeout=5)
-+
-+
-+def _patch(cookie: str | None, body: dict):
-+    sess = requests.Session()
-+    if cookie is not None:
-+        sess.cookies.update({"six_feat_session": cookie})
-+    return sess.patch(PROFILE_URL, json=body, timeout=5)
-+
-+
-+def test_no_cookie_returns_401():
-+    resp = _get(None)
-+    assert resp.status_code == 401
-+    # SF-API-11 unified envelope (application/problem+json).
-+    assert "application/problem+json" in resp.headers.get("Content-Type", "")
-+    body = resp.json()
-+    assert body.get("status") == 401
-+
-+
-+def test_valid_session_creates_and_reads_profile():
-+    resp = _get(_valid_cookie())
-+    assert resp.status_code == 200
-+    body = resp.json()
-+    # Created on first sight with the migration defaults; shape is complete.
-+    for field in ("user_id", "display_name", "elo", "games", "rank"):
-+        assert field in body, f"missing {field} in profile {body}"
-+    assert isinstance(body["user_id"], int)
-+    assert body["elo"] == 1200
-+    assert body["games"] == 0
-+    assert body["rank"] >= 1
-+    # Same session → same stable user_id on a second read.
-+    again = _get(_valid_cookie()).json()
-+    assert again["user_id"] == body["user_id"]
-+
-+
-+def test_patch_display_name_persists():
-+    cookie = _valid_cookie()
-+    new_name = f"Player-{int(time.time())}"
-+
-+    patched = _patch(cookie, {"display_name": new_name})
-+    assert patched.status_code == 200
-+    assert patched.json()["display_name"] == new_name
-+
-+    # Persisted: a fresh GET reflects it.
-+    after = _get(cookie)
-+    assert after.status_code == 200
-+    assert after.json()["display_name"] == new_name
-+
-+
-+def test_patch_rejects_invalid_name():
-+    cookie = _valid_cookie()
-+
-+    too_long = _patch(cookie, {"display_name": "x" * 100})
-+    assert too_long.status_code == 400
-+    assert "application/problem+json" in too_long.headers.get("Content-Type", "")
-+
-+    blank = _patch(cookie, {"display_name": "   "})
-+    assert blank.status_code == 400
++@media (max-width: 720px) {
++  .connect-surface.show { flex-direction: column; }
++  .connect-stage { flex: 0 0 40vh; }
++  .connect-dock { flex: 1 1 auto; border-left: none; border-top: 1px solid var(--line); }
++}

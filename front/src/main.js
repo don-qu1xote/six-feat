@@ -15,6 +15,7 @@ import {
   restoreSurfaceFromUrl, setupBubbleSetsToggle
 } from "./ui/index.js";
 import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
+import { setupConnectMode } from "./game/connect.js";
 import { checkAuth, initLogout } from "./api/auth.js";
 import { setupCanvasDecorator, startCanvasDecorator } from "./dom/canvas-decorator.js";
 
@@ -62,6 +63,11 @@ export function init() {
   setupCompareModeToggle();
   // [SF-WEB-61] Manual BubbleSet toggle — off by default, user-controlled.
   setupBubbleSetsToggle();
+  // [SF-GAME-01] "Connect" game surface (#/game) — wires its endpoint/hop
+  // pickers and subscribes to surface changes. No-op if the surface markup
+  // isn't present. Called after restoreSurfaceFromUrl() above, so it syncs
+  // the initial surface itself (see setupConnectMode's own comment).
+  setupConnectMode();
 
   // ТЗ-D8: idle starfield shown while #network is empty (first visit /
   // after clearCanvas). Mounted once, then just toggled via opacity.

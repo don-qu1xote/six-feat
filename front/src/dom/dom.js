@@ -165,5 +165,22 @@ export const els = {
   // F-43: hidden-but-accessible DOM twin of the canvas graph.
   graphA11yNodeList:         $("graph-a11y-node-list"),
   graphA11yNeighborList:     $("graph-a11y-neighbor-list"),
-  graphA11yNeighborsHeading: $("graph-a11y-neighbors-heading")
+  graphA11yNeighborsHeading: $("graph-a11y-neighbors-heading"),
+
+  // [SF-GAME-01] "Connect" game surface (#/game) — see src/game/connect.js.
+  btnGameMode:       $("btn-game-mode"),
+  connectSurface:    $("connect-surface"),
+  connectStage:      $("connect-stage"),
+  connectCanvas:     $("connect-canvas"),
+  connectBack:       $("connect-back"),
+  connectStartInput: $("connect-start-input"),
+  connectStartAc:    $("connect-start-ac"),
+  connectGoalInput:  $("connect-goal-input"),
+  connectGoalAc:     $("connect-goal-ac"),
+  connectChain:      $("connect-chain"),
+  connectStatus:     $("connect-status"),
+  connectAddInput:   $("connect-add-input"),
+  connectAddAc:      $("connect-add-ac"),
+  connectUndo:       $("connect-undo"),
+  connectReset:      $("connect-reset")
 };

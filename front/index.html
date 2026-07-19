@@ -138,6 +138,15 @@
       <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.5 2" stroke-linecap="round"/>
     </symbol>
 
+    <!-- [SF-GAME-01] Connect game rail button — a path of nodes with a play
+         triangle: "play the connect-the-artists game". -->
+    <symbol id="icon-game" viewBox="0 0 24 24">
+      <circle cx="4" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="20" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="5.6" y1="16.6" x2="9" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M11 15.5v-5l4 2.5z" fill="currentColor" stroke="none"/>
+    </symbol>
+
     <!-- [SF-WEB-61] BubbleSet toggle rail button — three soft overlapping
          circles, echoing the haze-per-sector visual it turns on/off. -->
     <symbol id="icon-haze" viewBox="0 0 24 24">
@@ -396,6 +405,13 @@
            .rail-btn.active/aria-pressed kit as Compare mode above. -->
       <button class="rail-btn ui-btn ui-btn--ghost" id="btn-bubble-sets" data-tip="BubbleSets — soft cluster haze" aria-pressed="false">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-haze"/></svg><span class="rl">BubbleSets</span>
+      </button>
+
+      <!-- [SF-GAME-01] Enter the "Connect" game surface (#/game). Navigates
+           via the router, same as goHome()'s SURFACE_GRAPH call — wired in
+           src/game/connect.js. -->
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-game-mode" data-tip="Connect game — link two artists">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-game"/></svg><span class="rl">Connect game</span>
       </button>
 
       <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
@@ -740,6 +756,62 @@
     </section>
 
   </main>
+
+  <!-- [SF-GAME-01] "Connect" game surface — split layout shown only on the
+       #/game route (ui/router.js, SF-WEB-25): a live chain-graph on the left
+       (canvas, src/game/chain-graph.js) and a docked track panel on the right.
+       Pick a start + goal artist, then build the collaboration chain between
+       them one intermediate at a time. Controller: src/game/connect.js; chain
+       logic: connect-model.js. No validation/scoring yet (SF-GAME-14/15). -->
+  <section id="connect-surface" class="connect-surface" aria-label="Connect game" hidden>
+    <!-- Left: live chain visualization -->
+    <div class="connect-stage" id="connect-stage">
+      <canvas id="connect-canvas" role="img" aria-label="Current collaboration chain"></canvas>
+      <div class="connect-topline">
+        <button id="connect-back" class="ui-btn ui-btn--ghost connect-back" type="button">← Back to graph</button>
+        <span class="connect-wordmark">Connect<span class="cw-dot">.</span></span>
+      </div>
+    </div>
+
+    <!-- Right: docked track panel -->
+    <aside class="connect-dock" aria-label="Connect controls">
+      <header class="connect-dock-head">
+        <span class="connect-eyebrow">Build the line</span>
+        <p class="connect-sub">Link two artists through their collaborations — one hop at a time.</p>
+      </header>
+
+      <div class="connect-endpoints">
+        <label class="connect-field">
+          <span class="connect-label">From</span>
+          <input id="connect-start-input" class="ui-input" type="text" autocomplete="off"
+                 placeholder="Start artist…" aria-label="Start artist" />
+          <div id="connect-start-ac" class="ac-dropdown" role="listbox"></div>
+        </label>
+        <label class="connect-field">
+          <span class="connect-label">To</span>
+          <input id="connect-goal-input" class="ui-input" type="text" autocomplete="off"
+                 placeholder="Goal artist…" aria-label="Goal artist" />
+          <div id="connect-goal-ac" class="ac-dropdown" role="listbox"></div>
+        </label>
+      </div>
+
+      <div id="connect-chain" class="connect-chain" aria-live="polite"></div>
+      <p id="connect-status" class="connect-status" aria-live="polite"></p>
+
+      <div class="connect-builder">
+        <label class="connect-field connect-field--grow">
+          <span class="connect-label">Add artist</span>
+          <input id="connect-add-input" class="ui-input" type="text" autocomplete="off"
+                 placeholder="Next collaborator…" aria-label="Add intermediate artist" disabled />
+          <div id="connect-add-ac" class="ac-dropdown" role="listbox"></div>
+        </label>
+        <div class="connect-actions">
+          <button id="connect-undo" class="ui-btn ui-btn--ghost" type="button" disabled>Undo</button>
+          <button id="connect-reset" class="ui-btn ui-btn--ghost" type="button" disabled>Reset</button>
+        </div>
+      </div>
+    </aside>
+  </section>
 
   <div class="toast" id="toast" role="alert" aria-live="polite"></div>
 

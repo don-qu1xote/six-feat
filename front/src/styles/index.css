@@ -32,4 +32,5 @@
 @import "./surfaces/candidate.css";
 @import "./surfaces/node-search.css";
 @import "./surfaces/graph-overlay.css";
+@import "./surfaces/connect.css";
 @import "./surfaces/responsive.css";
