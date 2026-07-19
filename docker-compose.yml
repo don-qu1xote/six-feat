@@ -349,6 +349,13 @@ services:
       NGINX_PUBLIC_PORT: ${NGINX_PUBLIC_PORT:-8080}
       SIX_FEAT_PORT: ${SIX_FEAT_PORT:-8080}
       SIX_FEAT_AUTH_PORT: ${SIX_FEAT_AUTH_PORT:-8083}
+      # [SF-GAME-10] nginx's entrypoint runs envsubst over default.conf.template,
+      # substituting only the ${VAR}s present in THIS container's environment —
+      # the /api/v1/game/ location added there references ${SIX_FEAT_GAME_PORT},
+      # so it must be passed here too, or nginx fails to start with
+      # `[emerg] unknown "six_feat_game_port" variable` and crash-loops, taking
+      # down the whole public entry point.
+      SIX_FEAT_GAME_PORT: ${SIX_FEAT_GAME_PORT:-8084}
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
     # service_started (not service_healthy) meant nginx started accepting
@@ -476,8 +483,68 @@ services:
           cpus: "1"
           memory: 256M
 
+  # [SF-GAME-10] Competitive "connect two artists" game service — the fifth
+  # userver service. Skeleton stage: boots, answers /healthz and /readyz,
+  # exposes its internal monitor listener. Shares the same Postgres cluster
+  # as the rest of the mesh (its game_* tables land in SF-GAME-11) — the DSN
+  # is assembled in services/game/docker-entrypoint.sh from the DB_* env
+  # below, same as six-feat/enrichment. APP_SECRET/ENRICHMENT_INTERNAL_SECRET
+  # are passed for the session/profile (SF-GAME-12) and internal-mesh calls
+  # (SF-GAME-13) that follow. Reached over the compose network at
+  # six-feat-game:${SIX_FEAT_GAME_PORT}; nginx proxies /api/v1/game/ to it.
+  # Internal-only — no host port mapping.
+  six-feat-game:
+    platform: linux/amd64
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: services/game/Dockerfile
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+    image: six-feat-game:latest
+    container_name: six-feat-game
+    expose:
+      - "${SIX_FEAT_GAME_PORT:-8084}"
+    environment:
+      # Same shared Postgres cluster as six-feat/enrichment. game_* tables
+      # (SF-GAME-11) live alongside the existing schema in the same DB.
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
+      DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
+      DB_NAME: ${DB_NAME:?Set DB_NAME}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
+      # MUST be the same value the rest of the mesh uses — six-feat-game
+      # decrypts the six_feat_session cookie locally (SF-GAME-12), no HTTP
+      # call to auth, same as six-feat's own token_router.
+      APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
+      # [SF-GAME-13] Shared secret for internal-mesh calls to six-feat
+      # (/internal/neighbours anti-cheat, ideal-path).
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GAME_PORT:-8084}/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # Covers the entrypoint's bounded Postgres wait plus normal userver
+      # boot (PreheatStacktraceCollector etc. can take over a minute under
+      # emulation), same 120s the other app services use.
+      start_period: 120s
+    restart: unless-stopped
+    <<: *hardening
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
   # ══════════════════════════════════════════════════════════════════════
-  # Observability profile (SF-OBS-01). Prometheus scrapes all 4 services'
+  # Observability profile (SF-OBS-01). Prometheus scrapes all 5 services'
   # internal monitor listeners (handler-server-monitor, see each service's
   # static_config.yaml) via userver's standard ?format=prometheus output;
   # Grafana is pre-provisioned with that Prometheus datasource plus one

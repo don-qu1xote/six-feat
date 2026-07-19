@@ -1,0 +1,4 @@
+type: object
+description: Game-service readiness-check handler
+additionalProperties: false
+properties: {}

@@ -1,0 +1,6 @@
+# Safe defaults for a direct (not-Docker) run. In the container this file is
+# entirely overwritten by docker-entrypoint.sh from ENV (LOGGING_LEVEL +
+# the assembled db_connection_string). At the SF-GAME-10 skeleton stage no
+# component reads db_connection_string yet (SF-GAME-11 adds the store), so it
+# has no direct-run default here.
+logging_level: info

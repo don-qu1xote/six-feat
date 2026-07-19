@@ -1,0 +1,83 @@
+# six-feat-game — competitive "connect two artists" game service (SF-GAME-10
+# skeleton). Boots, answers /healthz and /readyz, exposes the internal metrics
+# listener. No Postgres component and no game handlers yet — the game_* store
+# lands in SF-GAME-11 (it will read $db_connection_string, already assembled by
+# docker-entrypoint.sh), the session-based profile in SF-GAME-12, the
+# challenge/submit/leaderboard endpoints across sprint 13.
+#
+# Structure mirrors services/auth/static_config.yaml (the closest sibling): the
+# same task-processor layout with YAML anchors (*main_tp/*monitor_tp, SF-SCH-02),
+# the same dedicated low-concurrency monitor TP, the same JSON logging block
+# kept identical across all services (SF-OBS-03).
+
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+
+    fs-task-processor:
+      worker_threads: 4
+      thread_name: fs-task-processor
+
+    # [IDEA-27 pattern] Dedicated, low-concurrency TP for the internal
+    # metrics endpoint so scraping never contends with request handling.
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: 8084
+        task_processor: &main_tp main-task-processor
+      # Internal-only listener for handler-server-monitor below — separate
+      # port, no host port mapping in docker-compose.yml, no auth-checker
+      # of its own.
+      listener-monitor:
+        port: 8089
+        task_processor: &monitor_tp monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    # [SF-GAME-13] Wired from the skeleton — sprint 13's anti-cheat
+    # (/internal/neighbours) and ideal-path (/api/v1/graph/path) calls to
+    # six-feat go through this client.
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stdout'
+          level: $logging_level
+          # [SF-OBS-03] Structured JSON — kept identical across all services'
+          # static_config.yaml (see services/six-feat/static_config.yaml for
+          # the full rationale).
+          format: json
+
+    testsuite-support:
+
+    # ── Handlers ────────────────────────────────────────────────────────────
+    handler-healthz:
+      path: /healthz
+      method: GET
+      task_processor: *main_tp
+
+    # [SF-INF-03] Unified readiness contract — see
+    # libs/six-feat-common/src/http/readiness_common.hpp and
+    # internal_handlers.hpp's ReadinessHandler doc-comment for why checks{} is
+    # empty at the skeleton stage.
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: *main_tp
+
+    # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: *monitor_tp
