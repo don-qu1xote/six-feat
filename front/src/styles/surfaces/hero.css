@@ -1,0 +1,235 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Hero landing: recent-search chips, include-roles, Explore/Connect mode switch, connect panel, auth bar.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; }
+.chips-label {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+  text-align: center; letter-spacing: .04em; margin-top: var(--space-5); margin-bottom: calc(-1 * var(--space-2));
+}
+.chip {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs);
+  color: var(--mist); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: var(--space-1) var(--space-3);
+  cursor: pointer; transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+}
+.chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
+
+/* ─ Include roles (главная страница) ────────────────────────────────
+   [SF-WEB-31] Редизайн #2 держал это ВСЕГДА видимой строкой (подпись +
+   3 пилюли) — на спокойном минималистичном первом экране это было ещё
+   одним блоком, конкурирующим за внимание с eyebrow/h1/p/mode-switch/
+   chips/auth-bar одновременно. Теперь .include-roles-row — сам
+   <details> (см. разметку): .summary — компактный "Filters"-триггер в
+   том же пилюльном стиле, что и role-filter-btn/chip; сама
+   .role-filter-group (без изменений) раскрывается только по клику,
+   нативно, без JS. width/flex-раскладка строки не изменились — они
+   нужны и закрытому, и открытому состоянию одинаково. */
+.include-roles-row {
+  width: min(680px, 92vw);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+}
+.include-roles-summary {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  list-style: none; cursor: pointer; user-select: none;
+  border: 1px solid var(--line); border-radius: 999px; background: rgba(var(--panel-rgb),.8);
+  color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs);
+  letter-spacing: .04em; padding: var(--space-2) var(--space-3);
+  transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+}
+.include-roles-summary::-webkit-details-marker { display: none; }
+.include-roles-summary .ri { width: 14px; height: 14px; display: flex; flex-shrink: 0; }
+.include-roles-summary .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.include-roles-summary:hover { color: var(--paper); border-color: var(--line); background: rgba(255,255,255,.05); }
+.include-roles-row[open] .include-roles-summary { color: var(--paper); border-color: var(--pulse); }
+.role-filter-group { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center; }
+.role-filter-btn {
+  display: flex; align-items: center; gap: var(--space-2);
+  border: 1px solid var(--line); border-radius: 999px; background: rgba(var(--panel-rgb),.8);
+  color: var(--mist); font: inherit; font-size: var(--text-xs); padding: var(--space-2) var(--space-3);
+  cursor: pointer; transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+}
+.role-filter-btn .ri { width: 14px; height: 14px; display: flex; flex-shrink: 0; }
+.role-filter-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.role-filter-btn:hover { color: var(--paper); border-color: var(--line); background: rgba(255,255,255,.05); }
+.role-filter-btn[data-role="featured"].active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.10); }
+.role-filter-btn[data-role="producer"].active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.10); }
+.role-filter-btn[data-role="writer"].active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.10); }
+
+/* ─ IDEA-41: hero mode switch (Explore / Connect) ───────────────────
+   Replaces the old hidden "Find a path" toggle button + a dual-input
+   panel that only ever appeared below the hero search. A segmented
+   tablist now sits above the hero search itself: "Explore" is the
+   existing single-artist graph search, "Connect" swaps in a two-input
+   path finder. Both panels share one grid cell (.hero-mode-stage) so
+   switching between them crossfades instead of causing a layout jump. */
+/* [SF-WEB-24] border/radius/background/padding here already match the
+   SF-WEB-11 kit's .ui-segment recipe exactly (border:1px solid
+   var(--line); border-radius:999px; background:rgba(var(--panel-rgb),
+   .8); padding:3px) — same pill-segment shell as .role-filter-segment,
+   just not sharing the class since this is a tablist, not a button
+   group. Kept as its own rule (not .ui-segment in markup) so this
+   component's own selected-state thumb keeps working exactly as
+   .ui-segment's own doc comment says every segment consumer should. */
+.hero-mode-switch {
+  display: flex; position: relative;
+  width: min(360px, 92vw); margin: 0 auto;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: rgba(var(--panel-rgb),.8); padding: 3px;
+}
+.hero-mode-tab {
+  position: relative; z-index: 1; flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  border: 0; background: transparent; border-radius: 999px;
+  color: var(--mist); font: inherit; font-size: var(--text-sm); font-weight: 600;
+  padding: var(--space-2) var(--space-4); cursor: pointer;
+  /* [SF-WEB-24] Kit motion tokens (were .18s ease) — same pattern
+     .ui-chip/.ui-btn already use for their own hover-color fade. */
+  transition: color var(--duration-base) var(--ease-standard);
+}
+.hero-mode-tab .ri { width: 15px; height: 15px; display: flex; flex-shrink: 0; }
+.hero-mode-tab .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.hero-mode-tab:hover { color: var(--paper); }
+.hero-mode-tab[aria-selected="true"],
+.hero-mode-tab[aria-selected="true"]:hover { color: var(--on-accent); }
+.hero-mode-thumb {
+  position: absolute; top: 3px; left: 3px; bottom: 3px;
+  width: calc(50% - 3px); border-radius: 999px;
+  background: linear-gradient(100deg, var(--signal), var(--pulse));
+  /* [SF-WEB-24] Both tokens' own definitions (up top) name this rule as
+     their reason for existing (".28s" → --duration-slow, the literal
+     cubic-bezier → --ease-standard) — finishes actually referencing
+     them here instead of just documenting the match. Same value. */
+  transition: transform var(--duration-slow) var(--ease-standard);
+}
+.hero-mode-switch[data-mode="connect"] .hero-mode-thumb { transform: translateX(100%); }
+
+/* Both mode panels occupy the same grid cell so toggling `.is-active`
+   crossfades in place instead of shifting layout — the inactive panel
+   stays visually/functionally out of the way (opacity 0, no pointer
+   events, hidden from a11y) without `display:none`, which would make
+   the transition instant instead of smooth. */
+.hero-mode-stage { display: grid; width: min(680px, 92vw); margin-top: var(--space-1); }
+.hero-mode-panel {
+  grid-area: 1 / 1;
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-5);
+  opacity: 0; transform: translateY(8px); visibility: hidden; pointer-events: none;
+  transition: opacity var(--duration-slow) var(--ease-standard), transform var(--duration-slow) var(--ease-standard), visibility 0s linear var(--duration-slow);
+}
+.hero-mode-panel.is-active {
+  opacity: 1; transform: translateY(0); visibility: visible; pointer-events: auto;
+  transition: opacity var(--duration-slow) var(--ease-standard) var(--stagger-2), transform var(--duration-slow) var(--ease-standard) var(--stagger-2), visibility 0s linear 0s;
+}
+/* БАГ (hover/double-click "не долетают" до канвы в ограниченной области
+   по центру графа, где раньше был hero-поиск): .hero-mode-panel.is-active
+   выставляет pointer-events:auto явно — это нужно для переключения
+   Explore/Connect табов, пока search-modal ОТКРЫТ. Но CSS pointer-events
+   не проверяет "было ли auto нужно когда-то" — потомок с явным auto
+   всегда перекрывает унаследованный none от .search-modal.is-closed (см.
+   выше), сколько бы уровней вложенности ни было между ними. После
+   закрытия модалки (первый же успешный поиск) #hero-input/"Map it"/
+   role-filter-кнопки/chips внутри активной панели остаются opacity:0, но
+   по-прежнему кликабельны и лежат ровно там, где их рисовал открытый
+   modal — по центру канвы, поверх графа. Любой hover/click/dblclick,
+   чей курсор физически попадает в эту invisible-но-живую область,
+   перехватывается этим DOM-слоем раньше, чем доходит до vis.js —
+   воспроизводится как "подсветка при наведении и даблклик не работают"
+   в одной и той же ограниченной области графа, а за её пределами всё
+   нормально. Фикс: когда search-modal .is-closed, глушим auto обратно в
+   none независимо от .is-active — панель не должна быть кликабельна,
+   когда сама модалка не активна. */
+.search-modal.is-closed .hero-mode-panel.is-active { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-mode-thumb, .hero-mode-panel { transition-duration: 0s !important; }
+}
+
+/* ─ Connect panel — two stacked autocomplete fields joined by a
+   vertical "route" line (● origin → ◎ destination), a big primary
+   "Trace the path" action, and compact Swap/Clear controls. The
+   result renders inline via the shared .hop-chain markup/CSS
+   (see renderHopChain in ui/path-result.js) — no bespoke result UI.
+   [fix] Was also wrapped in its own bento-tile card (see index.html) —
+   the only hero-mode panel with a boxed background/border/shadow of its
+   own, next to Explore's borderless floating field. Unwrapped; the
+   fields/route-rail/actions below now float directly on the canvas the
+   same way Explore's .search-wrap does. Field/button padding and
+   font-size bumped from --text-sm/--space-3 to --text-base/--space-4-5
+   to match .search input/.search button's scale too — was visibly
+   smaller than "Map it" next to it, not just boxed differently. */
+.hero-connect-panel { width: 100%; text-align: left; align-items: stretch; }
+.hero-connect-row { display: flex; gap: var(--space-4); }
+.hero-route-rail {
+  display: flex; flex-direction: column; align-items: center;
+  width: 20px; flex-shrink: 0; padding: var(--space-5) 0;
+}
+.hero-route-dot { font-size: 13px; line-height: 1; }
+.hero-route-dot--from { color: var(--signal); }
+.hero-route-dot--to   { color: var(--pulse); }
+.hero-route-track {
+  flex: 1; width: 2px; min-height: 24px; margin: var(--space-2) 0; border-radius: 2px;
+  background: linear-gradient(to bottom, var(--signal), var(--pulse));
+}
+.hero-connect-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.hero-connect-fields .path-input-wrap { position: relative; }
+.hero-connect-fields .path-input {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-4) var(--space-5);
+  width: 100%; outline: none; transition: border-color var(--duration-med) var(--ease-standard), box-shadow var(--duration-med) var(--ease-standard), background var(--duration-med) var(--ease-standard);
+}
+.hero-connect-fields .path-input:focus {
+  background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(var(--signal-rgb), .14);
+}
+.hero-connect-fields .path-input::placeholder { color: #5C677C; }
+
+.hero-connect-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.hero-connect-run {
+  flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  border: 0; border-radius: var(--r-md); padding: var(--space-4) var(--space-6);
+  font: inherit; font-weight: 700; font-size: var(--text-base); color: var(--on-accent); cursor: pointer;
+  background: linear-gradient(100deg, var(--signal), var(--pulse));
+  transition: transform var(--duration-fast) var(--ease-standard), filter var(--duration-med) var(--ease-standard); white-space: nowrap;
+}
+.hero-connect-run:hover { filter: brightness(1.06); }
+.hero-connect-run:active { transform: translateY(1px); }
+.hero-connect-run .ri { width: 18px; height: 18px; display: flex; flex-shrink: 0; }
+.hero-connect-run .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.hero-connect-actions .dock-btn { flex-shrink: 0; }
+/* [fix] Was also `.hero-connect-panel .path-result { ... }` here — the
+   loading/error status that used to render inline into that element now
+   goes through the shared canvas-wide overlay/toast instead (see
+   runServerPath's own comment, ui/path-result.js); .path-result and its
+   markup are gone. */
+.hero-connect-panel .hop-chain { width: 100%; }
+@media (max-width: 640px) {
+  .hero-connect-actions { flex-direction: column; align-items: stretch; }
+  .hero-connect-actions .hero-connect-run { flex: 1 1 100%; }
+}
+
+.auth-bar {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  justify-content: center; margin-top: var(--space-5);
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+}
+.auth-hint { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  justify-content: center; }
+.auth-hint-text { color: var(--mist); }
+.auth-btn {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  border: 1px solid var(--line); border-radius: 999px; padding: var(--space-1) var(--space-3);
+  color: var(--paper); text-decoration: none; font-weight: 600;
+  transition: border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+}
+.auth-btn:hover { border-color: var(--signal); background: rgba(94,230,197,.08); }
+.auth-user { display: flex; align-items: center; gap: var(--space-3); }
+.auth-user-name { color: var(--signal); font-weight: 600; }
+.auth-logout {
+  color: var(--mist); font-size: var(--text-xs); text-decoration: none;
+  background: none; border: none; padding: 0; margin: 0;
+  font-family: inherit; cursor: pointer;
+}
+.auth-logout:hover { color: var(--warn); }
+
+#auth-status-badge { color: var(--signal); border-color: var(--signal); }
+

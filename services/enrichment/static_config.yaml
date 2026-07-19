@@ -30,13 +30,13 @@ components_manager:
     server:
       listener:
         port: 8081
-        task_processor: main-task-processor
+        task_processor: &main_tp main-task-processor
       # [IDEA-27] Internal-only listener for handler-server-monitor below —
       # separate port, no host port mapping in docker-compose.yml (this
       # service already has none), no auth-checker of its own.
       listener-monitor:
         port: 8086
-        task_processor: monitor-task-processor
+        task_processor: &monitor_tp monitor-task-processor
 
     dns-client:
       fs-task-processor: fs-task-processor
@@ -49,15 +49,33 @@ components_manager:
         default:
           file_path: '@stdout'
           level: $logging_level
+          # [SF-OBS-03] Structured JSON — see services/six-feat/
+          # static_config.yaml's own logging block for the full rationale;
+          # kept identical across all 4 services' static_config.yaml.
+          format: json
 
     testsuite-support:
 
     # ── Postgres cluster — SAME database as the main six_feat service ──────
+    # sync-start: false — see services/six-feat/static_config.yaml for the
+    # full rationale (avoids crashing the whole process on a transient
+    # Postgres hiccup at boot; the pool keeps retrying in the background
+    # instead). /healthz stays liveness-only (no DB ping — see
+    # libs/six-feat-common/src/http/health_handler.cpp); [SF-INF-03] /readyz
+    # below DOES ping the DB (internal_handlers.cpp: ReadinessHandler),
+    # matching six-feat's own /readyz contract — that's fine even though
+    # nothing currently depends on this service's healthcheck status
+    # (docker-compose.yml gates six-feat-enrichment on condition:
+    # service_started, not service_healthy): /readyz existing and being
+    # accurate doesn't require anything to actually poll it yet, and
+    # background jobs that hit the DB before the pool is ready still just
+    # retry at the query level instead of the whole container
+    # crash-looping.
     postgres-db-1:
       dbconnection: $db_connection_string
       blocking_task_processor: fs-task-processor
       dns_resolver: async
-      sync-start: true
+      sync-start: false
       connlimit_mode: manual
       min_pool_size: 2
       max_pool_size: 10
@@ -82,20 +100,33 @@ components_manager:
       queue-capacity: 1024
       drain-timeout-ms: 5000
 
+    # [SF-DB-06] Off by default — see PRUNE_TTL_DAYS (env var, 0 = off).
+    # interval-seconds/batch-size only take effect once that's set > 0.
+    prune-task:
+      interval-seconds: 3600
+      batch-size: 500
+
     handler-internal-enqueue:
       path: /internal/enqueue
       method: POST
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
     handler-internal-status:
       path: /internal/status
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
 
-    handler-internal-healthz:
+    handler-healthz:
       path: /healthz
       method: GET
-      task_processor: main-task-processor
+      task_processor: *main_tp
+
+    # [SF-INF-03] Unified readiness contract — see
+    # libs/six-feat-common/src/http/readiness_common.hpp.
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: *main_tp
 
     # ── Observability (IDEA-27) ─────────────────────────────────────────────
     # Metrics: enrichment_queue depth, pending_ count (enrichment-worker).
@@ -104,4 +135,4 @@ components_manager:
     handler-server-monitor:
       path: /metrics
       method: GET
-      task_processor: monitor-task-processor
+      task_processor: *monitor_tp

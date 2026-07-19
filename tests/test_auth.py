@@ -199,6 +199,47 @@ class TestAuthLogout:
         set_cookie_headers = resp.headers.get("Set-Cookie", "")
         assert "six_feat_session=" in set_cookie_headers
 
+    def test_session_cookie_flags(self, auth_service_proc, auth_cookie: str):
+        """[SF-SEC-05] six_feat_session must carry HttpOnly (JS can never
+        read the encrypted token) and SameSite=Lax (see oauth_handler.cpp's
+        comment on the mint site for why not Strict: a session cookie only
+        gates GET reads here, and Lax already withholds it on cross-site
+        POST/PUT/DELETE — the actual CSRF-relevant case — so Strict bought
+        no extra protection while breaking "arrive via an external link and
+        still be logged in on first paint").
+
+        Secure is asserted absent here, unconditionally: `auth_service_proc`
+        always launches six-feat-auth against `_AUTH_TEST_CONFIG_TEMPLATE`
+        (this file, `cookie-secure: false`, hardcoded — plain HTTP loopback,
+        no TLS in this test suite regardless of the calling shell's own
+        COOKIE_SECURE), so `oauth_.CookieSecure()` is always false for this
+        binary. A previous version of this test read the *pytest process's*
+        COOKIE_SECURE env var to decide which assertion to make — that env
+        var has no effect on the test binary's actual config (which never
+        reads it), so it only matched by coincidence whenever a caller
+        happened to also export COOKIE_SECURE=false for their own shell,
+        and asserted the wrong thing otherwise. Sending Secure over plain
+        HTTP would make the browser silently drop the cookie instead of
+        ever sending it back — see IsHttpsDeployment()/oauth_.CookieSecure()
+        for the real (HTTPS-deployment-driven) toggle.
+
+        Exercised via the LOGOUT response rather than a real /auth/callback
+        (no Genius token-exchange mock exists — see this file's own module
+        docstring): LogoutHandler sets the SAME HttpOnly/Secure/SameSite
+        attributes on six_feat_session as CallbackHandler's mint does (only
+        Max-Age/value differ), so this is genuine coverage of the real
+        Set-Cookie serialization, not a re-implementation of it.
+        """
+        sess = requests.Session()
+        sess.cookies.update({"six_feat_session": auth_cookie, "six_feat_csrf": "test-csrf-token"})
+        resp = sess.post(
+            LOGOUT_URL, headers={"X-CSRF-Token": "test-csrf-token"}, allow_redirects=False
+        )
+        set_cookie_headers = resp.headers.get("Set-Cookie", "")
+        assert "HttpOnly" in set_cookie_headers
+        assert "SameSite=Lax" in set_cookie_headers
+        assert "Secure" not in set_cookie_headers
+
     def test_logout_works_even_when_already_anonymous(self, auth_anon_client: requests.Session):
         """Logout has no auth requirement of its own — it should be safe to
         call even with no active session (idempotent clear), and since there

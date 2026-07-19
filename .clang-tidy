@@ -1,9 +1,20 @@
 ---
-# Minimal, warning-only check set for the current stage of the project.
-# CI (see .github/workflows/ci.yml: job clang-tidy) runs this with
-# continue-on-error: true, so findings are reported but never fail the build.
-# Tighten this list / flip CI to blocking once the backlog of findings has
-# been triaged.
+# [SF-CI-05 fix] This file's Checks/WarningsAsErrors below are NOT what CI
+# actually runs with. .github/workflows/ci.yml's clang-tidy job passes its
+# own --checks/--warnings-as-errors on the command line
+# (--checks='-*,bugprone-*,performance-*,cppcoreguidelines-*'
+# --warnings-as-errors='-*,bugprone-*,performance-*'), and a command-line
+# --checks value is appended AFTER this file's Checks list and starts with
+# its own `-*`, which resets everything before it — so CI's list fully
+# supersedes this one; the cppcoreguidelines-avoid-magic-numbers/
+# pro-bounds-pointer-arithmetic exclusions below do NOT apply to CI (CI's
+# own list re-enables all of cppcoreguidelines-*, unfiltered), and CI's
+# clang-tidy job has NOT been continue-on-error since [SF-CI-05] — a
+# bugprone-*/performance-* finding fails the build. This file only governs
+# a bare `clang-tidy some_file.cpp` invocation with no --checks flag (IDE
+# integration, a developer running it directly) — keep it roughly aligned
+# with CI's set so local runs aren't misleadingly quieter, but don't trust
+# it to predict what CI will actually flag.
 Checks: >
   -*,
   bugprone-*,

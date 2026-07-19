@@ -9,1603 +9,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
-  <style>
-    /* ─── Design tokens ─────────────────────────────────────────────── */
-    :root {
-      /* Color palette (unchanged) */
-      --ink:      #0B0E14;
-      --ink-2:    #0E1320;
-      --panel:    #141A28;
-      --panel-2:  #1B2236;
-      --line:     #283044;
-      --mist:     #8A94A6;
-      --paper:    #EDEFF4;
-      --signal:   #5EE6C5;
-      --pulse:    #B98AFF;
-      --amber:    #FFD27A;
-      --warn:     #FF8FA3;
-      --neon:     #FF2D78;
-      /* "primary" role accent (collabs without an explicit featured/producer/
-         writer tag). Must stay visually distinct from --line — see
-         ROLE_STYLE.primary in state.js for the full rationale. */
-      --primary2: #8FA6C9;
-      --shadow:   0 18px 50px rgba(0,0,0,.45);
-      --r-sm:     10px;
-      --r-md:     14px;
-      --r-lg:     18px;
-
-      /* Text colour for content sitting directly on the bright signal→pulse
-         accent gradient (hero-mode thumb, "Map it"/"Trace the path" buttons,
-         info toast) — that gradient stays equally bright in both themes, so
-         this stays fixed instead of flipping with --ink/--paper. */
-      --on-accent: #07120F;
-
-      /* RGB triplets (no alpha) for the two dark "recessed surface" tones
-         used as rgba(<triplet>, alpha) overlays throughout docked
-         search/rail/path controls (see .dock-btn, .path-input, .hop-row,
-         etc.) — factored out so IDEA-23's light theme can swap the tone
-         those overlays render in without touching every call site. */
-      --panel-rgb: 20,26,40;
-      --ink2-rgb:  14,19,32;
-      /* Radial glow behind the hero title (body background) — separate from
-         --ink so the two can differ in the light theme (a dark glow on a
-         light backdrop would look like a smudge). */
-      --hero-glow: #14203A;
-
-      /* ─ Blur/scrim scale — раньше эти значения были раскиданы магическими
-         литералами по .search-modal/.help-overlay/.candidate-overlay/
-         .node-search-overlay/.seed-card/.status-icon-btn/.info-popover
-         (blur 4/5/6/8/10px, rgba(11,14,20,.72/.78) вперемешку). Два явных
-         уровня вместо произвольных значений: "chip" — маленькие плавающие
-         элементы поверх канвы (seed-card, status-icon-btn), "scrim" —
-         полноэкранные модальные подложки. ─ */
-      --blur-chip:  6px;
-      --blur-scrim: 8px;
-      --blur-modal: 10px;
-      --scrim:       rgba(11,14,20,.76);
-      --scrim-modal: rgba(9,11,17,.82);
-      --chip-bg:    rgba(14,19,32,.80);
-
-      /* ─ Typographic scale (major third: 1.25) ─ */
-      --text-xs:    0.694rem;   /* 11.1px — metadata, labels, hints */
-      --text-sm:    0.833rem;   /* 13.3px — secondary text, autocomplete */
-      --text-base:  1rem;       /* 16px — body text (standard) */
-      --text-lg:    1.25rem;    /* 20px — emphasis, larger labels */
-      --text-xl:    1.563rem;   /* 25px — subheadings */
-      --text-2xl:   1.953rem;   /* 31.2px — heading level 2 */
-      --text-3xl:   2.441rem;   /* 39px — heading level 1 */
-      --text-hero:  clamp(2.5rem, 6vw, 4rem); /* 40–64px — hero title */
-
-      /* ─ Spacing scale (4px grid) ─ */
-      --space-1:    4px;
-      --space-2:    8px;
-      --space-3:    12px;
-      --space-4:    16px;
-      --space-5:    20px;
-      --space-6:    24px;
-      --space-7:    28px;
-      --space-8:    32px;
-      --space-9:    36px;
-      --space-10:   40px;
-      --space-11:   44px;
-      --space-12:   48px;
-    }
-    :root[data-theme="light"] {
-      --ink:      #F2F4F9;
-      --ink-2:    #E8ECF4;
-      --panel:    #FFFFFF;
-      --panel-2:  #F4F6FB;
-      --line:     #D7DDE9;
-      --mist:     #5B6479;
-      --paper:    #12151F;
-      --signal:   #0E9C7D;
-      --pulse:    #7C4DFF;
-      --amber:    #B36B00;
-      --warn:     #D6304A;
-      --neon:     #D6004F;
-      --primary2: #4A6FA5;
-      --shadow:   0 18px 40px rgba(20,30,55,.14);
-      --scrim:       rgba(230,233,240,.72);
-      --scrim-modal: rgba(222,226,236,.82);
-      --chip-bg:    rgba(255,255,255,.82);
-      --panel-rgb: 214,220,232;
-      --ink2-rgb:  234,237,244;
-      --hero-glow: #DCE6F6;
-    }
-
-    /* ─── ТЗ-206: Bento tile system ─────────────────────────────────────
-       Each self-contained block of information (status/seed card, hop-chain
-       path panel, artist sidebar sections — avatar+name, top tracks, role
-       breakdown, centrality bar, path-to-seed mini chain) gets its own
-       --r-lg container with --shadow, --space-* padding, and a visible
-       border from its neighbours, instead of being just another row in a
-       flat list. Composition (which tiles go where, how big) is handled by
-       CSS grid with explicit grid-template-areas at each call site — this
-       block only defines the reusable tile "material" + size modifiers.
-       Deliberately reuses the existing --panel-2/--line/--shadow palette —
-       bento is about composition/grid, not a new colour system. Canvas/
-       vis.js nodes are untouched; this only applies to surrounding panels. */
-    .bento-tile {
-      border-radius: var(--r-lg);
-      background: var(--panel-2);
-      border: 1px solid var(--line);
-      box-shadow: var(--shadow);
-      padding: var(--space-4);
-      min-width: 0; /* allow grid children to shrink instead of overflowing */
-    }
-    .bento-tile--sm   { padding: var(--space-3); }
-    .bento-tile--md   { padding: var(--space-4); }
-    .bento-tile--lg   { padding: var(--space-5); }
-    /* Span modifiers for use inside a parent with display:grid — set the
-       number of grid columns/rows a tile occupies. Call sites define their
-       own grid-template-columns/areas; these just set the span. */
-    .bento-tile--wide  { grid-column: 1 / -1; }
-    .bento-tile--tall  { grid-row: span 2; }
-    /* Flat variant — same padding/radius rhythm but no separate background/
-       shadow, for tiles nested inside an already-elevated parent (e.g. a
-       tile-within-a-tile like the path-to-seed mini chain inside the
-       sidebar, which already sits inside .artist-sidebar's own elevation). */
-    .bento-tile--flat {
-      background: rgba(var(--panel-rgb),.4);
-      box-shadow: none;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; }
-
-    /* Единый паттерн усечения текста — используется вместо точечного
-       дублирования white-space/overflow/text-overflow по всему CSS. */
-    .truncate {
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
-    }
-
-    /* Visually-hidden but still exposed to assistive tech — used for <label>s
-       associated with inputs that already communicate their purpose visually
-       via placeholder/adjacent chrome, so the label doesn't change layout. */
-    .sr-only {
-      position: absolute; width: 1px; height: 1px;
-      padding: 0; margin: -1px; overflow: hidden;
-      clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
-    }
-
-    body {
-      font-family: "Inter", system-ui, -apple-system, sans-serif;
-      color: var(--paper);
-      background:
-        radial-gradient(1100px 760px at 50% -12%, var(--hero-glow) 0%, var(--ink) 58%),
-        var(--ink);
-    }
-
-    .app-canvas { position: absolute; inset: 0; }
-    /* Баг: blur на search-modal не работал визуально, потому что vis.js
-       рисует граф на <canvas>, а backdrop-filter на некоторых
-       браузерах/GPU не подхватывает содержимое канваса через
-       compositing (canvas часто живёт в отдельном composite layer).
-       Более надёжный путь — блюрить сам #network напрямую через filter,
-       когда модалка открыта поверх уже нарисованного графа. Управляется
-       классом .search-open на общем родителе (.app-canvas), который
-       ставится/снимается вместе с открытием/закрытием search-modal. */
-    .app-canvas.search-open #network {
-      filter: blur(var(--blur-modal)) brightness(0.55);
-      transition: filter .32s ease;
-      pointer-events: none;
-    }
-    #network { transition: filter .32s ease; }
-
-    .canvas-decorator {
-      position: absolute; inset: 0; z-index: 1;
-      opacity: 1; pointer-events: none;
-      transition: opacity .6s ease;
-    }
-    .canvas-decorator.is-hidden { opacity: 0; }
-    .canvas-decorator svg { width: 100%; height: 100%; display: block; }
-    .decor-dot {
-      fill: var(--signal);
-      animation: decor-drift linear infinite;
-    }
-    .decor-dot:nth-of-type(3n)   { fill: var(--pulse); }
-    .decor-dot:nth-of-type(5n)   { fill: var(--amber); }
-    @keyframes decor-drift {
-      0%   { transform: translateY(0)    translateX(0); opacity: var(--decor-o, .5); }
-      50%  { transform: translateY(-18px) translateX(8px); opacity: calc(var(--decor-o, .5) * .55); }
-      100% { transform: translateY(0)    translateX(0); opacity: var(--decor-o, .5); }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .decor-dot { animation: none; }
-    }
-
-    .search-modal {
-      position: absolute; inset: 0; z-index: 40;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: var(--space-6); padding: var(--space-7); text-align: center;
-      /* Затемнение/блюр усилены (было rgba(11,14,20,.46) + blur(2px)) —
-         когда модалка открывается поверх уже нарисованного графа (не
-         is-first-visit), она должна визуально читаться как отдельный слой
-         над канвасом, а не полупрозрачная плёнка, сквозь которую граф
-         продолжает отвлекать внимание. */
-      background: var(--scrim-modal);
-      opacity: 1; transition: opacity .32s ease, backdrop-filter .32s ease, background .32s ease;
-      backdrop-filter: blur(var(--blur-modal));
-    }
-    .search-modal .eyebrow,
-    .search-modal h1,
-    .search-modal p,
-    .search-modal .include-roles-row,
-    .search-modal .hero-mode-switch,
-    .search-modal .hero-mode-stage,
-    .search-modal .chips,
-    .search-modal .auth-bar {
-      transition: opacity .38s ease, transform .38s ease;
-    }
-    .search-modal.is-closed { opacity: 0; pointer-events: none; backdrop-filter: blur(0); }
-    .search-modal.is-closed .eyebrow { opacity: 0; transform: translateY(-10px); }
-    .search-modal.is-closed h1       { opacity: 0; transform: translateY(-16px); transition-delay: .02s; }
-    .search-modal.is-closed p        { opacity: 0; transform: translateY(-12px); transition-delay: .04s; }
-    .search-modal.is-closed .include-roles-row { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
-    .search-modal.is-closed .hero-mode-switch  { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
-    .search-modal.is-closed .hero-mode-stage   { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
-    .search-modal.is-closed .chips   { opacity: 0; transform: translateY(-10px); transition-delay: .06s; }
-    .search-modal.is-closed .auth-bar{ opacity: 0; transform: translateY(8px);  }
-    .search-modal.is-closed .search-wrap { transition: opacity .3s ease .1s; }
-    .search-modal.is-closed:not(.is-morphing) .search-wrap { opacity: 0; }
-    /* is-first-visit: пустой канвас без графа за модалкой — усиленное
-       затемнение здесь не нужно, отделять нечего. */
-    .search-modal.is-first-visit { background: transparent; backdrop-filter: none; }
-
-    /* ─ Docked mode: быстрый поиск на странице графа ────────────────────────
-       Раньше "Search artist" на рейле открывал ТУ ЖЕ полноэкранную модалку
-       лендинга — заголовок, затемнение/блюр всего канваса, скрытие
-       rail/status (см. body.view-home) — по смыслу это "выйти обратно на
-       главную", хотя пользователь просто хочет быстро поискать другого
-       артиста, не покидая уже построенный граф — ровно как find-path.
-       .search-modal.docked превращает тот же #search-modal в компактную
-       плавающую карточку в углу канвы: тот же материал/докинг, что у
-       .path-panel (--panel-2/--r-lg/--shadow/backdrop-blur), без
-       полноэкранного scrim и без скрытия остального интерфейса графа. */
-    .search-modal.docked {
-      position: absolute; inset: auto; top: var(--space-4); right: var(--space-4);
-      left: auto; bottom: auto; z-index: 46;
-      width: 380px; max-width: calc(100vw - 88px);
-      padding: 0; gap: var(--space-3);
-      display: block; text-align: left;
-      background: transparent; backdrop-filter: none;
-    }
-    .search-modal.docked.is-closed { transform: translateY(-6px); }
-    .search-modal.docked .eyebrow,
-    .search-modal.docked h1,
-    .search-modal.docked p,
-    .search-modal.docked .chips-label,
-    .search-modal.docked .chips,
-    .search-modal.docked .auth-bar {
-      display: none;
-    }
-    .search-modal.docked .search-wrap {
-      width: 100%; margin: 0;
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
-      box-shadow: var(--shadow); backdrop-filter: blur(var(--blur-scrim));
-      padding: var(--space-4);
-    }
-    .search-modal.docked .include-roles-row,
-    .search-modal.docked .hero-mode-switch,
-    .search-modal.docked .hero-mode-stage {
-      width: 100%; margin-top: var(--space-3);
-    }
-
-    /* ТЗ ("докнутый поиск визуально выбивается из интерфейса графа"):
-       #search-modal/#hero-form/.hero-mode-* и т.д. — те же элементы, что и
-       на главной, со своим ярким "лендинговым" материалом (градиентная
-       кнопка "Map it", крупные поля, панель --panel фон). На главной это
-       уместно (это hero), но в узкой докнутой карточке поверх графа резко
-       выбивалось на фоне приглушённого рейла/path-panel/сайдбара
-       (.path-input/.dock-btn/.rail-btn — везде компактно и приглушённо).
-       Ниже переопределяем визуал ТОЛЬКО внутри .docked — сама вёрстка и
-       вся JS-логика (тот же #hero-input, тот же submit) не меняются. */
-    .search-modal.docked .search input {
-      padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
-      border-radius: var(--r-sm); background: rgba(var(--panel-rgb),.9);
-    }
-    .search-modal.docked .search input:focus { box-shadow: none; }
-    .search-modal.docked .search button {
-      background: rgba(var(--panel-rgb),.8); color: var(--paper); font-weight: 600;
-      padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--r-sm);
-    }
-    .search-modal.docked .search button:hover { filter: none; background: rgba(255,255,255,.05); border-color: var(--pulse); }
-    .search-modal.docked .include-roles-label { font-size: var(--text-xs); }
-    .search-modal.docked .role-filter-btn { font-size: var(--text-xs); padding: var(--space-1) var(--space-2); }
-    .search-modal.docked .hero-mode-switch { width: 100%; max-width: none; }
-    .search-modal.docked .hero-mode-tab { padding: var(--space-1) var(--space-3); font-size: var(--text-xs); }
-    .search-modal.docked .hero-connect-fields .path-input {
-      padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
-      background: rgba(var(--panel-rgb),.9); border-radius: var(--r-sm);
-    }
-    .search-modal.docked .hero-connect-fields .path-input:focus { box-shadow: none; border-color: var(--signal); }
-    .search-modal.docked .hero-route-rail { padding: var(--space-2) 0; }
-    .search-modal.docked .hero-route-dot { font-size: 11px; }
-    .search-modal.docked .hero-connect-run {
-      background: rgba(var(--panel-rgb),.8); color: var(--paper); font-weight: 600; font-size: var(--text-sm);
-      padding: 0 var(--space-4); border: 1px solid var(--line); border-radius: var(--r-sm);
-    }
-    .search-modal.docked .hero-connect-run:hover { filter: none; background: rgba(255,255,255,.05); border-color: var(--pulse); }
-    .search-modal.docked .hero-connect-actions .dock-btn {
-      padding: var(--space-2) var(--space-3); font-size: var(--text-xs);
-      background: rgba(var(--panel-rgb),.8); border-color: var(--line); color: var(--mist);
-    }
-    .search-modal.docked .hero-connect-actions .dock-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
-
-    .eyebrow {
-      font-family: "Space Mono", monospace; font-size: var(--text-sm);
-      letter-spacing: .22em; text-transform: uppercase; color: var(--signal);
-    }
-    .search-modal h1 {
-      font-family: "Syne", sans-serif; font-weight: 800;
-      font-size: var(--text-hero); line-height: 1.04;
-      letter-spacing: -.02em; max-width: 14ch;
-    }
-    .search-modal h1 .grad {
-      background: linear-gradient(100deg, var(--signal), var(--pulse));
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-    }
-    .search-modal p { max-width: 52ch; color: var(--mist); font-size: var(--text-base); line-height: 1.55; }
-
-    .search-wrap { position: relative; width: min(680px, 92vw); margin-top: var(--space-1); }
-    .search { display: flex; gap: var(--space-3); width: 100%; }
-    .search input {
-      flex: 1; min-width: 0;
-      background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
-      color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-4) var(--space-5);
-      outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
-    }
-    .search input::placeholder { color: #5C677C; }
-    .search input:focus { background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(94,230,197,.14); }
-    .search button {
-      border: 0; border-radius: var(--r-md); padding: 0 var(--space-6);
-      font: inherit; font-weight: 700; color: var(--on-accent); cursor: pointer;
-      background: linear-gradient(100deg, var(--signal), var(--pulse));
-      transition: transform .12s, filter .18s; white-space: nowrap; font-size: var(--text-base);
-    }
-    .search button:hover { filter: brightness(1.06); }
-    .search button:active { transform: translateY(1px); }
-    .search button:disabled { opacity: .55; cursor: progress; }
-
-    /* ─ Autocomplete dropdown — переработано ────────────────────────────
-       Раньше здесь по очереди были два расходящихся подхода:
-         1) обычный absolute-оверлей — перекрывал соседнее поле снизу
-            (From/To друг под другом в .path-panel);
-         2) "раздвигать поток" (position:relative на .open) — устраняло
-            перекрытие, но расталкивало соседние блоки/кнопки под собой,
-            что при быстром открытии-закрытии ощущается как дёрганый layout.
-       Оба решали только позиционирование, а сам список подсказок
-       оставался тесным (маленький аватар, мелкий текст, минимальные
-       отступы) — отсюда "окошки слишком маленькие".
-       Новое решение: снова floating-оверлей (ничего не раздвигает), но
-       поднятый на тот же материал, что и .path-panel (--panel-2/--r-lg/
-       --shadow/backdrop-blur) — читается как самостоятельная всплывающая
-       карточка НАД остальным интерфейсом, а не тонкая полоска впритык к
-       полю. Более крупные строки (--space-4 отступы, 44px аватар) не
-       нужно втискивать в узкий столбец — карточка сама шире инпута
-       (min-width), а не 1:1 с ним. */
-    .ac-dropdown {
-      position: absolute; top: calc(100% + 8px); left: 0;
-      min-width: 100%; width: max-content; max-width: min(400px, 90vw);
-      background: var(--panel-2); border: 1px solid var(--line);
-      border-radius: var(--r-lg); box-shadow: var(--shadow);
-      backdrop-filter: blur(var(--blur-scrim));
-      z-index: 55; display: none; flex-direction: column; overflow: hidden;
-      max-height: 360px; overflow-y: auto;
-    }
-    .ac-dropdown.open { display: flex; }
-    .ac-item {
-      display: flex; align-items: center; gap: var(--space-3);
-      padding: var(--space-3) var(--space-4); cursor: pointer;
-      transition: background .12s; border-bottom: 1px solid rgba(40,48,68,.3);
-    }
-    .ac-item:last-child { border-bottom: none; }
-    .ac-item:hover, .ac-item.ac-active { background: rgba(94,230,197,.07); }
-    .ac-icon {
-      display: flex; align-items: center; justify-content: center;
-      width: 28px; height: 28px; flex-shrink: 0;
-      font-size: var(--text-sm); color: var(--mist);
-    }
-
-    .role-icon {
-      display: inline-block;
-      width: 16px; height: 16px;
-      vertical-align: -2px;
-      stroke: currentColor; fill: none;
-      stroke-width: 1.5;
-      vector-effect: non-scaling-stroke;
-      flex-shrink: 0;
-    }
-    .sidebar-track-role svg.role-icon,
-    .role-chip--featured svg.role-icon,
-    .role-chip--producer svg.role-icon,
-    .role-chip--writer svg.role-icon {
-      margin-right: var(--space-1);
-    }
-    
-    /* FIX #4: Flexbox layout for role chips */
-    .sidebar-role-chip {
-      display: flex;
-      align-items: center;
-      gap: var(--space-1);
-    }
-    
-    .sidebar-role-chip .rbc-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      width: 16px;
-      height: 16px;
-      line-height: 1;
-    }
-    
-    .sidebar-role-chip .rbc-count {
-      font-size: var(--text-xs);
-      font-weight: 600;
-      line-height: 1;
-      font-family: "Space Mono", monospace;
-    }
-    
-    .sidebar-role-chip svg.role-icon {
-      margin: 0;
-    }
-    .ac-avatar {
-      width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
-      flex-shrink: 0; border: 1px solid var(--line);
-    }
-    .ac-info { flex: 1; min-width: 0; overflow: hidden; }
-    .ac-name { font-size: var(--text-base); font-weight: 600; color: var(--paper); }
-    .ac-hint { font-size: var(--text-xs); color: var(--mist); margin-top: var(--space-1); letter-spacing: 0.5px; }
-    .ac-spinner {
-      padding: var(--space-4); text-align: center;
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-    }
-
-    .chips { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; }
-    .chips-label {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      text-align: center; letter-spacing: .04em; margin-top: var(--space-5); margin-bottom: calc(-1 * var(--space-2));
-    }
-    .chip {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs);
-      color: var(--mist); background: transparent;
-      border: 1px solid var(--line); border-radius: 999px; padding: var(--space-1) var(--space-3);
-      cursor: pointer; transition: color .15s, border-color .15s, background .15s;
-    }
-    .chip:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
-
-    /* ─ Include roles (главная страница) ────────────────────────────────
-       Редизайн #2: раньше это была bento-плитка (своя карточка/фон/тень)
-       внутри общей .search-settings-грид — на минималистичном лендинге
-       читалась тяжеловесно. Теперь лёгкая строка без собственного фона —
-       просто подпись + пилюли ролей, — и снова ВСЕГДА видна (не за
-       кнопкой), как и было до объединения с find-path. */
-    .include-roles-row {
-      width: min(680px, 92vw);
-      display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
-      justify-content: center;
-    }
-    .include-roles-label {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      letter-spacing: .12em; text-transform: uppercase; flex-shrink: 0;
-    }
-    .role-filter-group { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: center; }
-    .role-filter-btn {
-      display: flex; align-items: center; gap: var(--space-2);
-      border: 1px solid var(--line); border-radius: 999px; background: rgba(var(--panel-rgb),.8);
-      color: var(--mist); font: inherit; font-size: var(--text-xs); padding: var(--space-2) var(--space-3);
-      cursor: pointer; transition: color .15s, border-color .15s, background .15s;
-    }
-    .role-filter-btn .ri { width: 14px; height: 14px; display: flex; flex-shrink: 0; }
-    .role-filter-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-    .role-filter-btn:hover { color: var(--paper); border-color: var(--line); background: rgba(255,255,255,.05); }
-    .role-filter-btn[data-role="featured"].active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.10); }
-    .role-filter-btn[data-role="producer"].active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.10); }
-    .role-filter-btn[data-role="writer"].active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.10); }
-
-    /* ─ IDEA-41: hero mode switch (Explore / Connect) ───────────────────
-       Replaces the old hidden "Find a path" toggle button + a dual-input
-       panel that only ever appeared below the hero search. A segmented
-       tablist now sits above the hero search itself: "Explore" is the
-       existing single-artist graph search, "Connect" swaps in a two-input
-       path finder. Both panels share one grid cell (.hero-mode-stage) so
-       switching between them crossfades instead of causing a layout jump. */
-    .hero-mode-switch {
-      display: flex; position: relative;
-      width: min(360px, 92vw); margin: 0 auto;
-      border: 1px solid var(--line); border-radius: 999px;
-      background: rgba(var(--panel-rgb),.8); padding: 3px;
-    }
-    .hero-mode-tab {
-      position: relative; z-index: 1; flex: 1;
-      display: flex; align-items: center; justify-content: center; gap: var(--space-2);
-      border: 0; background: transparent; border-radius: 999px;
-      color: var(--mist); font: inherit; font-size: var(--text-sm); font-weight: 600;
-      padding: var(--space-2) var(--space-4); cursor: pointer;
-      transition: color .18s ease;
-    }
-    .hero-mode-tab .ri { width: 15px; height: 15px; display: flex; flex-shrink: 0; }
-    .hero-mode-tab .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-    .hero-mode-tab:hover { color: var(--paper); }
-    .hero-mode-tab[aria-selected="true"],
-    .hero-mode-tab[aria-selected="true"]:hover { color: var(--on-accent); }
-    .hero-mode-thumb {
-      position: absolute; top: 3px; left: 3px; bottom: 3px;
-      width: calc(50% - 3px); border-radius: 999px;
-      background: linear-gradient(100deg, var(--signal), var(--pulse));
-      transition: transform .28s cubic-bezier(.4,0,.2,1);
-    }
-    .hero-mode-switch[data-mode="connect"] .hero-mode-thumb { transform: translateX(100%); }
-
-    /* Both mode panels occupy the same grid cell so toggling `.is-active`
-       crossfades in place instead of shifting layout — the inactive panel
-       stays visually/functionally out of the way (opacity 0, no pointer
-       events, hidden from a11y) without `display:none`, which would make
-       the transition instant instead of smooth. */
-    .hero-mode-stage { display: grid; width: min(680px, 92vw); margin-top: var(--space-1); }
-    .hero-mode-panel {
-      grid-area: 1 / 1;
-      display: flex; flex-direction: column; align-items: center; gap: var(--space-5);
-      opacity: 0; transform: translateY(8px); visibility: hidden; pointer-events: none;
-      transition: opacity .26s ease, transform .26s ease, visibility 0s linear .26s;
-    }
-    .hero-mode-panel.is-active {
-      opacity: 1; transform: translateY(0); visibility: visible; pointer-events: auto;
-      transition: opacity .26s ease .04s, transform .26s ease .04s, visibility 0s linear 0s;
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .hero-mode-thumb, .hero-mode-panel { transition-duration: 0s !important; }
-    }
-
-    /* ─ Connect panel — two stacked autocomplete fields joined by a
-       vertical "route" line (● origin → ◎ destination), a big primary
-       "Trace the path" action, and compact Swap/Clear controls. The
-       result renders inline via the shared .hop-chain markup/CSS
-       (see renderHopChain in ui/path-result.js) — no bespoke result UI. */
-    .hero-connect-panel { width: 100%; text-align: left; align-items: stretch; }
-    .hero-connect-row { display: flex; gap: var(--space-4); }
-    .hero-route-rail {
-      display: flex; flex-direction: column; align-items: center;
-      width: 20px; flex-shrink: 0; padding: var(--space-4) 0;
-    }
-    .hero-route-dot { font-size: 13px; line-height: 1; }
-    .hero-route-dot--from { color: var(--signal); }
-    .hero-route-dot--to   { color: var(--pulse); }
-    .hero-route-track {
-      flex: 1; width: 2px; min-height: 24px; margin: var(--space-2) 0; border-radius: 2px;
-      background: linear-gradient(to bottom, var(--signal), var(--pulse));
-    }
-    .hero-connect-fields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
-    .hero-connect-fields .path-input-wrap { position: relative; }
-    .hero-connect-fields .path-input {
-      background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
-      color: var(--paper); font: inherit; font-size: var(--text-sm); padding: var(--space-3) var(--space-4);
-      width: 100%; outline: none; transition: border-color .18s, box-shadow .18s, background .18s;
-    }
-    .hero-connect-fields .path-input:focus {
-      background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(94,230,197,.14);
-    }
-    .hero-connect-fields .path-input::placeholder { color: #5C677C; }
-
-    .hero-connect-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-    .hero-connect-run {
-      flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: var(--space-2);
-      border: 0; border-radius: var(--r-md); padding: var(--space-3) var(--space-6);
-      font: inherit; font-weight: 700; font-size: var(--text-base); color: var(--on-accent); cursor: pointer;
-      background: linear-gradient(100deg, var(--signal), var(--pulse));
-      transition: transform .12s, filter .18s; white-space: nowrap;
-    }
-    .hero-connect-run:hover { filter: brightness(1.06); }
-    .hero-connect-run:active { transform: translateY(1px); }
-    .hero-connect-run .ri { width: 18px; height: 18px; display: flex; flex-shrink: 0; }
-    .hero-connect-run .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-    .hero-connect-actions .dock-btn { flex-shrink: 0; }
-    .hero-connect-panel .path-result { text-align: left; }
-    .hero-connect-panel .hop-chain { width: 100%; }
-    @media (max-width: 640px) {
-      .hero-connect-actions { flex-direction: column; align-items: stretch; }
-      .hero-connect-actions .hero-connect-run { flex: 1 1 100%; }
-    }
-
-    .auth-bar {
-      display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
-      justify-content: center; margin-top: var(--space-5);
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-    }
-    .auth-hint { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
-      justify-content: center; }
-    .auth-hint-text { color: var(--mist); }
-    .auth-btn {
-      display: inline-flex; align-items: center; gap: var(--space-1);
-      border: 1px solid var(--line); border-radius: 999px; padding: var(--space-1) var(--space-3);
-      color: var(--paper); text-decoration: none; font-weight: 600;
-      transition: border-color .15s, background .15s;
-    }
-    .auth-btn:hover { border-color: var(--signal); background: rgba(94,230,197,.08); }
-    .auth-user { display: flex; align-items: center; gap: var(--space-3); }
-    .auth-user-name { color: var(--signal); font-weight: 600; }
-    .auth-logout {
-      color: var(--mist); font-size: var(--text-xs); text-decoration: none;
-      background: none; border: none; padding: 0; margin: 0;
-      font-family: inherit; cursor: pointer;
-    }
-    .auth-logout:hover { color: var(--warn); }
-
-    #auth-status-badge { color: var(--signal); border-color: var(--signal); }
-
-    .canvas-chrome { position: absolute; inset: 0; z-index: 45; pointer-events: none; }
-    .canvas-chrome > * { pointer-events: auto; }
-    #network { position: absolute; inset: 0; z-index: 0; }
-
-    /* IDEA-23: top-center avoids both the rail column (top-left) and the
-       context-panel/docked-search column (top-right) in the graph view,
-       and sits clear of the vertically-centred hero content on the landing
-       page — the one spot free in both view-home and view-graph. */
-    .theme-toggle {
-      position: absolute; top: var(--space-4); left: 50%;
-      transform: translateX(-50%);
-      width: 34px; height: 34px; flex-shrink: 0; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 50%;
-      color: var(--mist); backdrop-filter: blur(var(--blur-chip));
-      box-shadow: var(--shadow);
-      transition: border-color .15s, color .15s, background .15s;
-    }
-    .theme-toggle .ri { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-    .theme-toggle:hover { color: var(--paper); border-color: var(--pulse); }
-
-    .flip-ghost {
-      position: fixed; z-index: 60; pointer-events: none;
-      will-change: transform, opacity;
-    }
-    .flip-ghost .search-wrap,
-    .flip-ghost .dock-search-wrap { margin: 0; }
-
-    @supports (view-transition-name: none) {
-      .search-wrap        { view-transition-name: search-morph; }
-      ::view-transition-old(search-morph),
-      ::view-transition-new(search-morph) {
-        animation-duration: .42s;
-        animation-timing-function: cubic-bezier(.16,.9,.3,1);
-      }
-      ::view-transition-old(root),
-      ::view-transition-new(root) { animation-duration: .4s; }
-    }
-
-    /* ─ Явное разделение "страница-граф" / "главная страница" ──────────────
-       Раньше единственным сигналом "мы на графе, а не на лендинге" была
-       .app-canvas.search-open (opacity/pointer-events на .rail/.status/
-       .context-panel) — по факту рабочий, но не явный переключатель:
-       элементы графа оставались в layout/DOM-дереве и на a11y-дереве даже
-       когда модалка поиска открыта. body.view-home/.view-graph — явное,
-       структурное состояние ("на какой мы странице"), которое полностью
-       убирает chrome графа из потока на главной (display:none), а не
-       просто прячет его прозрачностью. Ставится/снимается в
-       openSearchModal()/closeSearchModal() (ui.js) синхронно с
-       .search-open, поэтому анимация перехода не меняется — меняется
-       только то, что происходит ДО/ПОСЛЕ неё. */
-    body.view-home .rail,
-    body.view-home .status,
-    body.view-home .context-panel,
-    body.view-home .actions-bar {
-      display: none;
-    }
-
-    /* ТЗ (bento-редизайн): раньше .rail был плоской полосой впритык к краю
-       экрана (background:var(--ink-2), border-right, без radius/shadow) —
-       единственный крупный элемент интерфейса, не говорящий на одном
-       визуальном языке с остальными панелями (.bento-tile/.path-panel/
-       .artist-sidebar — все они var(--panel-2) + border + var(--r-lg) +
-       var(--shadow), плавающие с отступом от края). Функционал (hover-to-
-       expand, все кнопки, тултипы) не меняется — меняется только
-       материал: рейл становится такой же плавающей bento-плиткой, с
-       отступом со всех сторон вместо border-right впритык. */
-    .rail {
-      position: absolute; top: var(--space-4); left: var(--space-4); bottom: var(--space-4); z-index: 8;
-      width: 56px;
-      display: flex; flex-direction: column; align-items: stretch;
-      gap: var(--space-1); padding: var(--space-3) var(--space-2);
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
-      box-shadow: var(--shadow);
-      overflow: hidden;
-      transition: width .2s ease-out, opacity .2s ease-out;
-    }
-    .rail:hover { width: 180px; }
-    /* Баг: часть рейла (например #auth-status-badge внизу) оставалась
-       видна поверх search-modal — сама навигация по графу не имеет смысла,
-       пока граф скрыт под модалкой поиска, поэтому прячем весь рейл целиком
-       вместо точечных исключений. */
-    .app-canvas.search-open .rail { opacity: 0; pointer-events: none; }
-    /* Seed-карточка снизу слева тоже не должна светиться поверх модалки */
-    .app-canvas.search-open .status { opacity: 0; pointer-events: none; transition: opacity .2s ease-out; }
-
-    .brand {
-      position: relative;
-      width: var(--space-10); height: var(--space-10); flex-shrink: 0;
-      border: 1px solid transparent; border-radius: var(--r-sm);
-      background: transparent; color: var(--mist);
-      display: flex; align-items: center; justify-content: flex-start; gap: var(--space-3);
-      padding: 0 0 0 11px; overflow: hidden; box-sizing: border-box;
-      cursor: pointer; margin-bottom: var(--space-1);
-      transition: color .15s, border-color .15s, background .15s, width .2s ease-out;
-      text-decoration: none;
-      font: inherit; -webkit-appearance: none; appearance: none;
-    }
-    .rail:hover .brand { width: 100%; }
-    .brand:hover { color: var(--paper); border-color: var(--line); background: rgba(255,255,255,.05); }
-    .brand .rl {
-      font-family: "Inter", sans-serif; font-size: var(--text-xs); font-weight: 500;
-      white-space: nowrap; opacity: 0; transition: opacity .15s ease-out .05s;
-      color: var(--paper);
-    }
-    .rail:hover .brand .rl { opacity: 1; }
-    .rail:hover .brand:hover,
-    .rail:hover .brand.active {
-      box-shadow: 0 4px 14px rgba(0,0,0,.35);
-    }
-    .brand .dotmark {
-      width: 13px; height: 13px; border-radius: 50%;
-      background: linear-gradient(120deg, var(--signal), var(--pulse));
-      box-shadow: 0 0 14px rgba(94,230,197,.55);
-      flex-shrink: 0;
-    }
-
-    .rail-sep { height: 1px; background: var(--line); flex-shrink: 0; margin: var(--space-1) var(--space-1); }
-    .rail-spacer { flex: 1; }
-
-    .rail-btn {
-      position: relative;
-      width: var(--space-10); height: var(--space-10); flex-shrink: 0;
-      border: 1px solid transparent; border-radius: var(--r-sm);
-      background: transparent; color: var(--mist);
-      font-size: var(--text-base); line-height: 1; cursor: pointer;
-      display: flex; align-items: center; justify-content: flex-start; gap: var(--space-3);
-      padding: 0 0 0 11px; overflow: hidden; box-sizing: border-box;
-      transition: color .15s, border-color .15s, background .15s, width .2s ease-out;
-    }
-    .rail:hover .rail-btn { width: 100%; }
-    .rail-btn .ri { width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-    .rail-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-    .rail-btn .rl {
-      font-family: "Inter", sans-serif; font-size: var(--text-xs); font-weight: 500;
-      white-space: nowrap; opacity: 0; transition: opacity .15s ease-out .05s;
-      color: var(--paper);
-    }
-    .rail:hover .rail-btn .rl { opacity: 1; }
-
-    .rail-btn:hover { color: var(--paper); border-color: var(--line); background: rgba(255,255,255,.05); }
-    .rail-btn.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
-    /* ТЗ-206: light bento accent on hover-expand — own small plate-like
-       "tile" backdrop (subtle shadow) rather than just a colour swap, so
-       the expanded rail reads as part of the same tile language as the
-       rest of the UI without becoming a full heavy card. */
-    .rail:hover .rail-btn:hover,
-    .rail:hover .rail-btn.active {
-      box-shadow: 0 4px 14px rgba(0,0,0,.35);
-    }
-    #filter-featured.active { color: var(--signal); border-color: rgba(94,230,197,.5); background: rgba(94,230,197,.10); }
-    #filter-producer.active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.10); }
-    #filter-writer.active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.10); }
-
-    .rail-btn[data-tip]::after {
-      content: attr(data-tip);
-      position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-      background: var(--panel-2); border: 1px solid var(--line); color: var(--paper);
-      font-family: "Inter", sans-serif; font-size: var(--text-xs); font-weight: 500;
-      white-space: nowrap; padding: var(--space-1) var(--space-2); border-radius: var(--r-sm);
-      box-shadow: var(--shadow); opacity: 0; pointer-events: none;
-      transition: opacity .12s, transform .12s; transform-origin: left center;
-      z-index: 30;
-    }
-    .rail-btn[data-tip]:hover::after { opacity: 1; transform: translateY(-50%) translateX(2px); }
-    .rail:hover .rail-btn[data-tip]::after { display: none; }
-
-    #auth-status-badge.rail-btn { color: var(--signal); border-color: rgba(94,230,197,.4); }
-
-    .dock-btn {
-      border: 1px solid var(--line); border-radius: var(--r-sm);
-      background: rgba(var(--panel-rgb),.80); color: var(--mist);
-      font: inherit; font-size: var(--text-xs); padding: var(--space-1) var(--space-3); cursor: pointer;
-      transition: color .15s, border-color .15s, background .15s;
-      white-space: nowrap; line-height: 1;
-      display: flex; align-items: center; gap: var(--space-1);
-    }
-    .dock-btn:hover { color: var(--paper); border-color: var(--pulse); background: rgba(185,138,255,.10); }
-    .dock-btn.active { color: var(--paper); border-color: var(--signal); background: rgba(94,230,197,.12); }
-
-    .status {
-      position: absolute; left: calc(56px + var(--space-4) * 2); bottom: var(--space-4); z-index: 5;
-      display: flex; align-items: center; gap: var(--space-1);
-      transition: opacity .32s ease, filter .32s ease;
-    }
-    /* CSS display:flex перебивает HTML-атрибут hidden — явно сбрасываем */
-    .status[hidden] { display: none !important; }
-    .status.is-dimmed {
-      opacity: 0.15; filter: blur(2px); pointer-events: none;
-    }
-    .seed-card {
-      display: inline-flex; align-items: center; gap: var(--space-3); cursor: pointer;
-      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 999px;
-      padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1); backdrop-filter: blur(var(--blur-chip)); color: var(--paper);
-      transition: border-color .15s, background .15s, box-shadow .15s;
-      font-family: "Inter", sans-serif;
-      /* ТЗ-206: light bento accent — same --shadow "material" as the rest of
-         the tile system, kept as a pill (not squared off) since it floats
-         over the canvas rather than sitting in a panel grid. */
-      box-shadow: var(--shadow);
-    }
-    .seed-card:hover { border-color: var(--pulse); background: rgba(var(--panel-rgb),.88); }
-    .seed-card-avatar {
-      width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
-      flex-shrink: 0; border: 1px solid var(--line);
-    }
-    .seed-card-text { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-    .seed-card-eyebrow {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); letter-spacing: .1em;
-      text-transform: uppercase; color: var(--signal);
-    }
-    .seed-card-name {
-      font-size: var(--text-xs); font-weight: 600; color: var(--paper);
-      max-width: 180px;
-    }
-
-    .rate-limit-badge {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs);
-      color: var(--paper); opacity: .55; white-space: nowrap;
-      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 999px;
-      padding: 2px var(--space-2); backdrop-filter: blur(var(--blur-chip));
-      transition: color .15s, border-color .15s, opacity .15s;
-    }
-    .rate-limit-badge[hidden] { display: none !important; }
-    .rate-limit-badge--low {
-      color: var(--warn); border-color: rgba(255,143,163,.5); opacity: .9;
-    }
-
-    /* IDEA-50: unobtrusive banner telling the user the FG fetch hit its
-       songs-limit-fg cap, so the graph shown is very likely missing some
-       collaborations. Shares the pill/chip visual language of seed-card and
-       rate-limit-badge rather than a jarring alert style. */
-    .truncation-banner {
-      display: inline-flex; align-items: center; gap: var(--space-2);
-      font-family: "Inter", sans-serif; font-size: var(--text-xs);
-      color: var(--amber); white-space: nowrap;
-      background: var(--chip-bg); border: 1px solid rgba(255,210,122,.4); border-radius: 999px;
-      padding: var(--space-1) var(--space-3); backdrop-filter: blur(var(--blur-chip));
-    }
-    .truncation-banner[hidden] { display: none !important; }
-    .truncation-banner-action {
-      font-family: inherit; font-size: inherit; font-weight: 600;
-      color: var(--amber); background: none; border: none; padding: 0;
-      cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
-    }
-    .truncation-banner-action:hover { color: var(--paper); }
-
-    .status-icon-btn {
-      position: relative;
-      width: 26px; height: 26px; flex-shrink: 0; cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      background: var(--chip-bg); border: 1px solid var(--line); border-radius: 50%;
-      color: var(--mist); font-size: var(--text-sm); backdrop-filter: blur(var(--blur-chip));
-      transition: border-color .15s, color .15s, background .15s;
-    }
-    .status-icon-btn svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
-    .status-icon-btn:hover { color: var(--paper); border-color: var(--pulse); }
-
-    .info-popover {
-      position: absolute; left: 0; bottom: calc(100% + 8px);
-      display: none; flex-direction: column; gap: var(--space-1);
-      background: rgba(var(--ink2-rgb),.94); border: 1px solid var(--line); border-radius: var(--r-md);
-      padding: var(--space-3) var(--space-3); width: max-content; max-width: min(280px, 60vw);
-      backdrop-filter: blur(var(--blur-scrim)); box-shadow: var(--shadow);
-      font-family: "Inter", sans-serif; font-size: var(--text-xs); color: var(--mist); line-height: 1.5;
-    }
-    .status-icon-btn:hover .info-popover,
-    .status-icon-btn.open .info-popover { display: flex; }
-    .info-popover .bc-glow-row { display: flex; align-items: center; gap: var(--space-2); }
-    .info-popover .bc-glow-demo {
-      width: 10px; height: 10px; border-radius: 50%;
-      flex-shrink: 0;
-    }
-    /* Легенда теперь отражает единственный оставшийся glow-эффект на графе —
-       фиксированный бирюзовый glow seed-ноды (см. seedShadow() в
-       vis-adapter.js). Раньше здесь был фиолетовый демо-цвет для
-       centrality-glow, который больше не существует. */
-    .info-popover .bc-glow-demo--seed {
-      background: var(--signal);
-      box-shadow: 0 0 8px 3px rgba(94,230,197,0.55);
-    }
-
-    .help-overlay {
-      position: absolute; inset: 0; z-index: 60;
-      background: var(--scrim); backdrop-filter: blur(var(--blur-scrim));
-      display: none; align-items: center; justify-content: center;
-    }
-    .help-overlay.show { display: flex; }
-    .help-box {
-      width: min(420px, 90vw);
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
-      box-shadow: var(--shadow); padding: var(--space-5) var(--space-6);
-    }
-    .help-box-header {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3);
-    }
-    .help-box-title {
-      font-family: "Syne", sans-serif; font-weight: 700; font-size: var(--text-sm); color: var(--paper);
-    }
-    .help-close {
-      width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line);
-      background: transparent; color: var(--mist); cursor: pointer; font-size: 14px;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .help-close:hover { color: var(--paper); border-color: var(--warn); }
-    .help-list { display: flex; flex-direction: column; gap: var(--space-2); }
-    .help-row {
-      display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
-      font-size: var(--text-xs); color: var(--mist);
-    }
-    .help-row kbd {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--paper);
-      background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 5px;
-      padding: var(--space-1) var(--space-1); white-space: nowrap;
-    }
-
-    .actions-bar {
-      position: absolute; right: var(--space-4); bottom: var(--space-5); z-index: 5;
-      display: flex; gap: var(--space-1); flex-wrap: wrap; justify-content: flex-end;
-    }
-
-    /* Логотип в левой панели (rail) — просто обычная ссылка-кнопка с
-       паттерном .rail-btn (иконка видна всегда, подпись раскрывается на
-       hover). SF логотип идёт в конец, после spacer'а, как фирменный
-       элемент перед auth-status-badge. */
-    .rail-btn[href*="sixfeet"] { color: var(--pulse); }
-    .rail-btn[href*="sixfeet"]:hover { color: var(--paper); background: rgba(185,138,255,.08); }
-
-    .context-panel {
-      position: absolute; right: var(--space-4); top: var(--space-4); bottom: var(--space-4); z-index: 6;
-      width: 320px; max-width: calc(100vw - 88px);
-      pointer-events: none;
-      display: flex; flex-direction: column; gap: var(--space-3);
-      align-items: flex-end;
-      transition: opacity .2s ease-out;
-    }
-    .context-panel > * { pointer-events: auto; width: 100%; }
-    /* Баг: .status (seed-card + иконки снизу слева) оставался виден
-       поверх search-modal — добавляем в тот же search-open паттерн. */
-    .app-canvas.search-open .status { opacity: 0; pointer-events: none; transition: opacity .2s; }
-    .app-canvas.search-open .context-panel { opacity: 0; pointer-events: none; }
-
-    /* ТЗ-206: path panel is itself a bento tile — reuses --r-lg/--shadow
-       instead of the old bespoke --r-md/rgba(14,19,32,.92) treatment, so it
-       reads as part of the same composition as the sidebar tiles. */
-    .path-panel {
-      display: none;
-      background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg);
-      padding: var(--space-4);
-      backdrop-filter: blur(var(--blur-scrim));
-      flex-direction: column; gap: var(--space-3);
-      max-height: 60%; overflow-y: auto; flex-shrink: 0;
-      box-shadow: var(--shadow);
-    }
-    .path-panel.show { display: flex; }
-    .path-panel-header {
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .path-title {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      letter-spacing: .12em; text-transform: uppercase;
-    }
-    .path-close {
-      border: 0; background: transparent; color: var(--mist); cursor: pointer;
-      font-size: 16px; padding: 0 2px; line-height: 1; transition: color .15s;
-    }
-    .path-close:hover { color: var(--paper); }
-
-    .path-input-wrap { position: relative; }
-    .path-input {
-      background: rgba(var(--panel-rgb),.9); border: 1px solid var(--line); border-radius: var(--r-sm);
-      color: var(--paper); font: inherit; font-size: var(--text-sm); padding: var(--space-2) var(--space-3); outline: none;
-      width: 100%; transition: border-color .15s;
-    }
-    .path-input:focus { border-color: var(--signal); }
-    .path-input::placeholder { color: #5C677C; }
-    /* Раньше здесь дропдаун принудительно ужимался (26px аватар, скрытый
-       hint, минимальные отступы) — именно это и стояло за жалобой "окошки
-       подсказок слишком маленькие" в узкой .path-panel/.hero-connect-fields.
-       Убрано: используем тот же просторный .ac-dropdown/.ac-item, что и
-       везде — просто якорим его к правому краю поля (left:auto;right:0)
-       вместо левого, чтобы широкая карточка росла влево, в открытое
-       пространство канвы, а не обрезалась правым краем узкой докнутой
-       .path-panel у края экрана. */
-    .path-input-wrap .ac-dropdown { left: auto; right: 0; }
-
-    /* ТЗ: подсказки на СТРАНИЦЕ ГРАФА (узкий докнутый .path-panel и
-       компактный .search-modal.docked) читаются слишком крупными на фоне
-       остальных, тесно скомпонованных панелей графа — 40px-аватар и
-       щедрые отступы были рассчитаны на просторную главную страницу.
-       Уменьшаем именно здесь; #hero-ac и Find Path на главной остаются
-       прежнего, более крупного размера — жалобы на них не было. */
-    .path-panel .ac-dropdown,
-    .search-modal.docked .ac-dropdown {
-      max-width: min(300px, 90vw);
-    }
-    .path-panel .ac-item,
-    .search-modal.docked .ac-item {
-      padding: var(--space-2) var(--space-3); gap: var(--space-2);
-    }
-    .path-panel .ac-avatar,
-    .search-modal.docked .ac-avatar {
-      width: 30px; height: 30px;
-    }
-    .path-panel .ac-name,
-    .search-modal.docked .ac-name {
-      font-size: var(--text-sm);
-    }
-    .path-panel .ac-hint,
-    .search-modal.docked .ac-hint {
-      display: none;
-    }
-
-    .path-actions { display: flex; gap: var(--space-2); }
-    .path-result {
-      font-size: var(--text-xs); color: var(--neon); line-height: 1.6;
-      min-height: 18px; word-break: break-word;
-    }
-    .path-result.is-error { color: var(--warn); }
-    .path-result.is-loading { color: var(--mist); display: flex; align-items: center; gap: var(--space-2); }
-
-    /* ТЗ-205: .hop-chain — horizontal scrollable track by default (wide
-       panels), with a fade mask at both edges like .path-chain-track.
-       Falls back to the original vertical stack only when the panel itself
-       is narrow (context panel collapsed / mobile viewport) — see the
-       max-width media query below. */
-    .hop-chain {
-      display: flex; flex-direction: row; align-items: stretch; gap: 0;
-      margin-top: var(--space-1);
-      overflow-x: auto; overflow-y: hidden;
-      scroll-behavior: smooth; scrollbar-width: none;
-      -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
-      mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
-    }
-    .hop-chain::-webkit-scrollbar { display: none; }
-    .hop-row {
-      display: flex; flex-direction: column; align-items: center; text-align: center;
-      gap: var(--space-2);
-      padding: var(--space-2) var(--space-3);
-      border-bottom: none;
-      position: relative;
-      flex-shrink: 0;
-      width: 128px;
-      /* ТЗ-206: each hop is its own bento tile (per-node "плитка"), not just
-         a row in a flat list — reuses .bento-tile--flat's material since it
-         already sits inside .path-panel's own elevated tile. */
-      border-radius: var(--r-md);
-      background: rgba(var(--panel-rgb),.4);
-      border: 1px solid var(--line);
-    }
-    .hop-avatar {
-      width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
-      flex-shrink: 0; border: 1px solid var(--line);
-    }
-    .hop-info { flex: 1; min-width: 0; width: 100%; }
-    .hop-name {
-      font-size: var(--text-xs); font-weight: 600; color: var(--paper);
-    }
-    .hop-songs {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      margin-top: var(--space-1); line-height: 1.5;
-      cursor: pointer; border-radius: var(--r-sm); transition: background .15s, color .15s;
-    }
-    .hop-songs:hover, .hop-songs:focus-visible {
-      background: rgba(94,230,197,.08); color: var(--paper); outline: none;
-    }
-    .hop-role-icon { display: inline-flex; vertical-align: -2px; margin-right: 3px; }
-    .hop-role-icon .role-icon { width: 11px; height: 11px; }
-    .hop-role-label { font-weight: 700; margin-right: var(--space-1); }
-
-    /* ТЗ-205: connector between hop cards — reuses .path-edge-connector /
-       .path-edge-label (already defined below for the path-to-seed chain)
-       instead of the old plain "↓" text arrow, so both "paths" in the app
-       (this hop chain and the sidebar's path-to-seed chain) share one
-       visual language for roles/weight. */
-    .hop-connector {
-      align-self: center; flex-shrink: 0;
-      margin: 0 calc(-1 * var(--space-1));
-    }
-
-    .path-chain-container {
-      position: relative;
-      margin-top: var(--space-3);
-      overflow: hidden;
-      border-radius: var(--r-sm);
-      background: rgba(20, 26, 40, 0.4);
-      border: 1px solid var(--line);
-    }
-
-    .path-chain-track {
-      display: flex;
-      gap: var(--space-4);
-      overflow-x: auto;
-      padding: var(--space-3) var(--space-4);
-      scroll-behavior: smooth;
-      scrollbar-width: none;
-    }
-    .path-chain-track::-webkit-scrollbar { display: none; }
-
-    .path-chain-fade {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      width: 20px;
-      pointer-events: none;
-      z-index: 2;
-    }
-    .path-chain-fade--left {
-      left: 0;
-      background: linear-gradient(to right, var(--panel-2), transparent);
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-    .path-chain-fade--right {
-      right: 0;
-      background: linear-gradient(to left, var(--panel-2), transparent);
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-    .path-chain-container:hover .path-chain-fade { opacity: 1; }
-
-    .path-node-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-2);
-      border-radius: var(--r-sm);
-      background: rgba(20, 26, 40, 0.6);
-      border: 1px solid rgba(40, 48, 68, 0.5);
-      flex-shrink: 0;
-      /* Баг: карточки в "1 hop from seed" (и в общем path-chain-track)
-         были разной ширины — min/max-width давали диапазон 80–100px, но
-         реальная ширина плавала в его пределах в зависимости от длины
-         имени. Фиксированная width делает все блоки строго одного
-         размера. */
-      width: 92px;
-      transition: background 0.15s, border-color 0.15s;
-      cursor: default;
-    }
-    .path-node-card:hover {
-      background: rgba(20, 26, 40, 0.8);
-      border-color: var(--line);
-    }
-
-    .path-node-avatar {
-      width: 24px;
-      height: 24px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 1px solid var(--line);
-      flex-shrink: 0;
-    }
-
-    .path-node-name {
-      font-size: var(--text-xs);
-      font-weight: 500;
-      color: var(--paper);
-      text-align: center;
-      width: 100%;
-      line-height: 1.2;
-    }
-
-    .path-edge-connector {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--space-1);
-      padding: var(--space-2);
-      border-radius: var(--r-sm);
-      background: rgba(20, 26, 40, 0.4);
-      border: 1px solid rgba(94, 230, 197, 0.3);
-      flex-shrink: 0;
-      min-width: 72px;
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-    }
-    .path-edge-connector:hover {
-      background: rgba(94, 230, 197, 0.12);
-      border-color: var(--signal);
-      box-shadow: 0 0 8px rgba(94, 230, 197, 0.15);
-    }
-    .path-edge-connector:active {
-      transform: scale(0.98);
-    }
-
-    .path-edge-label {
-      font-family: "Space Mono", monospace;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 3px 6px;
-      border-radius: 999px;
-      border: 1px solid;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      width: 100%;
-      justify-content: center;
-      white-space: nowrap;
-      min-height: 20px;
-    }
-
-    .path-edge-count {
-      font-family: "Space Mono", monospace;
-      font-size: var(--text-xs);
-      color: var(--mist);
-      font-weight: 500;
-    }
-
-    .role-chip--featured {
-      color: var(--signal);
-      border-color: rgba(94, 230, 197, 0.4);
-      background: rgba(94, 230, 197, 0.08);
-    }
-    .role-chip--producer {
-      color: var(--pulse);
-      border-color: rgba(185, 138, 255, 0.4);
-      background: rgba(185, 138, 255, 0.08);
-    }
-    .role-chip--writer {
-      color: var(--amber);
-      border-color: rgba(255, 210, 122, 0.35);
-      background: rgba(255, 210, 122, 0.08);
-    }
-    .role-chip--primary {
-      color: var(--primary2);
-      border-color: rgba(143, 166, 201, 0.4);
-      background: rgba(143, 166, 201, 0.08);
-    }
-
-    @media (max-width: 420px) {
-      .path-chain-track {
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-2);
-      }
-
-      .path-node-card {
-        flex-direction: row;
-        justify-content: flex-start;
-        min-width: 100%;
-        max-width: none;
-      }
-
-      .path-edge-connector {
-        flex-direction: row;
-        justify-content: space-between;
-        min-width: 100%;
-      }
-
-      .path-chain-fade { display: none; }
-
-      /* ТЗ-205: on a narrow context panel / mobile viewport, fall back to
-         the original vertical hop-chain stack — horizontal scrolling with
-         a fade mask doesn't work well at this width. */
-      .hop-chain {
-        flex-direction: column;
-        overflow-x: visible; overflow-y: visible;
-        -webkit-mask-image: none; mask-image: none;
-      }
-      .hop-row {
-        flex-direction: row; align-items: flex-start; text-align: left;
-        width: 100%;
-        padding: var(--space-1) 0; border-bottom: 1px solid rgba(40,48,68,.3);
-      }
-      .hop-row:last-child { border-bottom: none; }
-      .hop-connector {
-        align-self: flex-start; margin: 0 0 var(--space-2) 38px;
-      }
-      .path-edge-connector.hop-connector {
-        flex-direction: row; justify-content: flex-start; min-width: 0;
-      }
-    }
-
-    /* ТЗ-206/ТЗ-207: artist sidebar rebuilt as a bento grid — each block
-       (avatar+name header, tracks, role breakdown, path-to-seed mini
-       chain, Genius button) is its own .bento-tile instead of a stack of
-       same-weight rows. .artist-sidebar itself becomes the outer frame;
-       individual tiles carry their own background/shadow via .bento-tile.
-       Sidebar scope reduced to Tracks / Role breakdown / "1 hop from seed"
-       only — "Roles in this graph" and centrality ("Network importance")
-       sections were removed entirely (not just hidden).
-       Height: sidebar now shrinks to fit its content instead of reserving
-       a fixed max-height with empty space below a short sidebar — grows
-       naturally, capped at min(70vh,100%) so it never overflows the
-       viewport on a content-heavy day. */
-    .artist-sidebar {
-      display: none;
-      background: transparent; border: none; border-radius: 0;
-      padding: 0;
-      backdrop-filter: none; flex-direction: column;
-      box-shadow: none; overflow: hidden; flex-shrink: 0;
-      max-height: min(70vh, 100%);
-      gap: var(--space-3);
-    }
-    .artist-sidebar.show { display: flex; }
-
-    /* Header tile — large "avatar + name" bento tile (.bento-tile added in
-       markup), sits above the .sidebar-body grid as .artist-sidebar's own
-       first flex child — the biggest/most prominent tile in the layout. */
-    .sidebar-header {
-      display: flex; align-items: center; gap: var(--space-3);
-      flex-shrink: 0;
-    }
-    .sidebar-avatar {
-      width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
-      border: 2px solid var(--line);
-    }
-    .sidebar-info { flex: 1; min-width: 0; }
-    .sidebar-name {
-      font-family: "Syne", sans-serif; font-weight: 700; font-size: var(--text-sm);
-      color: var(--paper);
-    }
-    .sidebar-meta {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist); margin-top: var(--space-1); letter-spacing: .04em;
-    }
-    .sidebar-close {
-      border: 0; background: transparent; color: var(--mist); cursor: pointer;
-      font-size: 18px; padding: 0 4px; line-height: 1; flex-shrink: 0; transition: color .15s;
-    }
-    .sidebar-close:hover { color: var(--paper); }
-
-    /* .sidebar-body is now the bento grid container — explicit
-       grid-template-areas instead of a plain vertical flex column.
-       Header is its own tile outside the grid (see .sidebar-header).
-       Height: no more fixed max-height:calc(100vh-200px) scroll area —
-       body sizes to its own content, ancestor .artist-sidebar caps total
-       height instead. */
-    .sidebar-body {
-      display: grid;
-      grid-template-columns: 1fr;
-      grid-template-areas:
-        "tracks"
-        "rolebreakdown"
-        "path"
-        "genius";
-      gap: var(--space-3);
-      padding: var(--space-3);
-      overflow-y: auto;
-    }
-    #sidebar-tracks-tile              { grid-area: tracks;       }
-    #sidebar-rolebreakdown-tile       { grid-area: rolebreakdown;}
-    #sidebar-path-tile                { grid-area: path;         }
-    .sidebar-genius-btn               { grid-area: genius;       }
-
-    .sidebar-section-label {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      letter-spacing: .14em; text-transform: uppercase; margin-bottom: var(--space-2);
-    }
-    .sidebar-track {
-      display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2);
-      padding: var(--space-1) 0; border-bottom: 1px solid rgba(40,48,68,.35);
-    }
-    .sidebar-track:last-child { border-bottom: none; }
-    .sidebar-track-name { font-size: var(--text-xs); color: var(--paper); line-height: 1.3; flex: 1; min-width: 0; }
-    .sidebar-track-role {
-      font-family: "Space Mono", monospace; font-size: 11px; padding: 3px 6px;
-      border-radius: 999px; border: 1px solid; flex-shrink: 0; white-space: nowrap;
-    }
-    .sidebar-role-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-    .sidebar-role-chip {
-      font-family: "Space Mono", monospace; font-size: 11px;
-      padding: 3px 6px; border-radius: 999px; border: 1px solid;
-      display: flex; align-items: center; gap: 4px;
-    }
-    /* .role-chip--* colours are defined once, near .path-edge-count below —
-       kept only here as the layout rule (padding/shape), colour lives in a
-       single place instead of being duplicated across two blocks. */
-
-    /* Централити убрана — .centrality-indicator/.centrality-bar-*/
-    /* .centrality-percent удалены полностью вместе с их единственным
-       потребителем (buildCentralityIndicator в ui.js). */
-
-    .sidebar-genius-btn {
-      width: 100%; border: 1px solid var(--line); border-radius: var(--r-sm);
-      background: rgba(185,138,255,.08); color: var(--pulse);
-      font: inherit; font-size: var(--text-xs); padding: var(--space-3); cursor: pointer;
-      transition: background .15s, border-color .15s; text-align: center;
-      box-shadow: var(--shadow);
-    }
-    .sidebar-genius-btn:hover { background: rgba(185,138,255,.18); border-color: var(--pulse); }
-
-
-    .candidate-overlay {
-      position: absolute; inset: 0; z-index: 58;
-      background: var(--scrim); backdrop-filter: blur(var(--blur-scrim));
-      display: none; align-items: flex-start; justify-content: center; padding-top: 12vh;
-    }
-    .candidate-overlay.show { display: flex; }
-    .candidate-box {
-      background: var(--panel-2); border: 1px solid var(--line);
-      border-radius: var(--r-lg); padding: var(--space-5); width: min(480px, 92vw);
-      box-shadow: var(--shadow); display: flex; flex-direction: column; gap: var(--space-3);
-    }
-    .candidate-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
-    .candidate-title {
-      font-family: "Syne", sans-serif; font-weight: 700; font-size: var(--text-base); color: var(--paper);
-    }
-    .candidate-subtitle {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      letter-spacing: .08em; margin-top: var(--space-1);
-    }
-    .candidate-close-btn {
-      border: 0; background: transparent; color: var(--mist); cursor: pointer;
-      font-size: 20px; line-height: 1; padding: 0 4px; transition: color .15s; flex-shrink: 0;
-    }
-    .candidate-close-btn:hover { color: var(--paper); }
-    .candidate-list { display: flex; flex-direction: column; gap: var(--space-1); }
-    .candidate-item {
-      display: flex; align-items: center; gap: var(--space-3);
-      padding: var(--space-2) var(--space-3); border-radius: var(--r-sm);
-      border: 1px solid var(--line); background: rgba(var(--panel-rgb),.60);
-      cursor: pointer; transition: border-color .15s, background .15s;
-    }
-    .candidate-item:hover { border-color: var(--signal); background: rgba(94,230,197,.06); }
-    .candidate-avatar {
-      width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
-      border: 1px solid var(--line);
-    }
-    .candidate-info { flex: 1; min-width: 0; }
-    .candidate-name { font-size: var(--text-sm); font-weight: 600; color: var(--paper); }
-    .candidate-score {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist); margin-top: var(--space-1);
-    }
-
-    /* ТЗ ("Find on map" должен выглядеть как find-path на этой странице):
-       раньше это был полноэкранный тёмный оверлей (scrim + blur на весь
-       канвас) с карточкой по центру — тяжёлый command-palette-стиль,
-       который выключает весь остальной интерфейс графа. Теперь — та же
-       докнутая карточка в углу канвы, что и .path-panel/.search-modal.
-       docked: тот же материал, то же место, граф вокруг остаётся живым
-       и видимым, а не гаснет под сплошным затемнением. */
-    .node-search-overlay {
-      position: absolute; z-index: 20;
-      top: var(--space-4); right: var(--space-4); left: auto; bottom: auto;
-      background: transparent; backdrop-filter: none;
-      display: none; padding: 0; width: 380px; max-width: calc(100vw - 88px);
-    }
-    .node-search-overlay.show { display: flex; }
-    .node-search-box {
-      background: var(--panel-2); border: 1px solid var(--line);
-      border-radius: var(--r-lg); padding: var(--space-4); width: 100%;
-      backdrop-filter: blur(var(--blur-scrim));
-      box-shadow: var(--shadow); display: flex; flex-direction: column; gap: var(--space-3);
-    }
-    .node-search-hint {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-      letter-spacing: .14em; text-transform: uppercase;
-    }
-    /* ТЗ: поиск по уже отрисованному графу переведён на тот же материал,
-       что и find path — #node-search-input использует класс .path-input
-       (см. .path-panel ниже) вместо собственного bespoke стиля, а
-       результаты — те же бордер-плитки, что .hop-row в цепочке пути,
-       вместо плоских строк списка. */
-    #node-search-results { display: flex; flex-direction: column; gap: var(--space-2); max-height: 280px; overflow-y: auto; }
-    .ns-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: var(--space-2) var(--space-3); cursor: pointer;
-      border-radius: var(--r-md); border: 1px solid var(--line); background: rgba(var(--panel-rgb),.4);
-      transition: background .12s, border-color .12s;
-    }
-    .ns-item:hover,
-    .ns-item.ns-active { background: rgba(94,230,197,.08); border-color: rgba(94,230,197,.4); }
-    .ns-name { color: var(--paper); font-size: var(--text-sm); }
-    .ns-weight { color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs); }
-    .ns-empty { color: var(--mist); font-size: var(--text-sm); padding: var(--space-2) var(--space-3); }
-
-    .overlay {
-      position: absolute; z-index: 6; left: 50%; top: 50%;
-      transform: translate(-50%, -50%);
-      display: none; align-items: center; gap: var(--space-3);
-      font-family: "Space Mono", monospace; font-size: var(--text-sm); color: var(--paper);
-      background: rgba(var(--ink2-rgb),.90); border: 1px solid var(--line);
-      border-radius: var(--r-md); padding: var(--space-4) var(--space-6); box-shadow: var(--shadow);
-    }
-    .overlay.show { display: flex; }
-    .spinner {
-      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.18);
-      border-top-color: var(--signal); border-radius: 50%;
-      animation: spin .8s linear infinite; flex-shrink: 0;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .toast {
-      position: absolute; z-index: 70; left: 50%; top: var(--space-5);
-      transform: translateX(-50%); display: none;
-      max-width: min(520px, 92vw); font-size: var(--text-sm); color: #2A0E16;
-      background: var(--warn); border-radius: var(--r-sm); padding: var(--space-2) var(--space-4);
-      box-shadow: var(--shadow); text-align: center; pointer-events: none;
-    }
-    .toast.show { display: block; }
-    .toast.toast--info { color: var(--on-accent); background: var(--signal); }
-    .toast.has-action { pointer-events: auto; }
-    .toast-retry-btn {
-      margin-left: var(--space-3); pointer-events: auto; cursor: pointer;
-      border: 1px solid currentColor; border-radius: var(--r-sm);
-      background: transparent; color: inherit; font: inherit;
-      font-weight: 600; padding: 2px var(--space-2);
-    }
-    .toast-retry-btn:hover { background: rgba(0,0,0,.08); }
-
-    div.vis-tooltip {
-      position: absolute;
-      background: var(--panel) !important; color: var(--paper) !important;
-      border: 1px solid var(--line) !important; border-radius: var(--r-md) !important;
-      padding: 0 !important; font-family: "Inter", system-ui, sans-serif !important;
-      font-size: var(--text-sm) !important; box-shadow: 0 16px 40px rgba(0,0,0,.55) !important;
-      white-space: normal !important; max-width: 320px !important;
-      pointer-events: none; z-index: 20;
-    }
-    .vis-tooltip .tt { padding: 0; min-width: 180px; }
-    .vis-tooltip .tt-name { font-weight: 600; color: var(--paper); padding: var(--space-2) var(--space-3) 0; display: block; }
-    .vis-tooltip .tt-seed {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); letter-spacing: .08em;
-      text-transform: uppercase; color: var(--signal);
-      border: 1px solid rgba(94,230,197,.5); border-radius: 999px; padding: var(--space-1) var(--space-1);
-      margin-left: var(--space-1); vertical-align: middle;
-    }
-    .vis-tooltip .tt-head {
-      display: flex; align-items: center; gap: var(--space-1); font-weight: 600; font-size: var(--text-sm);
-      padding: var(--space-2) var(--space-3) var(--space-2); border-bottom: 1px solid var(--line); color: var(--paper);
-    }
-    .vis-tooltip .tt-x { color: var(--mist); font-weight: 400; }
-    .vis-tooltip .tt-meta {
-      font-family: "Space Mono", monospace; font-size: var(--text-xs); letter-spacing: .05em;
-      text-transform: uppercase; color: var(--mist);
-      padding: var(--space-1) var(--space-3) var(--space-1); display: flex; align-items: center; gap: var(--space-1);
-    }
-    .vis-tooltip .tt-role-badge {
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 3px; border-radius: 999px; border: 1px solid; color: var(--primary2); border-color: rgba(143,166,201,.4); background: rgba(143,166,201,.08);
-    }
-    .vis-tooltip .tt-role-badge svg.role-icon { margin: 0; }
-    .vis-tooltip .tt-role-badge--featured { color: var(--signal); border-color: rgba(94,230,197,.42); background: rgba(94,230,197,.08); }
-    .vis-tooltip .tt-role-badge--producer { color: var(--pulse);  border-color: rgba(185,138,255,.42); background: rgba(185,138,255,.08); }
-    .vis-tooltip .tt-role-badge--writer   { color: var(--amber);  border-color: rgba(255,210,122,.35); background: rgba(255,210,122,.08); }
-    .vis-tooltip .tt-list { list-style: none; padding: 0 var(--space-3) var(--space-3); display: grid; gap: var(--space-1); }
-    .vis-tooltip .tt-row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
-    .vis-tooltip .tt-song { color: var(--paper); line-height: 1.3; font-size: var(--text-xs); }
-    .vis-tooltip .tt-roles { display: flex; flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; flex-shrink: 0; }
-    .vis-tooltip .tt-role {
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 3px; border-radius: 999px; border: 1px solid var(--line); color: var(--primary2);
-    }
-    .vis-tooltip .tt-role svg.role-icon { margin: 0; }
-    .vis-tooltip .tt-role--featured { color: var(--signal); border-color: rgba(94,230,197,.42); background: rgba(94,230,197,.08); }
-    .vis-tooltip .tt-role--producer { color: var(--pulse);  border-color: rgba(185,138,255,.42); background: rgba(185,138,255,.08); }
-    .vis-tooltip .tt-role--writer   { color: var(--amber);  border-color: rgba(255,210,122,.35); background: rgba(255,210,122,.08); }
-    .vis-tooltip .tt-empty { color: var(--mist); font-size: var(--text-xs); }
-    .vis-tooltip .tt-hint  { font-size: var(--text-xs); color: #6B7589; padding: 0 var(--space-3) var(--space-2); }
-
-    @media (max-width: 700px) {
-      .rail { width: 48px; }
-      .rail-btn { width: 34px; height: 34px; font-size: var(--text-base); }
-      .rail-btn[data-tip]::after { display: none; }
-      .status { left: 80px; }
-      .actions-bar { right: var(--space-2); bottom: var(--space-3); }
-      .context-panel { right: var(--space-2); left: 80px; width: auto; top: var(--space-2); bottom: var(--space-2); }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .search-modal, .search-modal *, .canvas-chrome, .canvas-decorator, .decor-dot {
-        transition: none !important; animation: none !important;
-      }
-      .decor-dot { opacity: var(--decor-o, .5); }
-      .spinner { animation: none; }
-      .flip-ghost { display: none !important; }
-      @supports (view-transition-name: none) {
-        .search-wrap { view-transition-name: none; }
-      }
-    }
-  </style>
+  <!-- [SF-WEB-40] Design system bundled from src/styles/ (esbuild →
+       dist/style.<hash>.css). "/style.css" is rewritten to the real
+       content-hashed URL at serve time by handler-index (see
+       static_handler.cpp TransformContent), exactly like "/script.js"
+       below. The former ~1932-line inline stylesheet now lives, verbatim
+       and systematised, under src/styles/. -->
+  <link rel="stylesheet" href="/style.css" />
 
 </head>
 
@@ -1678,6 +88,13 @@
       <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
+    <!-- [SF-WEB-04] #btn-export-json's icon — braces, to read as "data"
+         next to #btn-export-png's download arrow. -->
+    <symbol id="icon-braces" viewBox="0 0 24 24">
+      <path d="M8 4c-1.7 0-2.5.9-2.5 2.5v2.8c0 1-.4 1.4-1.5 1.7 1.1.3 1.5.7 1.5 1.7v2.8C5.5 17.1 6.3 18 8 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M16 4c1.7 0 2.5.9 2.5 2.5v2.8c0 1 .4 1.4 1.5 1.7-1.1.3-1.5.7-1.5 1.7v2.8c0 1.6-.8 2.5-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
     <symbol id="icon-key" viewBox="0 0 24 24">
       <circle cx="7" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       <rect x="10" y="10" width="8" height="4" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1694,8 +111,39 @@
       <path d="M12 8v0.01M12 12v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
+    <!-- [SF-WEB-05] scan-status-badge's partial-data/scanning indicator. -->
+    <symbol id="icon-clock" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
     <symbol id="icon-plus" viewBox="0 0 24 24">
       <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <!-- [SF-WEB-14] canvas-zoom-cluster's zoom-out. -->
+    <symbol id="icon-minus" viewBox="0 0 24 24">
+      <path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <!-- [SF-WEB-75] Compare rail button icon — was a Venn-diagram
+         intersection (two overlapping circles), which reads as "set
+         overlap" rather than "click two graph nodes". Redrawn as two graph
+         nodes joined by a connecting line — the literal mechanic
+         (compare-mode.js::handleCompareModeNodeClick picks a first, then a
+         second node) instead of an abstract set operation. -->
+    <symbol id="icon-compare" viewBox="0 0 24 24">
+      <circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="18" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.5 2" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- [SF-WEB-61] BubbleSet toggle rail button — three soft overlapping
+         circles, echoing the haze-per-sector visual it turns on/off. -->
+    <symbol id="icon-haze" viewBox="0 0 24 24">
+      <circle cx="9"  cy="9"  r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="15" cy="9"  r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="12" cy="15" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
     </symbol>
 
     <!-- IDEA-23: theme toggle icons — sun shown while dark (switch to
@@ -1730,9 +178,30 @@
     <div class="canvas-decorator" id="canvas-decorator" aria-hidden="true"></div>
 
     <div class="search-modal is-first-visit" id="search-modal">
-      <span class="eyebrow">// genius collaboration atlas</span>
-      <h1>Trace the people behind the <span class="grad">features</span>.</h1>
-      <p>Search an artist to map who they've made songs with. Drag, zoom, and click any node to explore their world.</p>
+      <!-- [SF-WEB-31 follow-up] Референс — главные страницы Google/Yandex:
+           один крупный вордмарк по центру, сразу под ним поиск, больше
+           почти ничего. Раньше здесь были eyebrow-тег + отдельный
+           .hero-logo (градиентная точка) + трёхстрочный слоган ("Trace the
+           people behind the features.") — три разных представления бренда
+           одновременно. Теперь один элемент: САМО НАЗВАНИЕ сервиса тем же
+           шрифтом/размером, что был у слогана (font-family/font-size/
+           font-weight у h1 не менялись, только текст и вёрстка) — вордмарк
+           = логотип, отдельная иконка-точка не нужна (ни Google, ни Yandex
+           не дублируют текстовый логотип отдельной иконкой). Тот же .grad
+           градиент, что раньше подсвечивал только "features", теперь на
+           всё название — сервис становится узнаваемым по одному
+           взгляду. -->
+      <div class="hero-header">
+        <h1><span class="grad">Six Feet</span></h1>
+        <!-- [SF-WEB-50] One quiet thesis line under the wordmark — not the
+             old instructional paragraph ("Search an artist to map who
+             they've made songs with", removed in SF-WEB-31 for competing
+             with the search field itself). States what the product IS,
+             doesn't tell the user what to do; styled small/muted
+             (.hero-tagline, hero.css) so weight stays on the search field
+             below, per this ticket's own brief. -->
+        <p class="hero-tagline">Six degrees of collaboration.</p>
+      </div>
 
       <!-- IDEA-41: segmented Explore/Connect switch sits above the hero
            search. "Explore" (default) is the existing single-artist graph
@@ -1741,7 +210,7 @@
            panel. Only this landing presentation/trigger changes — the
            path search call (runServerPath) and the in-graph path finder
            (rail/⌘K) are untouched. -->
-      <div class="hero-mode-switch" id="hero-mode-switch" role="tablist" aria-label="Search mode" data-mode="explore">
+      <div class="hero-mode-switch ui-segment" id="hero-mode-switch" role="tablist" aria-label="Search mode" data-mode="explore">
         <button type="button" class="hero-mode-tab" id="hero-mode-tab-explore" role="tab"
           aria-selected="true" aria-controls="hero-mode-panel-explore" tabindex="0">
           <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg>
@@ -1763,39 +232,58 @@
               <input id="hero-input" type="text" autocomplete="off"
                 placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
                 aria-autocomplete="list" aria-controls="hero-ac" />
-              <button type="submit">Map it</button>
+              <button type="submit" class="ui-btn ui-btn--primary">Map it</button>
             </form>
             <div class="ac-dropdown" id="hero-ac" role="listbox"></div>
           </div>
 
-          <!-- ТЗ (редизайн #2): "Include roles" — лёгкая строка без своей
-               карточки/фона, всегда видна вместе с Explore-поиском. -->
-          <div class="include-roles-row">
-            <span class="include-roles-label">Include roles</span>
+          <!-- [SF-WEB-31] Redesign: roles were a permanently-visible strip
+               (see the ТЗ #2 comment this replaces) — one more block always
+               competing for attention on the first screen alongside the
+               eyebrow/h1/p/mode-switch/chips/auth-bar. Same buttons, same
+               ids, same State.activeFilters wiring (setupFilterToggles,
+               canvas-controls.js) — only the presentation is now a native
+               <details> disclosure, collapsed by default, so the first
+               screen's default view drops one whole block. Native
+               <details>/<summary> needs no JS for open/close, and keeps
+               the existing .include-roles-row class (and therefore the
+               shared .search-modal open/close opacity+transform transition
+               it was already part of, see CSS) unchanged. -->
+          <details class="include-roles-row">
+            <summary class="include-roles-summary">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg>
+              <span>Filters</span>
+            </summary>
             <div class="role-filter-group">
-              <button type="button" class="role-filter-btn active" id="hero-filter-featured" data-role="featured">
+              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-featured" data-role="featured">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg><span>Featured</span>
               </button>
-              <button type="button" class="role-filter-btn active" id="hero-filter-producer" data-role="producer">
+              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-producer" data-role="producer">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg><span>Producer</span>
               </button>
-              <button type="button" class="role-filter-btn active" id="hero-filter-writer" data-role="writer">
+              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-writer" data-role="writer">
                 <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg><span>Writer</span>
               </button>
             </div>
-          </div>
+          </details>
 
           <div class="chips-label" id="chips-label">Try one of these</div>
           <div class="chips" id="chips">
-            <button class="chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
-            <button class="chip" data-artist="Gorillaz">Gorillaz</button>
-            <button class="chip" data-artist="Rosalía">Rosalía</button>
-            <button class="chip" data-artist="Calvin Harris">Calvin Harris</button>
-            <button class="chip" data-artist="Tyler, the Creator">Tyler, the Creator</button>
+            <button class="chip ui-chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
+            <button class="chip ui-chip" data-artist="Gorillaz">Gorillaz</button>
+            <button class="chip ui-chip" data-artist="Rosalía">Rosalía</button>
+            <button class="chip ui-chip" data-artist="Calvin Harris">Calvin Harris</button>
+            <button class="chip ui-chip" data-artist="Tyler, the Creator">Tyler, the Creator</button>
           </div>
         </div>
 
-        <div class="hero-mode-panel hero-connect-panel bento-tile bento-tile--md" id="hero-mode-panel-connect" role="tabpanel" aria-labelledby="hero-mode-tab-connect">
+        <!-- [fix] Was also bento-tile bento-tile--md — the only hero-mode
+             panel wrapped in its own boxed card; Explore's panel floats
+             its fields directly on the canvas with no such box, so
+             Connect visually stuck out as a heavier, separate surface
+             next to it. Dropped so both panels read as the same kind of
+             thing (see hero.css's own comment on .hero-connect-panel). -->
+        <div class="hero-mode-panel hero-connect-panel" id="hero-mode-panel-connect" role="tabpanel" aria-labelledby="hero-mode-tab-connect">
           <div class="hero-connect-row">
             <div class="hero-route-rail">
               <span class="hero-route-dot hero-route-dot--from" aria-hidden="true">●</span>
@@ -1817,7 +305,7 @@
           </div>
 
           <div class="hero-connect-actions">
-            <button type="button" class="hero-connect-run" id="btn-hero-run-path">
+            <button type="button" class="hero-connect-run ui-btn ui-btn--primary" id="btn-hero-run-path">
               <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
               <span>Trace the path</span>
             </button>
@@ -1827,7 +315,10 @@
             <button type="button" class="dock-btn" id="btn-hero-clear-path">Clear</button>
           </div>
 
-          <div class="path-result" id="hero-path-result"></div>
+          <!-- [fix] Was also a #hero-path-result div here — loading/error
+               states now go through the shared canvas-wide overlay/toast
+               (ui/loading.js, ui/toast.js), same as regular artist search,
+               instead of an element embedded in this panel. -->
           <div class="hop-chain" id="hero-hop-chain"></div>
         </div>
       </div>
@@ -1841,7 +332,6 @@
             </svg>
             your Genius
           </a>
-          <span class="auth-hint-text">account to start exploring</span>
         </div>
         <div class="auth-user" id="auth-user" style="display:none">
           <span class="auth-user-name" id="auth-user-name">—</span>
@@ -1849,6 +339,20 @@
         </div>
       </div>
     </div>
+
+    <!-- [SF-WEB-19] Unified empty-state surface for the canvas — populated
+         by src/ui/canvas-states.js (renderEmptyState), never hand-authored
+         here beyond this empty shell. ONLY ever shown after clearCanvas()
+         (canvas-controls.js) clears an existing graph — never on first
+         visit, where the landing search modal is already the onboarding
+         surface. clearCanvas() no longer reopens that modal (stays on the
+         graph page instead), so this card is what fills the empty canvas.
+         Placed AFTER #search-modal on purpose — see the
+         #search-modal:not(.is-closed) ~ #canvas-state rule below, which
+         needs this sibling order: it hides the card while a search modal
+         (e.g. the docked one this card's own button opens) is covering the
+         same screen region. -->
+    <div class="ui-state-slot" id="canvas-state"></div>
 
     <section class="canvas-chrome" id="canvas-chrome">
 
@@ -1867,43 +371,55 @@
         <span class="rl">Six Feet</span>
       </button>
 
-      <button class="rail-btn" id="btn-search-open" data-tip="Search artist">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-search-open" data-tip="Search artist">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg><span class="rl">Search</span>
       </button>
-      <button class="rail-btn" id="btn-node-search" data-tip="Search loaded nodes (⌘K)">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-node-search" data-tip="Search loaded nodes (⌘K)">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg><span class="rl">Find on map</span>
       </button>
-      <button class="rail-btn" id="btn-find-path" data-tip="Find path">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-find-path" data-tip="Find path">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg><span class="rl">Find path</span>
       </button>
+      <!-- [SF-WEB-47] Graph-native Compare mode (vis-adapter/compare-mode.js):
+           click a node to set the first pick, click another to set the
+           second — opens the Compare panel for that pair and also
+           highlights the connecting path on the canvas. Same
+           .rail-btn.active kit the role filters already use for "on" state
+           (see canvas-controls.css). Replaces the old pin-to-select
+           mechanic (object-action-bar's Pin/Unpin, removed) this used to
+           gate on. -->
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-compare-mode" data-tip="Click two nodes to compare them" aria-pressed="false">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-compare"/></svg><span class="rl">Compare 2 nodes</span>
+      </button>
+      <!-- [SF-WEB-61] BubbleSet is now a manual toggle, OFF by default — no
+           more auto show/hide by node count (see bubble-contours.js). Same
+           .rail-btn.active/aria-pressed kit as Compare mode above. -->
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-bubble-sets" data-tip="BubbleSets — soft cluster haze" aria-pressed="false">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-haze"/></svg><span class="rl">BubbleSets</span>
+      </button>
 
+      <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
+           visible on the canvas) — this was the rail's duplicate.
+           Fit view moved to .canvas-zoom-cluster (same #btn-fit-view id,
+           same click handler in main.js) — this was the rail's duplicate. -->
       <div class="rail-sep"></div>
 
-      <button class="rail-btn" id="filter-featured" data-tip="Role: featured" data-role="featured">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg><span class="rl">Featured</span>
-      </button>
-      <button class="rail-btn" id="filter-producer" data-tip="Role: producer" data-role="producer">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg><span class="rl">Producer</span>
-      </button>
-      <button class="rail-btn" id="filter-writer" data-tip="Role: writer" data-role="writer">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg><span class="rl">Writer</span>
-      </button>
-
-      <div class="rail-sep"></div>
-
-      <button class="rail-btn" id="btn-fit-view" data-tip="Fit view (F)">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-frame"/></svg><span class="rl">Fit view</span>
-      </button>
-      <button class="rail-btn" id="btn-copy-link" data-tip="Copy shareable link">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-copy-link" data-tip="Copy shareable link">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg><span class="rl">Share link</span>
       </button>
-      <button class="rail-btn" id="btn-export-png" data-tip="Download PNG" aria-label="Download graph as PNG image">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-export-png" data-tip="Download PNG" aria-label="Download graph as PNG image">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-download"/></svg><span class="rl">Download PNG</span>
+      </button>
+      <!-- [SF-WEB-04] Second rail button next to PNG export, same
+           .ui-btn/.ui-btn--ghost kit — plain second entry point rather than
+           adding a format-picker interaction to the existing PNG button. -->
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-export-json" data-tip="Download JSON" aria-label="Download graph data as JSON">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-braces"/></svg><span class="rl">Download JSON</span>
       </button>
 
       <div class="rail-sep"></div>
 
-      <button class="rail-btn" id="btn-clear-graph" data-tip="Clear graph" style="color:var(--warn);">
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-clear-graph" data-tip="Clear graph" style="color:var(--warn);">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-close"/></svg><span class="rl">Clear</span>
       </button>
 
@@ -1914,6 +430,39 @@
       </span>
     </nav>
 
+    <!-- [SF-WEB-14] Compact zoom/fit cluster — reuses fitView/zoomIn/
+         zoomOut/focusSeed from ui/canvas-controls.js (main.js wires the
+         clicks); #btn-fit-view keeps its id, moved here from the rail. -->
+    <div class="canvas-zoom-cluster ui-segment" id="canvas-zoom-cluster">
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-zoom-in" title="Zoom in (+)" aria-label="Zoom in">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-zoom-out" title="Zoom out (-)" aria-label="Zoom out">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-minus"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-fit-view" title="Fit view (F)" aria-label="Fit view">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-frame"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-focus-seed" title="Focus seed (Esc)" aria-label="Center the view on the seed artist">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg>
+      </button>
+    </div>
+
+    <!-- [SF-WEB-14] Always-visible role-filter segment — was the rail's
+         #filter-featured/-producer/-writer, same State.activeFilters, see
+         ui/canvas-controls.js::setupFilterToggles. -->
+    <div class="role-filter-segment ui-segment" id="role-filter-segment">
+      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-featured" data-role="featured" title="Role: featured" aria-label="Toggle featured role filter">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-producer" data-role="producer" title="Role: producer" aria-label="Toggle producer role filter">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg>
+      </button>
+      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-writer" data-role="writer" title="Role: writer" aria-label="Toggle writer role filter">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg>
+      </button>
+    </div>
+
     <div class="status" id="status" hidden>
       <button class="seed-card" id="seed-card" type="button" title="Back to seed focus">
         <img class="seed-card-avatar" id="seed-card-avatar" src="" alt="" />
@@ -1923,14 +472,35 @@
         </div>
       </button>
 
-      <span class="rate-limit-badge" id="rate-limit-badge" hidden></span>
-
-      <span class="truncation-banner" id="truncation-banner" role="status" aria-live="polite" hidden>
-        <span id="truncation-banner-text"></span>
-        <button class="truncation-banner-action" id="truncation-banner-action" type="button">Show more</button>
+      <!-- [SF-WEB-05] Inline data-completeness indicator — depth/partial/
+           background-enrichment, driven by /api/v1/status/stream events
+           (see api.js::pollEnrichment → ui/canvas-controls.js::updateScanStatus).
+           Hidden once the deep scan reaches Full depth — data is complete,
+           nothing left to explain. -->
+      <span class="scan-status-badge" id="scan-status-badge" hidden>
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-clock"/></svg>
+        <span id="scan-status-text"></span>
       </span>
 
-      <button class="status-icon-btn" id="btn-load-more-collabs" type="button" aria-label="Show more collaborations" data-tip="Show more collaborations" title="Show more collaborations">
+      <!-- [SF-WEB-48] Quiet live rate-limit indicator — was a permanently-
+           visible "N/M req/s" text pill (raw, always on-screen); now a
+           small dot, calm with headroom, that "wakes up" (see
+           .rate-limit-badge--low in canvas-controls.css) only when close
+           to the limit. The raw reading moved to the native `title`
+           tooltip (see updateRateLimitIndicator in canvas-controls.js) —
+           same idiom .scan-status-badge/.truncation-icon-btn already use
+           for their own descriptive text. -->
+      <span class="rate-limit-badge" id="rate-limit-badge" hidden>
+        <span class="rate-limit-badge-dot"></span>
+      </span>
+
+      <!-- [style pass] Collapsed to an info-btn-shaped icon (was a
+           permanently-expanded text pill). Clicking it IS "show more
+           collaborations" (same effect as the old inline action button) —
+           see canvas-controls.js::setupLoadMoreCollabs/updateTruncationBanner,
+           which keeps title/aria-label in sync with the count so the
+           descriptive text is available on hover/focus without a popover. -->
+      <button class="status-icon-btn truncation-icon-btn" id="truncation-banner" type="button" hidden>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
       </button>
 
@@ -1973,47 +543,166 @@
 
     <div class="context-panel" id="context-panel">
 
-      <div class="artist-sidebar" id="artist-sidebar">
-        <div class="sidebar-header bento-tile bento-tile--md">
-          <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
-          <div class="sidebar-info">
-            <div class="sidebar-name truncate" id="sidebar-name">—</div>
-            <div class="sidebar-meta" id="sidebar-meta">—</div>
-          </div>
-          <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">×</button>
-        </div>
-        <div class="sidebar-body">
-          <div class="bento-tile bento-tile--md" id="sidebar-tracks-tile">
-            <div class="sidebar-section-label">Tracks</div>
-            <div id="sidebar-tracks"></div>
-          </div>
-          <button class="sidebar-genius-btn" id="sidebar-genius-btn">Open on Genius ↗</button>
-        </div>
-      </div>
+      <!-- [SF-WEB-12] One companion panel: #artist-sidebar (node/edge
+           context) and #path-panel (path context) are now plain sections
+           of this single .ui-panel card, mutually exclusive — see
+           ui/sidebar.js and ui/modals.js::openPathPanel/closePathPanel. -->
+      <div class="companion-panel ui-panel" id="companion-panel">
 
-      <div class="path-panel" id="path-panel">
-        <div class="path-panel-header">
-          <div class="path-title">Six degrees of separation</div>
-          <button class="path-close" id="path-panel-close" title="Close" aria-label="Close">×</button>
+        <!-- [SF-WEB-27] Honest one-line empty state — the previous copy
+             pointed at SF-WEB-21 (command palette), which shipped and was
+             then reverted (see SF-WEB-23); this no longer references any
+             specific future ticket. Shown/hidden via the same .show
+             classList toggle SF-WEB-12 already uses for the other two
+             sections, not a new mechanism. -->
+        <div class="companion-empty" id="companion-empty">
+          <div>Click a node or an edge on the graph to see details here.</div>
         </div>
-        <div class="path-input-wrap">
-          <label class="sr-only" for="path-from-input">From artist</label>
-          <input class="path-input" id="path-from-input" type="text"
-            placeholder="From artist…" autocomplete="off" />
-          <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
+
+        <div class="artist-sidebar" id="artist-sidebar">
+          <div class="sidebar-header">
+            <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
+            <div class="sidebar-info">
+              <div class="sidebar-name truncate" id="sidebar-name">—</div>
+              <div class="sidebar-meta" id="sidebar-meta">—</div>
+            </div>
+            <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">×</button>
+          </div>
+          <div class="sidebar-body">
+            <!-- [SF-WEB-33] Edge-only — both ends of the selected edge,
+                 clickable → showArtistSidebar for that node (mutual
+                 exclusion with the edge selection enforced the same way
+                 as every other node-selecting entry point, see
+                 ui/sidebar.js::showArtistSidebar). Hidden for node
+                 context. -->
+            <div class="ui-tile" id="sidebar-endpoints-tile" style="display:none">
+              <div class="sidebar-section-label">Connection</div>
+              <div class="path-chain-container">
+                <div class="path-chain-fade path-chain-fade--left"></div>
+                <div class="path-chain-track" id="sidebar-endpoints-track"></div>
+                <div class="path-chain-fade path-chain-fade--right"></div>
+              </div>
+            </div>
+            <div class="ui-tile" id="sidebar-tracks-tile">
+              <div class="sidebar-section-label">Tracks</div>
+              <div id="sidebar-tracks"></div>
+            </div>
+            <!-- [SF-WEB-12] Static now — sidebar.js used to create this tile
+                 on the fly via ensureTile() (the "наложение" bug from
+                 dynamic grid-tile insertion the ticket calls out). -->
+            <div class="ui-tile" id="sidebar-rolebreakdown-tile">
+              <div class="sidebar-section-label">Role breakdown</div>
+              <div class="sidebar-role-chips" id="sidebar-role-chips"></div>
+            </div>
+            <!-- [SF-WEB-12] Same — was ensureTile()-created; label +
+                 .path-chain-container/-fade wrapper are static, only
+                 #sidebar-path-track's contents are written by JS. -->
+            <div class="ui-tile" id="sidebar-path-tile">
+              <div class="sidebar-section-label">1 hop from seed</div>
+              <div class="path-chain-container">
+                <div class="path-chain-fade path-chain-fade--left"></div>
+                <div class="path-chain-track" id="sidebar-path-track"></div>
+                <div class="path-chain-fade path-chain-fade--right"></div>
+              </div>
+            </div>
+            <!-- [SF-WEB-27] Mini-actions for the node currently shown in
+                 this node context — expand/focus/genius, wired per-node
+                 by ui/sidebar.js::syncObjectActionBar. Used to be a
+                 separately-floating #object-action-bar sitting above the
+                 whole companion panel PLUS a standalone .sidebar-genius-btn
+                 tile duplicating the Genius action — merged into this one
+                 row, Genius is one of the three icons now. Hidden for edge
+                 context (none of these three apply to an edge) and while
+                 nothing is selected. [SF-WEB-47] The fourth action (pin)
+                 is gone — it only ever existed to gate Compare's old
+                 pinned-pair selection; Compare now picks its pair
+                 graph-natively (see #btn-compare-mode above). -->
+            <div class="object-action-bar ui-segment" id="object-action-bar" hidden>
+              <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-expand" title="Expand" aria-label="Expand this artist's collaborators">
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
+              </button>
+              <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-focus" title="Focus" aria-label="Center the view on this artist">
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg>
+              </button>
+              <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-genius" title="Open on Genius" aria-label="Open this artist on Genius">
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
-        <div class="path-input-wrap">
-          <label class="sr-only" for="path-to-input">To artist</label>
-          <input class="path-input" id="path-to-input" type="text"
-            placeholder="To artist…" autocomplete="off" />
-          <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+
+        <div class="path-panel" id="path-panel">
+          <div class="path-panel-header">
+            <div class="path-title">Six degrees of separation</div>
+            <button class="path-close" id="path-panel-close" title="Close" aria-label="Close">×</button>
+          </div>
+          <!-- [fix] Rebuilt (variant B, picked from 5 mockups): the swap
+               button sits between the two fields and actually does
+               something (swaps From/To), instead of the two bare stacked
+               fields this used to be — no reserved space for a loading
+               state anywhere here, that's the canvas-wide overlay now
+               (see runServerPath's own comment, ui/path-result.js). -->
+          <div class="path-panel-fields">
+            <div class="path-input-wrap">
+              <label class="sr-only" for="path-from-input">From artist</label>
+              <input class="path-input" id="path-from-input" type="text"
+                placeholder="From artist…" autocomplete="off" />
+              <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
+            </div>
+            <div class="path-input-wrap">
+              <label class="sr-only" for="path-to-input">To artist</label>
+              <input class="path-input" id="path-to-input" type="text"
+                placeholder="To artist…" autocomplete="off" />
+              <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+            </div>
+            <button type="button" class="path-swap-btn" id="btn-swap-path" title="Swap From/To" aria-label="Swap From and To artists">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-swap"/></svg>
+            </button>
+          </div>
+          <div class="path-actions">
+            <button class="dock-btn dock-btn--primary" id="btn-run-path">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
+              <span>Find path</span>
+            </button>
+            <button class="path-clear-btn" id="btn-clear-path">Clear</button>
+          </div>
+          <!-- [fix] Was also a #path-result div here — loading/error states
+               now go through the shared canvas-wide overlay/toast
+               (ui/loading.js, ui/toast.js), same as regular artist search,
+               instead of an element embedded in this panel (reported as
+               the search process feeling "bolted into the window"). -->
+          <div class="hop-chain" id="hop-chain"></div>
         </div>
-        <div class="path-actions">
-          <button class="dock-btn" id="btn-run-path" style="flex:1">Find path</button>
-          <button class="dock-btn" id="btn-clear-path">Clear</button>
+
+        <!-- [SF-WEB-20] Compare mode — common immediate collaborators of two
+             graph-picked artists (see #btn-compare-mode above /
+             vis-adapter/compare-mode.js / ui/compare-panel.js::showComparePanel).
+             Same "one companion-panel section visible at a time" pattern as
+             #artist-sidebar/#path-panel above. -->
+        <div class="compare-panel" id="compare-panel">
+          <div class="path-panel-header">
+            <div class="path-title" id="compare-title">Compare</div>
+            <button class="path-close" id="compare-panel-close" title="Close" aria-label="Close">×</button>
+          </div>
+          <!-- [fix] The two compared artists themselves — reported as
+               missing (only the "A × B" text title and the shared-
+               collaborators list existed, no visual trace of WHICH two
+               artists are being compared). Populated by
+               ui/compare-panel.js::showComparePanel, same click-to-focus
+               pattern as .compare-item below. -->
+          <div class="compare-pair" id="compare-pair"></div>
+          <!-- [fix] The trace between the two artists (every hop from the
+               first to the second, inclusive) — reused verbatim from the
+               six-degrees path result (ui/path-result.js::renderHopChain),
+               fed by the same client-side BFS
+               (vis-adapter/compare-mode.js) that also highlights it on the
+               canvas. Reported as confusing when only "No shared
+               collaborators" showed with no trace at all. -->
+          <div class="sidebar-section-label" id="compare-trace-label">Connection</div>
+          <div class="hop-chain" id="compare-hop-chain"></div>
+          <div class="compare-list" id="compare-list"></div>
         </div>
-        <div class="path-result" id="path-result"></div>
-        <div class="hop-chain" id="hop-chain"></div>
+
       </div>
 
     </div>
@@ -2054,8 +743,18 @@
 
   <div class="toast" id="toast" role="alert" aria-live="polite"></div>
 
-  <!-- Alternative: self-host vis-network@9.1.9/standalone/umd/vis-network.min.js under /vendor/ and drop integrity/crossorigin -->
-  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js" integrity="sha384-yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ" crossorigin="anonymous"></script>
+  <!-- [SF-WEB-41] Portal mount for anchored floating layers — see #overlay-root
+       CSS above and ui/overlay-root.js. Must be the last child of <body> so it
+       stacks above the rest of the tree without needing an outsized z-index. -->
+  <div id="overlay-root"></div>
+
+  <!-- [SF-SEC-02] Self-hosted — vis-network@9.1.9/standalone/umd/vis-network.min.js,
+       vendored verbatim under front/vendor/ (see DEVELOPMENT.md for how to
+       bump the pinned version). Same-origin, so no integrity/crossorigin
+       needed — the whole point was to stop depending on unpkg.com being up
+       and byte-for-byte unchanged (see git history for the CDN+SRI version
+       this replaced). -->
+  <script src="/vendor/vis-network.min.js"></script>
   <script src="/script.js"></script>
 </body>
 </html>

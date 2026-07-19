@@ -11,7 +11,7 @@
 //                         exactly what clicking the node on canvas does (see
 //                         _nsSelect in modals.js, the same pattern).
 // ════════════════════════════════════════════════════════════════════════════
-import { State } from "../state/state.js";
+import { State, MOTION, visAnimation } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { escapeHtml } from "../state/helpers.js";
 import { setFocus } from "../vis-adapter/index.js";
@@ -38,7 +38,9 @@ function selectNode(nodeId) {
   // Same behaviour as clicking the node on canvas / picking it from
   // node-search's _nsSelect: pan/zoom to it, pin the highlight, open sidebar.
   if (State.network) {
-    State.network.focus(nodeId, { scale: 1.5, animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+    // [SF-WEB-47 motion] Was its own literal (600) and never checked
+    // prefers-reduced-motion — visAnimation(MOTION.xxslow) covers both.
+    State.network.focus(nodeId, { scale: 1.5, animation: visAnimation(MOTION.xxslow) });
   }
   setFocus(nodeId);
   showArtistSidebar(nodeId);

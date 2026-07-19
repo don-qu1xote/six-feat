@@ -8,6 +8,14 @@
 # Local SQLite data (dev bind mount) — never ship into the build context
 data/
 
+# Postgres bind-mount data dirs (docker-compose.yml volumes) — grow to
+# hundreds of MB/GB over time; already gitignored, .dockerignore forgot them
+.pgdata/
+.pgdata-replica/
+
+# VCS metadata — never needed in the build context
+.git/
+
 # Build artifacts
 build/
 .cache/

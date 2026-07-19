@@ -1,0 +1,71 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Document base: body typography/background, .app-canvas, .truncate / .sr-only utilities.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* Единый паттерн усечения текста — используется вместо точечного
+   дублирования white-space/overflow/text-overflow по всему CSS. */
+.truncate {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+
+/* Visually-hidden but still exposed to assistive tech — used for <label>s
+   associated with inputs that already communicate their purpose visually
+   via placeholder/adjacent chrome, so the label doesn't change layout. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* [SF-WEB-42] Observatory shell: the graph is the hero, so the body itself
+   — visible at every edge the canvas/panels don't cover, and through every
+   translucent glass panel now that .ui-panel/.bento-tile actually let
+   backdrop-filter show something (see components/panel.css, tile.css) —
+   carries the "deep space-ink ground" language: a wider/deeper radial glow
+   (unchanged token, --hero-glow/--ink — only the gradient's own geometry
+   changed) plus a very subtle grain layer so the flat gradient doesn't
+   read as a flat gradient. No external asset: the grain is a tiny inline
+   SVG (feTurbulence) data URI, tiled at 160px — a fixed, deliberately
+   subtle constant (rect opacity .05 inside the SVG itself) rather than a
+   CSS custom property, since a data URI can't reference one. Three
+   background layers, first-listed painting on top: grain, then the
+   radial glow, then the flat --ink fallback beneath both. */
+body {
+  font-family: var(--font-sans);
+  color: var(--paper);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E") repeat,
+    radial-gradient(1300px 900px at 50% -16%, var(--hero-glow) 0%, var(--ink) 62%),
+    var(--ink);
+}
+
+.app-canvas { position: absolute; inset: 0; }
+
+/* [SF-WEB-49] setTheme (ui/theme.js) flips :root[data-theme] in one
+   synchronous attribute write — a CSS custom property changing value
+   doesn't itself animate, only the concrete color/border/shadow properties
+   that resolve it do, and hand-adding a transition to every individual
+   selector that happens to reference a themed token isn't realistic. A
+   blanket, opt-in (prefers-reduced-motion: no-preference, so it can never
+   fight the app's existing reduced-motion rules — see surfaces/responsive.css)
+   transition on `*` is the standard low-risk way to make an app-wide theme
+   swap read as a soft cross-fade instead of a hard snap. Universal-selector
+   specificity is the lowest there is, so any element with its OWN more
+   specific transition (e.g. a hover-tuned .rate-limit-badge-dot) keeps that
+   timing untouched — this only fills in surfaces that don't declare one.
+   Doesn't reach `background-image` (gradients aren't transitionable at
+   all — body's own radial-gradient glow still snaps), just the solid
+   color/border/shadow layer most elements actually paint with. */
+@media (prefers-reduced-motion: no-preference) {
+  * {
+    transition:
+      background-color var(--duration-slow) var(--ease-standard),
+      border-color      var(--duration-slow) var(--ease-standard),
+      color             var(--duration-slow) var(--ease-standard),
+      box-shadow        var(--duration-slow) var(--ease-standard),
+      fill              var(--duration-slow) var(--ease-standard),
+      stroke            var(--duration-slow) var(--ease-standard);
+  }
+}

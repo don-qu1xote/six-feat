@@ -1,0 +1,4 @@
+type: object
+description: Internal enrichment enqueue endpoint
+additionalProperties: false
+properties: {}

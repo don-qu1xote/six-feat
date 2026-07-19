@@ -150,6 +150,14 @@ def _write_config(
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=queue_capacity,
             drain_timeout_ms=drain_timeout_ms,
+            sync_start="true",
+            # [SF-DB-06] PRUNE_TTL_DAYS isn't set on this file's own
+            # subprocess env (see _start_enrichment below) — prune-task
+            # never starts regardless of these values, so plain
+            # production-like defaults are fine here, same reasoning as
+            # enrichment_proc_bg's own call site in conftest.py.
+            prune_interval_seconds=3600,
+            prune_batch_size=500,
         )
     )
 

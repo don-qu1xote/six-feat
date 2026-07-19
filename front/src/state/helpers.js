@@ -26,18 +26,56 @@ export function graphHash() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Genius default-image detection
+// ────────────────────────────────────────────────────────────────────────────
+// [SF-WEB-16] Front-end defense in depth: SF-API-07 already normalizes this
+// away server-side (GeniusGateway::ParseArtistObject/ResolveCandidates/
+// FetchArtistById → NormalizeArtistImageUrl,
+// libs/six-feat-common/src/genius/genius_gateway.cpp), but if a URL like it
+// ever slips through unfiltered, treat it as "no photo" here too rather than
+// rendering Genius's own grey placeholder graphic. Genius's fallback image
+// is a real, resolvable URL (not a 404 or empty string) with a cache-busting
+// query string appended, so it can't be told apart from a real photo by
+// validity alone — every observed variant (regardless of host/size) is
+// served from the fixed path assets.genius.com/images/default_cover_image.png
+// (e.g. https://assets.genius.com/images/default_cover_image.png?1783625229);
+// matched as a substring so the query string doesn't matter.
+export const GENIUS_DEFAULT_IMAGE_MARKER = "default_cover_image";
+
+export function isGeniusDefaultAvatar(url) {
+  return typeof url === "string" && url.includes(GENIUS_DEFAULT_IMAGE_MARKER);
+}
+
+// [SF-WEB-58 B] Same-origin proxy URL for a Genius CDN image (SF-API-12) —
+// re-serves the allowlisted bytes from THIS origin so a canvas that draws
+// it never taints. Previously inlined separately in canvas-controls.js's
+// export path (buildShadowNodes) — now the one place both that and
+// vis-adapter/photo-color.js (dominant-color sampling) build this URL from.
+export function proxiedImageUrl(rawUrl) {
+  return `/api/v1/image?url=${encodeURIComponent(rawUrl)}`;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Placeholder avatar SVG
 // ────────────────────────────────────────────────────────────────────────────
+// [SF-WEB-16] Background/accent are read live from the active theme's CSS
+// custom properties (COLOR.panel/signal/pulse — see state.js's readCssVar),
+// not hardcoded, so the placeholder actually matches dark or light mode.
+// _phCache is additionally keyed by State.theme: theme.js's recolorInPlace
+// (vis-adapter/highlight.js) re-calls this for every photo-less node after
+// a theme toggle, and without the theme in the key it would just hand back
+// the other theme's cached (now wrong-coloured) SVG.
 const _phCache = new Map();
 
 export function placeholderFor(name, isSeed) {
   const accent = isSeed ? COLOR.signal : COLOR.pulse;
+  const bg     = COLOR.panel;
   const letter = initialOf(name);
-  const key    = letter + (isSeed ? "|s" : "|p");
+  const key    = `${letter}|${isSeed ? "s" : "p"}|${State.theme}`;
   if (_phCache.has(key)) return _phCache.get(key);
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'>` +
-    `<rect width='120' height='120' fill='#0F1420'/>` +
+    `<rect width='120' height='120' fill='${bg}'/>` +
     `<circle cx='60' cy='60' r='54' fill='none' stroke='${accent}' stroke-opacity='0.30' stroke-width='2'/>` +
     `<text x='60' y='60' dy='.35em' text-anchor='middle' font-family='Inter,sans-serif' ` +
     `font-size='52' font-weight='700' fill='${accent}'>${escapeHtml(letter)}</text>` +

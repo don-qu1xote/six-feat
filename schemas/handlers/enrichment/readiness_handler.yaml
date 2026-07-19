@@ -1,0 +1,4 @@
+type: object
+description: Enrichment-service readiness-check handler
+additionalProperties: false
+properties: {}

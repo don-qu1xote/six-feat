@@ -13,9 +13,13 @@
 // `prefers-reduced-motion` users get neither — the mutation just runs.
 // ════════════════════════════════════════════════════════════════════════════
 import { els, $ } from "./dom.js";
+import { MOTION, readCssVar, prefersReducedMotion } from "../state/state.js";
 
-const reduceMotion = () =>
-  window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+// [SF-WEB-47] --ease-emphasized (styles/tokens.css) — this file used to
+// hardcode the same cubic-bezier() string directly; reading it live means
+// this curve and the token can never drift apart. Fallback matches the
+// token's own default value (see tokens.css) for non-browser test envs.
+const EMPHASIZED_EASING = () => readCssVar("--ease-emphasized", "cubic-bezier(.16,.9,.3,1)");
 
 const supportsViewTransitions = () =>
   typeof document.startViewTransition === "function";
@@ -29,7 +33,7 @@ const supportsViewTransitions = () =>
  * @param {"toGraph"|"toHero"} direction - which way we're morphing
  */
 export function runHeroGraphTransition(mutate, direction) {
-  if (reduceMotion()) {
+  if (prefersReducedMotion()) {
     mutate();
     return;
   }
@@ -95,7 +99,7 @@ function runFlipFallback(mutate, direction) {
         { transform: "translate(0px, 0px) scale(1, 1)", opacity: 1 },
         { transform: `translate(${dx}px, ${dy}px) scale(${Math.max(scaleX, .35)}, ${Math.max(scaleY, .35)})`, opacity: 0 }
       ],
-      { duration: 420, easing: "cubic-bezier(.16,.9,.3,1)", fill: "forwards" }
+      { duration: MOTION.flight, easing: EMPHASIZED_EASING(), fill: "forwards" }
     );
 
     anim.finished.finally(() => {

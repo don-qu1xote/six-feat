@@ -7,21 +7,54 @@
 // Expand/path layout placement math («одуванчики» + «круги Эйлера») lives in
 // layout.js; this file only consumes its output (targets/fromPos maps).
 // ════════════════════════════════════════════════════════════════════════════
-import { State, PHYSICS_SETTLE_MS, PHYSICS_EXPAND_MS } from "../state/state.js";
+import { State, PHYSICS_SETTLE_MS, MOTION, prefersReducedMotion, visAnimation, scaledDuration } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
-import { nodeVisual, edgeVisual } from "./visuals.js";
-import { placeExpandedNodes, LEAF_R } from "./layout.js";
+import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD, _imageFieldsFor } from "./visuals.js";
+import { placeExpandedNodes } from "./layout.js";
+import { setEdgeCache, suppressNativeEdgeColor } from "./edge-render.js";
+import { highlightPath, highlightNeighborhood } from "./highlight.js";
+import { setContourData } from "./bubble-contours.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHYSICS HELPERS
 // ════════════════════════════════════════════════════════════════════════════
 
-// ТЗ-IDEA-36: таргеты expand-нод уже почти не перекрываются (см. layout.js
-// minDist), так что живой физике после вылета остаётся только лёгкая усадка —
-// её окно короче общего PHYSICS_EXPAND_MS (который также переиспользуется для
-// нежного пост-drag доседания одной ноды в events.js).
-const EXPAND_PHYSICS_SETTLE_MS = Math.min(450, PHYSICS_EXPAND_MS);
+// SF-WEB-07: nudgePhysics() re-enables live physics (barnesHut/repulsion,
+// see networkOptions in visuals.js) for its caller's requested window before
+// scheduleFreeze() switches it back off. On a graph past
+// LARGE_GRAPH_NODE_THRESHOLD, every physics tick during that window is
+// already the more expensive O(n²) "repulsion" solver networkOptions()
+// switches to at that size — most of the nodes involved already have their
+// on-screen positions restored (refreshNetwork's moveNode loop) or are
+// otherwise settled before physics is turned back on, so the caller's full
+// requested duration just keeps ticking that expensive solver across
+// hundreds of nodes to settle the handful that actually moved. [SF-WEB-29]
+// The post-flyout expand case no longer uses live physics at all (see
+// mergeNetwork's onDone below) — this cap now only applies to nudgePhysics()'s
+// other callers (refreshNetwork's re-search settle, events.js's post-drag
+// settle).
+const LARGE_GRAPH_SETTLE_MS = 500;
+
+// SF-WEB-09: мягкое появление новых нод — короткий scale/opacity поверх уже
+// готовой ноды (не opacity:0 в данных, см. предупреждение в visuals.js о
+// потере circularImage при opacity:0 → 1 partial-update). Read live from
+// MOTION.med at point of use (below) rather than cached in a module-level
+// const — was its own literal (220ms) before [SF-WEB-47]; MOTION.med is the
+// closest converged bucket (20ms/9% shorter, imperceptible for a
+// sub-animation that's already racing the much longer flyout).
+const ENTRANCE_START_SCALE   = 0.55;
+const ENTRANCE_START_OPACITY = 0.35;
+
+// [SF-WEB-61] "придумай что-нибудь с плавностью и новыми анимациями" —
+// staggered bloom: new leaves no longer all bloom in on the exact same
+// frame, they ripple in one after another like a dandelion actually
+// opening. Purely a per-node START-TIME offset inside the SAME rAF loop
+// runFlyoutAnimation already runs (see entranceDelays below) — no extra
+// per-frame work added for the whole graph, just an offset comparison per
+// already-iterated entranceTargets entry.
+const ENTRANCE_STAGGER_MS     = 18; // delay between consecutive new nodes' bloom start
+const ENTRANCE_STAGGER_MAX_MS = 220; // cap total spread so a big expand's wave still finishes quickly
 
 export function scheduleFreeze(ms) {
   clearTimeout(State.physicsTimer);
@@ -37,9 +70,67 @@ export function updateEdgeRenderMode() {
   State.network.setOptions({ edges: { smooth: { enabled: true, type: "continuous", roundness: 0.45 } } });
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-54] FAST RENDER MODE — на графах больше LARGE_GRAPH_NODE_THRESHOLD
+// низкий FPS при активном pan/zoom (то, что уже смягчено для рёбер через
+// hideEdgesOnDrag/hideEdgesOnZoom, networkOptions.js) упирается в САМИ ноды:
+// shape:"circularImage" с interpolation:true/useBorderWithImage:true
+// (networkOptions) — самая дорогая часть перерисовки, а vis.js гоняет
+// полный canvas-редрав КАЖДЫЙ rAF-кадр, пока идёт взаимодействие, и рёберный
+// fast-path тут не помогает вообще.
+//
+// pokeFastRenderMode() — тот же приём, что hideEdgesOnDrag/Zoom, только
+// руками и для нод: на время активного pan/zoom ноды временно превращаются
+// в дешёвый "dot" (заливка без изображения/интерполяции, тот же size), а
+// через FAST_MODE_EXIT_DELAY простоя без новых poke — возвращаются к
+// circularImage. Вызывать на каждый dragStart/dragging/dragEnd/zoom тик —
+// сам nodesDS.update() (дорогая часть) происходит РОВНО один раз на вход и
+// один раз на выход, все промежуточные poke — это просто clearTimeout+
+// setTimeout (дёшево).
+//
+// Восстановление ПОЛНЫМ _imageFieldsFor() (shape+image+brokenImage), а не
+// одним shape — см. его же комментарий в visuals.js: партиальный update
+// одного shape на circularImage-ноде у vis.js на практике иногда не
+// переживает серию апдейтов и аватарка не возвращается.
+// ════════════════════════════════════════════════════════════════════════════
+const FAST_MODE_EXIT_DELAY = 220;
+let _fastRenderActive = false;
+let _fastRenderExitTimer = null;
+
+export function pokeFastRenderMode() {
+  if (!State.network || !State.nodesDS) return;
+  if (State.graphNodes.length <= LARGE_GRAPH_NODE_THRESHOLD) return;
+  if (!_fastRenderActive) {
+    _fastRenderActive = true;
+    State.nodesDS.update(State.graphNodes.map(n => ({ id: n.id, shape: "dot" })));
+  }
+  if (_fastRenderExitTimer) clearTimeout(_fastRenderExitTimer);
+  _fastRenderExitTimer = setTimeout(() => {
+    _fastRenderExitTimer = null;
+    _fastRenderActive = false;
+    if (State.nodesDS) {
+      State.nodesDS.update(State.graphNodes.map(n => ({ id: n.id, ..._imageFieldsFor(n) })));
+    }
+  }, FAST_MODE_EXIT_DELAY);
+}
+
+// Сбрасывает fast-render-состояние без анимации/апдейта DataSet — вызывать
+// при полной пересборке графа (initNetwork/refreshNetwork/destroyNetwork),
+// иначе застрявший _fastRenderActive=true не даст следующему poke() снова
+// переключить в "dot" НОВЫЙ (уже пересозданный, снова circularImage)
+// набор нод, а зависший таймер попытается писать в уже мёртвый nodesDS.
+export function resetFastRenderMode() {
+  if (_fastRenderExitTimer) clearTimeout(_fastRenderExitTimer);
+  _fastRenderExitTimer = null;
+  _fastRenderActive = false;
+}
+
 export function nudgePhysics(ms, noFit) {
   if (!State.network) return;
-  const settleMs = ms || PHYSICS_SETTLE_MS;
+  const requested = ms || PHYSICS_SETTLE_MS;
+  const settleMs  = State.graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD
+    ? Math.min(requested, LARGE_GRAPH_SETTLE_MS)
+    : requested;
   updateEdgeRenderMode();
   State.network.setOptions({
     physics: { enabled: true, stabilization: { enabled: false } }
@@ -60,7 +151,9 @@ export function _fitToExpandedCluster() {
   try {
     State.network.fit({
       nodes: nodeIds,
-      animation: { duration: 600, easingFunction: "easeInOutQuad" }
+      // [SF-WEB-47] Was a bare {duration:600,...} literal that never
+      // checked prefers-reduced-motion at all — visAnimation() covers both.
+      animation: visAnimation(MOTION.xxslow)
     });
   } catch(e) { /* ignore */ }
 }
@@ -88,20 +181,59 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   const dsEdgeIds = new Set(State.edgesDS.getIds());
 
   const freshNodes = State.graphNodes.filter(n => n._isNew && !dsNodeIds.has(n.id));
-  const newEdgeItems  = State.graphEdges
-    .filter(e => !dsEdgeIds.has(e.id))
-    .map(e => edgeVisual(e, nameById));
 
   // ── Детерминированный старт ────────────────────────────────────────────────
   // ВАЖНО: вычисляем fromPos ДО nodesDS.add(), чтобы vis.js никогда не видел
   // ноды в (0,0). Каждая нода получает x/y прямо в объекте данных.
-  let targets, fromPos;
+  // [SF-WEB-55] edgeClass приходит отсюда же (placeExpandedNodes) — только в
+  // обычном expand-режиме, не в path-режиме (options.pathTargets/pathFromPos
+  // уже готовы заранее и мимо placeExpandedNodes не идут — там свой,
+  // видимый нативный рендер рёбер, без нашего canvas-слоя).
+  let targets, fromPos, edgeClass, sectorMembers;
   if (options.pathTargets && options.pathFromPos) {
     targets = options.pathTargets;
     fromPos = options.pathFromPos;
   } else {
-    ({ targets, fromPos } = placeExpandedNodes(savedPositions));
+    ({ targets, fromPos, edgeClass, sectorMembers } = placeExpandedNodes(savedPositions));
   }
+
+  // [SF-WEB-55] Только НОВЫЕ (только что добавляемые) рёбра гасим до
+  // opacity:0 — уже существующие в DataSet рёбра получили это ещё при первом
+  // добавлении (initNetwork/refreshNetwork/более раннем mergeNetwork),
+  // трогать их снова незачем. В path-режиме (edgeClass отсутствует) рёбра
+  // остаются такими, какими их построил edgeVisual() — видимыми, без
+  // нашего слоя.
+  const newEdgeItems = State.graphEdges
+    .filter(e => !dsEdgeIds.has(e.id))
+    .map(e => {
+      const v = edgeVisual(e, nameById);
+      return edgeClass ? suppressNativeEdgeColor(v) : v;
+    });
+  if (edgeClass) {
+    setEdgeCache(edgeClass);
+    // [SF-WEB-62] "в файнд пафе рёбра при экспандеде пропали" —
+    // initPathNetwork (ui/path-result.js's linear path layout) draws its
+    // OWN edges with full native visible color, no custom canvas layer
+    // involved. A regular double-click expand on TOP of that network still
+    // runs this normal (non-path) branch — placeExpandedNodes classifies
+    // EVERY edge in the graph into edgeClass, including the path's own
+    // pre-existing ones, but only brand-new edges (via newEdgeItems above)
+    // ever got suppressNativeEdgeColor() applied. Left un-suppressed, a
+    // pre-existing path edge now had TWO conflicting renderers drawing it
+    // at once — vis.js's own native line AND our custom curved one, at
+    // different offsets — reading as broken/missing rather than doubled.
+    // Catch those up here so every edge our cache now covers is
+    // consistently native-invisible, regardless of which code path first
+    // added it to the DataSet.
+    const catchUpUpdates = [];
+    for (const e of State.graphEdges) {
+      if (!dsEdgeIds.has(e.id)) continue;  // brand-new — newEdgeItems above already handled it
+      if (!edgeClass.has(e.id)) continue;  // not covered by our cache — leave its native color alone
+      catchUpUpdates.push(suppressNativeEdgeColor({ id: e.id }));
+    }
+    if (catchUpUpdates.length && State.edgesDS) State.edgesDS.update(catchUpUpdates);
+  }
+  if (sectorMembers) setContourData(sectorMembers);
 
   // Сначала фиксируем seed — он уже в DS, просто обновляем координату и fixed.
   // Это делается до add() чтобы vis.js не двигал его при добавлении соседей.
@@ -111,11 +243,16 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   }
 
   // Встраиваем стартовые позиции прямо в объекты нод — vis.js ставит их туда
-  // при add(), без промежуточного кадра в (0,0).
+  // при add(), без промежуточного кадра в (0,0). SF-WEB-09: новые ноды также
+  // стартуют уменьшенными/полупрозрачными (не opacity:0 — см. предупреждение
+  // выше) — runFlyoutAnimation доводит их до финального size/opacity вместе
+  // с полётом позиции, entranceTargets хранит финальные значения для этого.
+  const entranceTargets = new Map();
   const newNodeItems = freshNodes.map(n => {
     const v = nodeVisual(n);
     const f = fromPos.get(n.id) || { x: 0, y: 0 };
-    return { ...v, x: f.x, y: f.y };
+    entranceTargets.set(n.id, { size: v.size, opacity: v.opacity });
+    return { ...v, x: f.x, y: f.y, size: v.size * ENTRANCE_START_SCALE, opacity: ENTRANCE_START_OPACITY };
   });
 
   if (newNodeItems.length) State.nodesDS.add(newNodeItems);
@@ -126,26 +263,52 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     .map(n => {
       const v = nodeVisual(n);
       return { id: n.id, size: v.size, color: v.color, borderWidth: v.borderWidth,
-               shadow: v.shadow, mass: v.mass, title: v.title, label: v.label,
-               font: v.font, fixed: v.fixed };
+               shadow: v.shadow, mass: v.mass, title: v.title, fixed: v.fixed };
     });
   if (existingUpdates.length) State.nodesDS.update(existingUpdates);
 
-  // Синхронизируем позиции нод, уже существовавших в DS (fromPos без add).
-  // Seed уже зафиксирован выше. Вызывается один раз за mergeNetwork — не
-  // RAF-hot-path, поэтому используем публичный API без обращения к body.
+  // [SF-WEB-62] "сохранять подсветку пути при экспанде" — existingUpdates
+  // just reset EVERY node (including any on the currently highlighted
+  // path) back to nodeVisual's plain resting look, silently dropping the
+  // path highlight even though State.pathHighlight itself still holds the
+  // path. Re-apply it now the new graph shape is in place — dim:false, the
+  // same "highlight path + endpoints, leave everything else at its normal
+  // look" treatment Compare mode uses (SF-WEB-61), since the freshly
+  // expanded node's own new leaves are ordinary graph content, not
+  // something to dim down.
+  if (State.pathHighlight) highlightPath(State.pathHighlight, { dim: false });
+
+  // [SF-WEB-70] Same gap as pathHighlight above, just never reported under
+  // that name — existingUpdates resets EVERY existing node's color/border/
+  // shadow back to nodeVisual's plain resting look (see its own comment),
+  // including a persistently FOCUSED node (State.focusedNodeId, set by
+  // setFocus in events.js). highlightNeighborhood is the exact same call
+  // setFocus itself uses for that persistent look (visually the
+  // "hover-style" accent border, just held rather than reverted on blur) —
+  // this is a 1:1 replay, not a different code path. Left unre-applied,
+  // any expand triggered while a node is focused silently drops its
+  // highlight — a plausible root cause behind "подсветка... ломается"
+  // reports tied to expand/animation timing: the node's incident edges'
+  // color is driven by _hoverNodeEdgeUpdates/getSelectedNodeEdgeIds, which
+  // this same call recomputes — a dropped node focus here also reads as
+  // "edge highlighting broken".
+  if (State.focusedNodeId != null) highlightNeighborhood(State.focusedNodeId);
+
+  // SF-WEB-09: раньше здесь стоял отдельный синхронный net.moveNode() на
+  // каждую уже существующую ноду ("телепорт" в fromPos ДО начала полёта) —
+  // существующие ноды визуально не летели вместе с новыми, а прыгали. fromPos
+  // для них и так равен их текущей сохранённой позиции (см. getFrom в
+  // layout.js), так что первый кадр RAF-полёта ниже (pct=0 → sx,sy=fromPos)
+  // сам расставляет стартовые позиции — единый RAF-вылет для ВСЕХ нод из
+  // targets (новых и существующих), без отдельного домашнего "телепорта".
   const net = State.network;
-  for (const [id, f] of fromPos) {
-    if (net && dsNodeIds.has(id)) {   // только существующие — новые уже получили x/y через add()
-      net.moveNode(id, f.x, f.y);
-    }
-  }
 
   // ── Вылет: RAF-анимация 420мс, ноды летят fromPos → targets ──────────────
-  // После завершения вылета включаем физику — она разрешит все наслоения.
+  // [SF-WEB-29] targets уже сами по себе не наслаиваются (см. layout.js) —
+  // после вылета ноды просто фиксируются на месте, без живой физики.
   // ТЗ-209: сам полёт делегирован общему runFlyoutAnimation() (см. ниже) —
-  // здесь остаётся только то, что специфично для mergeNetwork: включение
-  // физики, подстройка камеры и заморозка после её остановки.
+  // здесь остаётся только то, что специфично для mergeNetwork: фиксация всех
+  // нод на приземлившихся позициях и подстройка камеры.
 
   for (const n of freshNodes) n._isNew = false;
 
@@ -153,102 +316,79 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     ids: [...targets.keys()],
     fromPos,
     targets,
-    durationMs: 420,
+    // [SF-WEB-53] Тот же zoom-множитель, что и у vis.js camera-анимаций
+    // (visAnimation) — на крупном плане то же перемещение в координатах
+    // графа покрывает больше экранных пикселей за кадр, поэтому там нужен
+    // более длинный полёт, чтобы не «рвать» его на глаз.
+    durationMs: scaledDuration(MOTION.flight),
+    entranceTargets,
     onDone: () => {
-      // Снимаем fixed со всех нод кроме seed — физика должна двигать их.
-      // Seed остаётся fixed, expanded-ноды получают высокую массу (притягивают листья).
-      const pathNodeIds = options.pathNodeIds || [];
-      const pathNodeSet = new Set(pathNodeIds);
+      // [SF-WEB-29] Раньше здесь снимался fixed со всех нод и на
+      // EXPAND_PHYSICS_SETTLE_MS включался живой barnesHut ("усадка") — эта
+      // фаза не столько чинила реальные наложения, сколько РАЗЪЕЗЖАЛА уже
+      // готовую раскладку: кольца-одуванчики и линзы Эйлера, посчитанные
+      // layout.js геометрически ТОЧНО (см. _ringCap/_dandelionR там —
+      // минимальная попарная дистанция между листьями теперь считается по
+      // хорде, а не по приближению «длина дуги», и полюса разносятся на
+      // dR-зависимый minDist, учитывающий фактический радиус каждого
+      // одуванчика), превращались в бесформенный кластер под действием
+      // gravitationalConstant/avoidOverlap. Раз targets сами по себе уже не
+      // перекрываются, живая физика после вылета — это чистый минус
+      // (визуальная тряска без функциональной пользы), а не страховка:
+      // убираем фазу целиком, фиксируем каждую ноду ровно там, где она уже
+      // приземлилась после runFlyoutAnimation. path-узлы и раньше оставались
+      // fixed на всё время — теперь ВСЕ ноды ведут себя так же, никакого
+      // отдельного unfix/refix цикла не требуется.
+      net.setOptions({ physics: { enabled: false } });
+      updateEdgeRenderMode();
+      const fixAll = State.graphNodes.map(n => ({ id: n.id, fixed: { x: true, y: true } }));
+      if (State.nodesDS) State.nodesDS.update(fixAll);
 
-      const unfixUpdates = [];
-      for (const n of State.graphNodes) {
-        if (n.id === State.currentSeedId) continue;
-        if (pathNodeSet.has(n.id)) continue;  // ← ВАЖНО: узлы пути остаются fixed
-
-        const isExp = State.expandedNodes.has(n.id);
-        unfixUpdates.push({
-          id:    n.id,
-          fixed: false,
-          mass:  isExp ? 6 : 1,
-        });
-      }
-      if (unfixUpdates.length) State.nodesDS.update(unfixUpdates);
-
-      // Включаем barnesHut с параметрами для expand:
-      //   springLength = LEAF_R  → листья оседают на нужном радиусе
-      //   avoidOverlap = 1       → ноды не наслаиваются
-      //   centralGravity = 0     → кластеры не съезжаются к центру
-      //   gravitationalConstant большой → expanded-ноды сильно отталкиваются
-      // ТЗ-IDEA-36: листья/полюса уже прилетают в детерминированные target-
-      // позиции почти без наслоений (см. layout.js), так что живой физике
-      // здесь остаётся только мелкая усадка, а не расталкивание целых
-      // кластеров — снижаем потолок скорости и раньше признаём движение
-      // затухшим, чтобы граф оседал быстро и без видимой тряски.
-      net.setOptions({
-        physics: {
-          enabled: true,
-          solver:  "barnesHut",
-          barnesHut: {
-            gravitationalConstant: -12000,
-            centralGravity:        0.0,
-            springLength:          LEAF_R,
-            springConstant:        0.06,
-            damping:               0.85,
-            avoidOverlap:          1.0
-          },
-          stabilization: { enabled: false },  // стабилизируем через тики, не batch
-          timestep:         0.3,
-          adaptiveTimestep: true,
-          maxVelocity:      25,
-          minVelocity:      3
-        }
-      });
-
-      // Камера: seed — постоянный смысловой центр графа. Раньше позиция
-      // камеры считалась как центр bbox { minX..maxX, minY..maxY } самих
-      // targets (полюсов+листьев), а bbox всегда асимметричен относительно
-      // seed (кластеры растут в одну сторону от (0,0), seed в bbox не
-      // участвует, только неявно как нулевая точка отсчёта) — из-за этого
-      // при КАЖДОМ expand камера панорамировалась в новую точку где-то между
-      // seed и новым кластером, и seed визуально "прыгал" по экрану (его
-      // экранные координаты менялись, хотя graph-координата всегда (0,0)).
-      // Фикс: camera position всегда (0,0) — seed остаётся неподвижным на
-      // экране, меняется только scale (по симметричному радиусу до самой
-      // дальней target-точки), т.е. только зум, без панорамирования.
+      // [SF-WEB-61] "при каждом появлении новой экспандед ноды у нас
+      // отезжает экран... нужно делать фокус на новый экспандед, а не
+      // оттдалять камеру" — the old rule fit the WHOLE graph's targets
+      // (every pole and leaf ever placed, not just this expand's), always
+      // centered on the seed. As the graph grew across expands, that
+      // farthest-point radius only ever grew too — every single new expand
+      // zoomed the camera OUT a bit further, regardless of where the node
+      // the user just double-clicked actually was, which reads as "the
+      // screen keeps pulling away" exactly as reported. Fix: fit the camera
+      // to THIS expand's own new content (the freshly-expanded hub + its
+      // brand-new children) instead of the graph's full historical extent —
+      // the camera now pans/zooms toward what the user just asked to see,
+      // not away from it.
       try {
-        let maxAbsX = 0, maxAbsY = 0;
-        for (const t of targets.values()) {
-          maxAbsX = Math.max(maxAbsX, Math.abs(t.x));
-          maxAbsY = Math.max(maxAbsY, Math.abs(t.y));
+        const focusIds = State.lastExpandedId != null
+          ? [State.lastExpandedId, ...freshNodes.map(n => n.id)]
+          : [...targets.keys()];  // path mode / no known expand target — fall back to fitting everything
+
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const id of focusIds) {
+          const t = targets.get(id);
+          if (!t) continue;
+          if (t.x < minX) minX = t.x;
+          if (t.x > maxX) maxX = t.x;
+          if (t.y < minY) minY = t.y;
+          if (t.y > maxY) maxY = t.y;
         }
+        if (!isFinite(minX)) throw new Error("no focus target");
+
+        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        const w  = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
         const pad = 140;
         const cw  = (els.network && els.network.clientWidth)  || 1100;
         const ch  = (els.network && els.network.clientHeight) || 720;
-        const sc  = Math.min(cw / Math.max(1, 2 * maxAbsX + pad * 2),
-                             ch / Math.max(1, 2 * maxAbsY + pad * 2));
+        const sc  = Math.min(cw / (w + pad * 2), ch / (h + pad * 2));
         net.moveTo({
-          position: { x: 0, y: 0 },
+          position: { x: cx, y: cy },
           scale:    Math.max(0.14, Math.min(sc, 1.25)),
-          animation: { duration: 700, easingFunction: "easeInOutQuad" }
+          // [SF-WEB-47] Was its own literal (700) and never checked
+          // prefers-reduced-motion — visAnimation(MOTION.xxslow) covers
+          // both (snapped 100ms/14% into the same "big deliberate camera
+          // move" bucket _fitToExpandedCluster above already uses).
+          animation: visAnimation(MOTION.xxslow)
         });
       } catch (e) { /* ignore */ }
-
-      // Замораживаем через укороченное EXPAND_PHYSICS_SETTLE_MS (см. выше) —
-      // targets и так почти без наслоений, долгое окно только продлевало
-      // видимую тряску. После заморозки восстанавливаем красивые кривые рёбра.
-      State.physicsTimer = setTimeout(() => {
-        State.physicsTimer = null;
-        if (!State.network) return;
-        State.network.setOptions({ physics: { enabled: false } });
-        updateEdgeRenderMode();
-        // Фиксируем все ноды на их финальных позициях.
-        const fixAll = State.graphNodes.map(n => ({
-          id:    n.id,
-          fixed: { x: true, y: true }
-        }));
-        if (State.nodesDS) State.nodesDS.update(fixAll);
-        // Seed уже fixed и не мог сместиться за время анимации — moveNode здесь избыточен.
-      }, EXPAND_PHYSICS_SETTLE_MS);
     }
   });
 }
@@ -263,15 +403,56 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
 // вместо копипасты выносим его сюда один раз, и любой будущий фикс вроде
 // ТЗ-G (лишний moveNode в RAF) достаточно будет применить в одном месте.
 //
+// SF-WEB-09: тот же RAF-хелпер теперь везёт ВСЕ ноды из targets одним
+// вылетом (не только новые — существующие, чьи targets сдвинулись, летят
+// вместе с ними, без отдельного синхронного "телепорта" в mergeNetwork), и
+// умеет мягкое scale/opacity появление новых нод (entranceTargets) поверх
+// того же RAF-цикла. prefers-reduced-motion полностью пропускает полёт —
+// ноды и entranceTargets применяются мгновенно, одним кадром.
+//
 // @param {Object} opts
-// @param {Array}            opts.ids         — id-ы нод, участвующих в полёте
-// @param {Map<id,{x,y}>}    opts.fromPos      — стартовые позиции
-// @param {Map<id,{x,y}>}    opts.targets      — целевые позиции
-// @param {number}           opts.durationMs   — длительность анимации, мс
-// @param {Function}         [opts.onDone]     — вызывается по завершении (pct===1)
-// @returns {number} RAF handle текущего шага (для отмены через cancelAnimationFrame)
+// @param {Array}            opts.ids             — id-ы нод, участвующих в полёте
+// @param {Map<id,{x,y}>}    opts.fromPos          — стартовые позиции
+// @param {Map<id,{x,y}>}    opts.targets          — целевые позиции
+// @param {number}           opts.durationMs       — длительность анимации, мс
+// @param {Map<id,{size,opacity}>} [opts.entranceTargets] — финальные
+//        size/opacity новых нод, стартующих уменьшенными/полупрозрачными
+//        (см. ENTRANCE_START_SCALE/ENTRANCE_START_OPACITY выше)
+// @param {Function}         [opts.onDone]         — вызывается по завершении, ровно один раз
+// @returns {number|null} RAF handle текущего шага (для отмены через cancelAnimationFrame),
+//        или null если анимация была пропущена (reduced motion / пустой ids)
 // ─────────────────────────────────────────────────────────────────────────────
-function _easeOutFlyout(t) { return 1 - Math.pow(1 - t, 3); }
+// [SF-WEB-63] "золотой стандарт по анимациям... всё как у больших сервисов"
+// — pure ease-OUT (1-(1-t)^3, SF-WEB-59-and-earlier) snaps to near-full
+// velocity right at t=0. The SF-WEB-61/62 attempt at fixing that switched
+// to ease-IN-OUT, which traded the snap for the opposite problem: a full
+// 50%-of-duration ease-IN ramp reads as sluggish/"provisaem" (sagging) —
+// nodes visibly lag behind before they get moving. Real large-scale
+// products (Material Design's own "standard" motion curve, used for
+// exactly this "object moves to a new position" case) use
+// cubic-bezier(0.4, 0.0, 0.2, 1.0): a SHORT acceleration phase (roughly the
+// first fifth of the duration) into a long, gentle deceleration — enough
+// ease-in to not feel like a snap, nowhere near enough to feel laggy.
+function _cubicBezierEase(p1x, p1y, p2x, p2y) {
+  const bezier = (t, a1, a2) =>
+    ((1 - 3 * a2 + 3 * a1) * t * t * t) + ((3 * a2 - 6 * a1) * t * t) + (3 * a1 * t);
+  const bezierSlope = (t, a1, a2) =>
+    3 * (1 - 3 * a2 + 3 * a1) * t * t + 2 * (3 * a2 - 6 * a1) * t + 3 * a1;
+  return function (x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    // Newton-Raphson: solve bezier(t, p1x, p2x) = x for t, then evaluate y.
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const dx = bezier(t, p1x, p2x) - x;
+      const slope = bezierSlope(t, p1x, p2x);
+      if (Math.abs(slope) < 1e-6) break;
+      t -= dx / slope;
+    }
+    return bezier(t, p1y, p2y);
+  };
+}
+const _easeOutFlyout = _cubicBezierEase(0.4, 0.0, 0.2, 1.0);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _fastMoveNode — единственная точка хрупкости: обращение к недокументированному
@@ -299,8 +480,24 @@ function _fastMoveNode(net, body, id, x, y) {
 let _bodyShapeChecked = false;
 let _bodyShapeValid   = true;
 
-export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, onDone }) {
+export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, entranceTargets, onDone }) {
   const net  = State.network;
+
+  // SF-WEB-09: reduced motion — размещаем все ноды сразу на targets и сразу
+  // применяем финальные size/opacity новых нод, без RAF-полёта/появления.
+  if (prefersReducedMotion() || !ids.length) {
+    for (const id of ids) {
+      const t = targets.get(id);
+      if (t && net) net.moveNode(id, t.x, t.y);
+    }
+    if (entranceTargets && entranceTargets.size && State.nodesDS) {
+      State.nodesDS.update([...entranceTargets].map(([id, v]) => ({ id, size: v.size, opacity: v.opacity })));
+    }
+    State._expandAnimId = null;
+    if (onDone) onDone();
+    return null;
+  }
+
   let body = net && net.body && net.body.nodes;
 
   if (!_bodyShapeChecked && ids.length) {
@@ -324,11 +521,29 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, onDone }
   }
 
   let t0 = null;
+  // SF-WEB-09: появление новых нод завершается раньше самого полёта позиции
+  // (ENTRANCE_MS <= durationMs обычно) — как только entrance-доля дошла до 1,
+  // прекращаем слать nodesDS.update() для entranceTargets на каждый кадр.
+  let entranceDone = !entranceTargets || !entranceTargets.size;
+
+  // [SF-WEB-61] Per-node bloom start offset — entranceTargets' own insertion
+  // order (== freshNodes' order from mergeNetwork) drives the ripple, capped
+  // at ENTRANCE_STAGGER_MAX_MS regardless of how many new nodes there are.
+  let entranceDelays = null;
+  if (!entranceDone) {
+    entranceDelays = new Map();
+    let i = 0;
+    for (const id of entranceTargets.keys()) {
+      entranceDelays.set(id, Math.min(i * ENTRANCE_STAGGER_MS, ENTRANCE_STAGGER_MAX_MS));
+      i++;
+    }
+  }
 
   function step(ts) {
     if (!State.network) { State._expandAnimId = null; return; }
     if (t0 === null) t0 = ts;
-    const pct = _easeOutFlyout(Math.min((ts - t0) / durationMs, 1));
+    const elapsed = ts - t0;
+    const pct = _easeOutFlyout(Math.min(elapsed / durationMs, 1));
 
     let usedFastPath = false;
     for (let i = 0; i < M; i++) {
@@ -340,6 +555,23 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, onDone }
     // Зафиксированные ноды (seed, path-nodes) сами сдвинуться не могут —
     // moveNode на каждый кадр для них не нужен (лишний layout/redraw,
     // источник микро-дёрга при быстрой анимации).
+
+    if (!entranceDone) {
+      const updates = [];
+      let allDone = true;
+      for (const [id, v] of entranceTargets) {
+        const delay = entranceDelays.get(id) || 0;
+        const ePct  = Math.min(Math.max(elapsed - delay, 0) / MOTION.med, 1);
+        if (ePct < 1) allDone = false;
+        updates.push({
+          id,
+          size:    v.size * (ENTRANCE_START_SCALE + (1 - ENTRANCE_START_SCALE) * ePct),
+          opacity: ENTRANCE_START_OPACITY + (v.opacity - ENTRANCE_START_OPACITY) * ePct,
+        });
+      }
+      if (updates.length && State.nodesDS) State.nodesDS.update(updates);
+      if (allDone) entranceDone = true;
+    }
 
     if (pct < 1) {
       State._expandAnimId = requestAnimationFrame(step);

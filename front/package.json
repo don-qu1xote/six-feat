@@ -1,8 +1,11 @@
 {
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --minify --outfile=dist/script.js --format=iife --global-name=_app && node scripts/hash-build.mjs",
+    "build": "esbuild src/main.js --bundle --minify --outfile=dist/script.js --format=iife --global-name=_app && esbuild src/styles/index.css --bundle --minify --outfile=dist/style.css && node scripts/hash-build.mjs",
+    "build:css": "esbuild src/styles/index.css --bundle --minify --outfile=dist/style.css",
+    "check-bundle-size": "node scripts/check-bundle-size.mjs",
     "watch": "esbuild src/main.js --bundle --outfile=dist/script.js --format=iife --global-name=_app --watch",
+    "watch:css": "esbuild src/styles/index.css --bundle --outfile=dist/style.css --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

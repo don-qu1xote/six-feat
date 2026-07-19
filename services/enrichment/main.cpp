@@ -8,7 +8,9 @@
 
 #include "storage/artist_repository.hpp"
 #include "enrichment/enrichment_worker.hpp"
+#include "enrichment/prune_task.hpp"
 #include "genius/genius_gateway_client.hpp"
+#include "http/health_handler.hpp"
 #include "storage/persistent_store.hpp"
 
 #include "internal_handlers.hpp"
@@ -26,9 +28,16 @@ int main(int argc, char* argv[]) {
             .Append<six_feat::GeniusGatewayClient>()
             .Append<six_feat::ArtistRepository>()
             .Append<six_feat::EnrichmentWorker>()
+            .Append<six_feat::PruneTask>()
             .Append<six_feat::enrichment::EnqueueHandler>()
             .Append<six_feat::enrichment::InternalStatusHandler>()
-            .Append<six_feat::enrichment::HealthHandler>()
+            // [SF-INF-03] Shared liveness handler (six-feat-common) — was a
+            // local HealthHandler reimplementation identical in every way
+            // but its kName; now every service that has a /healthz uses
+            // this exact same component. /readyz below stays
+            // enrichment-specific (its checks differ per service).
+            .Append<six_feat::HealthHandler>()
+            .Append<six_feat::enrichment::ReadinessHandler>()
             // [IDEA-27] Internal metrics endpoint — bound to listener-monitor
             // (see static_config.yaml), never on the public :8081 listener.
             .Append<server::handlers::ServerMonitor>();

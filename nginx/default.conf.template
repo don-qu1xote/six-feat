@@ -1,0 +1,124 @@
+# Unifies six-feat and six-feat-auth under one public origin, so the front
+# end's relative redirects/fetches (window.location.href = "/auth/login",
+# GET /auth/me, POST /auth/logout — see front/src/api/net.js and
+# front/src/api/auth.js) reach the right backend instead of 404ing on
+# whichever service happens to be serving the page.
+#
+# GENIUS_REDIRECT_URI must point here (this proxy's public origin), not at
+# six-feat-auth's own container port anymore — see docker-compose.yml.
+#
+# This file is a template, not a static conf: the official nginx image's
+# entrypoint runs envsubst over every file under
+# /etc/nginx/templates/*.template at container start and writes the result
+# to /etc/nginx/conf.d/<name> — substituting ${SIX_FEAT_PORT} etc. from the
+# nginx service's own `environment:` block in docker-compose.yml, which in
+# turn defaults from the exact same SIX_FEAT_PORT/SIX_FEAT_AUTH_PORT/
+# NGINX_PUBLIC_PORT variables used by the six-feat/six-feat-auth services
+# themselves — one place to change a port instead of a hardcoded copy here
+# that can silently drift from the app's actual listener.
+server {
+    listen ${NGINX_PUBLIC_PORT};
+
+    # [SF-PERF-04] /api/v1/graph responses (nodes + edges + per-edge
+    # collaborations) can get large for a dense seed — compress them at the
+    # proxy layer instead of teaching every individual userver handler to do
+    # it itself. nginx:1.27-alpine (see docker-compose.yml) ships the stock
+    # gzip module but not brotli (that needs a custom-built nginx with
+    # ngx_brotli), so gzip is what's actually available here.
+    #
+    # gzip_proxied is the critical setting for OUR topology specifically:
+    # nginx's gzip module defaults to NEVER compressing a proxied response
+    # (gzip_proxied off) unless told otherwise — graph_handler.cpp/
+    # path_handler.cpp already set "Cache-Control: private, must-revalidate"
+    # on every response, which is exactly one of the conditions gzip_proxied
+    # excludes by default. `any` unconditionally allows compression for
+    # proxied responses regardless of the Cache-Control/Expires the upstream
+    # sent — safe here since every location below only ever proxies our own
+    # six-feat/six-feat-auth backends, not third-party content whose caching
+    # semantics we don't control.
+    #
+    # gzip_vary adds "Vary: Accept-Encoding" so any cache in front of this
+    # (browser, CDN) keys on it instead of serving a compressed body to a
+    # client that didn't ask for one, or vice versa.
+    #
+    # gzip_min_length skips compressing small bodies (e.g. this handler's own
+    # short {"error":...} responses) where the CPU cost isn't worth it.
+    #
+    # ETag/304 are unaffected: If-None-Match/ETag are plain headers nginx
+    # already forwards through proxy_pass unchanged in both directions
+    # (untouched by proxy_hide_header, which we don't use), and a 304 has no
+    # body for gzip to touch in the first place.
+    gzip on;
+    gzip_proxied any;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 5;
+    gzip_types application/json;
+
+    location /auth/ {
+        proxy_pass http://six-feat-auth:${SIX_FEAT_AUTH_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # sse_status_handler.cpp (GET /api/v1/status/stream?id=<artist_id>) is a
+    # genuine long-lived Server-Sent Events stream — HttpResponseBodyStream,
+    # connection held open, one chunk pushed every ~2s until the deep scan
+    # finishes. Needs its own location block, matched before the generic /
+    # below (nginx picks the longest matching prefix), because the defaults
+    # nginx applies to a normal request/response are actively hostile to it:
+    #   - proxy_buffering (on by default) makes nginx wait for either its
+    #     buffer to fill or the upstream connection to close before sending
+    #     anything to the client — for a stream that trickles ~2s apart and
+    #     may legitimately stay open for minutes, the client sees nothing
+    #     until the connection eventually ends, which EventSource treats as
+    #     a transport failure (onerror) and reconnects into the same trap.
+    #     The app already sends X-Accel-Buffering: no (nginx honors it
+    #     per-response), but proxy_buffering off here is the same fix made
+    #     explicit at the proxy config instead of relying solely on the
+    #     upstream remembering to set that header on every code path.
+    #   - proxy_read_timeout defaults to 60s: comfortably longer than the 2s
+    #     poll interval in normal operation, but with zero margin for a
+    #     slow poll cycle (GC/lock/DB hiccup) — one missed beat kills a
+    #     connection that was otherwise healthy. Set generously since an
+    #     open-but-idle SSE connection here is expected, not a leak.
+    #   - proxy_http_version defaults to 1.0 for the upstream leg, which
+    #     doesn't support chunked transfer-encoding — nginx has no way to
+    #     know where the (never-ending) response ends other than the
+    #     upstream closing the connection, so with buffering also masking
+    #     the symptom, this compounds the same "nothing reaches the client
+    #     until close" failure mode from a different angle.
+    location /api/v1/status/stream {
+        proxy_pass http://six-feat:${SIX_FEAT_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        # [SF-PERF-04] Leave this stream out of the server-level gzip on
+        # above, explicitly: each pushed SSE chunk is a few dozen bytes of
+        # JSON, always well under gzip_min_length, so it wouldn't compress
+        # anyway — but making it explicit here means it stays that way even
+        # if gzip_min_length is tuned down later, instead of silently
+        # depending on that threshold to keep working for this location too.
+        gzip off;
+    }
+
+    location / {
+        proxy_pass http://six-feat:${SIX_FEAT_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

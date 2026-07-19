@@ -1,0 +1,14 @@
+type: object
+description: Background artist deep-scan worker
+additionalProperties: false
+properties:
+    queue-capacity:
+        type: integer
+        description: Maximum pending enrichment jobs
+        defaultDescription: '1024'
+    drain-timeout-ms:
+        type: integer
+        description: >-
+            How long to wait for already-queued jobs to finish processing on
+            shutdown before cancelling the worker task
+        defaultDescription: '5000'

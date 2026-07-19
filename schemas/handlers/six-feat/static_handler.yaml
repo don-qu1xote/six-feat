@@ -1,0 +1,29 @@
+type: object
+description: Serves a single static file (HTML/JS/CSS) read from disk at startup
+additionalProperties: false
+properties:
+    file-path:
+        type: string
+        description: path to the file to read and serve
+    content-type:
+        type: string
+        description: value for the Content-Type response header
+        defaultDescription: text/plain; charset=utf-8
+    cache-control:
+        type: string
+        description: value for the Cache-Control response header
+        defaultDescription: ''
+    script-url:
+        type: string
+        description: >-
+            if set, every "/script.js" occurrence in the served file is
+            replaced with this value (used by handler-index to point at the
+            content-hashed JS bundle)
+        defaultDescription: ''
+    style-url:
+        type: string
+        description: >-
+            [SF-WEB-40] if set, every "/style.css" occurrence in the served
+            file is replaced with this value (used by handler-index to point
+            at the content-hashed CSS bundle)
+        defaultDescription: ''

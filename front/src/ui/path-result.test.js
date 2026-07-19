@@ -8,7 +8,7 @@
 // re-testing graph.js's builders (covered separately in graph.test.js) or
 // the real vis.Network/canvas machinery.
 // ════════════════════════════════════════════════════════════════════════════
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../graph.js", () => ({
   buildNodeState: vi.fn((n, seedId) => ({
@@ -33,21 +33,25 @@ vi.mock("../graph.js", () => ({
 vi.mock("../vis-adapter/index.js", () => ({
   initGraphOnCanvas: vi.fn(),
   initNetwork: vi.fn(),
+  initPathNetwork: vi.fn(),
   mergeNetwork: vi.fn(),
   computeNodeSizes: vi.fn(),
-  placePathNodes: vi.fn(() => ({ targets: {}, fromPos: null })),
+  placePathNodes: vi.fn(() => ({ targets: new Map(), fromPos: new Map() })),
   clearGraphForPathSearch: vi.fn(),
   highlightEdgePair: vi.fn(),
 }));
 
 vi.mock("../api/analytics-client.js", () => ({ highlightPath: vi.fn() }));
-vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
+vi.mock("./toast.js", () => ({ showToast: vi.fn(), showRetryToast: vi.fn() }));
 vi.mock("./canvas-controls.js", () => ({ updateStatus: vi.fn() }));
 vi.mock("./sidebar.js", () => ({ showEdgeSidebarByPathEdgeId: vi.fn() }));
+vi.mock("./loading.js", () => ({ showLoading: vi.fn() }));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { mergePathData, renderHopChain } from "./path-result.js";
+import { mergePathData, renderHopChain, runServerPath } from "./path-result.js";
+import { showToast, showRetryToast } from "./toast.js";
+import { showLoading } from "./loading.js";
 
 // ─── mock API-shaped path response, mirroring GET /api/v1/graph/path ───────
 function mockPathData(overrides = {}) {
@@ -75,7 +79,19 @@ beforeEach(() => {
   State.hasRendered = true;
   State._bfsAdj = null;
   State._bfsGraphHash = "";
+  State.activeFilters = new Set(["featured", "producer", "writer"]);
+  State.pathInFlight = false;
+  State._pathAbortController = null;
 });
+
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    json: async () => body,
+  };
+}
 
 describe("mergePathData", () => {
   it("adds all response nodes/edges to State when the graph was empty", () => {
@@ -152,5 +168,70 @@ describe("renderHopChain", () => {
     els.hopChain.innerHTML = "<div>stale</div>";
     renderHopChain([1], [], [{ id: 1, name: "Drake" }], {});
     expect(els.hopChain.innerHTML).toBe("");
+  });
+});
+
+// [fix] runServerPath's loading/error status used to render into a
+// .path-result element embedded in the caller's own panel — reported as
+// the search process feeling "bolted into the window". It now goes
+// through the same two mechanisms regular artist search
+// (api.js::_doSearch) already uses: the canvas-wide #loading overlay
+// (ui/loading.js::showLoading) and a toast (ui/toast.js::showToast/
+// showRetryToast) — this describe block is the first coverage runServerPath
+// itself has ever had for that request/response flow (previously only
+// mergePathData/renderHopChain, its pure-data helpers, were tested).
+describe("runServerPath", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the canvas-wide loading overlay while the request is in flight, and hides it when done", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })));
+    els.hopChain = document.createElement("div");
+
+    const promise = runServerPath("Drake", "Future");
+    expect(showLoading).toHaveBeenCalledWith(true, null, undefined);
+
+    await promise;
+    expect(showLoading).toHaveBeenLastCalledWith(false);
+  });
+
+  it("passes opts.loadingMessage straight through to the overlay", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })));
+    els.hopChain = document.createElement("div");
+
+    await runServerPath("Drake", "Future", { loadingMessage: "Tracing a path from Drake to Future…" });
+    expect(showLoading).toHaveBeenCalledWith(true, null, "Tracing a path from Drake to Future…");
+  });
+
+  it("shows a retry toast (not an embedded error card) when no path is found", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })));
+    els.hopChain = document.createElement("div");
+
+    await runServerPath("Drake", "Future");
+    expect(showRetryToast).toHaveBeenCalledWith("No path found.", expect.any(Function));
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("shows a plain toast (not an embedded error card) for a non-transient API error", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      jsonResponse({ error: "resolve_failed", message: "'from': ambiguous match" }, 400)
+    ));
+    els.hopChain = document.createElement("div");
+
+    await runServerPath("Drke", "Future");
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("select an artist from the suggestions"));
+    expect(showRetryToast).not.toHaveBeenCalled();
+  });
+
+  it("renders the hop chain into the given chainEl on success, and never touches an error mechanism", async () => {
+    const data = { nodes: [{ id: 1, name: "Drake" }, { id: 2, name: "Future" }], edges: [], path: [1, 2] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(data)));
+    const chainEl = document.createElement("div");
+
+    await runServerPath("Drake", "Future", { chainEl });
+    expect(chainEl.querySelectorAll(".hop-row")).toHaveLength(2);
+    expect(showToast).not.toHaveBeenCalled();
+    expect(showRetryToast).not.toHaveBeenCalled();
   });
 });

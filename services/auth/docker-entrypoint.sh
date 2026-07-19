@@ -12,6 +12,12 @@ set -euo pipefail
 : "${GENIUS_CLIENT_SECRET:?GENIUS_CLIENT_SECRET env var is required for OAuth — keep it secret}"
 : "${APP_SECRET:?APP_SECRET env var is required for session encryption — generate with: openssl rand -hex 32, and MUST match the main six_feat services APP_SECRET}"
 
+# [SF-SEC-01] Gates GET /internal/key-fingerprint (KeyFingerprintHandler),
+# the same shared secret as the rest of the internal mesh (six-feat's
+# EnrichmentClient/GeniusGatewayClient). Read directly from the environment
+# by internal_api::SharedSecretFromEnv() — never written to config_vars.yaml.
+: "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six-feat/six-feat-enrichment, generate with: openssl rand -hex 32}"
+
 # Must exactly match the Redirect URI registered for GENIUS_CLIENT_ID on
 # https://genius.com/api-clients (scheme, host, port, trailing slash).
 # There is no reverse proxy in front of six-feat/six-feat-auth in this

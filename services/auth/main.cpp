@@ -7,6 +7,7 @@
 
 #include "auth/oauth_handler.hpp"
 #include "http/health_handler.hpp"
+#include "internal_handlers.hpp"
 
 using namespace userver;
 
@@ -22,6 +23,15 @@ int main(int argc, char* argv[]) {
             .Append<six_feat::auth::LogoutHandler>()
             .Append<six_feat::auth::MeHandler>()
             .Append<six_feat::HealthHandler>()
+            // [SF-INF-03] Unified readiness contract — see
+            // internal_handlers.hpp's ReadinessHandler doc-comment for why
+            // this service's checks{} is always empty.
+            .Append<six_feat::auth::ReadinessHandler>()
+            // [SF-SEC-01] Internal, secret-gated endpoint publishing a
+            // non-invertible fingerprint of this process's APP_SECRET, so
+            // six-feat's AppSecretParityChecker can detect a mismatch
+            // instead of every session silently 401-ing.
+            .Append<six_feat::auth::KeyFingerprintHandler>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never on the
             // public listener.

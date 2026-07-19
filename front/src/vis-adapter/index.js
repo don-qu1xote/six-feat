@@ -13,7 +13,10 @@
 //                  machine (DIM_LEVELS / PATH_HIGHLIGHT_LEVELS from state.js)
 //   events.js    — attachNetworkEvents (click/dblclick/hover/drag handlers),
 //                  setFocus/clearFocus
+//   compare-mode.js — [SF-WEB-47] graph-native Compare mode toggle:
+//                  click-to-pick two artists, reusing showComparePanel/bfsPath
 //
+
 // This file re-exports the exact same public names the old flat
 // vis-adapter.js exposed, so existing imports elsewhere (api.js imports
 // restoreDefaultColors, graph.js imports computeNodeSizes/initNetwork/etc,
@@ -29,7 +32,6 @@ export {
   FIXED_NODE_RADIUS,
   EXPIRED_NODE_RADIUS,
   computeNodeSizes,
-  labelFont,
   nodeVisual,
   edgeWidthForWeight,
   edgeVisual,
@@ -47,11 +49,12 @@ export {
 export {
   // ── render.js ──────────────────────────────────────────────────────────
   initNetwork,
+  initPathNetwork,
   _attachZoomThrottle,
   refreshNetwork,
   openGeniusPage,
   initGraphOnCanvas,
-  destroyNetwork,
+  resetCanvasToEmpty,
   clearGraphForPathSearch,
 } from "./render.js";
 
@@ -84,6 +87,9 @@ export {
   restoreDefaultColors,
   selectEdge,
   clearSelectedEdge,
+  selectNode,
+  clearSelectedNode,
+  recolorInPlace,
 } from "./highlight.js";
 
 export {
@@ -91,4 +97,15 @@ export {
   attachNetworkEvents,
   setFocus,
   clearFocus,
+  // [SF-WEB-28] The one entry point for node/edge selection.
+  selectObject,
 } from "./events.js";
+
+export {
+  // ── compare-mode.js (SF-WEB-47) ───────────────────────────────────────
+  isCompareModeActive,
+  enterCompareMode,
+  exitCompareMode,
+  toggleCompareMode,
+  setupCompareModeToggle,
+} from "./compare-mode.js";

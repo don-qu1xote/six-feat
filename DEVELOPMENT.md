@@ -2,6 +2,14 @@
 
 Полная техническая документация архитектуры, переменных окружения, тестирования и troubleshooting.
 
+История задач (что сделано, в каком спринте, каким тестом покрыто, и
+маппинг легаси `IDEA-N` на текущую нумерацию `SF-AREA-NN`) — в
+[ROADMAP.md](./ROADMAP.md), не здесь.
+
+Обоснование ключевых архитектурных решений (почему сервисов четыре,
+почему сессия проверяется локально, почему схемы вынесены в YAML и
+т.д.) — в [docs/adr/](./docs/adr/README.md), не здесь.
+
 ---
 
 ## Архитектура
@@ -50,6 +58,12 @@
 
 ## Сервисы (IDEA-25 / IDEA-45 / IDEA-53)
 
+Почему именно такое разбиение — в [ADR-0001](./docs/adr/0001-split-into-four-services.md)
+(и по каждому сервису отдельно: [ADR-0002](./docs/adr/0002-enrichment-standalone-service.md)
+для enrichment, [ADR-0003](./docs/adr/0003-genius-gateway-centralizes-rate-limiting.md)
+для genius-gateway, [ADR-0004](./docs/adr/0004-auth-service-local-session-verification.md)
+для auth). Здесь — только таблица портов/ответственности.
+
 Проект — не один процесс, а четыре независимых userver-сервиса из одного
 репозитория (`docker-compose.yml` поднимает их все, каждый — свой Dockerfile
 `target`):
@@ -62,6 +76,9 @@
 | **six-feat-auth** (`services/auth/`) | 8083 | Весь OAuth 2.0 Authorization Code Flow: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` (IDEA-53) | нет |
 
 ### OAuth: выдача сессии (six-feat-auth) vs проверка сессии (six-feat)
+
+Обоснование того, почему проверка сессии осталась локальной, а не стала
+HTTP-вызовом к six-feat-auth — [ADR-0004](./docs/adr/0004-auth-service-local-session-verification.md).
 
 [IDEA-53] До этой итерации OAuth-хэндлеры (`LoginHandler`/`CallbackHandler`/
 `LogoutHandler`/`MeHandler`, `src/auth/oauth_handler.cpp`) жили внутри
@@ -122,10 +139,10 @@
 | `DB_PASSWORD` | string | ✓ | — | Пароль PostgreSQL — **никогда не коммитить в репозиторий** |
 | `DB_HOST` | string | ✗ | `postgres` | Хост PostgreSQL master (имя сервиса в docker-compose) |
 | `DB_PORT` | int | ✗ | `5432` | Порт PostgreSQL master |
-| `DB_REPLICA_HOST` | string | ✗ | `postgres-replica` | Хост read-реплики (см. "Postgres cluster topology" ниже) |
-| `DB_REPLICA_PORT` | int | ✗ | `5432` | Порт read-реплики |
-| `DB_REPLICATION_USER` | string | ✓ (только для docker-compose) | — | Роль для стриминга WAL master → replica; используется `postgresql/primary-entrypoint.sh` и `postgresql/replica-entrypoint.sh`, приложением не читается |
-| `DB_REPLICATION_PASSWORD` | string | ✓ (только для docker-compose) | — | Пароль роли репликации — **никогда не коммитить в репозиторий** |
+| `DB_REPLICA_HOST` | string | ✗ | *(пусто)* | Хост read-реплики; не задан — работаем против одного инстанса (см. "Postgres cluster topology" ниже) |
+| `DB_REPLICA_PORT` | int | ✗ | `5432` | Порт read-реплики (используется только если задан `DB_REPLICA_HOST`) |
+| `DB_REPLICATOR_USER` | string | ✗ | `replicator` | Роль для физической репликации (`prod-like` профиль, см. ниже) |
+| `DB_REPLICATOR_PASSWORD` | string | ✗ | `replicator_dev_password` | Пароль роли репликации — сменить для чего угодно за пределами local dev |
 
 **Примечание**: `GENIUS_CLIENT_ID` может храниться в конфиге (не секрет), но `GENIUS_CLIENT_SECRET` и `APP_SECRET` **всегда** передавать только через env vars.
 
@@ -133,17 +150,77 @@
 
 ## Postgres cluster topology
 
-`PersistentStore` (`src/storage/persistent_store.cpp`) explicitly routes every read through `storages::postgres::ClusterHostType::kSlave` and every write through `kMaster` — this is intentional isolation, not decoration. `userver::storages::postgres::Cluster` discovers which DSN host is which **dynamically**, by running `SELECT pg_is_in_recovery()` against each host in `dbconnection` (topology refreshed every ~1s): a host that answers `false` is Master, everything else is Slave.
+`PersistentStore` (`src/storage/persistent_store.cpp`) routes every write through `storages::postgres::ClusterHostType::kMaster` — intentional isolation, not decoration. Reads route through `kSlave` **only when a replica is actually configured** (`DB_REPLICA_HOST` set — see `ReadHostType()` in that file), otherwise straight through `kMaster` too. `userver::storages::postgres::Cluster` discovers which DSN host is which **dynamically**, by running `SELECT pg_is_in_recovery()` against each host in `dbconnection` (topology refreshed every ~1s): a host that answers `false` is Master, everything else is Slave.
 
-That means `dbconnection` (`db_connection_string` → `static_config.yaml`'s `postgres-db-1.dbconnection`) has to actually be a **multi-host DSN** — `postgresql://user:pass@host1:port1,host2:port2/db` — for a Slave pool to exist at all. If it only lists one host, `kSlave` requests find no Slave pool, log a `WARNING ... FindPool ... There is no pool for slave, falling back to master`, and every read silently lands on master too — the isolation the code assumes is in place quietly stops existing.
+That means `dbconnection` (`db_connection_string` → `static_config.yaml`'s `postgres-db-1.dbconnection`) has to actually be a **multi-host DSN** — `postgresql://user:pass@host1:port1,host2:port2/db` — for a Slave pool to exist at all. If it only lists one host, a `kSlave` request would find no Slave pool and log `WARNING ... FindPool ... There is no pool for slave, falling back to master` — `ReadHostType()` sidesteps this entirely in the single-host case by never issuing a `kSlave` request to begin with, so that warning no longer fires on every read in the default profile (it's still possible, briefly, right after `DB_REPLICA_HOST` is first set and Cluster hasn't finished its first `pg_is_in_recovery()` topology probe yet — that's the one case where it's still a genuinely transient, not permanent, log line).
 
-Docker-compose provides this out of the box:
+**docker-compose.yml runs a single Postgres instance by default** — `postgres-replica` exists in the file but is gated behind the `prod-like` profile, so a bare `docker compose up` never starts it. This is a deliberate trade-off for local dev on modest hardware: a real standby means a second always-on Postgres process plus continuous WAL streaming, for a benefit (read/write isolation) that only matters once you're actually testing replication-lag-sensitive behavior. `DB_REPLICA_HOST` defaults to empty, `docker-entrypoint.sh` builds a single-host DSN, and `PersistentStore` reads master directly — this is expected, not a bug, and doesn't spam the logs.
 
-- **`postgres`** — primary. Runs with `wal_level=replica`/`max_wal_senders`/`hot_standby=on`. `postgresql/primary-entrypoint.sh` idempotently creates a dedicated `REPLICATION`-only role and opens `pg_hba.conf` for it in the background on **every** boot — not just on a fresh `initdb` — so it also fixes up a pre-existing local dev volume that predates this feature, instead of only working on a brand-new `.pgdata`.
-- **`postgres-replica`** — streaming standby of `postgres`. `postgresql/replica-entrypoint.sh` runs `pg_basebackup -R` against the primary on first boot (writing `standby.signal` + `primary_conninfo`), then just hands off to the upstream postgres entrypoint, which starts the data directory in recovery/hot-standby mode. On restarts PGDATA is already populated, so it skips straight to resuming standby recovery.
-- `docker-entrypoint.sh` (the app's) assembles `DB_CONNECTION_STRING` from **both** `DB_HOST:DB_PORT` and `DB_REPLICA_HOST:DB_REPLICA_PORT` — see the env var table above.
+To get genuine Master/Slave isolation (e.g. against a staging cluster with a real streaming standby), set `DB_REPLICA_HOST`/`DB_REPLICA_PORT` to that standby's address — `docker-entrypoint.sh` then assembles the multi-host DSN, and `PersistentStore` (seeing `DB_REPLICA_HOST` set) starts routing reads through `kSlave` again. **Do not** point `DB_REPLICA_HOST` at the same host as `DB_HOST` to "fake" a replica: both DSN entries would resolve to the same live primary, both would answer `pg_is_in_recovery() = false`, and you'd land back in the exact `no pool for slave, falling back to master` case — just with a config that looks like it should be working, which is worse than not setting it at all.
 
-Running against a single bare-metal/local Postgres outside docker-compose, with no second instance to point `DB_REPLICA_HOST` at: expect the `FindPool ... falling back to master` warning from the original issue this section describes — reads still work, just without the isolation from writes.
+### `prod-like` профиль — реальная standby-реплика (SF-INF-02)
+
+`docker-compose.yml` умеет поднять настоящую streaming-репликацию локально, без внешнего staging-кластера — профиль `prod-like`:
+
+```bash
+docker compose --profile prod-like up -d
+```
+
+Это поднимает, в дополнение к обычному дефолтному набору сервисов, ещё и `postgres-replica` (`postgres:16-alpine`, тот же образ, что и у `postgres`). `postgres-replica` **не** отдельный «postgres-primary» — существующий, всегда включённый сервис `postgres` продолжает играть роль мастера и под этим профилем тоже: это осознанное решение, а не половинчатая реализация. Compose-профили работают так, что сервис без `profiles:` активен всегда, и если он через `depends_on` жёстко зависит от сервиса из профилированной группы, Compose автоматически поднимает и этот профиль — то есть будь `postgres` тоже спрятан за `prod-like` с жёстким `depends_on` от `six-feat`, дефолтный `docker compose up` начал бы неявно поднимать `prod-like` каждый раз. Вместо этого `postgres` остаётся неизменным между профилями (мастером), а `postgres-replica` — единственный новый, действительно профилированный сервис; связь `six-feat` → `postgres-replica` остаётся мягкой, через `DB_REPLICA_HOST`, как и раньше.
+
+Как это работает изнутри:
+
+- `postgres` дополнительно монтирует `postgresql/prod-like/init-replication.sh` в `/docker-entrypoint-initdb.d/` — при первом (и только первом) старте на пустом data dir создаёт роль `DB_REPLICATOR_USER` с `REPLICATION LOGIN` и открывает `pg_hba.conf` для физических replication-подключений. Эта роль безвредна и при дефолтном профиле — раз `postgres-replica` не стартует, ей просто никто не пользуется.
+- `postgres` теперь также запускается с `wal_level=replica`, `max_wal_senders`, `max_replication_slots`, `hot_standby=on` — необходимые для streaming replication параметры, применяются всегда (снова: безвредно, если реплики нет).
+- `postgres-replica` использует кастомный entrypoint (`postgresql/prod-like/replica-entrypoint.sh`): на пустом data dir дожидается готовности `postgres`, снимает физический бэкап через `pg_basebackup -R` (флаг `-R` сам пишет `standby.signal` + `primary_conninfo` в `postgresql.auto.conf` — актуальный, PG12+, механизм вместо старого `recovery.conf`), затем передаёт управление штатному `docker-entrypoint.sh postgres` образа. При рестарте (непустой data dir) бэкап не повторяется — `standby.signal` уже на месте, Postgres просто снова стартует как standby.
+
+Чтобы `PersistentStore` реально начал разделять чтения/записи под этим профилем, задайте `DB_REPLICA_HOST=postgres-replica` (например, в `.env`):
+
+```bash
+DB_REPLICA_HOST=postgres-replica
+```
+
+**Проверка**:
+
+1. `docker compose --profile prod-like up -d` — дождаться, пока `postgres-replica` пройдёт healthcheck (`pg_isready`).
+2. `docker compose exec postgres-replica psql -U "$DB_USER" -d "$DB_NAME" -c 'SELECT pg_is_in_recovery();'` → `t` (реплика в режиме standby).
+3. `docker compose exec postgres psql -U "$DB_USER" -d "$DB_NAME" -c 'SELECT pg_is_in_recovery();'` → `f` (мастер жив и остаётся мастером).
+4. С `DB_REPLICA_HOST=postgres-replica` в окружении `six-feat` — обычные чтения графа (`GET /api/v1/graph?...`) продолжают отвечать `200`, но теперь идут через `kSlave`-пул на `postgres-replica` (`ReadHostType()` теперь возвращает `kSlave`, раз `DB_REPLICA_HOST` задан).
+
+Существующий локальный `.pgdata` (созданный до появления этого профиля) не подхватит новую replication-роль автоматически — `/docker-entrypoint-initdb.d/*.sh` выполняется только на пустом data dir. Для `prod-like` на уже существующем окружении нужен свежий volume `postgres`.
+
+---
+
+## Кэширование ответов (ETag) и `request_id` в ошибках
+
+`/api/v1/graph`, `/api/v1/graph/path` и `/api/v1/search` (`SF-API-04`)
+отвечают слабым `ETag` (RFC 7232 §2.3, `W/"..."`) и
+`Cache-Control: private, must-revalidate` на каждый успешный ответ:
+
+- **graph** — тег строится из `seed_id`, `fetch_state.depth`/`song_count`
+  (та же величина, что опрашивает `/api/v1/status`), маски ролей,
+  `truncated`/`song_limit` — то есть меняется ровно тогда, когда меняется
+  тело: либо параметрами запроса, либо фоновым сканером.
+- **path** — тег строится из `from`/`to` id (в порядке запроса — тело
+  ассиметрично помечает "from"/"to", так что перестановка параметров
+  местами валидна как отдельный кэш-ключ), маски ролей и `fetch_state`
+  обоих концов пути.
+- **search** — у эндпоинта нет персистентного состояния (Genius
+  опрашивается вживую на каждый вызов), поэтому тег строится из
+  нормализованного query и фактически вернувшегося набора id кандидатов.
+
+Повторный запрос с `If-None-Match: <тот же ETag>` получает `304 Not
+Modified` с пустым телом вместо повторной сборки JSON. Общая логика
+слабого сравнения (`ETagMatches`, разбор `If-None-Match` со списком через
+запятую и `*`) вынесена в `libs/six-feat-common/src/core/http_cache.{hpp,cpp}`
+и используется всеми тремя хендлерами — конкретная формула тега у каждого
+своя, потому что зависит от разных данных.
+
+Отдельно от кэширования: JSON-тела ошибок `graph`/`path`/`search`/`status`
+(`SF-API-06`) содержат поле `request_id` — тот же id, что уже уходит в
+заголовке `X-Request-Id` и в теги лога (`core/request_id.hpp`,
+`EnsureRequestId`/`CurrentRequestId`). Поле добавлено только к телам
+ошибок; формат успешных ответов не менялся.
 
 ---
 
@@ -228,10 +305,17 @@ APP_SECRET env var is required for session encryption — generate with: openssl
 
 ### БД недоступна / `/readyz` не проходит
 
-- Строка подключения к PostgreSQL собирается `docker-entrypoint.sh` из `DB_HOST`/`DB_PORT`/`DB_REPLICA_HOST`/`DB_REPLICA_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` в multi-host DSN (`host1,host2`) и передаётся в `static_config.yaml` через `postgres-db-1.dbconnection` (`$db_connection_string`) — никогда не коммитится. Убедитесь, что оба сервиса, `postgres` и `postgres-replica`, из `docker-compose.yml` здоровы (`depends_on: condition: service_healthy`) прежде чем разбираться с `/readyz`.
-- Если в логах видите `WARNING ... FindPool ... There is no pool for slave, falling back to master` — у кластера нет Slave-хоста (см. "Postgres cluster topology" выше): либо `postgres-replica` не поднялся/не прошёл healthcheck, либо `DB_REPLICA_HOST`/`DB_REPLICA_PORT` не попали в DSN.
+- Строка подключения к PostgreSQL собирается `docker-entrypoint.sh` из `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` (и `DB_REPLICA_HOST`/`DB_REPLICA_PORT`, если заданы) в DSN и передаётся в `static_config.yaml` через `postgres-db-1.dbconnection` (`$db_connection_string`) — никогда не коммитится. Убедитесь, что сервис `postgres` из `docker-compose.yml` здоров (`depends_on: condition: service_healthy`) прежде чем разбираться с `/readyz`.
+- Если в логах видите `WARNING ... FindPool ... There is no pool for slave, falling back to master` — начиная с фикса в `persistent_store.cpp` (`ReadHostType()`) это больше НЕ должно происходить постоянно в дефолтной конфигурации (без `DB_REPLICA_HOST` чтения сразу идут в `kMaster`, `kSlave` не запрашивается вовсе). Если предупреждение всё же видно — это либо кратковременный интервал сразу после того, как `DB_REPLICA_HOST` был впервые задан (Cluster ещё не завершил первый `pg_is_in_recovery()`-проб топологии, ~1с), либо признак того, что вы **осознанно** настраивали `DB_REPLICA_HOST` на реальный standby, который не поднялся/не прошёл healthcheck, либо переменные не попали в окружение контейнера. См. "Postgres cluster topology" выше.
 - Готовность проверяется через `GET /readyz`: вызывает `PersistentStore::Ping()` и возвращает `503` с `{"status":"not_ready","checks":{"database":{"ok":false}}}`, если БД недоступна.
 
 ### Граф не рендерится в браузере
 
-`front/index.html` подключает `vis-network` с CDN (`unpkg.com`) с зафиксированным SRI-хешем (`integrity="sha384-..."`). Если версия файла на CDN разойдётся с той, под которую посчитан хеш (`vis-network@9.1.9`), браузер молча заблокирует загрузку скрипта — в консоли будет ошибка вида `Failed to find a valid digest`, граф останется пустым. Исправление: убедиться, что версия в URL совпадает с версией, под которую считался хеш, пересчитать `integrity`, либо самостоятельно захостить `vis-network` под `/vendor/` и убрать `integrity`/`crossorigin` (см. комментарий рядом с этим тегом в `index.html`).
+[SF-SEC-02] `front/index.html` больше не грузит `vis-network` с CDN (`unpkg.com`) — файл захостен локально: `front/vendor/vis-network.min.js` (пин версии `vis-network@9.1.9/standalone/umd/vis-network.min.js`), раздаётся сервисом `six-feat` по пути `/vendor/vis-network.min.js` (`handler-vendor-vis-network`, `services/six-feat/src/http/static_handler.hpp` — `StaticFileHandler`, тот же механизм, что и для `index.html`/`script.js`) и копируется в рантайм-образ отдельным `COPY` в `services/six-feat/Dockerfile`. Тег в `index.html` — простой same-origin `<script src="/vendor/vis-network.min.js"></script>`, без `integrity`/`crossorigin` (раньше — CDN с зафиксированным SRI-хешем; при расхождении версии на CDN с той, под которую посчитан хеш, браузер молча блокировал скрипт — `Failed to find a valid digest`, граф оставался пустым; теперь эта категория отказа исключена, версия зафиксирована самим содержимым файла в репозитории).
+
+Если граф всё равно не рендерится — проверьте:
+- Файл `front/vendor/vis-network.min.js` присутствует и не пуст (`git lfs`/чекаут не сломан).
+- В образе он лежит по `/usr/share/six_feat/vendor/vis-network.min.js` (см. `Dockerfile`) и путь совпадает с `file-path` в `static_config.yaml`'s `handler-vendor-vis-network`.
+- Консоль браузера не показывает 404 на `/vendor/vis-network.min.js` — значит либо `Dockerfile`'ный `COPY` не отработал, либо в `static_config.yaml` разъехались `path`.
+
+Обновление версии: заменить `front/vendor/vis-network.min.js` на новый `standalone/umd/vis-network.min.js` из релиза `vis-network`, обновить версию в комментариях (`index.html`, `static_handler.hpp`) и пересобрать образ — никакого пересчёта `integrity`/SRI больше не требуется.

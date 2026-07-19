@@ -1,0 +1,4 @@
+type: object
+description: Internal APP_SECRET fingerprint endpoint (SF-SEC-01)
+additionalProperties: false
+properties: {}

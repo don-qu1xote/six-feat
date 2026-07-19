@@ -154,6 +154,72 @@ class TestParseRoleMask:
         assert mask.primary is True
         assert mask.producer is False
 
+    # [SF-PERF-02] ToLower() gained an ASCII-only fast path (byte-wise
+    # A-Z->a-z, no UTF-8 decode) that falls back to the codepoint-aware path
+    # the moment it sees a byte >=0x80. These tokens are pure ASCII, so they
+    # must still behave exactly as before through the fast path.
+    def test_ascii_only_role_spec_still_case_insensitive(self):
+        mask = parse_role_mask("PRIMARY,PRODUCER,WRITER,FEATURED")
+        assert mask == RoleMask(True, True, True, True)
+
+    # A non-ASCII token (e.g. a Cyrillic homoglyph typed by mistake) forces
+    # ToLower()'s fallback path — it must still lower-case correctly and,
+    # since it never matches a known role name, be silently ignored exactly
+    # like any other unrecognised token (no crash, no partial match).
+    def test_non_ascii_token_falls_back_and_is_ignored(self):
+        mask = parse_role_mask("продюсер")  # Cyrillic "producer" — not a real role token
+        assert mask == RoleMask(False, False, False, False)
+
+    def test_ascii_role_after_non_ascii_token_still_matches(self):
+        """The fallback triggered by an earlier non-ASCII token must not
+        corrupt tokenisation of a later, purely-ASCII token in the same spec."""
+        mask = parse_role_mask("продюсер,producer")
+        assert mask.producer is True
+        assert mask == RoleMask(False, True, False, False)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [SF-PERF-03] Golden regression: ParseRoleMask (and, transitively, ToLower)
+# must give IDENTICAL results for a pure-ASCII spec and its ASCII+Cyrillic
+# counterpart — the ASCII fast path (SF-PERF-02) and the codepoint-aware
+# fallback are two different code paths for the same contract, and this
+# table is what would catch them silently diverging. Do not delete these
+# cases when touching role_mask.cpp/ToLower again — extend the table instead.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestToLowerGolden:
+    # (spec, expected mask as (primary, producer, writer, featured))
+    ASCII_CASES = [
+        ("primary",                        (True,  False, False, False)),
+        ("PRODUCER",                        (False, True,  False, False)),
+        ("Writer,Featured",                 (False, False, True,  True)),
+        ("PRIMARY,PRODUCER,WRITER,FEATURED", (True,  True,  True,  True)),
+        ("",                                 (True,  True,  True,  True)),  # empty -> all roles
+    ]
+
+    def test_pure_ascii_specs_match_golden_masks(self):
+        for spec, expected in self.ASCII_CASES:
+            assert parse_role_mask(spec) == RoleMask(*expected), spec
+
+    def test_ascii_plus_cyrillic_specs_give_identical_results_to_their_ascii_form(self):
+        """Each spec here is the ASCII form from ASCII_CASES with a bogus
+        Cyrillic token appended — a real ?roles= value would never contain
+        one, but it forces ToLower()'s fallback path mid-parse. The bogus
+        token must never match a real role (so it contributes nothing), and
+        the ASCII tokens around it must resolve to the exact same mask as
+        their pure-ASCII counterpart above — same golden result via either
+        code path.
+        """
+        for spec, expected in self.ASCII_CASES:
+            if spec == "":
+                continue  # nothing to append a token to for the empty-spec case
+            spiced = spec + ",продюсер"
+            assert parse_role_mask(spiced) == RoleMask(*expected), spiced
+
+    def test_cyrillic_token_interleaved_between_ascii_tokens(self):
+        mask = parse_role_mask("primary,продюсер,featured")
+        assert mask == RoleMask(True, False, False, True)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RoleAllowed

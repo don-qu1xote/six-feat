@@ -28,14 +28,11 @@ export function setupPathPanel() {
   // Task 4: close button
   els.pathPanelClose?.addEventListener("click", closePathPanel);
 
-  // Клик вне панели закрывает её — тот же паттерн, что у node-search-overlay
-  // и search-modal (click on backdrop = close).
-  els.pathPanel?.addEventListener("click", e => e.stopPropagation());
-  document.addEventListener("click", e => {
-    if (!isPathPanelOpen()) return;
-    if (els.pathPanel.contains(e.target) || e.target === els.btnFindPath || els.btnFindPath?.contains(e.target)) return;
-    closePathPanel();
-  });
+  // [SF-WEB-24] Click-outside-to-close (same pattern as node-search-overlay
+  // and docked search-modal) and click-inside-doesn't-bubble-and-self-close
+  // both now come from the shared registration in
+  // ui/modals.js::setupDockedPanels() — this used to be its own document
+  // click listener.
 
   // [ТЗ-5 step 1-2] Genius AC for path fields — same factory as hero/dock.
   // Each field tracks its selected artist id so we can pass ?from=<id> to
@@ -66,6 +63,17 @@ export function setupPathPanel() {
   els.pathFromInput?.addEventListener("input", () => { _pathFromId = null; });
   els.pathToInput  ?.addEventListener("input", () => { _pathToId   = null; });
 
+  // [fix] Variant B (of 5 mockups) swaps the decorative route-rail for a
+  // functional swap button sitting between the two fields — same swap
+  // logic setupHeroPathFinder's own #btn-hero-swap-path already uses.
+  els.btnSwapPath?.addEventListener("click", () => {
+    const fromVal = els.pathFromInput.value;
+    const toVal   = els.pathToInput.value;
+    els.pathFromInput.value = toVal;
+    els.pathToInput.value   = fromVal;
+    [_pathFromId, _pathToId] = [_pathToId, _pathFromId];
+  });
+
   els.btnRunPath?.addEventListener("click", async () => {
     const fromRaw = (els.pathFromInput.value || "").trim();
     const toRaw   = (els.pathToInput.value   || "").trim();
@@ -75,7 +83,7 @@ export function setupPathPanel() {
     // backend skips fuzzy-resolve entirely (no ambiguous error possible).
     const fromParam = (_pathFromId != null) ? String(_pathFromId) : fromRaw;
     const toParam   = (_pathToId   != null) ? String(_pathToId)   : toRaw;
-    await runServerPath(fromParam, toParam);
+    await runServerPath(fromParam, toParam, { loadingMessage: `Tracing a path from ${fromRaw} to ${toRaw}…` });
   });
 
   // Task 4: clear path button
@@ -177,8 +185,13 @@ export function setupHeroPathFinder() {
     // A successful path builds its own graph on canvas and closes the
     // landing modal (see mergePathData → initGraphOnCanvas), same as a
     // regular hero search. The hop chain itself renders inline into the
-    // Connect panel (heroHopChain), reusing renderHopChain's own markup/CSS.
-    await runServerPath(fromParam, toParam, { resultEl: els.heroPathResult, chainEl: els.heroHopChain });
+    // Connect panel (heroHopChain), reusing renderHopChain's own markup/CSS
+    // — loading/errors go through the shared canvas overlay/toast instead
+    // (see runServerPath's own comment).
+    await runServerPath(fromParam, toParam, {
+      chainEl: els.heroHopChain,
+      loadingMessage: `Tracing a path from ${fromRaw} to ${toRaw}…`,
+    });
   });
 
   // IDEA-41: compact Swap/Clear controls next to "Trace the path".
@@ -195,8 +208,7 @@ export function setupHeroPathFinder() {
     els.heroPathToInput.value   = "";
     _fromId = null;
     _toId   = null;
-    if (els.heroPathResult) { els.heroPathResult.className = "path-result"; els.heroPathResult.textContent = ""; }
-    if (els.heroHopChain)   els.heroHopChain.innerHTML = "";
+    if (els.heroHopChain) els.heroHopChain.innerHTML = "";
     els.heroPathFromInput?.focus();
   });
 }

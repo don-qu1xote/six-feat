@@ -16,6 +16,8 @@ export const els = {
   canvasChrome: $("canvas-chrome"),
   appCanvas:    $("app-canvas"),
   canvasDecorator: $("canvas-decorator"),
+  // [SF-WEB-19] Unified empty/loading/error surface — see ui/canvas-states.js.
+  canvasState: $("canvas-state"),
   brand:      $("brand"),
 
   btnRoleFilters: $("btn-role-filters"),
@@ -26,10 +28,9 @@ export const els = {
   seedCard:       $("seed-card"),
   seedCardAvatar: $("seed-card-avatar"),
   seedCardName:   $("seed-card-name"),
-  btnLoadMoreCollabs: $("btn-load-more-collabs"),
   truncationBanner:       $("truncation-banner"),
-  truncationBannerText:   $("truncation-banner-text"),
-  truncationBannerAction: $("truncation-banner-action"),
+  scanStatusBadge: $("scan-status-badge"),
+  scanStatusText:  $("scan-status-text"),
   infoBtn:        $("info-btn"),
   infoPopover:    $("info-popover"),
   rateLimitBadge: $("rate-limit-badge"),
@@ -39,9 +40,12 @@ export const els = {
   loading:    $("loading"),
   toast:      $("toast"),
 
-  filterFeatured: $("filter-featured"),
-  filterProducer: $("filter-producer"),
-  filterWriter:   $("filter-writer"),
+  // [SF-WEB-14] Moved off the rail onto their own always-visible canvas
+  // segment (see .role-filter-segment) — the rail's #filter-featured/
+  // -producer/-writer buttons were the duplicate this ticket removes.
+  canvasFilterFeatured: $("canvas-filter-featured"),
+  canvasFilterProducer: $("canvas-filter-producer"),
+  canvasFilterWriter:   $("canvas-filter-writer"),
 
   // Search settings on the landing hero (ТЗ: same logic as the rail's
   // role filters + find path, surfaced before a graph even exists).
@@ -63,7 +67,6 @@ export const els = {
   btnHeroRunPath:     $("btn-hero-run-path"),
   btnHeroSwapPath:    $("btn-hero-swap-path"),
   btnHeroClearPath:   $("btn-hero-clear-path"),
-  heroPathResult:     $("hero-path-result"),
   heroHopChain:       $("hero-hop-chain"),
 
   themeToggle: $("theme-toggle"),
@@ -71,16 +74,60 @@ export const els = {
   btnClearGraph: $("btn-clear-graph"),
   btnCopyLink:   $("btn-copy-link"),
   btnExportPng:  $("btn-export-png"),
+  btnExportJson: $("btn-export-json"),
   btnFindPath:   $("btn-find-path"),
-  btnFitView:    $("btn-fit-view"),
+  // [SF-WEB-47] Graph-native Compare mode toggle — see vis-adapter/compare-mode.js.
+  btnCompareMode: $("btn-compare-mode"),
+  // [SF-WEB-61] Manual BubbleSet toggle — see ui/canvas-controls.js::setupBubbleSetsToggle.
+  btnBubbleSets: $("btn-bubble-sets"),
   btnSearchOpen: $("btn-search-open"),
+
+  // [SF-WEB-14] Compact zoom/fit cluster — the one control cluster the
+  // redesign keeps directly on the canvas. #btn-fit-view moved here from
+  // the rail (same id, same click handler in main.js); zoom-in/out/focus
+  // never had a visible button before (only +/-/Esc keyboard shortcuts).
+  canvasZoomCluster: $("canvas-zoom-cluster"),
+  btnZoomIn:    $("btn-zoom-in"),
+  btnZoomOut:   $("btn-zoom-out"),
+  btnFitView:   $("btn-fit-view"),
+  btnFocusSeed: $("btn-focus-seed"),
+
+  // [SF-WEB-14] The other canvas-level cluster: role filters, always
+  // visible (not tucked inside the rail's hover-to-expand icon stack).
+  roleFilterSegment: $("role-filter-segment"),
+
+  // [SF-WEB-27] Object action bar — mini-actions for the currently selected
+  // node (expand / focus / open on Genius), the last row of #sidebar-body's
+  // grid (was a separately-floating bar above the whole companion panel,
+  // plus a now-removed standalone Genius button — merged into this one
+  // row). Populated per-node by ui/sidebar.js:: showArtistSidebar, hidden
+  // by hideArtistSidebar/showEdgeSidebar (these actions only make sense for
+  // a single artist). [SF-WEB-47] The fourth action (pin) is gone — it
+  // only ever existed to gate Compare's old pinned-pair selection.
+  objectActionBar:  $("object-action-bar"),
+  objActionExpand:  $("obj-action-expand"),
+  objActionFocus:   $("obj-action-focus"),
+  objActionGenius:  $("obj-action-genius"),
+
+  // [SF-WEB-12] companionPanel is the one shared card — #artist-sidebar and
+  // #path-panel (below) are now plain content sections inside it, shown one
+  // at a time, instead of two independently-styled floating panels.
+  companionPanel: $("companion-panel"),
 
   artistSidebar:  $("artist-sidebar"),
   sidebarAvatar:  $("sidebar-avatar"),
   sidebarName:    $("sidebar-name"),
   sidebarMeta:    $("sidebar-meta"),
   sidebarTracks:  $("sidebar-tracks"),
-  sidebarGenius:  $("sidebar-genius-btn"),
+  // [SF-WEB-12] Static tiles (index.html) — sidebar.js used to create these
+  // on the fly via ensureTile(); now they always exist, just hidden/shown.
+  sidebarRoleBreakdownTile: $("sidebar-rolebreakdown-tile"),
+  sidebarRoleChips:         $("sidebar-role-chips"),
+  sidebarPathTile:          $("sidebar-path-tile"),
+  sidebarPathTrack:         $("sidebar-path-track"),
+  // [SF-WEB-33] Edge-only tile — both endpoints of the selected edge.
+  sidebarEndpointsTile:  $("sidebar-endpoints-tile"),
+  sidebarEndpointsTrack: $("sidebar-endpoints-track"),
   sidebarClose:   $("sidebar-close"),
 
   candidateOverlay: $("candidate-overlay"),
@@ -91,10 +138,23 @@ export const els = {
   pathPanelClose: $("path-panel-close"),
   pathFromInput:  $("path-from-input"),
   pathToInput:    $("path-to-input"),
+  btnSwapPath:    $("btn-swap-path"),
   btnRunPath:     $("btn-run-path"),
   btnClearPath:   $("btn-clear-path"),
-  pathResult:     $("path-result"),
   hopChain:       $("hop-chain"),
+
+  // [SF-WEB-20] Compare mode — common collaborators of two picked artists
+  // (see btnCompareMode above / vis-adapter/compare-mode.js).
+  comparePanel:      $("compare-panel"),
+  comparePanelClose: $("compare-panel-close"),
+  compareTitle:      $("compare-title"),
+  // [fix] The two compared artists themselves, shown above the trace.
+  comparePair:       $("compare-pair"),
+  // [fix] The trace between them (renderHopChain, reused from the
+  // six-degrees path result) — shown above the shared-collaborators list.
+  compareTraceLabel: $("compare-trace-label"),
+  compareHopChain:   $("compare-hop-chain"),
+  compareList:       $("compare-list"),
 
   nodeSearchOverlay: $("node-search-overlay"),
   nodeSearchInput:   $("node-search-input"),

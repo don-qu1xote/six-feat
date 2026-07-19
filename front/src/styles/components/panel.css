@@ -1,0 +1,36 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   ui-panel / ui-tile — SF-WEB-11 kit.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* Panel / tile — the .bento-tile "material" under new names ahead of a
+   later step consolidating the two; both are additive alongside
+   .bento-tile for now, not a replacement. */
+/* [SF-WEB-42] background was the OPAQUE var(--panel-2) — backdrop-filter
+   on a fully opaque fill is a visual no-op (nothing behind the panel's
+   own paint for it to blur), so the "glass" .ui-panel claimed was never
+   actually visible. --glass-fill (tokens.css) is the same --panel-2 hue
+   at --glass-alpha, and --glass-glow is a soft accent bloom on the
+   hairline border — the two together are the "стеклянная панель с
+   тонкой рамкой и лёгким свечением" this ticket asks for at the kit
+   level. Border/backdrop-filter/padding/radius otherwise unchanged. */
+.ui-panel {
+  border-radius: var(--r-lg);
+  background: var(--glass-fill); border: 1px solid var(--line);
+  box-shadow: var(--elevation-2), var(--glass-glow);
+  /* [SF-WEB-24] Same backdrop-blur the other two docked-panel shells
+     (.search-modal.docked .search-wrap/.node-search-box) already use —
+     .companion-panel (the sole .ui-panel consumer) is the same kind of
+     floating-over-canvas surface, so it gets the same shell treatment. */
+  backdrop-filter: blur(var(--blur-scrim));
+  padding: var(--space-4);
+  min-width: 0;
+}
+.ui-tile {
+  border-radius: var(--r-md);
+  background: rgba(var(--panel-rgb),.4);
+  padding: var(--space-3);
+  min-width: 0;
+}
+

@@ -6,13 +6,15 @@ import { searchArtist } from "./api/api.js";
 import {
   loadHistory, setupFilterToggles, setupNodeSearch, setupPathPanel,
   setupHeroPathFinder, setupHeroModeSwitch,
-  createGeniusAc, attachGeniusAutocomplete,
-  loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas,
+  createGeniusAc, attachGeniusAutocomplete, closeDropdown,
+  loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas, goHome,
   hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
+  zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
-  renderChips, exportGraphPng, setupThemeToggle
+  renderChips, exportGraphPng, exportGraphJson, setupThemeToggle, setupDockedPanels,
+  restoreSurfaceFromUrl, setupBubbleSetsToggle
 } from "./ui/index.js";
-import { clearFocus } from "./vis-adapter/index.js";
+import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
 import { setupCanvasDecorator, startCanvasDecorator } from "./dom/canvas-decorator.js";
 
@@ -31,10 +33,22 @@ export function init() {
   // inline pre-paint script).
   setupThemeToggle();
 
+  // [SF-WEB-25] Restores the active surface (#/graph, #/game — game not
+  // built yet) from the URL hash before anything else touches routing/
+  // history state below. Current graph behavior is unchanged: a missing or
+  // unrecognized hash resolves to the "graph" default, same as before this
+  // ticket existed.
+  restoreSurfaceFromUrl();
+
   loadHistory();
   renderChips();
   setupFilterToggles();
   setupKeyboard();
+  // [SF-WEB-24] Registers the three docked-panel surfaces (docked search-
+  // modal, node-search overlay, find-path panel) with the shared shell —
+  // mutual exclusivity/outside-click — before wiring each one's own
+  // content-specific behaviour below.
+  setupDockedPanels();
   setupNodeSearch();
   setupPathPanel();
   setupHeroPathFinder();
@@ -43,9 +57,20 @@ export function init() {
   setupSeedCard();
   setupHelpOverlay();
   setupLoadMoreCollabs();
+  // [SF-WEB-47] Compare's graph-native rail toggle — click two nodes to
+  // open the Compare panel for that pair.
+  setupCompareModeToggle();
+  // [SF-WEB-61] Manual BubbleSet toggle — off by default, user-controlled.
+  setupBubbleSetsToggle();
 
   // ТЗ-D8: idle starfield shown while #network is empty (first visit /
   // after clearCanvas). Mounted once, then just toggled via opacity.
+  // [SF-WEB-19] The onboarding card (canvas-controls.js::clearCanvas) is
+  // NOT shown here on first visit — only after the user explicitly clears
+  // an existing graph. The landing hero modal already is the first-visit
+  // onboarding; showing a second one behind it would be redundant (and,
+  // before this ticket's own fix, was actually unreachable — the modal
+  // has no dismiss path pre-search).
   setupCanvasDecorator();
   startCanvasDecorator();
 
@@ -64,7 +89,7 @@ export function init() {
 
   els.heroForm.addEventListener("submit", e => {
     e.preventDefault();
-    heroAc?.classList.remove("open");
+    if (heroAc) closeDropdown(heroAc);
     searchArtist(els.heroInput.value, false, true);
   });
 
@@ -81,9 +106,14 @@ export function init() {
   }
 
   if (els.brand) {
-    els.brand.addEventListener("click", clearCanvas);
+    // [fix] Was clearCanvas() — the same handler as the rail's dedicated
+    // "Clear graph" button — which (SF-WEB-19) deliberately stays on the
+    // graph page with an empty-state card. The logo is expected to behave
+    // like an actual "back to home" action instead, landing straight on
+    // the full-screen search experience. See goHome()'s own comment.
+    els.brand.addEventListener("click", goHome);
   } else {
-    console.warn("[init] .brand element not found; brand-click-to-clear disabled.");
+    console.warn("[init] .brand element not found; brand-click-to-home disabled.");
   }
 
   if (els.sidebarClose) {
@@ -100,7 +130,12 @@ export function init() {
   els.btnClearGraph ?.addEventListener("click", clearCanvas);
   els.btnCopyLink   ?.addEventListener("click", copyShareableLink);
   els.btnExportPng  ?.addEventListener("click", exportGraphPng);
+  els.btnExportJson ?.addEventListener("click", exportGraphJson);
   els.btnFitView    ?.addEventListener("click", fitView);
+  // [SF-WEB-14] Compact zoom/fit cluster.
+  els.btnZoomIn     ?.addEventListener("click", zoomIn);
+  els.btnZoomOut    ?.addEventListener("click", zoomOut);
+  els.btnFocusSeed  ?.addEventListener("click", focusSeed);
 
   $("btn-node-search")?.addEventListener("click", openNodeSearch);
 

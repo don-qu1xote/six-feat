@@ -6,26 +6,125 @@
 // Node/edge visual-object construction lives in visuals.js; tooltip HTML and
 // the viewport-collision guard live in tooltips.js. This file is only the
 // "wire it all up into a live vis.Network" part: initNetwork/refreshNetwork/
-// destroyNetwork/clearGraphForPathSearch.
+// resetCanvasToEmpty/clearGraphForPathSearch.
 // ════════════════════════════════════════════════════════════════════════════
-import { State, PHYSICS_SETTLE_MS, resetGraphState } from "../state/state.js";
+import { State, COLOR, resetGraphState, MOTION, visAnimation } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { forceCloseSearchModal, hideArtistSidebar } from "../ui/index.js";
 import { runHeroGraphTransition } from "../dom/transition.js";
 import { stopCanvasDecorator } from "../dom/canvas-decorator.js";
+import { clearCanvasState } from "../ui/canvas-states.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
-import { scheduleFreeze, nudgePhysics, updateEdgeRenderMode } from "./physics.js";
-import { nodeVisual, edgeVisual, networkOptions } from "./visuals.js";
+import { updateEdgeRenderMode, runFlyoutAnimation, pokeFastRenderMode, resetFastRenderMode } from "./physics.js";
+import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD, FAST_RENDER_EDGE_THRESHOLD } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
+import { placeExpandedNodes, LEAF_R } from "./layout.js";
+import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from "./edge-render.js";
+import { clearDominantColorCache } from "./photo-color.js";
+import { setContourData, clearContourData, drawContours } from "./bubble-contours.js";
+
+// [SF-WEB-51] Один общий движок детерминированной раскладки для инициала И
+// re-search: и initNetwork, и refreshNetwork прогоняют граф через
+// placeExpandedNodes (collision-solved targets) и фиксируют ноды ровно там,
+// вместо того чтобы полагаться на физику. Возвращает массив нод-объектов с
+// впечатанными x/y/fixed — вызывающий строит из них DataSet (init) или
+// clear()+add() (refresh). Полюса/сид приколоты (fixed:true) солвером и
+// здесь; листья без target (не должно случаться, но на всякий) остаются
+// нефиксированными, чтобы не «замерзать» в (0,0).
+//
+// [SF-WEB-55] edgeClass (SF-WEB-52-секторная intra/cross-классификация,
+// см. layout.js) сразу уходит в setEdgeCache() — собственный canvas-слой
+// (edge-render.js) рисует ВСЕ рёбра сам, поэтому нативная vis.js-линия для
+// КАЖДОГО закешированного ребра гасится до opacity:0 прямо здесь (только
+// hit-testing/hover/selectEdge у vis.js остаются рабочими, см. шапку
+// edge-render.js) — edgeVisual() сам по себе не тронут, чтобы шестистепенный
+// path-режим (initPathNetwork, свой набор рёбер, БЕЗ edgeClass) остался
+// видимым как раньше.
+function _layoutNodeItems(nameById, savedPositions = {}) {
+  const { targets, edgeClass, sectorMembers } = placeExpandedNodes(savedPositions);
+  const nodeItems = State.graphNodes.map(n => {
+    const v = nodeVisual(n);
+    const t = n.isSeed ? { x: 0, y: 0 } : targets.get(n.id);
+    return t ? { ...v, x: t.x, y: t.y, fixed: { x: true, y: true } } : v;
+  });
+  const edgeItems = State.graphEdges.map(e => suppressNativeEdgeColor(edgeVisual(e, nameById)));
+  setEdgeCache(edgeClass);
+  setContourData(sectorMembers);
+  return { nodeItems, edgeItems };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-45] RING-GUIDES — a light, draw-only echo of the dandelion-ring
+// layout math in layout.js (SF-WEB-29). LEAF_R is the exact radius that
+// math places the first ring of a hub's exclusive leaves at; drawing a
+// faint circle at that same radius around every hub (seed + expanded
+// nodes), read live off State.network each frame via getPosition(), can
+// never drift out of sync with the real placement — and, being draw-only,
+// never feeds back into it (the dynamic layout mechanism itself is
+// untouched). Skipped above LARGE_GRAPH_NODE_THRESHOLD: cheap per hub, but
+// no reason to spend it on graphs that are already trading fidelity for
+// interaction speed elsewhere (see networkOptions/FAST_RENDER_EDGE_THRESHOLD
+// below).
+// ════════════════════════════════════════════════════════════════════════════
+function _drawRingGuides(ctx) {
+  if (!State.network || !State.graphNodes.length) return;
+  if (State.graphNodes.length > LARGE_GRAPH_NODE_THRESHOLD) return;
+  const hubIds = new Set(State.expandedNodes);
+  if (State.currentSeedId != null) hubIds.add(State.currentSeedId);
+  if (!hubIds.size) return;
+  ctx.save();
+  ctx.strokeStyle = hexToRgba(COLOR.signal, 0.12);
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 7]);
+  for (const id of hubIds) {
+    // [fix] vis.js's Network.getPosition() THROWS (ReferenceError, not just
+    // undefined/null) for a node id its internal registry doesn't know —
+    // State.expandedNodes/currentSeedId can briefly hold an id from just
+    // before a refresh/collapse/clear finishes propagating (this runs on
+    // every beforeDrawing frame, so it can land mid-transition). Checking
+    // nodesDS.get() first avoids the throw for the common case (id already
+    // gone from the DataSet); the try/catch covers the rarer window where
+    // the DataSet has it but vis.js's own body.nodes hasn't caught up yet.
+    if (!State.nodesDS || !State.nodesDS.get(id)) continue;
+    let pos;
+    try {
+      pos = State.network.getPosition(id);
+    } catch {
+      continue;
+    }
+    if (!pos) continue;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, LEAF_R, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // NETWORK LIFECYCLE — init / refresh / destroy
 // ════════════════════════════════════════════════════════════════════════════
 
 export function initNetwork(seedId, nameById) {
-  const nodeItems = State.graphNodes.map(n => nodeVisual(n));
-  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+  // [SF-WEB-54] Свежий DataSet ниже — сбрасываем fast-render-флаг, иначе
+  // застрявшее "true" из предыдущего графа помешает первому pan/zoom на
+  // НОВОМ графе снова переключить ноды в fast-режим (см. resetFastRenderMode).
+  resetFastRenderMode();
+  // [SF-WEB-29 follow-up] currentSeedId must be set BEFORE placeExpandedNodes
+  // runs below (it reads State.currentSeedId) — normally set later by
+  // setSeed() in graph.js::finalizeGraphState, too late for this call.
+  State.currentSeedId = seedId;
+
+  // [SF-WEB-51] Сид и его прямые соседи получают детерминированную
+  // collision-решённую раскладку через общий движок (_layoutNodeItems →
+  // placeExpandedNodes) — тот же путь, что и re-search (refreshNetwork) и
+  // expand (mergeNetwork). Физика больше не основной решатель: раньше сид и
+  // соседи держались только на свободном barnesHut, чьи springLength/
+  // gravitationalConstant никогда не подгонялись под LEAF_R/LEAF_GAP, отсюда
+  // и разъезжающиеся кольца. Точную, не пересекающуюся геометрию фиксируем
+  // сразу (fixed:true) — оставить физику поверх готовой раскладки значило бы
+  // растащить её обратно к barnesHut-равновесию.
+  const { nodeItems, edgeItems } = _layoutNodeItems(nameById);
 
   State.nodesDS = new vis.DataSet(nodeItems);
   State.edgesDS = new vis.DataSet(edgeItems);
@@ -42,30 +141,121 @@ export function initNetwork(seedId, nameById) {
     State.network.moveNode(seedId, 0, 0);
   }
 
+  // [SF-WEB-45] One listener for the network's lifetime — refreshNetwork()
+  // reuses this same State.network instance (only its DataSets get
+  // cleared/rebuilt), so ring-guides stay wired through expand/search
+  // without needing to reattach.
+  // [SF-WEB-58 C] Registered FIRST — beforeDrawing listeners fire in
+  // registration order, and vis.js's own node/edge drawing happens AFTER
+  // every beforeDrawing listener has run, so contours (background fill) →
+  // ring-guides/our edge arcs → native nodes on top is exactly "под нодами"
+  // (and under our own edges too, which reads better than a contour tint
+  // painted over them).
+  State.network.on("beforeDrawing", drawContours);
+  State.network.on("beforeDrawing", _drawRingGuides);
+  // [SF-WEB-55] Same lifetime story — drawEdges reads whatever setEdgeCache()
+  // last stored (_layoutNodeItems above already called it for this exact
+  // graph) and re-reads live node positions every frame, so refreshNetwork()
+  // reusing this same instance needs no re-registration either.
+  State.network.on("beforeDrawing", drawEdges);
+
   updateEdgeRenderMode();
   _attachZoomThrottle();
   attachNetworkEvents(nameById);
   ensureTooltipCollisionGuard();
 
-  State.network.once("stabilizationIterationsDone", () => {
-    if (!State.network) return;
-    State.network.setOptions({ physics: { enabled: false } });
-    // После стабилизации восстанавливаем seed в (0,0) — stabilization могла сдвинуть.
-    if (seedId != null) State.network.moveNode(seedId, 0, 0);
-    State.network.fit({ animation: { duration: 400, easingFunction: "easeInOutQuad" } });
-    clearTimeout(State.physicsTimer);
-    State.physicsTimer = null;
-  });
-
-  scheduleFreeze(PHYSICS_SETTLE_MS);
+  // Все ноды выше уже зафиксированы на финальных позициях — стабилизации
+  // ждать не от чего, сразу отключаем физику и подгоняем камеру.
+  State.network.setOptions({ physics: { enabled: false } });
+  // [SF-WEB-47] Was its own literal (400) and never checked
+  // prefers-reduced-motion — visAnimation(MOTION.flight) covers both.
+  State.network.fit({ animation: visAnimation(MOTION.flight) });
+  clearTimeout(State.physicsTimer);
+  State.physicsTimer = null;
 }
 
-// Порог числа рёбер для переключения в "fast render" режим.
-const FAST_RENDER_EDGE_THRESHOLD = 150;
+// ════════════════════════════════════════════════════════════════════════════
+// SF-WEB-17: initPathNetwork — first render for a six-degrees path result on
+// the freshly-cleared canvas (see clearGraphForPathSearch/mergePathData).
+// Unlike initNetwork(), the path's node positions are already fully known
+// ahead of time (placePathNodes in layout.js — a straight, evenly-spaced,
+// centered row) — there is nothing for vis.js's physics simulation to
+// resolve, so it stays off from the start instead of running a barnesHut
+// stabilization pass that would only nudge nodes off their deliberate
+// layout. Nodes fly from a shared center point to their target positions via
+// the same runFlyoutAnimation() expand/path already share (SF-WEB-09), then
+// the camera fits the whole path and positions are frozen.
+// ════════════════════════════════════════════════════════════════════════════
+export function initPathNetwork(nameById, targets, fromPos) {
+  const nodeItems = State.graphNodes.map(n => {
+    const v = nodeVisual(n);
+    const f = fromPos.get(n.id) || { x: 0, y: 0 };
+    return { ...v, x: f.x, y: f.y, fixed: false };
+  });
+  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+
+  State.nodesDS = new vis.DataSet(nodeItems);
+  State.edgesDS = new vis.DataSet(edgeItems);
+
+  const opts = networkOptions();
+  opts.physics = { enabled: false };
+
+  State.network = new vis.Network(
+    els.network,
+    { nodes: State.nodesDS, edges: State.edgesDS },
+    opts
+  );
+
+  // [SF-WEB-63] "рёбра при экспандеде пропали... на скрине и на клиенте
+  // рёбр нет, а при сохранении PNG есть" — initNetwork wires these same
+  // three beforeDrawing listeners (see its own comment on registration
+  // order), but this path-mode network never did, since path mode
+  // originally only ever needed vis.js's OWN native edge rendering. Once a
+  // regular expand runs on top of this network, though, it classifies
+  // edges into edge-render.js's cache and suppresses their native color —
+  // with no beforeDrawing hook on THIS live network to actually paint the
+  // custom layer, those edges vanished from the screen entirely (while the
+  // separate export shadowNetwork, which DOES have its own copy of this
+  // hook, kept rendering them fine — exactly the "gone live, present in
+  // the PNG" split reported). All three are no-ops until their respective
+  // caches actually have content, so wiring them here doesn't change
+  // anything about path mode's own look before an expand happens.
+  State.network.on("beforeDrawing", drawContours);
+  State.network.on("beforeDrawing", _drawRingGuides);
+  State.network.on("beforeDrawing", drawEdges);
+
+  updateEdgeRenderMode();
+  _attachZoomThrottle();
+  attachNetworkEvents(nameById);
+  ensureTooltipCollisionGuard();
+
+  const pathIds = [...targets.keys()];
+  runFlyoutAnimation({
+    ids: pathIds,
+    fromPos,
+    targets,
+    durationMs: MOTION.flight,
+    onDone: () => {
+      if (!State.network) return;
+      // [SF-WEB-47] Was its own literal (500) and never checked
+      // prefers-reduced-motion — visAnimation(MOTION.camera) covers both.
+      State.network.fit({
+        nodes: pathIds,
+        animation: visAnimation(MOTION.camera)
+      });
+      const fixAll = State.graphNodes.map(n => ({ id: n.id, fixed: { x: true, y: true } }));
+      if (State.nodesDS) State.nodesDS.update(fixAll);
+    }
+  });
+}
 
 let _zoomThrottleTimer = null;
 export function _attachZoomThrottle() {
   if (!State.network) return;
+  // [SF-WEB-54] Continuous zoom (wheel/pinch) fires "zoom" on every tick —
+  // pokeFastRenderMode() itself no-ops past the first call until the idle
+  // timer runs out (see its own comment), so this is cheap on every tick.
+  State.network.on("zoom", () => pokeFastRenderMode());
   State.network.on("zoom", () => {
     if (State.graphEdges.length < 120) return;
     // При быстром зуме: дебаунсим redraw чтобы не перерисовывать каждый тик.
@@ -89,7 +279,22 @@ export function _attachZoomThrottle() {
   });
 }
 
-export function refreshNetwork(nameById, savedPositions) {
+// [SF-WEB-51] refreshNetwork — re-search: НОВЫЙ граф заменяет уже
+// нарисованный (тот же State.network, только DataSets пересобираются). Раньше
+// это был единственный physics-only путь: ноды клались по savedPositions
+// (позициям СТАРОГО графа — бессмысленным для нового артиста) + nudgePhysics
+// как раскладка, без детерминированных targets и без гарантии неперекрытия.
+// Теперь идёт через тот же движок, что initNetwork/mergeNetwork
+// (_layoutNodeItems → placeExpandedNodes → collision-solver): детерминированная
+// не пересекающаяся раскладка, зафиксированная сразу, никакой физики.
+// seedId принимается явно (как в initNetwork) и ставится ДО placeExpandedNodes
+// — тот читает State.currentSeedId, а setSeed() в finalizeGraphState вызывается
+// позже, после этой функции.
+export function refreshNetwork(seedId, nameById, savedPositions) {
+  // [SF-WEB-54] Тот же сброс, что и в initNetwork — DataSets ниже
+  // clear()+add()'ятся заново, застрявший fast-render-флаг иначе не даст
+  // включиться на новом графе.
+  resetFastRenderMode();
   // См. комментарий у resetHoverState()/destroyNetwork(): nodesDS/edgesDS
   // здесь очищаются и пересобираются с нуля (новый поиск поверх уже
   // нарисованного графа) — если в момент вызова висел незавершённый
@@ -105,36 +310,40 @@ export function refreshNetwork(nameById, savedPositions) {
   // конца, и без явного сброса здесь стабильно ловил этот краш.
   resetHoverState();
 
-  const nodeItems = State.graphNodes.map(n => nodeVisual(n));
-  const edgeItems = State.graphEdges.map(e => edgeVisual(e, nameById));
+  if (seedId != null) State.currentSeedId = seedId;
+
+  // savedPositions passed through so any node that DOES carry over from the
+  // previous graph animates from its old spot; brand-new nodes (the usual
+  // case for a different artist) get the fresh deterministic dandelion.
+  const { nodeItems, edgeItems } = _layoutNodeItems(nameById, savedPositions);
 
   State.nodesDS.clear();
   State.edgesDS.clear();
   State.nodesDS.add(nodeItems);
   State.edgesDS.add(edgeItems);
 
-  for (const n of State.graphNodes) {
-    const p = savedPositions[n.id];
-    if (p && !n._isNew) State.network.moveNode(n.id, p.x, p.y);
-  }
-
-  // Seed всегда в (0,0).
+  // Ноды уже несут x/y/fixed из _layoutNodeItems, но add() на УЖЕ
+  // существующем network не всегда телепортирует внутренние body.nodes на
+  // новые data-координаты — moveNode гарантирует позицию до первого redraw
+  // (physics off, так что это дёшево: просто запись координаты, без
+  // симуляции). Seed всегда в (0,0), остальные — на свои collision-решённые
+  // targets.
   if (State.currentSeedId != null) {
     State.network.moveNode(State.currentSeedId, 0, 0);
   }
+  for (const item of nodeItems) {
+    if (item.x != null && item.y != null && item.id !== State.currentSeedId) {
+      State.network.moveNode(item.id, item.x, item.y);
+    }
+  }
 
-  // Восстанавливаем fixed для expanded нод (они могли стать !fixed после nodeVisual rebuild).
-  // Батчим в один update() вместо отдельного вызова на каждую ноду —
-  // при большом числе expanded-нод цикл отдельных update() дорог.
-  const expandedFixUpdates = [];
-  State.expandedNodes.forEach(nodeId => {
-    if (nodeId === State.currentSeedId) return;
-    const pos = State.network.getPosition(nodeId);
-    if (pos) expandedFixUpdates.push({ id: nodeId, fixed: { x: true, y: true } });
-  });
-  if (expandedFixUpdates.length) State.nodesDS.update(expandedFixUpdates);
-
-  nudgePhysics(PHYSICS_SETTLE_MS);
+  // Физика демотирована: детерминированная раскладка финальна и не
+  // пересекается — никакого nudgePhysics/стабилизации как решателя. Просто
+  // держим её выключенной и подгоняем камеру (как initNetwork).
+  State.network.setOptions({ physics: { enabled: false } });
+  State.network.fit({ animation: visAnimation(MOTION.flight) });
+  clearTimeout(State.physicsTimer);
+  State.physicsTimer = null;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -164,13 +373,23 @@ export function initGraphOnCanvas() {
     els.status.hidden = false;
   }, "toGraph");
   stopCanvasDecorator();
+  // [SF-WEB-19] A graph now occupies the canvas — same moment the decorator
+  // above stops, same reasoning: nothing left to onboard.
+  clearCanvasState(els.canvasState);
 }
 
-// Общий сброс graph-state, используемый и destroyNetwork(), и
+// Общий сброс graph-state, используемый и resetCanvasToEmpty(), и
 // clearGraphForPathSearch() — порядок операций сохранён таким же, каким он
 // был в обеих функциях по отдельности (важно для vis.js: resetGraphState()
 // должен отработать до resetHoverState()/hideArtistSidebar()).
 function _resetGraphState({ keepRendered = false, clearCache = false, invalidateColors = false } = {}) {
+  resetFastRenderMode();
+  clearEdgeCache();
+  // [SF-WEB-58 B] A fresh graph can reuse the same numeric node ids for a
+  // completely different artist — a stale sampled avatar color must never
+  // survive into it (see photo-color.js's own comment on this function).
+  clearDominantColorCache();
+  clearContourData();
   resetGraphState({ resetHasRendered: !keepRendered });
   if (clearCache) {
     // ТЗ-5: clear the graph cache when the user resets the canvas.
@@ -181,8 +400,14 @@ function _resetGraphState({ keepRendered = false, clearCache = false, invalidate
   if (invalidateColors) invalidateColorCache();
 }
 
-export function destroyNetwork() {
-  _resetGraphState({ clearCache: true });
+// [SF-WEB-19] clearCanvas()'s own reset — clears the graph cache too (ТЗ-5:
+// "Clear graph" is a full user-initiated reset), but keeps hasRendered
+// true: clearCanvas() no longer morphs back to the hero/landing modal
+// (body.view-home) — it stays on the graph page with an empty canvas and
+// its own onboarding prompt instead, same reasoning as
+// clearGraphForPathSearch() below, just also clearing the cache.
+export function resetCanvasToEmpty() {
+  _resetGraphState({ keepRendered: true, clearCache: true, invalidateColors: true });
 }
 
 // ─────────────────────────────────────────────────────────────────────────

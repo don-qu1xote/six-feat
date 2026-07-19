@@ -10,5 +10,8 @@ __pycache__/
 coverage.xml
 htmlcov/
 front/coverage/
+front/node_modules/
+front/dist/
+/loadtest/.output/
 .DS_Store
 *.orig

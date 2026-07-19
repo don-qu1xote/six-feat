@@ -123,7 +123,8 @@ export function buildNodeTooltip(node) {
   const seedBadge  = node.isSeed ? ` <span class="tt-seed">focus</span>` : "";
   const isExpanded = State.expandedNodes.has(node.id)
     ? `<div class="tt-meta" style="color:var(--signal)">expanded ✓</div>` : "";
-  // Централити убрана — строка "centrality N%" больше не выводится.
+  // [SF-WEB-59] Централити убрана снова — SF-WEB-58 A её вернула, это была
+  // регрессия (не нужна при текущем состоянии графа).
   el.innerHTML =
     `<div class="tt-name">${escapeHtml(node.name)}${seedBadge}</div>` +
     (node.totalWeight ? `<div class="tt-meta">${node.totalWeight} collab${node.totalWeight === 1 ? "" : "s"}</div>` : "") +

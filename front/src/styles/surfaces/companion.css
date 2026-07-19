@@ -1,0 +1,640 @@
+/* ============================================================
+   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
+   Companion panel: artist sidebar, path-panel, compare, hop-chain, path-chain, role chips.
+   Rendering identical to pre-extraction; see src/styles/index.css
+   for the import order that preserves the original cascade.
+   ============================================================ */
+/* [SF-WEB-12] One companion panel replacing the two independently
+   shown/styled floating cards (#artist-sidebar, #path-panel) that used
+   to compete for the same screen anchor and could both be visible at
+   once — now both are plain content sections of ONE .ui-panel card,
+   and exactly one section is visible at a time (see
+   ui/sidebar.js::showArtistSidebar/showEdgeSidebar/hideArtistSidebar,
+   ui/modals.js::openPathPanel/closePathPanel — each closes the other
+   section before showing its own, toggling .companion-panel's own
+   `.show` alongside its section's). max-height moved here from
+   #artist-sidebar's own rule below — the whole card is capped once
+   instead of each section capping itself separately. */
+.companion-panel {
+  display: none;
+  max-height: min(70vh, 100%);
+  overflow: hidden;
+}
+.companion-panel.show { display: flex; flex-direction: column; }
+
+/* [SF-WEB-27] Idle/empty state — honest one-line hint, shown/hidden by
+   the same .show classList toggle SF-WEB-12 established for the other
+   two companion-panel sections (nothing currently calls
+   .classList.add("show") on this one yet — that's the next ticket that
+   wires an actual "nothing selected" trigger, not a new display
+   mechanism here). */
+.companion-empty {
+  display: none;
+  flex-direction: column; align-items: center; text-align: center;
+  gap: var(--space-2); padding: var(--space-6) var(--space-3);
+  color: var(--mist); font-size: var(--text-sm);
+}
+.companion-empty.show { display: flex; }
+
+/* [SF-WEB-12] .path-panel is now a plain content section inside the one
+   shared .companion-panel card (see below) instead of its own
+   independently-styled floating panel — card chrome (background/
+   border/radius/shadow/blur/padding) lives once on .companion-panel.
+   [SF-WEB-24] That card is .ui-panel (see the kit block up top, now
+   with backdrop-filter added there) — so path-panel's shell already
+   matches .search-modal.docked .search-wrap/.node-search-box's
+   background/border/radius/shadow/blur without needing its own copy
+   of any of it. Its display:none/.show instant toggle is the same
+   deliberate, unchanged mechanism as .node-search-overlay's (see the
+   comment there). */
+/* [fix] Was max-height: 60% — a bare percentage of .companion-panel's own
+   height, which is itself auto/shrink-to-fit (content-determined, capped
+   only by max-height: min(70vh,100%) — see below). A percentage height
+   against an indefinite-height ancestor is a classic CSS circular
+   reference: the browser can't resolve "60% of however tall my content
+   makes me" in one pass, and the two-pass result left a large dead gap
+   under the actual From/To fields + Find path/Clear/status content
+   (reported: "не нравится пустое место"), confirmed via getBoundingClientRect
+   — .companion-panel measured ~221px tall while .path-panel's own content
+   only needed ~112px. .artist-sidebar (below) already avoids exactly this
+   with min(70vh,100%) — the 100% only matters if 70vh is somehow larger,
+   so it never actually depends on the indefinite ancestor height in
+   practice. min(42vh,100%) here is the same escape hatch, scaled to
+   match the original 60%-of-70vh proportion. */
+.path-panel {
+  display: none;
+  flex-direction: column; gap: var(--space-3);
+  max-height: min(42vh, 100%); overflow-y: auto; flex-shrink: 0;
+}
+.path-panel.show { display: flex; }
+.path-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.path-title {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.path-close {
+  border: 0; background: transparent; color: var(--mist); cursor: pointer;
+  font-size: 16px; padding: 0 2px; line-height: 1; transition: color var(--duration-base) var(--ease-standard);
+}
+.path-close:hover { color: var(--paper); }
+
+/* [fix] Rebuilt (variant B of 5 mockups): was two bare .path-input-wrap
+   rows stacked with no visual link between them. A swap button sits at
+   the fields' shared right edge, vertically centered between the two —
+   functional (actually swaps From/To, see ui/path-panel.js), not just
+   decorative, and adds zero extra height to the panel. */
+.path-panel-fields { position: relative; display: flex; flex-direction: column; gap: var(--space-3); }
+.path-swap-btn {
+  position: absolute; right: var(--space-2); top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; border-radius: 50%; z-index: 1;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--mist);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: var(--elevation-1);
+  transition: color var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+}
+.path-swap-btn .ri { width: 13px; height: 13px; display: flex; flex-shrink: 0; }
+.path-swap-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.path-swap-btn:hover { color: var(--paper); border-color: var(--pulse); background: var(--hover-tint); }
+
+/* [SF-WEB-20] Compare mode — same section-of-.companion-panel mechanics
+   as .path-panel just above (shares its header/close-button styling via
+   .path-panel-header/.path-title/.path-close). */
+/* [fix] Same circular-percentage bug as .path-panel above — see its
+   comment. */
+.compare-panel {
+  display: none;
+  flex-direction: column; gap: var(--space-3);
+  max-height: min(42vh, 100%); overflow-y: auto; flex-shrink: 0;
+}
+.compare-panel.show { display: flex; }
+
+/* [fix] The two compared artists themselves — was only ever text in the
+   title, reported as missing. Same "constellation" glow avatar language as
+   .hop-avatar/.path-node-avatar (SF-WEB-44), just larger — these are the
+   panel's own hero content, not a list row. */
+.compare-pair {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--space-3); padding: var(--space-2) 0;
+}
+.compare-pair-item {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
+  min-width: 0; max-width: 40%; cursor: pointer; border-radius: var(--r-sm);
+  padding: var(--space-1); transition: background var(--duration-base) var(--ease-standard);
+}
+.compare-pair-item:hover, .compare-pair-item:focus-visible { background: rgba(var(--panel-rgb), 0.8); }
+.compare-pair-avatar {
+  width: 44px; height: 44px; border-radius: 50%; object-fit: cover;
+  border: 1px solid var(--line);
+  box-shadow: 0 0 10px -2px rgba(var(--signal-rgb), .5);
+}
+.compare-pair-name {
+  font-size: var(--text-xs); font-weight: 600; color: var(--paper);
+  text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.compare-pair-x {
+  font-family: "Space Mono", monospace; font-size: var(--text-sm); color: var(--mist);
+  flex-shrink: 0;
+}
+
+.compare-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.compare-item {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2); border-radius: var(--r-sm);
+  cursor: pointer; transition: background var(--duration-base) var(--ease-standard);
+}
+.compare-item:hover, .compare-item:focus-visible { background: rgba(var(--panel-rgb), 0.8); }
+.compare-item-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.compare-item-name { font-size: var(--text-sm); color: var(--paper); }
+
+.path-input-wrap { position: relative; }
+.path-input {
+  background: rgba(var(--panel-rgb),.9); border: 1px solid var(--line); border-radius: var(--r-sm);
+  color: var(--paper); font: inherit; font-size: var(--text-sm); padding: var(--space-2) var(--space-3); outline: none;
+  width: 100%; transition: border-color var(--duration-base) var(--ease-standard);
+}
+.path-input:focus { border-color: var(--signal); }
+.path-input::placeholder { color: #5C677C; }
+/* Раньше здесь дропдаун принудительно ужимался (26px аватар, скрытый
+   hint, минимальные отступы) — именно это и стояло за жалобой "окошки
+   подсказок слишком маленькие" в узкой .path-panel/.hero-connect-fields.
+   Убрано: используем тот же просторный .ac-dropdown/.ac-item, что и
+   везде — просто якорим его к правому краю поля (left:auto;right:0)
+   вместо левого, чтобы широкая карточка росла влево, в открытое
+   пространство канвы, а не обрезалась правым краем узкой докнутой
+   .path-panel у края экрана. */
+.path-input-wrap .ac-dropdown { left: auto; right: 0; }
+
+/* ТЗ: подсказки на СТРАНИЦЕ ГРАФА (узкий докнутый .path-panel и
+   компактный .search-modal.docked) читаются слишком крупными на фоне
+   остальных, тесно скомпонованных панелей графа — 40px-аватар и
+   щедрые отступы были рассчитаны на просторную главную страницу.
+   Уменьшаем именно здесь; #hero-ac и Find Path на главной остаются
+   прежнего, более крупного размера — жалобы на них не было.
+   [SF-WEB-60] БАГ: это раньше было четырьмя descendant-селекторами
+   (".path-panel .ac-dropdown"/".search-modal.docked .ac-dropdown" и т.п.)
+   — но portalToOverlayRoot (overlay-root.js) физически переносит
+   .ac-dropdown ВНЕ .path-panel/.search-modal.docked в DOM ровно в момент
+   открытия (см. заголовок overlay-root.js) — то есть ровно тогда, когда
+   этот стиль и должен был бы сработать. Ни один из этих селекторов не
+   совпадает с тех пор, как появился портал (SF-WEB-41) — компактный режим
+   на графе молча переставал применяться, дропдаун рендерился в полном
+   "домашнем" размере (40px аватар, hint%, max-width 400px) даже в узком
+   докнутом контексте — ровно то, что было на скриншоте ("не получится
+   переиспользовать с главной страницы"). Класс .ac-dropdown--compact
+   переживает портал (он на самом переносимом элементе, не на предке) —
+   openDropdown (overlay-root.js) выставляет его заново при КАЖДОМ
+   открытии, проверяя контекст ЯКОРЯ (тот никуда не переносится). */
+.ac-dropdown--compact {
+  max-width: min(300px, 90vw);
+}
+.ac-dropdown--compact .ac-item {
+  padding: var(--space-2) var(--space-3); gap: var(--space-2);
+}
+.ac-dropdown--compact .ac-avatar {
+  width: 30px; height: 30px;
+}
+.ac-dropdown--compact .ac-name {
+  font-size: var(--text-sm);
+}
+.ac-dropdown--compact .ac-hint {
+  display: none;
+}
+
+/* [fix] The panel's own "in-progress"/"failed" status used to render into
+   a .path-result element (loading spinner, error card) that lived right
+   here, squeezed between the actions row and the hop chain — reported as
+   the search process feeling "bolted into the window". runServerPath
+   (ui/path-result.js) now shows loading on the same canvas-wide overlay
+   regular artist search uses, and errors as a toast — the exact two
+   mechanisms searchArtist already relies on — so .path-result and its
+   markup are gone; the panel only ever shows its actual RESULT (the hop
+   chain below) once a path is found. */
+.path-actions { display: flex; align-items: center; gap: var(--space-3); }
+#btn-run-path { flex: 1; justify-content: center; }
+/* [fix] Clear demoted to a plain text link (was a second .dock-btn pill,
+   equal visual weight to Find path) — variant B pairs the one signal-
+   bordered primary action with the lightest possible secondary control
+   instead of two same-weight pills side by side. */
+.path-clear-btn {
+  border: 0; background: transparent; color: var(--mist); cursor: pointer;
+  font: inherit; font-size: var(--text-xs); padding: 0 var(--space-2);
+  flex-shrink: 0; transition: color var(--duration-base) var(--ease-standard);
+}
+.path-clear-btn:hover { color: var(--paper); }
+
+/* ТЗ-205: .hop-chain — horizontal scrollable track by default (wide
+   panels), with a fade mask at both edges like .path-chain-track.
+   Falls back to the original vertical stack only when the panel itself
+   is narrow (context panel collapsed / mobile viewport) — see the
+   max-width media query below. */
+.hop-chain {
+  display: flex; flex-direction: row; align-items: stretch; gap: 0;
+  margin-top: var(--space-1);
+  overflow-x: auto; overflow-y: hidden;
+  scroll-behavior: smooth; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
+}
+.hop-chain::-webkit-scrollbar { display: none; }
+.hop-row {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 128px;
+  /* ТЗ-206: each hop is its own bento tile (per-node "плитка"), not just
+     a row in a flat list — reuses .bento-tile--flat's material since it
+     already sits inside .path-panel's own elevated tile. */
+  border-radius: var(--r-md);
+  background: rgba(var(--panel-rgb),.4);
+  border: 1px solid var(--line);
+}
+/* [SF-WEB-44] "hop-chain as a constellation" — a soft accent halo on each
+   avatar (reads as a small star) instead of a flat --line border, same
+   rgba(var(--signal-rgb)) glow language .sidebar-avatar.is-seed and
+   --glass-glow already use elsewhere. */
+.hop-avatar {
+  width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
+  flex-shrink: 0; border: 1px solid var(--line);
+  box-shadow: 0 0 8px -2px rgba(var(--signal-rgb), .45);
+}
+.hop-info { flex: 1; min-width: 0; width: 100%; }
+.hop-name {
+  font-size: var(--text-xs); font-weight: 600; color: var(--paper);
+}
+.hop-songs {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+  margin-top: var(--space-1); line-height: 1.5;
+  cursor: pointer; border-radius: var(--r-sm); transition: background var(--duration-base) var(--ease-standard), color var(--duration-base) var(--ease-standard);
+}
+.hop-songs:hover, .hop-songs:focus-visible {
+  background: rgba(var(--signal-rgb), .08); color: var(--paper); outline: none;
+}
+.hop-role-icon { display: inline-flex; vertical-align: -2px; margin-right: 3px; }
+.hop-role-icon .role-icon { width: 11px; height: 11px; }
+.hop-role-label { font-weight: 700; margin-right: var(--space-1); }
+
+/* ТЗ-205: connector between hop cards — reuses .path-edge-connector /
+   .path-edge-label (already defined below for the path-to-seed chain)
+   instead of the old plain "↓" text arrow, so both "paths" in the app
+   (this hop chain and the sidebar's path-to-seed chain) share one
+   visual language for roles/weight. */
+.hop-connector {
+  align-self: center; flex-shrink: 0;
+  margin: 0 calc(-1 * var(--space-1));
+}
+
+/* [SF-WEB-44] "созвездие" — a very faint two-tone glow wash behind the
+   chain (same --signal-rgb/--pulse-rgb the rest of the kit's glow
+   language already draws from), echoing the canvas's own starfield
+   decorator at a much lower opacity so this reads as a small patch of
+   sky rather than a flat panel. */
+.path-chain-container {
+  position: relative;
+  margin-top: var(--space-3);
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background:
+    radial-gradient(140px 70px at 15% 0%, rgba(var(--signal-rgb), .08), transparent 70%),
+    radial-gradient(140px 70px at 85% 100%, rgba(var(--pulse-rgb), .06), transparent 70%),
+    rgba(var(--panel-rgb), 0.4);
+  border: 1px solid var(--line);
+}
+
+.path-chain-track {
+  display: flex;
+  gap: var(--space-4);
+  overflow-x: auto;
+  padding: var(--space-3) var(--space-4);
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.path-chain-track::-webkit-scrollbar { display: none; }
+
+.path-chain-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: none;
+  z-index: 2;
+}
+.path-chain-fade--left {
+  left: 0;
+  background: linear-gradient(to right, var(--panel-2), transparent);
+  opacity: 0;
+  transition: opacity var(--duration-med) var(--ease-standard);
+}
+.path-chain-fade--right {
+  right: 0;
+  background: linear-gradient(to left, var(--panel-2), transparent);
+  opacity: 0;
+  transition: opacity var(--duration-med) var(--ease-standard);
+}
+.path-chain-container:hover .path-chain-fade { opacity: 1; }
+
+.path-node-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--r-sm);
+  /* [fix] Was a dark-theme --panel-2/--line hex spelled out as its own
+     literal rgba() triplet right here, instead of a theme-aware token — so
+     this card (and every similarly-spelled-out accent/panel/line literal
+     elsewhere in this file: compare-item, path-edge-connector, role-chip--*,
+     hop-songs, hop-row/sidebar-track dividers) stayed dark-styled even
+     under :root[data-theme="light"], instead of following --panel-rgb/
+     --line-rgb/--signal-rgb/--pulse-rgb the way .path-input two rules up
+     already did. */
+  background: rgba(var(--panel-rgb), 0.6);
+  border: 1px solid rgba(var(--line-rgb), 0.5);
+  flex-shrink: 0;
+  /* Баг: карточки в "1 hop from seed" (и в общем path-chain-track)
+     были разной ширины — min/max-width давали диапазон 80–100px, но
+     реальная ширина плавала в его пределах в зависимости от длины
+     имени. Фиксированная width делает все блоки строго одного
+     размера. */
+  width: 92px;
+  transition: background var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard);
+  cursor: default;
+}
+.path-node-card:hover {
+  background: rgba(var(--panel-rgb), 0.8);
+  border-color: var(--line);
+}
+
+/* [SF-WEB-44] Same "constellation" glow as .hop-avatar above — one
+   accent-halo language for every path/hop avatar in the companion panel,
+   not just the hop-chain's own. */
+.path-node-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  box-shadow: 0 0 6px -2px rgba(var(--signal-rgb), .4);
+  flex-shrink: 0;
+}
+
+.path-node-name {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--paper);
+  text-align: center;
+  width: 100%;
+  line-height: 1.2;
+}
+
+/* [SF-WEB-44] A resting glow (not just on :hover) — the connector between
+   two path/hop cards is the "star" linking them, so it keeps a faint halo
+   at rest and brightens further on hover instead of having no glow at
+   all until interacted with. */
+.path-edge-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--r-sm);
+  background: rgba(var(--panel-rgb), 0.4);
+  border: 1px solid rgba(var(--signal-rgb), 0.3);
+  box-shadow: 0 0 6px -3px rgba(var(--signal-rgb), .35);
+  flex-shrink: 0;
+  min-width: 72px;
+  cursor: pointer;
+  transition: background var(--duration-base) var(--ease-standard), border-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard);
+}
+.path-edge-connector:hover {
+  background: rgba(var(--signal-rgb), 0.12);
+  border-color: var(--signal);
+  box-shadow: 0 0 8px rgba(var(--signal-rgb), 0.15);
+}
+.path-edge-connector:active {
+  transform: scale(0.98);
+}
+
+.path-edge-label {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  justify-content: center;
+  white-space: nowrap;
+  min-height: 20px;
+}
+
+.path-edge-count {
+  font-family: "Space Mono", monospace;
+  font-size: var(--text-xs);
+  color: var(--mist);
+  font-weight: 500;
+}
+
+.role-chip--featured {
+  color: var(--signal);
+  border-color: rgba(var(--signal-rgb), 0.4);
+  background: rgba(var(--signal-rgb), 0.08);
+}
+.role-chip--producer {
+  color: var(--pulse);
+  border-color: rgba(var(--pulse-rgb), 0.4);
+  background: rgba(var(--pulse-rgb), 0.08);
+}
+/* [SF-WEB-44] var(--amber-rgb)/var(--primary2-rgb) (tokens.css) replace
+   the literal rgba(255,210,122,...)/rgba(143,166,201,...) — the dark
+   theme's own --amber/--primary2 hex spelled out per-callsite, the same
+   fix already applied to --signal/--pulse above (and elsewhere all
+   through this file). */
+.role-chip--writer {
+  color: var(--amber);
+  border-color: rgba(var(--amber-rgb), 0.35);
+  background: rgba(var(--amber-rgb), 0.08);
+}
+.role-chip--primary {
+  color: var(--primary2);
+  border-color: rgba(var(--primary2-rgb), 0.4);
+  background: rgba(var(--primary2-rgb), 0.08);
+}
+
+@media (max-width: 420px) {
+  .path-chain-track {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .path-node-card {
+    flex-direction: row;
+    justify-content: flex-start;
+    min-width: 100%;
+    max-width: none;
+  }
+
+  .path-edge-connector {
+    flex-direction: row;
+    justify-content: space-between;
+    min-width: 100%;
+  }
+
+  .path-chain-fade { display: none; }
+
+  /* ТЗ-205: on a narrow context panel / mobile viewport, fall back to
+     the original vertical hop-chain stack — horizontal scrolling with
+     a fade mask doesn't work well at this width. */
+  .hop-chain {
+    flex-direction: column;
+    overflow-x: visible; overflow-y: visible;
+    -webkit-mask-image: none; mask-image: none;
+  }
+  .hop-row {
+    flex-direction: row; align-items: flex-start; text-align: left;
+    width: 100%;
+    padding: var(--space-1) 0; border-bottom: 1px solid rgba(var(--line-rgb), .3);
+  }
+  .hop-row:last-child { border-bottom: none; }
+  .hop-connector {
+    align-self: flex-start; margin: 0 0 var(--space-2) 38px;
+  }
+  .path-edge-connector.hop-connector {
+    flex-direction: row; justify-content: flex-start; min-width: 0;
+  }
+}
+
+/* ТЗ-206/ТЗ-207: artist sidebar rebuilt as a bento grid — each block
+   (avatar+name header, tracks, role breakdown, path-to-seed mini
+   chain, Genius button) is its own .bento-tile instead of a stack of
+   same-weight rows. .artist-sidebar itself becomes the outer frame;
+   individual tiles carry their own background/shadow via .bento-tile.
+   Sidebar scope reduced to Tracks / Role breakdown / "1 hop from seed"
+   only — "Roles in this graph" and centrality ("Network importance")
+   sections were removed entirely (not just hidden).
+   Height: sidebar now shrinks to fit its content instead of reserving
+   a fixed max-height with empty space below a short sidebar — grows
+   naturally, capped at min(70vh,100%) so it never overflows the
+   viewport on a content-heavy day. */
+.artist-sidebar {
+  display: none;
+  background: transparent; border: none; border-radius: 0;
+  padding: 0;
+  backdrop-filter: none; flex-direction: column;
+  box-shadow: none; overflow: hidden; flex-shrink: 0;
+  max-height: min(70vh, 100%);
+  gap: var(--space-3);
+}
+.artist-sidebar.show { display: flex; }
+
+/* Header tile — large "avatar + name" bento tile (.bento-tile added in
+   markup), sits above the .sidebar-body grid as .artist-sidebar's own
+   first flex child — the biggest/most prominent tile in the layout. */
+.sidebar-header {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex-shrink: 0;
+}
+.sidebar-avatar {
+  width: 48px; height: 48px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  border: 2px solid var(--line);
+  transition: border-color var(--duration-med) var(--ease-standard), box-shadow var(--duration-med) var(--ease-standard);
+}
+/* [SF-WEB-44] Seed glow — toggled by ui/sidebar.js::showArtistSidebar
+   (node.isSeed), cleared for edge context (a two-artist combined avatar
+   is never "the seed"). Same accent-glow language --glass-glow already
+   established (tokens.css) rather than a new one-off shadow value. */
+.sidebar-avatar.is-seed {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px rgba(var(--signal-rgb), .18), 0 0 16px -2px rgba(var(--signal-rgb), .55);
+}
+.sidebar-info { flex: 1; min-width: 0; }
+.sidebar-name {
+  font-family: "Syne", sans-serif; font-weight: 700; font-size: var(--text-sm);
+  color: var(--paper);
+}
+.sidebar-meta {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist); margin-top: var(--space-1); letter-spacing: .04em;
+}
+.sidebar-close {
+  border: 0; background: transparent; color: var(--mist); cursor: pointer;
+  font-size: 18px; padding: 0 4px; line-height: 1; flex-shrink: 0; transition: color var(--duration-base) var(--ease-standard);
+}
+.sidebar-close:hover { color: var(--paper); }
+
+/* .sidebar-body is the bento grid container — explicit
+   grid-template-areas instead of a plain vertical flex column.
+   Header is its own row outside the grid (see .sidebar-header).
+   Height: no fixed max-height scroll area — body sizes to its own
+   content, ancestor .companion-panel caps total height instead.
+   [SF-WEB-12] No side/bottom padding here — .artist-sidebar has no
+   chrome of its own, so one would double up against .companion-panel's.
+   [SF-WEB-27] No margin-top either (removed, was doubling up with
+   .artist-sidebar's own `gap` between .sidebar-header and this grid —
+   the "visual seam" the ticket called out was exactly that doubled
+   space-3 + space-3 gap reading as two stacked cards instead of one
+   panel; .artist-sidebar's gap alone is the single source now). */
+.sidebar-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "endpoints"
+    "tracks"
+    "rolebreakdown"
+    "path"
+    "actions";
+  gap: var(--space-3);
+  overflow-y: auto;
+}
+/* [SF-WEB-33] Edge-only — both endpoints of the selected edge, hidden
+   for node context (see ui/sidebar.js). Reuses the exact same
+   path-chain-container/path-node-card kit #sidebar-path-tile already
+   uses, so it reads as the same "connection" visual language instead
+   of a bespoke one. */
+#sidebar-endpoints-tile           { grid-area: endpoints;    }
+#sidebar-tracks-tile              { grid-area: tracks;       }
+#sidebar-rolebreakdown-tile       { grid-area: rolebreakdown;}
+#sidebar-path-tile                { grid-area: path;         }
+/* [SF-WEB-27] justify-self:center keeps the .ui-segment pill its
+   natural content width — CSS Grid's default justify-items:stretch
+   would otherwise stretch this small icon row to the full grid-column
+   width, the same reason the old floating placement needed its own
+   `width:auto` opt-out. */
+#object-action-bar                { grid-area: actions; justify-self: center; }
+.object-action-bar[hidden] { display: none !important; }
+
+.sidebar-section-label {
+  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+  letter-spacing: .14em; text-transform: uppercase; margin-bottom: var(--space-2);
+}
+.sidebar-track {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-1) 0; border-bottom: 1px solid rgba(var(--line-rgb), .35);
+}
+.sidebar-track:last-child { border-bottom: none; }
+.sidebar-track-name { font-size: var(--text-xs); color: var(--paper); line-height: 1.3; flex: 1; min-width: 0; }
+.sidebar-track-role {
+  font-family: "Space Mono", monospace; font-size: 11px; padding: 3px 6px;
+  border-radius: 999px; border: 1px solid; flex-shrink: 0; white-space: nowrap;
+}
+.sidebar-role-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.sidebar-role-chip {
+  font-family: "Space Mono", monospace; font-size: 11px;
+  padding: 3px 6px; border-radius: 999px; border: 1px solid;
+  display: flex; align-items: center; gap: 4px;
+}
+/* .role-chip--* colours are defined once, near .path-edge-count below —
+   kept only here as the layout rule (padding/shape), colour lives in a
+   single place instead of being duplicated across two blocks. */
+
+/* Централити убрана — .centrality-indicator/.centrality-bar-*/
+/* .centrality-percent удалены полностью вместе с их единственным
+   потребителем (buildCentralityIndicator в ui.js). */
+

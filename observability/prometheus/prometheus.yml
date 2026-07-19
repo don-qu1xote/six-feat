@@ -1,0 +1,63 @@
+# Prometheus scrape config for the six-feat observability profile
+# (docker compose --profile observability up). Each target is the
+# service's internal monitor listener (components.server.listener-monitor
+# in services/*/static_config.yaml) — never the public port — scraped on
+# handler-server-monitor's configured path with userver's standard
+# ?format=prometheus output.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# [SF-OBS-04] RED + resilience alert rules — see the files themselves for
+# what each alert covers and why. `promtool check rules` (CI, no Docker
+# needed — see .github/workflows/ci.yml's promtool-check-rules job)
+# validates both the YAML syntax and the PromQL in every expr: below.
+rule_files:
+  - rules/*.yml
+
+# [SF-OBS-04] Optional per the ticket — routes firing alerts to the
+# alertmanager service in this same Compose profile (see docker-compose.yml:
+# profiles: ["observability"]), which in turn only logs/webhooks-to-a-stub
+# (see observability/alertmanager/alertmanager.yml) — no real paging
+# receiver (Slack/PagerDuty/email) is configured anywhere in this repo.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: six-feat
+    metrics_path: /metrics
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets: ["six-feat:8085"]
+        labels:
+          service: six-feat
+
+  - job_name: six-feat-enrichment
+    metrics_path: /metrics
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets: ["six-feat-enrichment:8086"]
+        labels:
+          service: six-feat-enrichment
+
+  - job_name: six-feat-genius-gateway
+    metrics_path: /metrics
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets: ["six-feat-genius-gateway:8087"]
+        labels:
+          service: six-feat-genius-gateway
+
+  - job_name: six-feat-auth
+    metrics_path: /metrics
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets: ["six-feat-auth:8088"]
+        labels:
+          service: six-feat-auth

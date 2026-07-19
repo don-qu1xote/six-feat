@@ -1,0 +1,14 @@
+type: object
+description: >-
+    Background prune task for stale artists/songs/credits (SF-DB-06). Off by
+    default — see PRUNE_TTL_DAYS env var (0 = off, the default).
+additionalProperties: false
+properties:
+    interval-seconds:
+        type: integer
+        description: How often to run a prune pass, once enabled
+        defaultDescription: '3600'
+    batch-size:
+        type: integer
+        description: Maximum artists deleted per DELETE batch within a pass
+        defaultDescription: '500'

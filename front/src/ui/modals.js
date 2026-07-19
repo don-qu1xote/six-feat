@@ -5,13 +5,58 @@
 // These three overlays mutually close each other when one opens (same
 // pattern as the original ui.js), so they're kept together rather than
 // split into three files with a tangle of cross-imports.
+//
+// [SF-WEB-24] The three overlays' shared "docked panel" shell mechanics —
+// mutual exclusivity, click-outside-to-close, stopping clicks inside a
+// panel from closing it — now live once in ui/docked-panel.js instead of
+// being independently duplicated (a separate document click-listener
+// each, slightly different each time). setupDockedPanels() below
+// registers all three; each open()/close() keeps its own content-specific
+// logic (what shows, what gets focused, body view-state) exactly as
+// before, just calling closeOtherDockedPanels() instead of naming the
+// other two's close functions by hand.
 // ════════════════════════════════════════════════════════════════════════════
-import { State } from "../state/state.js";
+import { State, MOTION, visAnimation } from "../state/state.js";
 import { debounce, escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els, $ } from "../dom/dom.js";
-import { setFocus } from "../vis-adapter/index.js";
+import { setFocus, highlightPath, restoreDefaultColors } from "../vis-adapter/index.js";
 import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
+import { registerDockedPanel, closeOtherDockedPanels } from "./docked-panel.js";
+import { closeComparePanel } from "./compare-panel.js";
+
+let _searchModalPanel = null;
+let _nodeSearchPanel  = null;
+let _pathPanel        = null;
+
+// [SF-WEB-24] Registers all three docked-panel surfaces at once — path-
+// panel's own trigger-button/close-button/autocomplete/form wiring stays
+// in ui/path-panel.js::setupPathPanel, but isPathPanelOpen/openPathPanel/
+// closePathPanel (the open/close state itself) already lived here, so its
+// docked-panel registration does too, alongside the other two.
+export function setupDockedPanels() {
+  _searchModalPanel = registerDockedPanel({
+    el: els.searchModal,
+    trigger: els.btnSearchOpen,
+    // Only the docked variant behaves like the other two "docked panels" —
+    // the full-screen (non-docked) search modal has no outside-click-to-
+    // close concept (there's no "outside" — it IS the whole background).
+    isOpen: () => isSearchModalOpen() && !!els.searchModal?.classList.contains("docked"),
+    close: () => closeSearchModal(),
+  });
+  _nodeSearchPanel = registerDockedPanel({
+    el: els.nodeSearchOverlay,
+    trigger: els.btnNodeSearch,
+    isOpen: () => !!els.nodeSearchOverlay?.classList.contains("show"),
+    close: () => closeNodeSearch(),
+  });
+  _pathPanel = registerDockedPanel({
+    el: els.pathPanel,
+    trigger: els.btnFindPath,
+    isOpen: () => isPathPanelOpen(),
+    close: () => closePathPanel(),
+  });
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // Path panel open/close
@@ -32,16 +77,22 @@ export function isPathPanelOpen() {
 
 export function openPathPanel() {
   if (!els.pathPanel) return;
-  // Как и обычный поиск — закрываем прочие overlay'и перед открытием этого.
-  if (isSearchModalOpen()) closeSearchModal();
-  closeNodeSearch();
+  // [SF-WEB-24] Closes the other two docked panels (search-modal/node-
+  // search) — was two explicit calls, now the shared registry.
+  closeOtherDockedPanels(_pathPanel);
   hideCandidatePicker();
+  // [SF-WEB-12] The companion panel shows exactly one context at a time —
+  // opening the path section replaces whatever node/edge context was shown.
+  hideArtistSidebar();
+  closeComparePanel();
   els.pathPanel.classList.add("show");
+  els.companionPanel?.classList.add("show");
   els.pathFromInput?.focus();
 }
 
 export function closePathPanel() {
   els.pathPanel?.classList.remove("show");
+  els.companionPanel?.classList.remove("show");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -62,8 +113,10 @@ export function openSearchModal(opts = {}) {
   isSearchModalOpen_flag = true;
   modal.classList.remove("is-closed");
   modal.classList.toggle("docked", docked);
-  if (isPathPanelOpen()) closePathPanel();
-  closeNodeSearch();
+  // [SF-WEB-24] Closes the other two docked panels (node-search/path-
+  // panel) — was two explicit calls, now the shared registry. Runs
+  // unconditionally (docked or not), matching the previous behaviour.
+  closeOtherDockedPanels(_searchModalPanel);
 
   // ТЗ (bento-редизайн, "поиск на странице графа как find-path"): раньше
   // кнопка "Search artist" на рейле открывала ТУ ЖЕ полноэкранную домашнюю
@@ -75,6 +128,26 @@ export function openSearchModal(opts = {}) {
   // полноэкранного scrim/blur и без скрытия rail/status/context-panel.
   if (docked) {
     hideArtistSidebar();
+    closeComparePanel();
+    // [SF-WEB-30] Docked search shows ONLY the Explore search box — the
+    // Explore/Connect switch and the Connect panel are now hidden entirely
+    // in docked mode (see .search-modal.docked CSS), but this is the SAME
+    // persistent #search-modal element the full-screen landing modal uses.
+    // If the user had switched to Connect there, that mode would otherwise
+    // silently carry over: the switch/tabs are just display:none now (not
+    // reset), and .hero-mode-panel visibility is driven by .is-active, not
+    // display — so the (invisible) Connect panel would stay active and the
+    // Explore search box wouldn't render at all. Force Explore back to
+    // active every time docked search opens, mirroring what
+    // path-panel.js::setupHeroModeSwitch's activate("explore") does.
+    if (els.heroModeSwitch) els.heroModeSwitch.dataset.mode = "explore";
+    els.heroModeTabExplore?.setAttribute("aria-selected", "true");
+    if (els.heroModeTabExplore) els.heroModeTabExplore.tabIndex = 0;
+    els.heroModeTabConnect?.setAttribute("aria-selected", "false");
+    if (els.heroModeTabConnect) els.heroModeTabConnect.tabIndex = -1;
+    els.heroModePanelExplore?.classList.add("is-active");
+    els.heroModePanelConnect?.classList.remove("is-active");
+    State.heroMode = "explore";
     if (els.heroInput) els.heroInput.focus();
     return;
   }
@@ -136,19 +209,9 @@ export function setupSearchModal() {
     // домашняя модалка остаётся только за clearCanvas()/первым визитом.
     else openSearchModal({ docked: true });
   });
-
-  // Клик вне докнутой карточки закрывает её — тот же паттерн, что у
-  // .path-panel. В обычном (недокнутом, полноэкранном) режиме модалка сама
-  // и есть фон, по которому "клик мимо" не имеет смысла — поэтому проверяем
-  // именно docked.
-  els.searchModal?.addEventListener("click", e => {
-    if (els.searchModal.classList.contains("docked")) e.stopPropagation();
-  });
-  document.addEventListener("click", e => {
-    if (!isSearchModalOpen() || !els.searchModal?.classList.contains("docked")) return;
-    if (els.searchModal.contains(e.target) || e.target === els.btnSearchOpen || els.btnSearchOpen?.contains(e.target)) return;
-    closeSearchModal();
-  });
+  // [SF-WEB-24] Click-outside-to-close (docked mode only — the full-screen
+  // mode has no "outside") and click-inside-doesn't-bubble-and-self-close
+  // both now come from the shared registration in setupDockedPanels().
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -183,15 +246,18 @@ function _nsSelect(item) {
   const id = item.getAttribute("data-id");
   closeNodeSearch();
   if (!State.network) return;
-  State.network.focus(id, { scale: 1.5, animation: { duration: 600, easingFunction: "easeInOutQuad" } });
+  // [SF-WEB-47 motion] Was its own literal (600) and never checked
+  // prefers-reduced-motion — visAnimation(MOTION.xxslow) covers both.
+  State.network.focus(id, { scale: 1.5, animation: visAnimation(MOTION.xxslow) });
   setFocus(id);
   showArtistSidebar(id);
 }
 
 export function openNodeSearch() {
   if (!State.hasRendered) return;
-  if (isPathPanelOpen()) closePathPanel();
-  if (isSearchModalOpen()) closeSearchModal();
+  // [SF-WEB-24] Closes the other two docked panels (search-modal/path-
+  // panel) — was two explicit calls, now the shared registry.
+  closeOtherDockedPanels(_nodeSearchPanel);
   hideArtistSidebar();
   els.nodeSearchOverlay.classList.add("show");
   els.nodeSearchInput.setAttribute("aria-expanded", "true");
@@ -205,6 +271,11 @@ export function closeNodeSearch() {
   els.nodeSearchInput.setAttribute("aria-expanded", "false");
   els.nodeSearchInput.setAttribute("aria-activedescendant", "");
   _nsActiveIndex = -1;
+  // [SF-WEB-75] Live-search's own canvas highlight (see
+  // renderNodeSearchResults below) doesn't clear itself — closing the
+  // overlay without picking a result (Escape, click-outside) would
+  // otherwise leave whatever was last typed lit up on the canvas forever.
+  restoreDefaultColors();
 }
 
 export function renderNodeSearchResults(query) {
@@ -227,6 +298,19 @@ export function renderNodeSearchResults(query) {
     `<span class="ns-weight">${n._totalCollabs || n.totalWeight || 0} collab${(n._totalCollabs || n.totalWeight) === 1 ? "" : "s"}</span>` +
     `</div>`
   ).join("") || `<div class="ns-empty">No nodes match</div>`;
+
+  // [SF-WEB-75] "подсвечивай ноды как при выборе после поиска на графе" —
+  // every matching node lights up on the canvas itself, live as you type,
+  // with the SAME onPath/selected look highlightPath already gives path
+  // nodes (dim:false — Compare mode's own reasoning applies here too: the
+  // rest of the graph stays at its normal resting look, only matches pop).
+  // Only for an actual query — the overlay's empty-query "browse everything"
+  // listing isn't a search result worth lighting up the whole graph over.
+  if (q && results.length) {
+    highlightPath(results.map(n => n.id), { dim: false });
+  } else {
+    restoreDefaultColors();
+  }
 
   _nsActiveIndex = -1;
   els.nodeSearchInput.setAttribute("aria-activedescendant", "");
@@ -261,15 +345,7 @@ export function setupNodeSearch() {
       _nsSelect(items[_nsActiveIndex]);
     }
   });
-  // Раньше .node-search-overlay был полноэкранным тёмным фоном — клик по
-  // фону (target === overlay) закрывал панель. Теперь это компактная
-  // докнутая карточка (тот же материал/расположение, что у .path-panel),
-  // фона для клика больше нет — закрываем по клику ВНЕ карточки, как и
-  // path-panel/докнутый search-modal.
-  els.nodeSearchOverlay.addEventListener("click", e => e.stopPropagation());
-  document.addEventListener("click", e => {
-    if (!els.nodeSearchOverlay.classList.contains("show")) return;
-    if (els.nodeSearchOverlay.contains(e.target) || e.target === els.btnNodeSearch || els.btnNodeSearch?.contains(e.target)) return;
-    closeNodeSearch();
-  });
+  // [SF-WEB-24] Click-outside-to-close and click-inside-doesn't-bubble-and-
+  // self-close both now come from the shared registration in
+  // setupDockedPanels() — this used to be its own document click listener.
 }

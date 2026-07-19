@@ -4,7 +4,7 @@
 //            computeNodeSizes, computeNodeDominantRoles, cacheNodeCollaborations
 // ════════════════════════════════════════════════════════════════════════════
 import { State, COLOR, setSeed, setNodes, setEdges, addNodes, addEdges, resetExpansionState, setTruncation } from "./state/state.js";
-import { roleStyle, allRolesFromCollabs, sortByPopularity } from "./state/helpers.js";
+import { roleStyle, allRolesFromCollabs, sortByPopularity, isGeniusDefaultAvatar } from "./state/helpers.js";
 import { resolveEdgeDominantRole, computeNodeSizes, initGraphOnCanvas, initNetwork, refreshNetwork, mergeNetwork, nodeVisual, edgeVisual, invalidateColorCache } from "./vis-adapter/index.js";
 import { els } from "./dom/dom.js";
 import { hideArtistSidebar } from "./ui/sidebar.js";
@@ -24,6 +24,21 @@ export function replaceGraph(graph) {
   setNodes(graph.nodes.map(n => buildNodeState(n, seedId, existingIds, graph)));
   setEdges(graph.edges.map(e => buildEdgeState(e)));
 
+  // [SF-WEB-62] "экспандед-ноды у сида не помечаются как экспандед и не
+  // соответствующего размера" — buildNodeState defaults every node to
+  // _isNew:true (only ever cleared inside mergeNetwork's own flyout, see
+  // physics.js's `for (const n of freshNodes) n._isNew = false;`), but a
+  // FULL replaceGraph never goes through that merge path — it renders
+  // everything immediately via initNetwork/refreshNetwork. Left uncleared,
+  // EVERY node from the very first search (i.e. every direct seed
+  // neighbor) stayed _isNew:true forever. Later double-clicking one of them
+  // falls through BOTH of mergeNetwork's node buckets: not in `freshNodes`
+  // (already in the DataSet), and excluded from `existingUpdates` too (that
+  // bucket requires !_isNew) — so its HUB_RADIUS size / borderWidth 5 /
+  // expanded shadow from nodeVisual never actually got applied, even though
+  // State.expandedNodes correctly contained it.
+  State.graphNodes.forEach(n => { n._isNew = false; });
+
   finalizeGraphState(seedId, nameById, savedPositions, graph, false);
 }
 
@@ -34,36 +49,68 @@ export function replaceGraph(graph) {
 export function mergeGraph(graph) {
   const expandedId = graph.seed_id ?? (graph.nodes[0]?.id);
 
+  // [SF-WEB-29 follow-up] Snapshot of poles that existed BEFORE this expand
+  // (does not yet include expandedId) — used below to find expandedId's
+  // true visual parent for nested-pole placement (layout.js reads
+  // graphNode._expandParent). Must be captured before
+  // State.expandedNodes.add(expandedId) further down.
+  const priorPoles = new Set(State.expandedNodes);
+
   const savedPositions = State.network ? State.network.getPositions() : {};
 
   const existingNodeIds  = new Set(State.graphNodes.map(n => n.id));
-  const existingEdgeKeys = new Set(State.graphEdges.map(e => e.id));
+  // SF-WEB-01: edgeKey() (not e.id) — a Set of the same numeric/string keys
+  // computed for the incoming edges below, so membership checks below never
+  // fall back to a full string-vs-string compare when a fast numeric one
+  // will do. Doesn't touch buildEdgeState's own `.id` (still "lo_hi" —
+  // depended on elsewhere as a DOM data-edge-id string).
+  const existingEdgeKeys = new Set(State.graphEdges.map(e => edgeKey(e.from, e.to)));
 
   const nameById = {};
   State.graphNodes.forEach(n => { nameById[n.id] = n.name; });
   graph.nodes.forEach(n => { nameById[n.id] = n.name || ""; });
 
-  // Централити убрана — обновлять здесь больше нечего для уже
-  // существующих узлов (раньше подтягивали betweenness_normalised).
-  addNodes(
-    graph.nodes
-      .filter(n => !existingNodeIds.has(n.id))
-      .map(n => buildNodeState(n, null, existingNodeIds, graph))
-  );
+  // SF-WEB-01: single pass over graph.nodes/graph.edges each (was a
+  // separate .filter() + .map(), i.e. two passes) — same resulting set
+  // (existingNodeIds/existingEdgeKeys are snapshotted once beforehand, same
+  // as the old .filter() closures, so duplicate ids/pairs *within* the
+  // incoming batch itself still both pass through, unchanged behaviour).
+  const newNodes = [];
+  for (const n of graph.nodes) {
+    if (!existingNodeIds.has(n.id)) newNodes.push(buildNodeState(n, null, existingNodeIds, graph));
+  }
+  addNodes(newNodes);
 
-  addEdges(
-    graph.edges
-      .filter(e => !existingEdgeKeys.has(`${Math.min(e.from, e.to)}_${Math.max(e.from, e.to)}`))
-      .map(e => buildEdgeState(e))
-  );
+  const newEdges = [];
+  for (const e of graph.edges) {
+    if (!existingEdgeKeys.has(edgeKey(e.from, e.to))) newEdges.push(buildEdgeState(e));
+  }
+  addEdges(newEdges);
 
   State.expandedNodes.add(expandedId);
   State.lastExpandedId = expandedId;
 
-  // Записываем родителя expand-дерева: кликнутая нода = _clickedNodeId
+  // [SF-WEB-29 follow-up] Записываем родителя expand-дерева — использовалось
+  // раньше State._clickedNodeId, но это ВСЕГДА сам expandedId (события
+  // sidebar.js/events.js ставят _clickedNodeId на ноду, которую собираются
+  // раскрыть, т.е. на ту же ноду, что и expandedId здесь) — self-reference,
+  // фактически бесполезное значение, из-за которого layout.js не мог
+  // отличить "полюс висит прямо на seed" от "полюс — это бывший лист
+  // другого полюса" и раскладывал вложенные (2nd-degree) expand'ы плоско,
+  // на орбите вокруг seed, вместо того чтобы прижимать их к настоящему
+  // родителю. Настоящий родитель — сосед expandedId по уже существующему
+  // ребру: либо сам seed (прямой expand), либо ближайший уже раскрытый ДО
+  // этого expand полюс (priorPoles, см. выше — вложенный expand).
   const expandedNode = State.graphNodes.find(n => n.id === expandedId);
   if (expandedNode && expandedNode._expandParent == null) {
-    expandedNode._expandParent = State._clickedNodeId ?? State.currentSeedId ?? null;
+    let parent = null;
+    for (const e of State.graphEdges) {
+      const other = e.from === expandedId ? e.to : (e.to === expandedId ? e.from : null);
+      if (other == null) continue;
+      if (other === State.currentSeedId) { parent = other; break; }
+      if (parent == null && priorPoles.has(other)) parent = other;
+    }
+    expandedNode._expandParent = parent ?? State.currentSeedId ?? null;
   }
 
   finalizeGraphState(State.currentSeedId, nameById, savedPositions, graph, true);
@@ -79,10 +126,15 @@ export function buildNodeState(n, seedId, existingIds, graph) {
   const accent   = isSeed ? COLOR.signal : rs.color;
   const dimBorder = isSeed ? "rgba(94,230,197,0.45)" : `${accent}40`;
 
+  // [SF-WEB-16] Front-guard: SF-API-07 already filters Genius's default
+  // image server-side, but treat it as "no photo" here too in case an
+  // unfiltered URL like it ever arrives — see isGeniusDefaultAvatar.
+  const imageUrl = (n.image && !isGeniusDefaultAvatar(n.image)) ? n.image : "";
+
   return {
     id:               n.id,
     name:             n.name || "",
-    imageUrl:         n.image || "",
+    imageUrl,
     geniusUrl:        n.url   || null,
     genres:           [],
     isSeed:           isSeed,
@@ -91,6 +143,26 @@ export function buildNodeState(n, seedId, existingIds, graph) {
     _dimBorder:       dimBorder,        // Task 6: persisted here
     _accent:          accent,
   };
+}
+
+// SF-WEB-01: composite numeric edge-dedup key — lo*EDGE_KEY_LIMIT+hi is a
+// unique integer for any pair of ids under EDGE_KEY_LIMIT, and comparing/
+// hashing a number in a Set is cheaper than the template-string alloc
+// (`${lo}_${hi}`) mergeGraph used to build per edge, per merge. Genius
+// artist ids are nowhere near this range in practice, but rather than
+// assume it we verify: both endpoints must fit under
+// sqrt(Number.MAX_SAFE_INTEGER) so the composite itself can't exceed
+// Number.MAX_SAFE_INTEGER (lo and hi both at the limit is the worst case —
+// EDGE_KEY_LIMIT² is exactly the bound). Anything outside that range falls
+// back to the original string key — still correct, just not the fast path —
+// computed once per edge either way.
+const EDGE_KEY_LIMIT = Math.floor(Math.sqrt(Number.MAX_SAFE_INTEGER)); // ≈ 94,906,265
+
+export function edgeKey(a, b) {
+  const lo = a < b ? a : b;
+  const hi = a < b ? b : a;
+  if (lo >= 0 && hi < EDGE_KEY_LIMIT) return lo * EDGE_KEY_LIMIT + hi;
+  return `${lo}_${hi}`;
 }
 
 export function buildEdgeState(e) {
@@ -200,7 +272,9 @@ export function finalizeGraphState(seedId, nameById, savedPositions, graph, isMe
   } else if (isMerge) {
     mergeNetwork(nameById, savedPositions);
   } else {
-    refreshNetwork(nameById, savedPositions);
+    // [SF-WEB-51] refreshNetwork теперь принимает seedId явно — оно нужно
+    // ему ДО placeExpandedNodes, а setSeed() ниже вызывается позже.
+    refreshNetwork(seedId, nameById, savedPositions);
   }
 
   if (!isMerge) {

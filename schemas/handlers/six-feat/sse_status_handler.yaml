@@ -1,0 +1,4 @@
+type: object
+description: SSE enrichment-status stream handler configuration
+additionalProperties: false
+properties: {}

@@ -27,8 +27,9 @@ export default [
         ...globals.browser,
         ...globals.es2021,
         // vis-network is loaded as a UMD <script> global in index.html
-        // (unpkg.com/vis-network .../standalone/umd/vis-network.min.js),
-        // not imported as a module — see vis-adapter/render.js.
+        // ([SF-SEC-02] self-hosted at front/vendor/vis-network.min.js, no
+        // longer unpkg.com), not imported as a module — see
+        // vis-adapter/render.js.
         vis: "readonly",
       },
     },
@@ -53,6 +54,19 @@ export default [
       globals: {
         ...globals.node,
         ...globals.browser,
+      },
+    },
+  },
+  {
+    // [SF-WEB-08] check-bundle-size.test.js — same node globals as
+    // scripts/**/*.mjs below, matched separately since that block's glob
+    // doesn't cover .test.js files.
+    files: ["scripts/**/*.test.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.node,
       },
     },
   },

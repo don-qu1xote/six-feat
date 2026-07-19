@@ -8,19 +8,62 @@
 import { State, COLOR, ROLE_PRIORITY } from "../state/state.js";
 import { placeholderFor, roleStyle } from "../state/helpers.js";
 import { buildNodeTooltip, buildEdgeTooltip } from "./tooltips.js";
+import { ensureNodeColorSampled } from "./photo-color.js";
 
-// Централити (betweenness) полностью убрана по запросу — раньше здесь была
-// betweennessGlow(nodeData), вычислявшая glow-тень по _betweennessNorm.
-// Seed теперь просто получает свой фиксированный акцентный glow (см.
-// seedShadow ниже), остальные узлы — без свечения вообще.
+// [SF-WEB-45] hexToRgba — same #RRGGBB parsing lightenHexColor already does
+// below, reused here so glow colors can carry an explicit alpha instead of
+// the `${hex}NN` string-concat shorthand used elsewhere in this file (that
+// shorthand only works because those NN suffixes are hand-picked valid hex
+// pairs; seedShadow's hero-glow wants a value tuned in normal 0–1 terms).
+export function hexToRgba(hex, alpha) {
+  hex = hex.replace("#", "");
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// [SF-WEB-59] Централити (betweenness) убрана снова — SF-WEB-58 A её
+// вернула, но это была регрессия при текущем состоянии графа (мешала
+// читаемости, не нужна). Seed получает выраженный hero-glow (см.
+// seedShadow), остальные узлы — свой собственный, более сдержанный halo
+// (см. nodeShadowFor) — оба через border+shadow, никогда не через opacity
+// в данных ноды (см. большой комментарий "Структурный фикс" ниже: opacity:0
+// на входе исторически ломал circularImage — тот баг про fade-in, но урок
+// общий, glow это тоже не opacity).
+//
+// [SF-WEB-45] color берётся из COLOR.signal (живой геттер на CSS-переменную
+// --signal, см. state.js) вместо прежнего захардкоженного rgba(94,230,197,…)
+// — тот хардкод был ровно тёмной темы, так что seed-glow в светлой теме
+// молча оставался тёмно-бирюзовым вместо светлотемного --signal.
 export function seedShadow() {
-  return { enabled: true, color: "rgba(94,230,197,0.45)", size: 22, x: 0, y: 0 };
+  return { enabled: true, color: hexToRgba(COLOR.signal, 0.55), size: 26, x: 0, y: 0 };
+}
+
+// [SF-WEB-45] Единая точка входа для "дефолтного" (не hover, не selected)
+// shadow-поля ноды — используется и nodeVisual (первичная сборка), и
+// highlight.js (buildDefaultColorCache/_defaultNodeUpdate, т.е. кэш и откат
+// к состоянию покоя после hover/selection). Раньше это правило было
+// продублировано в nodeVisual один раз и в highlight.js — дважды, каждая
+// копия жёстко трактовала любую не-seed ноду как shadow:{enabled:false};
+// расширять glow на expanded/leaf-ноды пришлось бы в трёх местах и рано или
+// поздно рассинхронизировать. Теперь расширять/менять — только здесь.
+export function nodeShadowFor(nodeData) {
+  if (nodeData.isSeed) return seedShadow();
+  const isExpired = nodeData.isExpired || nodeData.dataExpired || false;
+  if (isExpired) return { enabled: false };
+  const isExpanded = State.expandedNodes.has(nodeData.id);
+  const domRole = nodeData._dominantRole || "primary";
+  const accent  = roleStyle(domRole).color;
+  return isExpanded
+    ? { enabled: true, color: `${accent}30`, size: 12, x: 0, y: 0 }
+    : { enabled: true, color: `${accent}22`, size: 6, x: 0, y: 0 };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
 // FIX #2: Helper to brighten hex colors for edge highlights
 // ════════════════════════════════════════════════════════════════════════════
-function lightenHexColor(hex, factor = 0.4) {
+export function lightenHexColor(hex, factor = 0.4) {
   hex = hex.replace("#", "");
   const r = parseInt(hex.substring(0, 2), 16);
   const g = parseInt(hex.substring(2, 4), 16);
@@ -80,16 +123,6 @@ export function computeNodeSizes() {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// LABEL HELPERS
-// ════════════════════════════════════════════════════════════════════════════
-
-
-export function labelFont() {
-  return { size: 0, color: "#00000000" };
-}
-
-
-// ════════════════════════════════════════════════════════════════════════════
 // NODE VISUAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -125,6 +158,13 @@ export function nodeVisual(nodeData) {
   const domRole   = nodeData._dominantRole || (isSeed ? "featured" : "primary");
   const rs        = roleStyle(domRole);
   const image     = imageUrl || placeholderFor(name, isSeed);
+
+  // [SF-WEB-59] Kick off (idempotent) dominant-color sampling for any node
+  // with a real avatar — fire-and-forget, see photo-color.js. The result is
+  // used ONLY by bubble-contours.js (sector fill) — SF-WEB-58 B also tinted
+  // this node's own border and its cross-arcs with it, which is reverted
+  // below: nowhere else reads getCachedDominantColor for now.
+  if (imageUrl) ensureNodeColorSampled(id, imageUrl);
 
   // ─────────────────────────────────────────────────────────────────────────
   // FIX #3: Visual hierarchy - different sizes for different node types
@@ -188,23 +228,14 @@ export function nodeVisual(nodeData) {
   const opacity = isExpired ? 0.6 : 1.0;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FIX #3: Shadow/glow based on node importance
+  // FIX #3 / [SF-WEB-45]: Shadow/glow based on node importance — seed gets
+  // its pronounced hero-glow, expanded/leaf nodes get their own softer halo,
+  // expired nodes stay glow-free (reads as "secondary/stale"). See
+  // nodeShadowFor above — same formula highlight.js's default-color cache
+  // and hover/selection revert use, so the glow this function paints on
+  // first render is exactly what those paths restore afterwards.
   // ─────────────────────────────────────────────────────────────────────────
-  let shadow;
-  if (isSeed) {
-    shadow = seedShadow();  // Turquoise glow for seed
-  } else if (isExpanded) {
-    // Subtle glow for expanded nodes
-    shadow = {
-      enabled: true,
-      color: `${accent}30`,
-      size: 12,
-      x: 0,
-      y: 0
-    };
-  } else {
-    shadow = { enabled: false };
-  }
+  const shadow = nodeShadowFor(nodeData);
 
   // Seed: mass=1 т.к. он зафиксирован (fixed:true) и масса не влияет на физику.
   // Expanded: высокая масса — притягивают листья, но сами не улетают.
@@ -215,8 +246,6 @@ export function nodeVisual(nodeData) {
     id,
     _accent:    accent,
     _dimBorder: dimBorder,
-    label:  name,
-    font:   labelFont(isSeed),
     shape:  "circularImage",
     image,
     brokenImage: placeholderFor(name, isSeed),
@@ -319,79 +348,61 @@ export function resolveEdgeDominantRole(e) {
 // NETWORK OPTIONS
 // ════════════════════════════════════════════════════════════════════════════
 
-// Пороги размера графа (число узлов) для выбора solver'а и объёма стабилизации.
-// barnesHut пересчитывает силы через octree на каждый physics-тик — дёшево
-// для малых/средних графов, но на 150+ узлах даёт заметные просадки FPS.
-// "repulsion" (O(n²), но без octree overhead) дешевле в этом диапазоне.
-const LARGE_GRAPH_NODE_THRESHOLD = 150;
+// Порог размера графа (число узлов). SF-WEB-07: exported so physics.js can
+// shorten the live-physics settle window and render.js can skip ring-guides
+// on the same graphs this treats as "large" — one threshold, not several
+// independently-tuned magic numbers.
+export const LARGE_GRAPH_NODE_THRESHOLD = 150;
 
-// Итерации стабилизации пропорциональны размеру графа вместо фиксированных
-// 200 всегда — на маленьких seed-графах это избыточно и просто тратит время
-// до первого кадра, на больших может быть недостаточно для того чтобы разойтись.
-function computeStabilizationIterations(nodeCount) {
-  const n = nodeCount || State.graphNodes.length || 0;
-  if (n <= 20)  return 120;
-  if (n <= 60)  return 200;
-  if (n <= 150) return 260;
-  // Большие графы: не наращиваем дальше линейно — дороже, чем выигрыш от
-  // лучшей стабилизации; пользователь всё равно быстро начнёт двигать граф.
-  return 320;
+// [SF-WEB-74] Порог числа рёбер для полного отключения hover-эффектов на
+// сильном zoom-out (render.js::_attachZoomThrottle зовёт setOptions({
+// interaction: { hover:false } }) при bigGraph && scale<0.5 — это САМО
+// отключает нативный hoverNode/blurNode). edge-render.js больше не ходит
+// через нативный hoverEdge (см. SF-WEB-73 — свой DOM mousemove-хит-тест),
+// так что тот же порог здесь дублировать нельзя одним vis.js-опционом:
+// events.js читает isEdgeHoverSuppressedByZoom() сам, тем же условием, что
+// и render.js — один порог, не два независимо настроенных магических числа.
+export const FAST_RENDER_EDGE_THRESHOLD = 150;
+
+export function isEdgeHoverSuppressedByZoom() {
+  const net = State.network;
+  if (!net || typeof net.getScale !== "function") return false;
+  if (State.graphEdges.length <= FAST_RENDER_EDGE_THRESHOLD) return false;
+  return net.getScale() < 0.5;
 }
 
 export function networkOptions() {
-  const nodeCount  = State.graphNodes.length || 0;
-  const isLarge    = nodeCount > LARGE_GRAPH_NODE_THRESHOLD;
-  const iterations = computeStabilizationIterations(nodeCount);
-
-  // Все ноды теперь одного фиксированного радиуса (22px, см. FIXED_NODE_RADIUS
-  // в computeNodeSizes) — spacing подобран под этот единый размер вместо
-  // прежнего диапазона 10–52px.
-  const physics = isLarge
-    ? {
-        enabled: true,
-        solver: "repulsion",
-        repulsion: {
-          centralGravity:  0.05,
-          springLength:    170,
-          springConstant:  0.04,
-          nodeDistance:    130,
-          damping:         0.88
-        },
-        stabilization: {
-          enabled:        true,
-          iterations,
-          updateInterval: 50,
-          fit:            false
-        },
-        timestep:         0.35,
-        adaptiveTimestep: true,
-        maxVelocity:      60,
-        minVelocity:      0.8
-      }
-    : {
-        enabled: true,
-        solver: "barnesHut",
-        barnesHut: {
-          // Начальная стабилизация (initNetwork): мягко разводим seed-граф.
-          // При expand эти параметры переопределяются через setOptions.
-          gravitationalConstant: -6000,
-          centralGravity:        0.05,
-          springLength:          170,
-          springConstant:        0.04,
-          damping:               0.88,
-          avoidOverlap:          0.9
-        },
-        stabilization: {
-          enabled:        true,
-          iterations,
-          updateInterval: 50,
-          fit:            false
-        },
-        timestep:         0.35,
-        adaptiveTimestep: true,
-        maxVelocity:      60,
-        minVelocity:      0.8
-      };
+  // [SF-WEB-51] Физика ДЕМОТИРОВАНА до опционального органик-доводчика и
+  // больше НЕ основной решатель раскладки: initNetwork/refreshNetwork/
+  // mergeNetwork кладут ноды детерминированно через layout.js
+  // (placeExpandedNodes + collision-solver) и сразу фиксируют — стабилизация
+  // как раскладка не запускается (enabled:false ниже; init/refresh к тому же
+  // явно выключают физику). Раньше на больших графах (>150) выбирался solver
+  // "repulsion", у которого В КОНФИГЕ НЕТ avoidOverlap вообще — overlap-
+  // избегания в режиме больших графов было ноль. Теперь везде barnesHut с
+  // avoidOverlap: 1.0 (единственный overlap-aware solver у vis) и size из
+  // nodeVisual (FIXED_NODE_RADIUS) — так короткий пост-drag settle
+  // (events.js → nudgePhysics включает физику через setOptions) считает
+  // столкновения по реальному радиусу и не даёт нодам налезать, независимо
+  // от размера графа. Гарантию неперекрытия при этом даёт не физика, а
+  // детерминированный солвер в layout.js — физика лишь мягко доводит.
+  const physics = {
+    enabled: false,
+    solver: "barnesHut",
+    barnesHut: {
+      gravitationalConstant: -6000,
+      centralGravity:        0.05,
+      springLength:          170,
+      springConstant:        0.04,
+      damping:               0.88,
+      avoidOverlap:          1.0
+    },
+    stabilization: { enabled: false },
+    timestep:         0.35,
+    adaptiveTimestep: true,
+    maxVelocity:      60,
+    minVelocity:      0.8
+  };
 
   return {
     autoResize: true,
@@ -433,8 +444,16 @@ export function networkOptions() {
       zoomView:            true,
       tooltipDelay:        120,
       hoverConnectedEdges: true,
-      hideEdgesOnDrag:     true,
-      hideEdgesOnZoom:     true,
+      // [SF-WEB-55] Отменяет прежний SF-WEB-53 — раньше это было ЕДИНСТВЕННОЙ
+      // защитой от FPS-просадки на pan/zoom (прятать нативные рёбра целиком),
+      // ценой того, что связи буквально исчезали во время взаимодействия.
+      // Теперь нативные рёбра и так всегда прозрачны (см. render.js::
+      // _layoutNodeItems/physics.js::mergeNetwork — opacity:0 для
+      // закешированных edge-render.js рёбер), так что скрывать тут физически
+      // нечего — весь видимый рисунок держит свой canvas-слой
+      // (edge-render.js), который рисует ВСЕ рёбра ВСЕГДА, без скрытия.
+      hideEdgesOnDrag:     false,
+      hideEdgesOnZoom:     false,
       navigationButtons:   false,
       // F-43: keyboard pan/zoom for the canvas itself. bindToWindow:false
       // scopes the arrow/+/- keys to the network canvas (active only once

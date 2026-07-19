@@ -60,19 +60,29 @@ private:
     const std::string shared_secret_;
 };
 
-// GET /healthz — unauthenticated liveness probe for Docker HEALTHCHECK.
-class HealthHandler final : public userver::server::handlers::HttpHandlerBase {
+// GET /readyz — unauthenticated readiness probe. [SF-INF-03] Unified body
+// shape (six_feat::ReadinessCheck/BuildReadinessBody, see
+// libs/six-feat-common/src/http/readiness_common.hpp). This service's only
+// gating dependency is its own Postgres — unlike six-feat, there's no
+// second internal service (auth) whose parity this one needs to track, and
+// its GeniusGatewayClient calls are already fire-and-forget/best-effort
+// from EnrichmentWorker's perspective (a stuck upstream doesn't mean this
+// process can't accept and queue new work).
+class ReadinessHandler final : public userver::server::handlers::HttpHandlerBase {
 public:
-    static constexpr std::string_view kName = "handler-internal-healthz";
+    static constexpr std::string_view kName = "handler-readyz";
 
-    HealthHandler(const userver::components::ComponentConfig&  config,
-                  const userver::components::ComponentContext& context);
+    ReadinessHandler(const userver::components::ComponentConfig&  config,
+                      const userver::components::ComponentContext& context);
 
     std::string HandleRequestThrow(
         const userver::server::http::HttpRequest&  request,
         userver::server::request::RequestContext&  context) const override;
 
     static userver::yaml_config::Schema GetStaticConfigSchema();
+
+private:
+    PersistentStore& store_;
 };
 
 } // namespace six_feat::enrichment

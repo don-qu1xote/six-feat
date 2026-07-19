@@ -1,0 +1,4 @@
+type: object
+description: Artist metadata + fetch-state handler configuration (SF-API-03)
+additionalProperties: false
+properties: {}

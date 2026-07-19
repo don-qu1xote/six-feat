@@ -1,0 +1,24 @@
+type: object
+description: >-
+    Same-origin proxy for Genius CDN artist/song avatars (SF-API-12) — lets
+    the live #network <canvas> and PNG export draw real photos instead of
+    placeholders without tainting the canvas on a CORS-less CDN response.
+additionalProperties: false
+properties:
+    timeout-ms:
+        type: integer
+        description: Upstream (Genius CDN) fetch timeout, milliseconds.
+        defaultDescription: '5000'
+    allowed-hosts:
+        type: array
+        description: >-
+            Overrides the compiled-in Genius CDN host allowlist
+            (kDefaultAllowedImageHosts in image_proxy_handler.cpp:
+            images.genius.com, assets.genius.com). Only meant for tests to
+            point this handler at a local stub instead of the real
+            internet — the shipped static_config.yaml never sets this, so
+            production always gets the compiled-in default.
+        items:
+            type: string
+            description: A single allowed hostname (exact match, no port).
+        defaultDescription: '[images.genius.com, assets.genius.com]'

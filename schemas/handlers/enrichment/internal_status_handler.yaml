@@ -1,0 +1,4 @@
+type: object
+description: Internal enrichment status probe
+additionalProperties: false
+properties: {}

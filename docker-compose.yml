@@ -1,4 +1,40 @@
+x-hardening: &hardening
+  # Hardening (IDEA-29 / SF-INF-01): immutable rootfs, no Linux capabilities,
+  # no privilege escalation. Applied to every application service (six-feat,
+  # six-feat-enrichment, six-feat-genius-gateway, six-feat-auth) — never to
+  # postgres (needs to write its data dir / WAL) or nginx (its entrypoint
+  # writes envsubst'd config into /etc/nginx/conf.d at startup).
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - "no-new-privileges:true"
+
 services:
+  # [SF-INF-02] No separate "postgres-primary" service on purpose: six-feat/
+  # six-feat-enrichment's `depends_on: postgres: condition: service_healthy`
+  # below is a hard dependency on this exact service name, and Compose
+  # auto-activates a service's OWN profile whenever it's a hard dependency
+  # of an always-on (no-profile) service — so if THIS service carried
+  # `profiles: ["prod-like"]`, a bare `docker compose up` would silently
+  # pull "prod-like" in too, defeating "the profile never starts by
+  # default". Keeping `postgres` itself un-profiled (always the primary,
+  # in both the default AND prod-like profiles) sidesteps that entirely —
+  # postgres-replica (below) only has a SOFT relationship to it via
+  # DB_REPLICA_HOST (userver's Cluster already tolerates the replica being
+  # absent/not-yet-ready, see the DB_REPLICA_HOST comment on six-feat
+  # below), so it's the one service that's actually safe to gate behind
+  # `profiles: ["prod-like"]`.
+  #
+  # Replication is enabled here unconditionally (wal_level=replica +
+  # postgresql/prod-like/init-replication.sh creating the replicator role)
+  # — inert and harmless for the default single-instance profile (a
+  # replication-capable role/WAL setting that nothing ever streams from
+  # costs nothing at runtime), and it's what lets postgres-replica attach
+  # the moment the prod-like profile is actually used, without postgres
+  # itself needing to know or care whether a replica exists.
   postgres:
     image: postgres:16-alpine
     container_name: six-feat-postgres
@@ -7,27 +43,28 @@ services:
       POSTGRES_DB: ${DB_NAME:?Set DB_NAME}
       POSTGRES_USER: ${DB_USER:?Set DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      # Consumed by postgresql/primary-entrypoint.sh to (idempotently, on
-      # every boot) create the role postgres-replica streams WAL through.
-      REPLICATION_USER: ${DB_REPLICATION_USER:?Set DB_REPLICATION_USER}
-      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD}
-    # Invoked via bash explicitly rather than exec'd directly: bind mounts
-    # don't reliably preserve the host's executable bit (e.g. Docker Desktop
-    # on Windows/macOS), which would otherwise fail with "permission denied".
-    entrypoint: ["/bin/bash", "/usr/local/bin/primary-entrypoint.sh"]
-    command:
-      - "postgres"
-      - "-c"
-      - "wal_level=replica"
-      - "-c"
-      - "max_wal_senders=10"
-      - "-c"
-      - "max_replication_slots=10"
-      - "-c"
-      - "hot_standby=on"
+      # [SF-INF-02] Dedicated replication role postgres-replica streams as
+      # (prod-like profile only) — defaulted, not `:?`-required, so a plain
+      # `docker compose up` (no replica involved) never needs it set.
+      DB_REPLICATOR_USER: ${DB_REPLICATOR_USER:-replicator}
+      DB_REPLICATOR_PASSWORD: ${DB_REPLICATOR_PASSWORD:-replicator_dev_password}
     volumes:
       - ./.pgdata:/var/lib/postgresql/data
-      - ./postgresql/primary-entrypoint.sh:/usr/local/bin/primary-entrypoint.sh:ro
+      # [SF-INF-02] Only runs on a genuinely first init (empty .pgdata) —
+      # see the script's own header for why an EXISTING local .pgdata
+      # predating this ticket needs a fresh volume to pick up the
+      # replication role.
+      - ./postgresql/prod-like/init-replication.sh:/docker-entrypoint-initdb.d/init-replication.sh:ro
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - hot_standby=on
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -35,49 +72,80 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
+    # Only Postgres process in the stack now — cap it so it can't starve a
+    # low-resource dev machine (matches the limits already set below on the
+    # app services).
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
 
-  # Streaming standby of "postgres" — gives userver's Cluster a real Slave
-  # host for the kSlave reads in src/storage/persistent_store.cpp (see
-  # DEVELOPMENT.md, "Postgres cluster topology"). Clones via pg_basebackup
-  # on first boot (postgresql/replica-entrypoint.sh), then just resumes
-  # standby recovery on restarts.
+  # [SF-INF-02] Real streaming standby — "prod-like" profile only (see the
+  # comment on `postgres` above for why the primary side has no matching
+  # profile of its own). Bootstraps itself via pg_basebackup from
+  # `postgres` on first start (postgresql/prod-like/replica-entrypoint.sh),
+  # then boots directly into recovery mode every time after — userver's
+  # Cluster discovers this dynamically (SELECT pg_is_in_recovery(), see
+  # DEVELOPMENT.md's "Postgres cluster topology") once DB_REPLICA_HOST
+  # points six-feat/six-feat-enrichment at it.
+  #
+  # Not wired into any other service's `depends_on` — read the big comment
+  # on `postgres` above: DB_REPLICA_HOST is deliberately a SOFT dependency
+  # (falls back to master if the replica isn't up yet), so making this a
+  # hard Compose dependency would just reintroduce the exact profile-
+  # auto-activation problem `postgres` itself avoids by staying un-profiled.
   postgres-replica:
     image: postgres:16-alpine
     container_name: six-feat-postgres-replica
-    entrypoint: ["/bin/bash", "/usr/local/bin/replica-entrypoint.sh"]
-    command: ["postgres"]
+    profiles: ["prod-like"]
     environment:
+      POSTGRES_USER: ${DB_USER:?Set DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
       PRIMARY_HOST: postgres
-      PRIMARY_PORT: 5432
-      REPLICATION_USER: ${DB_REPLICATION_USER:?Set DB_REPLICATION_USER}
-      REPLICATION_PASSWORD: ${DB_REPLICATION_PASSWORD:?Set DB_REPLICATION_PASSWORD}
+      PRIMARY_PORT: "5432"
+      DB_REPLICATOR_USER: ${DB_REPLICATOR_USER:-replicator}
+      DB_REPLICATOR_PASSWORD: ${DB_REPLICATOR_PASSWORD:-replicator_dev_password}
     volumes:
       - ./.pgdata-replica:/var/lib/postgresql/data
-      - ./postgresql/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - ./postgresql/prod-like/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+    entrypoint: ["/replica-entrypoint.sh"]
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432"]
+      # pg_isready alone can't tell recovery vs primary apart, but it does
+      # confirm the standby actually came up and is accepting connections
+      # (i.e. pg_basebackup succeeded and recovery started) — the
+      # pg_is_in_recovery()=true check itself is this ticket's manual/CI
+      # verification step, not something worth encoding as a healthcheck.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 10s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
 
   six-feat:
     platform: linux/amd64
+    pull_policy: build
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: services/six-feat/Dockerfile
       # Pass the version arg so you can override it without editing the file:
       #   USERVER_IMAGE=ghcr.io/.../ubuntu-22.04-userver:v2.8 docker compose build
       args:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat:latest
     container_name: six-feat
-    ports:
-      - "8080:8080"
+    # No host port publish anymore — nginx is the single public entry point
+    # (see the nginx service below). Still reachable on the compose network
+    # at six-feat:${SIX_FEAT_PORT} (used by nginx's proxy_pass and by the
+    # healthcheck below, which curls the container's own localhost port).
+    expose:
+      - "${SIX_FEAT_PORT:-8080}"
     environment:
       # Resolved from shell env or .env file (see .env.example)
       # [ТЗ-6] No more server-level Genius token — auth is OAuth-only.
@@ -92,32 +160,46 @@ services:
       GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
       GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
-      # Optional (have defaults in docker-entrypoint.sh):
+      # Optional (have defaults in docker-entrypoint.sh). Not derived from
+      # NGINX_PUBLIC_PORT below on purpose — compose's ${A:-${B:-c}} nesting
+      # isn't something to gamble the OAuth redirect on; if you change
+      # NGINX_PUBLIC_PORT, update this default (and six-feat-auth's below,
+      # and the Redirect URI registered on genius.com/api-clients) to match.
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      # PostgreSQL connection — combined into one multi-host DSN by
-      # docker-entrypoint.sh (master,replica) and handed to the Postgres
-      # component; never written to a tracked file.
+      # PostgreSQL connection, handed to docker-entrypoint.sh. Single
+      # instance by default — leave DB_REPLICA_HOST unset for that (the
+      # default profile's `postgres` service alone). [SF-INF-02] For
+      # genuine kMaster/kSlave read isolation, either point DB_REPLICA_HOST
+      # at a real external streaming standby, or run this repo's own one:
+      # `docker compose --profile prod-like up` plus
+      # DB_REPLICA_HOST=postgres-replica (see postgres-replica below and
+      # DEVELOPMENT.md's "Postgres cluster topology"). userver's Cluster
+      # classifies hosts via pg_is_in_recovery(), so a fabricated second
+      # entry pointing at this same instance would just be classified as
+      # another Master and silently disable the Slave pool.
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
       DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
       # [IDEA-26] Background enrichment now lives in six-feat-enrichment —
       # reached over the compose network by service name.
-      ENRICHMENT_BASE_URL: ${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}
+      ENRICHMENT_BASE_URL: ${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:${SIX_FEAT_ENRICHMENT_PORT:-8081}}
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
       # [IDEA-45/46] All Genius API access (CB + FG/BG rate-limiting) now
       # goes through the standalone six-feat-genius-gateway service instead
       # of talking to Genius directly — reached over the compose network by
       # service name, same shared secret as the enrichment mesh.
-      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
+      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
+      # [SF-SEC-01] AppSecretParityChecker's target — compares this
+      # container's APP_SECRET fingerprint against six-feat-auth's over
+      # this URL, never the secret itself.
+      AUTH_BASE_URL: ${AUTH_BASE_URL:-http://six-feat-auth:${SIX_FEAT_AUTH_PORT:-8083}}
     depends_on:
       postgres:
-        condition: service_healthy
-      postgres-replica:
         condition: service_healthy
       six-feat-enrichment:
         condition: service_started
@@ -128,24 +210,49 @@ services:
       # just make genius-gateway a single point of failure for startup too.
       six-feat-genius-gateway:
         condition: service_started
+      # [SF-SEC-01] Soft dependency too — AppSecretParityChecker's own
+      # ReadinessHandler check only fails on a confirmed fingerprint
+      # MISMATCH, never on six-feat-auth being briefly unavailable, so
+      # gating on service_healthy here would just make auth a second
+      # single point of failure for six-feat's own startup.
+      six-feat-auth:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
-      interval: 15s
+      # [reliability fix] Was /healthz — that only proves the HTTP listener
+      # is bound (health_handler.cpp returns "ok" unconditionally, the
+      # instant the process is up), not that six-feat can actually SERVE a
+      # request. postgres-db-1 has sync-start: false, so the process starts
+      # and starts reporting /healthz "ok" immediately while the connection
+      # pool is still connecting in the background — nginx's `depends_on:
+      # six-feat: condition: service_healthy` below was keyed off exactly
+      # this healthcheck, so it started forwarding real traffic (search,
+      # graph, ...) the moment the listener was up, landing on
+      # ArtistRepository/PersistentStore calls against a pool that wasn't
+      # connected yet → 500s during the startup window, on every fresh
+      # `docker compose up`/rebuild. /readyz (readiness_handler.cpp)
+      # actually pings the DB (and checks app-secret parity, non-blocking
+      # on a mismatch-free/unknown status) and only returns 200 once real
+      # traffic can succeed — 503 (curl -f fails) until then, so
+      # `depends_on: condition: service_healthy` now genuinely waits for
+      # that instead of just "process exists".
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_PORT:-8080}/readyz"]
+      interval: 5s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      # Covers docker-entrypoint.sh's bounded wait for Postgres to become
+      # reachable (up to ~26s: 20s master + 5s replica + 1s settle) plus
+      # normal app startup, with headroom for one extra restart+retry cycle
+      # if the wait didn't fully dodge the userver connection-pool race (see
+      # the comment on wait_for_postgres in docker-entrypoint.sh) — so a
+      # container that self-heals via "restart: unless-stopped" isn't
+      # reported as a failed dependency before it's had the chance to.
+      start_period: 120s
     restart: unless-stopped
     # Hardening (IDEA-29): immutable rootfs, no Linux capabilities, no
     # privilege escalation. The only path six_feat writes to at runtime is
     # /tmp/config_vars.yaml (see docker-entrypoint.sh) — everything else
     # under /app and /usr/share/six_feat is baked into the image read-only.
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - "no-new-privileges:true"
+    <<: *hardening
     # Limit resources so a runaway background worker doesn't starve the host
     deploy:
       resources:
@@ -159,19 +266,21 @@ services:
   # over the compose network at http://six-feat-enrichment:8081.
   six-feat-enrichment:
     platform: linux/amd64
+    pull_policy: build
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runtime-enrichment
+      dockerfile: services/enrichment/Dockerfile
       args:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-enrichment:latest
     container_name: six-feat-enrichment
     environment:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      # See the matching comment on six-feat's DB_REPLICA_HOST above — same
+      # single-instance-by-default, real-standby-in-prod story.
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-postgres-replica}
+      DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
       DB_REPLICA_PORT: ${DB_REPLICA_PORT:-5432}
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
@@ -180,11 +289,9 @@ services:
       # [IDEA-45/46] Same standalone Genius gateway six-feat itself calls —
       # one instance means one global CB / FG-BG rate-limit state shared
       # between main and enrichment traffic.
-      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}
+      GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
     depends_on:
       postgres:
-        condition: service_healthy
-      postgres-replica:
         condition: service_healthy
       # [IDEA-44/48] Soft dependency — see the matching comment on six-feat's
       # depends_on above; enrichment's EnrichmentClient/GeniusGatewayClient
@@ -192,64 +299,18 @@ services:
       six-feat-genius-gateway:
         condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_ENRICHMENT_PORT:-8081}/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 256M
-
-  # Standalone OAuth-flow service (IDEA-53). Owns Genius's OAuth 2.0
-  # Authorization Code Flow end-to-end (/auth/login, /auth/callback,
-  # /auth/logout, /auth/me) and mints/clears the six_feat_session cookie.
-  # Per-request session VALIDATION stays in six-feat itself, decrypting the
-  # cookie locally with the same APP_SECRET (src/auth/token_router.hpp) —
-  # six-feat never calls this service over HTTP, so there's no
-  # per-request latency added by this split.
-  #
-  # Routing: there is no reverse proxy in front of six-feat/six-feat-auth in
-  # this compose file, so /auth/* is reachable only on this service's own
-  # host port, not on six-feat's :8080. GENIUS_REDIRECT_URI (below and in
-  # .env) must point at six-feat-auth's own origin
-  # (http://localhost:8083/auth/callback by default) — that is the value
-  # registered as the Redirect URI on https://genius.com/api-clients. If you
-  # put a reverse proxy in front of both services in production, route
-  # /auth/* to six-feat-auth and everything else to six-feat, and point
-  # GENIUS_REDIRECT_URI at the proxy's public origin instead.
-  six-feat-auth:
-    platform: linux/amd64
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime-auth
-      args:
-        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
-    image: six-feat-auth:latest
-    container_name: six-feat-auth
-    ports:
-      - "8083:8083"
-    environment:
-      # Same OAuth app credentials six-feat itself is configured with —
-      # registered once at https://genius.com/api-clients.
-      GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
-      GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
-      # MUST be the exact same value six-feat is started with — see the
-      # comment on six-feat's APP_SECRET above.
-      APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
-      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8083/auth/callback}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      # Covers docker-entrypoint.sh's bounded wait for Postgres to become
+      # reachable (up to ~26s: 20s master + 5s replica + 1s settle) plus
+      # normal app startup, with headroom for one extra restart+retry cycle
+      # if the wait didn't fully dodge the userver connection-pool race (see
+      # the comment on wait_for_postgres in docker-entrypoint.sh) — so a
+      # container that self-heals via "restart: unless-stopped" isn't
+      # reported as a failed dependency before it's had the chance to.
+      start_period: 120s
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -258,6 +319,117 @@ services:
       - ALL
     security_opt:
       - "no-new-privileges:true"
+    <<: *hardening
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+  # Reverse proxy (IDEA-53 follow-up): single public origin for six-feat +
+  # six-feat-auth, routing /auth/* to six-feat-auth and everything else to
+  # six-feat. Without this, the front end's relative "/auth/login" etc.
+  # (front/src/api/net.js, front/src/api/auth.js) resolve against whichever
+  # of the two origins served the page, 404ing whenever that's six-feat.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: six-feat-nginx
+    ports:
+      - "${NGINX_PUBLIC_PORT:-8080}:${NGINX_PUBLIC_PORT:-8080}"
+    environment:
+      # The official nginx image's entrypoint runs envsubst over every
+      # /etc/nginx/templates/*.template file at container start and writes
+      # the result to /etc/nginx/conf.d/<name> — these are exactly the
+      # ${VAR} references nginx/default.conf.template uses. Mounting a
+      # static, already-rendered conf straight into conf.d/ (as an earlier
+      # version of this file did) skips that step entirely, so changing
+      # these vars silently stopped affecting nginx while still affecting
+      # every other service — this is the actual "single source of truth"
+      # from .env.example's Ports section.
+      NGINX_PUBLIC_PORT: ${NGINX_PUBLIC_PORT:-8080}
+      SIX_FEAT_PORT: ${SIX_FEAT_PORT:-8080}
+      SIX_FEAT_AUTH_PORT: ${SIX_FEAT_AUTH_PORT:-8083}
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    # service_started (not service_healthy) meant nginx started accepting
+    # traffic as soon as the six-feat/six-feat-auth *containers* existed —
+    # not once their HTTP listeners were actually bound. six-feat's own
+    # startup does real work before it's ready to serve (stacktrace
+    # collector preheat alone has been observed taking 25+ seconds) — any
+    # request nginx forwarded before that finished hit "connection
+    # refused" on the upstream, which nginx reports to the client as a
+    # bare 502 Bad Gateway. Both services already define a /healthz
+    # healthcheck (below) — wait for that instead of "process exists".
+    depends_on:
+      six-feat:
+        condition: service_healthy
+      six-feat-auth:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Standalone OAuth-flow service (IDEA-53). Owns Genius's OAuth 2.0
+  # Authorization Code Flow end-to-end (/auth/login, /auth/callback,
+  # /auth/logout, /auth/me) and mints/clears the six_feat_session cookie.
+  # Per-request session VALIDATION stays in six-feat itself, decrypting the
+  # cookie locally with the same APP_SECRET (services/six-feat/src/auth/token_router.hpp) —
+  # six-feat never calls this service over HTTP, so there's no
+  # per-request latency added by this split.
+  #
+  # Routing: nginx (below) is the single public entry point on :8080 and
+  # routes /auth/* here, everything else to six-feat — so the front end's
+  # relative "/auth/login" etc. (front/src/api/net.js, front/src/api/auth.js)
+  # resolve against the right backend regardless of which service actually
+  # rendered the page. GENIUS_REDIRECT_URI (below and in .env) must point at
+  # nginx's public origin (http://localhost:8080/auth/callback by default) —
+  # that is the value registered as the Redirect URI on
+  # https://genius.com/api-clients.
+  six-feat-auth:
+    platform: linux/amd64
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+    image: six-feat-auth:latest
+    container_name: six-feat-auth
+    # Kept published for direct backend access/debugging — normal traffic
+    # should go through nginx on :8080 instead so cookies and redirects
+    # stay on one origin.
+    ports:
+      - "${SIX_FEAT_AUTH_PORT:-8083}:${SIX_FEAT_AUTH_PORT:-8083}"
+    environment:
+      # Same OAuth app credentials six-feat itself is configured with —
+      # registered once at https://genius.com/api-clients.
+      GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
+      GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
+      # MUST be the exact same value six-feat is started with — see the
+      # comment on six-feat's APP_SECRET above.
+      APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
+      GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [SF-SEC-01] Gates GET /internal/key-fingerprint — same shared secret
+      # as the rest of the internal mesh (six-feat/six-feat-enrichment).
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_AUTH_PORT:-8083}/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # [reliability fix] Was 10s — the only one of the four app services
+      # still on the original short budget (~55s total: 10s + 15s*3
+      # retries). userver's own PreheatStacktraceCollector step alone can
+      # take well over a minute before the components manager even starts
+      # (observed 131s under QEMU emulation), so this healthcheck was
+      # failing the container as unhealthy long before it had a chance to
+      # answer /healthz even once — cascading into nginx (which gates on
+      # `six-feat-auth: condition: service_healthy`) refusing to start.
+      # 120s matches six-feat/six-feat-enrichment/six-feat-genius-gateway's
+      # start_period below, for the same reason.
+      start_period: 120s
+    restart: unless-stopped
+    <<: *hardening
     deploy:
       resources:
         limits:
@@ -272,10 +444,10 @@ services:
   # HTTP to Genius only. Internal-only — no host port mapping.
   six-feat-genius-gateway:
     platform: linux/amd64
+    pull_policy: build
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runtime-genius-gateway
+      dockerfile: services/genius-gateway/Dockerfile
       args:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-genius-gateway:latest
@@ -284,14 +456,92 @@ services:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 120s
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    <<: *hardening
     deploy:
       resources:
         limits:
           cpus: "1"
           memory: 256M
+
+  # ══════════════════════════════════════════════════════════════════════
+  # Observability profile (SF-OBS-01). Prometheus scrapes all 4 services'
+  # internal monitor listeners (handler-server-monitor, see each service's
+  # static_config.yaml) via userver's standard ?format=prometheus output;
+  # Grafana is pre-provisioned with that Prometheus datasource plus one
+  # dashboard (RED for six-feat's public handlers, genius-gateway CB/lane
+  # state, enrichment queue depth). Gated behind the "observability" Compose
+  # profile so `docker compose up` alone never starts either container —
+  # only `docker compose --profile observability up` does.
+  # ══════════════════════════════════════════════════════════════════════
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: six-feat-prometheus
+    profiles: ["observability"]
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # [SF-OBS-04] prometheus.yml's `rule_files: [rules/*.yml]` resolves
+      # relative to the config file's own directory (/etc/prometheus/ in
+      # this container) — same rules/ this repo validates in CI via
+      # promtool check rules (no Docker needed there, see ci.yml).
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - alertmanager
+    restart: unless-stopped
+
+  # [SF-OBS-04] Routes prometheus.yml's firing alerts somewhere observable
+  # without a real paging receiver configured anywhere (see
+  # observability/alertmanager/alertmanager.yml's own comment) — still
+  # entirely inside the opt-in "observability" profile, same as
+  # prometheus/grafana above.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+    container_name: six-feat-alertmanager
+    profiles: ["observability"]
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: six-feat-grafana
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:

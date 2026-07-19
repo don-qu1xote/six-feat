@@ -1,0 +1,185 @@
+name: k6 load test (smoke)
+
+# SF-INF-05: deliberately NOT on push/pull_request — this exercises timing
+# behavior against a synthetic mock-Genius dataset (scripts/e2e_env.py,
+# the same harness ci.yml's e2e-smoke job uses), which is noisy/non-
+# representative enough that gating merges on it would just be flaky, not
+# useful. See loadtest/README.md, "Thresholds are advisory, not gates".
+#
+# Separate workflow file from ci.yml on purpose — different trigger
+# (nightly/manual, never on a PR) and a single function (smoke-load the
+# stack), so it doesn't belong bundled into ci.yml's pipeline graph
+# (folding a nightly-cadence job into every PR's graph would make it noise,
+# not signal — see ci.yml's own "Pipeline shape" note, which merged
+# ci.yml + the old release-supply-chain.yml into one graph for exactly the
+# jobs that DO share push/PR triggers, and left this one out for that
+# reason). It's one job, not several, because the steps below aren't
+# independent concerns — they're sequential stages of ONE live stack's
+# lifecycle (build → start → load → stop → report) that has to run inside
+# a single runner/container; splitting it across jobs would mean either
+# re-building per job or trying to keep a server alive across job
+# boundaries, neither of which GitHub Actions supports.
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC nightly
+
+# `jobs.<job_id>.container`/`services` can't see the `env:` context (only
+# github/vars/needs/strategy/matrix/inputs are available there — see the
+# NOTE near the top of ci.yml), so the image refs below are literal,
+# digest-pinned duplicates of ci.yml's own USERVER_IMAGE/POSTGRES_IMAGE —
+# keep both in sync if those are ever bumped. K6_VERSION doesn't have that
+# problem: it's only ever read inside a `run:` step, where workflow/job
+# `env:` vars ARE available as plain shell variables.
+env:
+  K6_VERSION: "0.55.0"
+
+jobs:
+  k6-smoke-load:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    # Advisory job (SF-INF-05): loadtest/scenarios/*.js thresholds are
+    # warnings, not gates. Nothing else `needs:` this job and it doesn't
+    # run on push/pull_request, but continue-on-error still means a slow
+    # nightly run shows up clearly as a non-green check instead of a hard
+    # failure email, and never blocks anything else that happens to share
+    # the same trigger in the future.
+    continue-on-error: true
+
+    # [SF-CI-01] Duplicated from ci.yml's build-and-test/e2e-smoke
+    # services.postgres block (own DB name/password) — see the NOTE at the
+    # top of ci.yml for why this isn't factored into a reusable workflow.
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+        env:
+          POSTGRES_DB: six_feat_loadtest
+          POSTGRES_USER: six_feat
+          POSTGRES_PASSWORD: six_feat_loadtest_password
+        options: >-
+          --health-cmd "pg_isready -U six_feat -d six_feat_loadtest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: six_feat_loadtest
+      DB_USER: six_feat
+      DB_PASSWORD: six_feat_loadtest_password
+      E2E_ENV_FILE: /tmp/six_feat_loadtest_env.json
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      # node-version needed for the front-end build below — scripts/
+      # e2e_env.py hard-requires front/dist/manifest.json to exist (see
+      # ci.yml's load-test job's matching comment for why), even though k6
+      # never actually requests any front-end asset in this job.
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          node-version: "20"
+          python-testenv: "true"
+
+      # six_feat and six_feat_genius_gateway, same as ci.yml's e2e-smoke job
+      # — scripts/e2e_env.py drives both plus an in-process mock Genius
+      # server, so no real Genius credentials are needed for this job.
+      - name: Build & install six-feat
+        run: |
+          cmake -S services/six-feat -B build-six-feat \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-six-feat -j"$(nproc)"
+          cmake --install build-six-feat
+
+      - name: Build & install genius-gateway
+        run: |
+          cmake -S services/genius-gateway -B build-genius-gateway \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-genius-gateway -j"$(nproc)"
+          cmake --install build-genius-gateway
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Build front-end bundle
+        working-directory: front
+        run: npm run build
+
+      # No sha256 pin on the tarball itself — same reasoning as
+      # promtool-check-rules in ci.yml: GitHub Releases don't expose a
+      # checksum this workflow can verify without an extra fetch, and the
+      # version in the URL is still exact and traceable to a real k6 tag.
+      #
+      # [SF-CI-05 fix] `set -o pipefail` is a bash-ism (illegal option
+      # under dash/sh) — same fix as "Publish summary to job summary"
+      # below: this job's container doesn't get bash auto-detected for a
+      # bare `run:`.
+      - name: Install k6
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/k6.tar.gz \
+            "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz"
+          tar -xzf /tmp/k6.tar.gz -C /tmp
+          install -m 0755 "/tmp/k6-v${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      - name: Start six_feat + genius-gateway + mock Genius
+        run: |
+          SIX_FEAT_BINARY=/install/bin/six_feat \
+          SIX_FEAT_GENIUS_GATEWAY_BINARY=/install/bin/six_feat_genius_gateway \
+          /opt/testenv/bin/python3 scripts/e2e_env.py up &
+          echo $! > /tmp/e2e_env.pid
+          for i in $(seq 1 60); do
+            [ -f "$E2E_ENV_FILE" ] && break
+            sleep 1
+          done
+          test -f "$E2E_ENV_FILE" || { echo "::error::E2E environment did not come up"; exit 1; }
+
+      - name: Run k6 smoke-load (loadtest/run-all.sh)
+        env:
+          PROFILE: smoke
+        run: |
+          chmod +x loadtest/run-all.sh
+          loadtest/run-all.sh
+
+      - name: Stop six_feat + mock Genius
+        if: always()
+        run: |
+          /opt/testenv/bin/python3 scripts/e2e_env.py down || true
+          kill "$(cat /tmp/e2e_env.pid)" 2>/dev/null || true
+
+      - name: Publish summary to job summary
+        if: always()
+        # [SF-CI-05 fix] `shopt` is a bash builtin — this job's container
+        # (the userver-framework image) doesn't put bash first for GitHub
+        # Actions' shell auto-detection here, so a bare `run:` was
+        # executing under /bin/sh ("shopt: not found"). Explicit shell:
+        # bash, same fix applied to ci.yml's load-test job's identical step.
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for f in loadtest/.output/*-summary.txt; do
+            {
+              echo '```'
+              cat "$f"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload k6 summary artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: k6-loadtest-summary
+          path: loadtest/.output/
+          retention-days: 14

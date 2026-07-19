@@ -15,6 +15,17 @@ const SEED_ARTIST   = process.env.E2E_SEED_ARTIST   || "Aurora Vale";
 const TARGET_ARTIST = process.env.E2E_TARGET_ARTIST || "Kessler Vane";
 
 test("search artist → graph → node click → sidebar, then path search → hop-chain", async ({ page }) => {
+  // [SF-SEC-02] vis-network must be self-hosted (front/vendor/) — regression
+  // test for the old CDN <script src="https://unpkg.com/..."> tag: if it
+  // ever comes back, this fails instead of silently depending on unpkg.com
+  // being reachable and byte-for-byte unchanged (see DEVELOPMENT.md).
+  const unpkgRequests = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).hostname === "unpkg.com") {
+      unpkgRequests.push(request.url());
+    }
+  });
+
   await page.goto("/");
 
   // ── Page loads ──────────────────────────────────────────────────────────
@@ -26,6 +37,10 @@ test("search artist → graph → node click → sidebar, then path search → h
 
   const graphNodeButtons = page.locator("#graph-a11y-node-list button[data-node-id]");
   await expect(graphNodeButtons).toHaveCount(2);
+
+  // vis-network has had its chance to load and draw the graph by now —
+  // assert it never reached out to the old CDN.
+  expect(unpkgRequests).toEqual([]);
 
   // ── Click a node → sidebar opens ────────────────────────────────────────
   // The canvas graph has no per-node DOM elements to click (vis.js draws it
@@ -40,14 +55,20 @@ test("search artist → graph → node click → sidebar, then path search → h
   await expect(page.locator("#sidebar-name")).not.toHaveText("—");
 
   // ── Path search between two artists shows a hop-chain ───────────────────
-  await page.locator("#btn-search-open").click();
-  await page.locator("#hero-mode-tab-connect").click();
+  // [SF-WEB-30] Docked search (#btn-search-open) now shows the Explore box
+  // only — the Explore/Connect switch and #hero-mode-tab-connect are hidden
+  // entirely once a graph exists (see .search-modal.docked CSS in
+  // index.html), since #btn-find-path/#path-panel is the canonical
+  // on-graph path-finder entry point now. #hero-path-from-input/
+  // #hero-mode-tab-connect only remain reachable pre-graph, from the
+  // full-screen landing modal.
+  await page.locator("#btn-find-path").click();
 
-  await page.locator("#hero-path-from-input").fill(SEED_ARTIST);
-  await page.locator("#hero-path-to-input").fill(TARGET_ARTIST);
-  await page.locator("#btn-hero-run-path").click();
+  await page.locator("#path-from-input").fill(SEED_ARTIST);
+  await page.locator("#path-to-input").fill(TARGET_ARTIST);
+  await page.locator("#btn-run-path").click();
 
-  const hopRows = page.locator("#hero-hop-chain .hop-row");
+  const hopRows = page.locator("#hop-chain .hop-row");
   await expect(hopRows).toHaveCount(2);
   await expect(hopRows.first()).toContainText(SEED_ARTIST);
   await expect(hopRows.last()).toContainText(TARGET_ARTIST);

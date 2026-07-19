@@ -1,0 +1,244 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "six-feat public API",
+    "description": "Artist-collaboration graph explorer, backed by Genius.com. Every endpoint below requires an authenticated Genius session (six_feat_session cookie, minted by six-feat-auth's OAuth flow) except where noted.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "/", "description": "Same origin as the serving six-feat instance" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "six_feat_session",
+        "description": "AES-256-GCM encrypted Genius OAuth session, minted by six-feat-auth (see SF-API-01/IDEA-53). Anonymous requests to any endpoint below return 401."
+      }
+    },
+    "schemas": {
+      "ArtistRef": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "integer", "format": "int64" },
+          "name": { "type": "string" },
+          "image": { "type": "string", "description": "Omitted when empty (default Genius avatar normalised away, see SF-API-07)" },
+          "url": { "type": "string", "description": "Omitted when empty" }
+        }
+      },
+      "LegacyErrorBody": {
+        "type": "object",
+        "description": "Bespoke error shape used by the five pre-SF-API-11 handlers (graph, graph/path, search, status, status/stream) — NOT unified problem+json, pinned byte-for-byte by tests/test_api_auth_headers.py. Exact keys vary per handler (see each path's own responses below).",
+        "properties": {
+          "error": { "type": "string" },
+          "request_id": { "type": "string", "description": "Present on every error body, absent on success bodies (SF-API-06)" }
+        }
+      },
+      "ProblemJson": {
+        "type": "object",
+        "description": "RFC 7807 application/problem+json envelope, used by handlers introduced from SF-API-11 onward (currently just /api/v1/artist).",
+        "required": ["type", "title", "status", "detail", "request_id"],
+        "properties": {
+          "type": { "type": "string", "description": "Always \"about:blank\" — no dedicated per-error-code doc URI exists yet" },
+          "title": { "type": "string", "description": "Stable per HTTP status (e.g. \"Not Found\")" },
+          "status": { "type": "integer" },
+          "detail": { "type": "string" },
+          "request_id": { "type": "string" }
+        }
+      }
+    }
+  },
+  "security": [ { "cookieAuth": [] } ],
+  "paths": {
+    "/api/v1/graph": {
+      "get": {
+        "summary": "Build the collaboration graph around a seed artist",
+        "description": "Resolves the seed (by name or numeric id), triggers on-demand foreground enrichment if not already known, and returns the current adjacency graph from L1/L2. Supports conditional GET via ETag.",
+        "parameters": [
+          { "name": "artist", "in": "query", "schema": { "type": "string" }, "description": "Seed artist name — mutually exclusive with id" },
+          { "name": "id", "in": "query", "schema": { "type": "integer", "format": "int64" }, "description": "Seed artist Genius id — mutually exclusive with artist" },
+          { "name": "roles", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated credit role filter (primary,featured,writer,producer); default is all roles" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" }, "description": "Max neighbour nodes returned" },
+          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" }, "description": "Weak ETag from a prior response" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Graph built/loaded successfully",
+            "headers": { "ETag": { "schema": { "type": "string" } } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "graph" },
+                    "nodes": { "type": "array", "items": { "type": "object" } },
+                    "edges": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "304": { "description": "Not modified — matches If-None-Match" },
+          "400": { "description": "Missing/invalid artist or id parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "429": { "description": "Rate limited (SF-SEC-04)" },
+          "502": { "description": "Could not reach Genius / genius-gateway", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } }
+        }
+      }
+    },
+    "/api/v1/graph/path": {
+      "get": {
+        "summary": "Shortest collaboration path between two artists",
+        "description": "BFS over L1/L2 (falls back to on-demand enrichment for unknown endpoints) between two seed artists.",
+        "parameters": [
+          { "name": "from", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Source artist name or numeric id" },
+          { "name": "to", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Target artist name or numeric id" },
+          { "name": "roles", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated credit role filter" },
+          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Path found (or hops=0 / empty path if none exists)",
+            "headers": { "ETag": { "schema": { "type": "string" } } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "path" },
+                    "hops": { "type": "integer" },
+                    "from": { "$ref": "#/components/schemas/ArtistRef" },
+                    "to": { "$ref": "#/components/schemas/ArtistRef" },
+                    "path": { "type": "array", "items": { "type": "object" } },
+                    "nodes": { "type": "array", "items": { "type": "object" } },
+                    "edges": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "304": { "description": "Not modified — matches If-None-Match" },
+          "400": { "description": "Missing from/to parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "404": { "description": "One or both endpoints could not be resolved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "429": { "description": "Rate limited (SF-SEC-04)" },
+          "502": { "description": "Could not reach Genius / genius-gateway" }
+        }
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "summary": "Autocomplete artist search",
+        "description": "Candidate resolve only (no graph build, no background enrichment).",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Search query" },
+          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Candidate list",
+            "headers": { "ETag": { "schema": { "type": "string" } } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "const": "search" },
+                    "candidates": {
+                      "type": "array",
+                      "items": {
+                        "allOf": [
+                          { "$ref": "#/components/schemas/ArtistRef" },
+                          { "type": "object", "properties": { "score": { "type": "number" } } }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "304": { "description": "Not modified — matches If-None-Match" },
+          "400": { "description": "Missing q parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "429": { "description": "Rate limited (SF-SEC-04)" },
+          "502": { "description": "Could not reach Genius / genius-gateway" }
+        }
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "summary": "Enrichment status for a previously-requested artist",
+        "description": "Reports current fetch depth/song_count/enriching state — never triggers any fetch itself.",
+        "parameters": [
+          { "name": "id", "in": "query", "required": true, "schema": { "type": "integer", "format": "int64" }, "description": "Strict integer artist id — trailing garbage (\"123abc\") is rejected" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status for the given artist id (all-zero/enriching=false if never requested)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "artist_id": { "type": "integer", "format": "int64" },
+                    "depth": { "type": "integer", "description": "0=None, 1=Foreground, 2=Full" },
+                    "song_count": { "type": "integer" },
+                    "last_fetch_ts": { "type": "integer", "format": "int64" },
+                    "enriching": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Missing or non-strict-integer id parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
+          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } }
+        }
+      }
+    },
+    "/api/v1/artist": {
+      "get": {
+        "summary": "Artist metadata + fetch_state (SF-API-03)",
+        "description": "Returns everything already known about an artist from L1/L2 only — never triggers a new Genius fetch. 404 if the artist has never been requested. Introduced by SF-API-03; error bodies use the unified problem+json envelope (SF-API-11), unlike the four legacy endpoints above.",
+        "parameters": [
+          { "name": "id", "in": "query", "required": true, "schema": { "type": "integer", "format": "int64" }, "description": "Strict integer artist id — trailing garbage (\"123abc\") or a float (\"1.5\") is rejected" },
+          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Known artist",
+            "headers": { "ETag": { "schema": { "type": "string" } }, "Cache-Control": { "schema": { "type": "string" } } },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/ArtistRef" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "fetch_state": {
+                          "type": "object",
+                          "properties": {
+                            "depth": { "type": "integer", "description": "0=None, 1=Foreground, 2=Full" },
+                            "song_count": { "type": "integer" },
+                            "last_fetch_ts": { "type": "integer", "format": "int64" }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "304": { "description": "Not modified — matches If-None-Match" },
+          "400": { "description": "Missing or non-strict-integer id parameter", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemJson" } } } },
+          "401": { "description": "No valid session", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemJson" } } } },
+          "404": { "description": "Artist not known in L1/L2 yet", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemJson" } } } }
+        }
+      }
+    }
+  }
+}

@@ -140,6 +140,17 @@ class TestPathRequiresAuth:
         resp = sess.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
         assert resp.status_code == 401
 
+    def test_anonymous_error_body_has_nonempty_request_id_matching_header(
+        self, anon_client: requests.Session
+    ):
+        """[SF-API-06] request_id in the error body must be the same id
+        EnsureRequestId already stamped on the X-Request-Id response
+        header/log tags — not a second, independently-generated value."""
+        resp = anon_client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        data = resp.json()
+        assert data.get("request_id")
+        assert data["request_id"] == resp.headers.get("X-Request-Id")
+
 
 class TestDirectPath:
     def test_status_200(self, client: requests.Session, genius_mock: GeniusMock):
@@ -221,6 +232,25 @@ class TestTwoHopPath:
         data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
         node_ids = {n["id"] for n in data["nodes"]}
         assert {200, 201, 202}.issubset(node_ids)
+
+    # [SF-API-08] The direct (1-hop) case fills edge_songs via CheckDirectPath;
+    # multi-hop edges are instead filled by AppendAdjFromL1's BFS-expansion
+    # code path — a distinct code path that needs its own regression coverage
+    # so both A-B and B-C edges carry the connecting track, not just an icon.
+    def test_all_edges_have_nonempty_songs(self, client: requests.Session, genius_mock: GeniusMock):
+        _setup_two_hop_path(genius_mock)
+        data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
+        assert len(data["edges"]) == 2
+        for edge in data["edges"]:
+            assert isinstance(edge["songs"], list)
+            assert len(edge["songs"]) >= 1, f"edge {edge['from']}-{edge['to']} has empty songs[]"
+
+    def test_edge_songs_match_connecting_tracks(self, client: requests.Session, genius_mock: GeniusMock):
+        _setup_two_hop_path(genius_mock)
+        data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
+        by_pair = {(min(e["from"], e["to"]), max(e["from"], e["to"])): e["songs"] for e in data["edges"]}
+        assert by_pair[(200, 201)] == ["A-B Track"]
+        assert by_pair[(201, 202)] == ["B-C Track"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -455,3 +485,86 @@ class TestPathResponseSchema:
         for edge in data["edges"]:
             assert isinstance(edge["dominant_role"], str)
             assert edge["dominant_role"] in ("primary", "featured", "producer", "writer")
+
+    def test_successful_response_has_no_request_id_field(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """[SF-API-06] request_id is only added to error bodies — success
+        responses' shape must stay exactly as before."""
+        _setup_direct_path(genius_mock)
+        data = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"}).json()
+        assert "request_id" not in data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 11. [SF-API-04] ETag / Cache-Control / If-None-Match on the path response
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPathETag:
+    def test_success_response_has_etag_and_cache_control(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        _setup_direct_path(genius_mock)
+        resp = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        assert resp.status_code == 200
+        assert resp.headers.get("ETag")
+        assert resp.headers.get("Cache-Control") == "private, must-revalidate"
+
+    def test_repeat_request_with_matching_if_none_match_returns_304(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        _setup_direct_path(genius_mock)
+        first = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        etag = first.headers["ETag"]
+
+        second = client.get(
+            PATH_URL,
+            params={"from": "ArtistA", "to": "ArtistB"},
+            headers={"If-None-Match": etag},
+        )
+        assert second.status_code == 304
+        assert not second.content
+
+    def test_stale_if_none_match_still_returns_full_body(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        _setup_direct_path(genius_mock)
+        resp = client.get(
+            PATH_URL,
+            params={"from": "ArtistA", "to": "ArtistB"},
+            headers={"If-None-Match": 'W/"not-a-real-tag"'},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["type"] == "path"
+
+    def test_etag_changes_with_role_filter(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """[SF-API-04] The role mask is folded into the ETag key, so a
+        roles-only change must invalidate any previously cached response even
+        though from/to and the underlying data are unchanged."""
+        _setup_direct_path(genius_mock)
+        resp_all = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        resp_featured = client.get(
+            PATH_URL, params={"from": "ArtistA", "to": "ArtistB", "roles": "featured"}
+        )
+        assert resp_all.headers.get("ETag") != resp_featured.headers.get("ETag")
+
+    def test_etag_differs_for_swapped_from_to(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """from/to are directional in the response body (asymmetric "from"/
+        "to" fields), so the ETag key must not silently collapse (A,B) and
+        (B,A) onto the same cache entry."""
+        _setup_direct_path(genius_mock)
+        resp_ab = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        resp_ba = client.get(PATH_URL, params={"from": "ArtistB", "to": "ArtistA"})
+        assert resp_ab.headers.get("ETag") != resp_ba.headers.get("ETag")
+
+    def test_same_artist_hops_zero_also_has_etag(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        genius_mock.resolve("SoloArtist", [{"id": 700, "name": "SoloArtist", "score": 0.99}])
+        resp = client.get(PATH_URL, params={"from": "SoloArtist", "to": "SoloArtist"})
+        assert resp.status_code == 200
+        assert resp.headers.get("ETag")

@@ -50,6 +50,12 @@ ENRICHMENT_PORT = int(os.environ.get("E2E_ENRICHMENT_PORT", "18182"))
 # talks to it instead.
 GATEWAY_PORT         = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
 GATEWAY_MONITOR_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_MONITOR_PORT", "18186"))
+# [SF-SEC-01] AppSecretParityChecker's target. Like ENRICHMENT_PORT above,
+# nothing actually listens here for this smoke test — the checker degrades
+# to "unreachable" (a soft dependency, never fails /readyz on its own) and
+# just logs a warning, same as EnqueueIfNeeded()/IsEnriching() degrade when
+# nothing listens on ENRICHMENT_PORT.
+AUTH_PORT = int(os.environ.get("E2E_AUTH_PORT", "18184"))
 
 APP_SECRET                  = "e" * 64
 GENIUS_CLIENT_SECRET        = "e2e-genius-client-secret"
@@ -66,6 +72,17 @@ SHARED_SONG_ID      = 70001
 BINARY      = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
 FRONT_DIST  = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
 FRONT_INDEX = Path(os.environ.get("E2E_FRONT_INDEX", REPO_ROOT / "front" / "index.html"))
+# [SF-SEC-02] The real vendored vis-network bundle — this env serves the
+# actual built front-end to a real browser, so (unlike tests/conftest.py's
+# /dev/null stub) it must be the genuine file or the graph never renders.
+VENDOR_VIS_NETWORK = Path(
+    os.environ.get("E2E_VENDOR_VIS_NETWORK", REPO_ROOT / "front" / "vendor" / "vis-network.min.js")
+)
+# [SF-API-05] Checked-in static OpenAPI 3.1 document — same file
+# static_handler.hpp's OpenApiHandler serves in the real image.
+OPENAPI_JSON = Path(
+    os.environ.get("E2E_OPENAPI_JSON", REPO_ROOT / "schemas" / "openapi" / "openapi.json")
+)
 
 _STATIC_CONFIG_TEMPLATE = """\
 components_manager:
@@ -105,6 +122,9 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json).
+          format: json
 
     testsuite-support:
 
@@ -134,6 +154,15 @@ components_manager:
 
     artist-repository: {{}}
 
+    # [SF-SEC-01] Nothing listens on {auth_port} in this smoke-test env —
+    # AppSecretParityChecker degrades to "unreachable" (soft dependency,
+    # never fails /readyz on its own), same posture as enrichment-client
+    # below with nothing on enrichment_port.
+    app-secret-parity-checker:
+      auth-base-url: http://127.0.0.1:{auth_port}
+      timeout-ms: 2000
+      check-interval-ms: 30000
+
     enrichment-client:
       enrichment-base-url: http://127.0.0.1:{enrichment_port}
       timeout-ms: 2000
@@ -141,6 +170,12 @@ components_manager:
     collab-service:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
+
+    # [SF-SEC-04] backend: single — e2e doesn't exercise the shared/
+    # Postgres backend, only the default production shape.
+    rate-limit-store:
+      backend: single
+      dbname: postgres-db-1
 
     oauth-config:
       client-id: e2e-client-id
@@ -174,12 +209,33 @@ components_manager:
       content-type: text/html; charset=utf-8
       cache-control: 'no-cache'
       script-url: {script_url_path}
+      style-url: {style_url_path}
 
     handler-script:
       path: {script_url_path}
       method: GET
       task_processor: main-task-processor
       file-path: {script_file_path}
+      content-type: application/javascript; charset=utf-8
+
+    # [SF-WEB-40] Real hashed CSS bundle — a real browser loads this page, so
+    # the design system must be served (unlike tests/conftest.py's /dev/null
+    # stub) or the page renders unstyled.
+    handler-style:
+      path: {style_url_path}
+      method: GET
+      task_processor: main-task-processor
+      file-path: {style_file_path}
+      content-type: text/css; charset=utf-8
+
+    # [SF-SEC-02] Real vendored vis-network bundle (see VENDOR_VIS_NETWORK
+    # above) — a real browser loads this page, so unlike tests/conftest.py's
+    # /dev/null stub, this must be the genuine file or the graph never draws.
+    handler-vendor-vis-network:
+      path: /vendor/vis-network.min.js
+      method: GET
+      task_processor: main-task-processor
+      file-path: {vendor_vis_network_path}
       content-type: application/javascript; charset=utf-8
 
     handler-healthz:
@@ -197,11 +253,46 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — see
+    # services/six-feat/src/http/artist_handler.hpp. Every static config
+    # that boots this binary needs a matching section, same as every other
+    # handler here (see the handler-image comment below for the same
+    # failure mode this fixes).
+    handler-artist:
+      path: /api/v1/artist
+      method: GET
+      task_processor: main-task-processor
+
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET
       task_processor: main-task-processor
       response-body-stream: true
+
+    # [SF-API-12] main.cpp unconditionally registers ImageProxyHandler, so
+    # every static config that boots the six_feat binary needs a matching
+    # handler-image block or components::Run fails outright at startup
+    # (InvariantError: "registered, but not present in
+    # components_manager.components section") — same reason every other
+    # handler block above exists here. No allowed-hosts override — e2e
+    # doesn't exercise /api/v1/image directly, so the compiled-in default
+    # (images.genius.com, assets.genius.com) is fine.
+    handler-image:
+      path: /api/v1/image
+      method: GET
+      task_processor: main-task-processor
+      timeout-ms: 5000
+
+    # [SF-API-05] Same reasoning as handler-image above: main.cpp
+    # unconditionally registers OpenApiHandler, so this config needs a
+    # matching block too. Real file (not a stub) since it costs nothing to
+    # serve correctly here.
+    handler-openapi:
+      path: /api/v1/openapi.json
+      method: GET
+      task_processor: main-task-processor
+      file-path: {openapi_json_path}
+      content-type: application/json; charset=utf-8
 
     handler-server-monitor:
       path: /metrics
@@ -210,18 +301,27 @@ components_manager:
 """
 
 
-def _resolve_script_bundle() -> tuple[str, Path]:
+def _resolve_bundle(key: str) -> tuple[str, Path]:
     manifest = FRONT_DIST / "manifest.json"
     if not manifest.exists():
         sys.exit(
             f"[e2e_env] {manifest} not found — build the front-end first:\n"
             f"    (cd front && npm ci && npm run build)"
         )
-    script_name = json.loads(manifest.read_text())["script"]
-    script_path = FRONT_DIST / script_name
-    if not script_path.exists():
-        sys.exit(f"[e2e_env] bundled script {script_path} referenced by manifest.json is missing.")
-    return script_name, script_path
+    name = json.loads(manifest.read_text())[key]
+    path = FRONT_DIST / name
+    if not path.exists():
+        sys.exit(f"[e2e_env] bundled {key} {path} referenced by manifest.json is missing.")
+    return name, path
+
+
+def _resolve_script_bundle() -> tuple[str, Path]:
+    return _resolve_bundle("script")
+
+
+# [SF-WEB-40] The hashed CSS bundle, resolved the same way as the JS bundle.
+def _resolve_style_bundle() -> tuple[str, Path]:
+    return _resolve_bundle("style")
 
 
 def _program_mock(mock_state: "it_conftest._MockState") -> None:
@@ -246,7 +346,13 @@ def cmd_up() -> None:
         )
     if not FRONT_INDEX.exists():
         sys.exit(f"[e2e_env] {FRONT_INDEX} not found.")
+    if not VENDOR_VIS_NETWORK.exists():
+        sys.exit(
+            f"[e2e_env] {VENDOR_VIS_NETWORK} not found — vis-network vendor "
+            f"bundle is missing (see DEVELOPMENT.md / front/vendor/)."
+        )
     script_name, script_path = _resolve_script_bundle()
+    style_name, style_path = _resolve_style_bundle()
 
     mock_state = it_conftest._MockState()
     mock_srv = it_conftest._start_mock_server_on(MOCK_PORT, mock_state)
@@ -294,10 +400,15 @@ def cmd_up() -> None:
         mock_port=MOCK_PORT,
         gateway_port=GATEWAY_PORT,
         enrichment_port=ENRICHMENT_PORT,
+        auth_port=AUTH_PORT,
         db_connection_string=it_conftest.DB_CONNECTION_STRING,
         front_index_path=str(FRONT_INDEX),
         script_url_path=f"/{script_name}",
         script_file_path=str(script_path),
+        style_url_path=f"/{style_name}",
+        style_file_path=str(style_path),
+        vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
+        openapi_json_path=str(OPENAPI_JSON),
     ))
 
     proc = subprocess.Popen(

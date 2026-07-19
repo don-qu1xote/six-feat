@@ -1,0 +1,8 @@
+type: object
+description: Durable L1 store for artist/song/credit data
+additionalProperties: false
+properties:
+    dbname:
+        type: string
+        description: Name of the components::Postgres component whose cluster backs this store
+        defaultDescription: postgres-db-1

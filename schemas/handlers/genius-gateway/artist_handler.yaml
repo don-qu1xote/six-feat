@@ -1,0 +1,4 @@
+type: object
+description: Internal Genius artist lookup endpoint
+additionalProperties: false
+properties: {}

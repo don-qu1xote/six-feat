@@ -2,36 +2,90 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "melidadr"]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
-# ── Single source of truth for the userver base image tag ───────────────────
-# Both the CI container and Dockerfile's ARG USERVER_IMAGE must reference the
-# same tag. Instead of duplicating ":v3.0" in two files, it lives here once
-# and is passed into the Docker build as a --build-arg. If you need to bump
-# the version, change it only in this one place (or promote it to a repo-level
-# Actions variable: Settings → Secrets and variables → Actions → Variables →
-# USERVER_IMAGE_TAG, and replace `env.USERVER_IMAGE_TAG` below with
-# `vars.USERVER_IMAGE_TAG`).
-# USERVER_IMAGE_DIGEST pins the tag to an immutable content digest (the tag
-# alone is mutable and can be repointed at a different image); keep it in
-# sync with Dockerfile's ARG USERVER_IMAGE when bumping the version.
-# NOTE: `jobs.<job_id>.container`/`services` don't support the `env` context
-# (only `github`/`vars`/`needs`/`strategy`/`matrix`/`inputs` are available
-# there), so USERVER_IMAGE/POSTGRES_IMAGE below are the literal, digest-pinned
-# values duplicated into each container/services block; env.* here remains
-# the single source for the build-arg passed to docker/build-push-action.
+# ── Pipeline shape: one graph, three sequential stages ───────────────────────
+#
+#   Stage 1                Stage 2 (parallel, all gate merge except e2e-smoke)         Stage 3 (push/tag only)
+#   ┌──────────────┐       ┌───────────────────────┐
+#   │ build-and-    │──┬──▶│ clang-tidy             │
+#   │ test          │  │   ├───────────────────────┤
+#   │ (compile 4    │  ├──▶│ verify-yaml-anchors    │
+#   │  binaries,    │  │   ├───────────────────────┤
+#   │  unit +       │  ├──▶│ promtool-check-rules   │
+#   │  integration  │  │   ├───────────────────────┤       ┌───────────────┐
+#   │  tests,       │  ├──▶│ eslint                 │──┬──▶│ sbom          │
+#   │  coverage)    │  │   ├───────────────────────┤  │   ├───────────────┤
+#   │               │  ├──▶│ bundle-size            │──┤   ├───────────────┤
+#   │               │  │   ├───────────────────────┤  ├──▶│ publish       │
+#   │               │  ├──▶│ frontend-coverage      │  │   │ (build, push, │
+#   │               │  │   ├───────────────────────┤  │   │  cosign sign) │
+#   │               │  ├──▶│ docker-build-and-scan  │──┤   └───────────────┘
+#   │               │  │   ├───────────────────────┤  │
+#   │               │  ├──▶│ load-test (k6, blocking│──┘
+#   │               │  │   │ — see caveat below)    │
+#   │               │  │   ├───────────────────────┤
+#   │               │  └──▶│ e2e-smoke (advisory,   │
+#   │               │      │ continue-on-error)     │
+#   └──────────────┘       └───────────────────────┘
+#
+# Every push/PR runs the SAME graph (one workflow, one run, one visual
+# pipeline in the GitHub Actions UI) — Stage 3 (sbom/publish: SF-CI-03)
+# simply shows as skipped on a pull_request, gated by
+# `if: github.event_name == 'push'` on each Stage-3 job rather than living
+# in a separate workflow file. This also closes a real gap the old
+# 2-workflow split had: sbom/publish used to run in a workflow of their
+# own with no `needs:` on ci.yml's tests at all, so a push with failing
+# tests could still get signed and pushed to GHCR. Now Stage 3 only starts
+# once every blocking Stage-2 gate (everything except the advisory
+# e2e-smoke) has actually passed.
+#
+# Stage 2 jobs all carry `needs: build-and-test` even where they don't
+# strictly consume its output (clang-tidy/docker-build-and-scan/e2e-smoke/
+# load-test each do their own from-source build) — that's a deliberate
+# choice for a single readable top-to-bottom graph over maximum
+# parallelism/wall-clock speed. loadtest.yml stays a SEPARATE workflow
+# file too (nightly/manual, full PROFILE, continue-on-error — see that
+# file's own header) — load-test below is a second, distinct consumer of
+# loadtest/ that runs the same scenarios at PROFILE=smoke as a blocking PR
+# gate. Team decision: unlike loadtest.yml and unlike e2e-smoke, this one
+# is NOT continue-on-error — a threshold breach fails the PR. This is a
+# deliberate acceptance of the flakiness risk loadtest/README.md's
+# "Thresholds are advisory, not gates" section warns about (latency partly
+# depends on which Genius backend sits behind the run) — mitigated but not
+# eliminated by always running against the deterministic in-process mock
+# (scripts/e2e_env.py), never a real Genius API. If this proves too flaky
+# in practice, the fix is `continue-on-error: true` on load-test below,
+# not re-splitting it into another workflow file.
 env:
   USERVER_IMAGE_TAG: v3.0
   USERVER_IMAGE_REPO: ghcr.io/userver-framework/ubuntu-22.04-userver
   USERVER_IMAGE_DIGEST: sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
-  # = USERVER_IMAGE_REPO:USERVER_IMAGE_TAG@USERVER_IMAGE_DIGEST (literal copy, see NOTE above)
+  # = USERVER_IMAGE_REPO:USERVER_IMAGE_TAG@USERVER_IMAGE_DIGEST (literal copy, see NOTE below)
   USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
   POSTGRES_IMAGE: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+  # Pinned k6 version for the load-test job below — kept in sync manually
+  # with loadtest.yml's own K6_VERSION (workflow files can't share
+  # top-level env: across files, same reasoning as USERVER_IMAGE_TAG).
+  K6_VERSION: "0.55.0"
+  # NOTE: `jobs.<job_id>.container`/`services` don't support the `env` context
+  # (only `github`/`vars`/`needs`/`strategy`/`matrix`/`inputs` are available
+  # there), so USERVER_IMAGE/POSTGRES_IMAGE above are the literal, digest-pinned
+  # values duplicated into each container/services block below; env.* here
+  # remains the single source for the build-arg passed to docker/build-push-action.
+  # USERVER_IMAGE_DIGEST pins the tag to an immutable content digest (the tag
+  # alone is mutable and can be repointed at a different image); keep it in
+  # sync with each Dockerfile's ARG USERVER_IMAGE when bumping the version.
 
 jobs:
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 1 — build 4 binaries, run the full pytest suite, report coverage
+  # ══════════════════════════════════════════════════════════════════════════
   build-and-test:
+    name: "Stage 1 — Build & test (pytest)"
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
@@ -42,6 +96,14 @@ jobs:
     # service is reachable by its service id ("postgres") as hostname — same
     # DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD scheme docker-entrypoint.sh
     # uses locally to assemble db_connection_string.
+    # [SF-CI-01] This block is duplicated (identically, image aside) in
+    # e2e-smoke below rather than factored into a reusable workflow:
+    # `services:`/`container:` are per-job, so a workflow_call target would
+    # have to own the entire job body (steps included), not just this block
+    # — build-and-test and e2e-smoke's steps differ too much for that to be
+    # a real de-dup. `env` context isn't available here either (see the
+    # NOTE above), so the image ref below is a literal copy of
+    # env.POSTGRES_IMAGE — keep both in sync when bumping it.
     services:
       postgres:
         image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
@@ -77,40 +139,54 @@ jobs:
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
+      # A local composite action can't check itself out, so this has to stay
+      # a separate step ahead of the composite call below (see the NOTE in
+      # .github/actions/setup/action.yml).
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      # ── System deps ─────────────────────────────────────────────────────────
-      - name: Install system deps
-        run: |
-          apt-get update -q
-          apt-get install -y --no-install-recommends \
-            libssl-dev \
-            python3 \
-            python3-pip \
-            python3-venv \
-            curl
-          rm -rf /var/lib/apt/lists/*
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          python-testenv: "true"
 
-      # ── Build service ───────────────────────────────────────────────────────
-      - name: Configure CMake
+      # ── Build services ──────────────────────────────────────────────────────
+      # Each service now builds independently from its own CMakeLists.txt
+      # (services/<name>/CMakeLists.txt) — there is no more shared root
+      # CMakeLists.txt. All four install into the same /install prefix so
+      # SIX_FEAT_BINARY et al. below keep resolving at their existing,
+      # predictable /install/bin/<name> paths.
+      - name: Build & install six-feat
         run: |
-          cmake -S . -B build \
+          cmake -S services/six-feat -B build-six-feat \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/install \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-six-feat -j"$(nproc)"
+          cmake --install build-six-feat
 
-      - name: Build
-        run: cmake --build build -j"$(nproc)"
-
-      - name: Install
-        run: cmake --install build
-
-      # ── Python test env ──────────────────────────────────────────────────────
-      - name: Install Python test dependencies
+      - name: Build & install enrichment
         run: |
-          python3 -m venv /opt/testenv
-          /opt/testenv/bin/pip install --upgrade pip
-          /opt/testenv/bin/pip install -r requirements-test.txt
+          cmake -S services/enrichment -B build-enrichment \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-enrichment -j"$(nproc)"
+          cmake --install build-enrichment
+
+      - name: Build & install genius-gateway
+        run: |
+          cmake -S services/genius-gateway -B build-genius-gateway \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-genius-gateway -j"$(nproc)"
+          cmake --install build-genius-gateway
+
+      - name: Build & install auth
+        run: |
+          cmake -S services/auth -B build-auth \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-auth -j"$(nproc)"
+          cmake --install build-auth
 
       # ── Unit tests (no binary needed) ────────────────────────────────────────
       # Pure-Python / pure-algorithm coverage that doesn't require the
@@ -181,39 +257,38 @@ jobs:
           # empty "no files were found" artifact upload.
           include-hidden-files: true
 
-      # ── Upload compile_commands.json for the clang-tidy job ────────────────
-      - name: Upload compile_commands.json
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-        with:
-          name: compile-commands
-          path: build/compile_commands.json
-          retention-days: 1
-
   # ══════════════════════════════════════════════════════════════════════════
-  # clang-tidy — blocking; gates the merge
+  # Stage 2 — clang-tidy (blocking; gates the merge)
   # ══════════════════════════════════════════════════════════════════════════
   # Minimal check set (bugprone-*, performance-*, cppcoreguidelines-*) run
-  # against src/, with --warnings-as-errors so any finding fails the job.
+  # against src/, with --warnings-as-errors so any finding in the
+  # bugprone-*/performance-* subset fails the job (cppcoreguidelines-* is
+  # enabled for visibility in the log/report artifact but NOT in
+  # --warnings-as-errors, so those stay warnings, not gates — see the
+  # --checks vs --warnings-as-errors sets below, they're deliberately not
+  # the same list).
   clang-tidy:
+    name: "Stage 2 — Static analysis (clang-tidy)"
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     needs: build-and-test
     steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - name: Install system deps
-        run: |
-          apt-get update -q
-          apt-get install -y --no-install-recommends \
-            libssl-dev \
-            clang-tidy
-          rm -rf /var/lib/apt/lists/*
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev clang-tidy
 
+      # services/six-feat's own build tree covers both libs/six-feat-common/src
+      # (pulled in via add_subdirectory) and services/six-feat/src — the same
+      # two roots checked below, just renamed from the old shared src/.
       - name: Configure CMake (generate compile_commands.json)
         run: |
-          cmake -S . -B build \
+          cmake -S services/six-feat -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
@@ -221,7 +296,7 @@ jobs:
         shell: bash  # Add this line
         run: |
           set -o pipefail
-          find src -name '*.cpp' | xargs -r \
+          find libs/six-feat-common/src services/six-feat/src -name '*.cpp' | xargs -r \
             clang-tidy -p build \
               --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
               --warnings-as-errors='-*,bugprone-*,performance-*' \
@@ -236,14 +311,80 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════════════════
-  # ESLint for front/
+  # Stage 2 — SF-CI-02: verify-yaml-anchors.py (SF-SCH-03) — pure-YAML static
+  # check (static_config.yaml anchor/alias expansion + docker-compose.yml
+  # hardening symmetry). No Docker/Postgres/userver container needed, so
+  # this runs directly on the bare runner instead of inside build-and-test's
+  # container+services.
   # ══════════════════════════════════════════════════════════════════════════
-  eslint:
+  verify-yaml-anchors:
+    name: "Stage 2 — Config validation (YAML anchors)"
     runs-on: ubuntu-22.04
+    needs: build-and-test
     steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Run verify-yaml-anchors.py
+        run: python3 scripts/verify-yaml-anchors.py
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 2 — SF-OBS-04: promtool check rules — validates
+  # observability/prometheus/rules/*.yml (PromQL syntax + a handful of
+  # built-in best-practice lints, e.g. every alert having both a summary
+  # and description annotation). promtool is a single static Go binary
+  # from the pinned Prometheus release tarball — no Docker container
+  # needed, same "bare runner" reasoning as verify-yaml-anchors above. No
+  # sha256 pin on the tarball itself (unlike this repo's Docker image
+  # refs) — GitHub Releases don't expose a checksum this workflow can
+  # verify without an extra fetch; the version in the URL is still exact
+  # and traceable to a real Prometheus tag.
+  # ══════════════════════════════════════════════════════════════════════════
+  promtool-check-rules:
+    name: "Stage 2 — Config validation (Prometheus rules)"
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    env:
+      PROMETHEUS_VERSION: "3.9.1"
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install promtool
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/prometheus.tar.gz \
+            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+          tar -xzf /tmp/prometheus.tar.gz -C /tmp
+          install -m 0755 "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
+          promtool --version
+
+      - name: promtool check rules
+        run: promtool check rules observability/prometheus/rules/*.yml
+
+      # Also validates rule_files/alerting wiring in prometheus.yml itself
+      # (rule_files paths resolve relative to the config file's own
+      # directory, so this runs from observability/prometheus/).
+      - name: promtool check config
+        working-directory: observability/prometheus
+        run: promtool check config prometheus.yml
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 2 — ESLint for front/
+  # ══════════════════════════════════════════════════════════════════════════
+  eslint:
+    name: "Stage 2 — Frontend lint (ESLint)"
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      - uses: ./.github/actions/setup
         with:
           node-version: "20"
 
@@ -261,17 +402,51 @@ jobs:
         run: npm audit --audit-level=high
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Vitest coverage for front/
+  # Stage 2 — [SF-WEB-08] Bundle size budget for front/'s esbuild output.
+  # Lightweight (no Docker): npm ci + npm run build + a gzip-size check
+  # against a fixed KB budget (scripts/check-bundle-size.mjs) — same shape
+  # as the eslint job just above, kept separate so a budget failure reads as
+  # its own clearly-named check rather than getting buried in lint output.
+  # ══════════════════════════════════════════════════════════════════════════
+  bundle-size:
+    name: "Stage 2 — Frontend bundle size budget"
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: ./.github/actions/setup
+        with:
+          node-version: "20"
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Build front-end bundle
+        working-directory: front
+        run: npm run build
+
+      - name: Check bundle size budget
+        working-directory: front
+        run: npm run check-bundle-size
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 2 — Vitest coverage for front/
   # ══════════════════════════════════════════════════════════════════════════
   # Thresholds in front/vitest.config.js start soft (just under current
   # levels) to catch regressions without blocking on the existing gap;
   # ratchet them up as coverage improves.
   frontend-coverage:
+    name: "Stage 2 — Frontend tests (Vitest)"
     runs-on: ubuntu-22.04
+    needs: build-and-test
     steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      - uses: ./.github/actions/setup
         with:
           node-version: "20"
 
@@ -292,20 +467,24 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════════════════
-  # IDEA-33: E2E smoke test (Playwright) — search artist → graph → node click
-  # → sidebar → path search → hop-chain, against a real compiled six_feat
-  # binary + real built front-end + mock Genius server (scripts/e2e_env.py).
-  # Independent job (no `needs`, nothing else depends on it) so a slow/flaky
-  # browser run never blocks build-and-test/eslint/docker-build-and-scan.
-  # continue-on-error: new infra, not yet trusted to gate merges.
+  # Stage 2 — IDEA-33: E2E smoke test (Playwright) — search artist → graph →
+  # node click → sidebar → path search → hop-chain, against a real compiled
+  # six_feat binary + real built front-end + mock Genius server
+  # (scripts/e2e_env.py). continue-on-error: advisory, new infra, not yet
+  # trusted to gate merges — deliberately NOT in Stage 3's `needs:` below.
   # ══════════════════════════════════════════════════════════════════════════
   e2e-smoke:
+    name: "Stage 2 — E2E smoke (Playwright, advisory)"
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
+    needs: build-and-test
     continue-on-error: true
 
+    # [SF-CI-01] Duplicated from build-and-test's `services.postgres` above
+    # (same image, different DB name/password) — see the comment there for
+    # why this isn't factored into a reusable workflow.
     services:
       postgres:
         image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
@@ -328,44 +507,36 @@ jobs:
       E2E_ENV_FILE: /tmp/six_feat_e2e_env.json
 
     steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
-      - name: Install system deps
-        run: |
-          apt-get update -q
-          apt-get install -y --no-install-recommends \
-            libssl-dev python3 python3-pip python3-venv curl
-          rm -rf /var/lib/apt/lists/*
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      - uses: ./.github/actions/setup
         with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
           node-version: "20"
+          python-testenv: "true"
 
-      - name: Configure CMake
+      # six_feat and six_feat_genius_gateway each build independently from
+      # their own services/<name>/CMakeLists.txt — there is no more shared
+      # root CMakeLists.txt. Both install into the same /install prefix (same
+      # CMAKE_INSTALL_PREFIX used by the build-and-test job above) so they
+      # land at the predictable /install/bin/<name> paths used below.
+      - name: Build & install six-feat
         run: |
-          cmake -S . -B build \
+          cmake -S services/six-feat -B build-six-feat \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-six-feat -j"$(nproc)"
+          cmake --install build-six-feat
 
-      - name: Build service
-        run: cmake --build build -j"$(nproc)"
-
-      # six_feat lands at build/six_feat (defined in the root CMakeLists.txt),
-      # but six_feat_genius_gateway is defined in services/genius-gateway's
-      # CMakeLists.txt via add_subdirectory, so CMake places its raw build
-      # output at build/services/genius-gateway/six_feat_genius_gateway, not
-      # build/six_feat_genius_gateway. Install both into the flat /install/bin
-      # layout (same CMAKE_INSTALL_PREFIX used by the build-and-test job
-      # above) so both binaries are found at predictable, subdirectory-
-      # independent paths below.
-      - name: Install
-        run: cmake --install build
-
-      - name: Install Python test dependencies
+      - name: Build & install genius-gateway
         run: |
-          python3 -m venv /opt/testenv
-          /opt/testenv/bin/pip install --upgrade pip
-          /opt/testenv/bin/pip install -r requirements-test.txt
+          cmake -S services/genius-gateway -B build-genius-gateway \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-genius-gateway -j"$(nproc)"
+          cmake --install build-genius-gateway
 
       - name: Install front/ dependencies
         working-directory: front
@@ -410,12 +581,199 @@ jobs:
           retention-days: 7
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Build Docker image + Trivy vulnerability scan
+  # Stage 2 — k6 load test (loadtest/, SF-INF-05) — BLOCKING, unlike
+  # loadtest.yml's own nightly/manual k6-smoke-load job (continue-on-error)
+  # and unlike e2e-smoke above (also continue-on-error). Team decision, see
+  # this file's "Pipeline shape" header comment for the flakiness tradeoff
+  # this accepts. Runs the same three scenarios (graph_warm/path_cold/
+  # search) at PROFILE=smoke against scripts/e2e_env.py's synthetic
+  # mock-Genius stack — same infra e2e-smoke already builds for a browser
+  # smoke test, reused here for a load-test smoke pass instead.
+  # ══════════════════════════════════════════════════════════════════════════
+  load-test:
+    name: "Stage 2 — Load test (k6, blocking)"
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    needs: build-and-test
+
+    # [SF-CI-01] Own DB name (six_feat_ci_loadtest) — same pattern as
+    # e2e-smoke's own services.postgres above, so the two jobs' Postgres
+    # instances never collide even though both run in Stage 2.
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+        env:
+          POSTGRES_DB: six_feat_ci_loadtest
+          POSTGRES_USER: six_feat
+          POSTGRES_PASSWORD: six_feat_ci_loadtest_password
+        options: >-
+          --health-cmd "pg_isready -U six_feat -d six_feat_ci_loadtest"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: six_feat_ci_loadtest
+      DB_USER: six_feat
+      DB_PASSWORD: six_feat_ci_loadtest_password
+      E2E_ENV_FILE: /tmp/six_feat_ci_loadtest_env.json
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
+      # node-version needed for the front-end build below — scripts/
+      # e2e_env.py hard-requires front/dist/manifest.json to exist (its
+      # handler-script/handler-index config points six_feat's static
+      # handler at real built files — see e2e_env.py's own module
+      # docstring), even though k6 never actually requests any front-end
+      # asset in this job. Building it anyway is the same tradeoff
+      # e2e-smoke below already makes; skipping it just makes e2e_env.py
+      # exit with "manifest.json not found" before any k6 scenario runs.
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          node-version: "20"
+          python-testenv: "true"
+
+      # six_feat and six_feat_genius_gateway, same pair e2e-smoke above
+      # builds — scripts/e2e_env.py drives both plus an in-process mock
+      # Genius server, so no real Genius credentials are needed for this
+      # job either.
+      - name: Build & install six-feat
+        run: |
+          cmake -S services/six-feat -B build-six-feat \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-six-feat -j"$(nproc)"
+          cmake --install build-six-feat
+
+      - name: Build & install genius-gateway
+        run: |
+          cmake -S services/genius-gateway -B build-genius-gateway \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build-genius-gateway -j"$(nproc)"
+          cmake --install build-genius-gateway
+
+      - name: Install front/ dependencies
+        working-directory: front
+        run: npm ci
+
+      - name: Build front-end bundle
+        working-directory: front
+        run: npm run build
+
+      # No sha256 pin on the tarball itself — same reasoning as
+      # promtool-check-rules above: GitHub Releases don't expose a
+      # checksum this workflow can verify without an extra fetch, and the
+      # version in the URL is still exact and traceable to a real k6 tag.
+      #
+      # [SF-CI-05 fix] `set -o pipefail` is a bash-ism (illegal option
+      # under dash/sh) — same root cause and same fix as "Publish summary
+      # to job summary" below: this job's container doesn't get bash
+      # auto-detected for a bare `run:`, so it needs shell: bash
+      # explicitly, matching the clang-tidy job's own "Run clang-tidy" step.
+      - name: Install k6
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/k6.tar.gz \
+            "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz"
+          tar -xzf /tmp/k6.tar.gz -C /tmp
+          install -m 0755 "/tmp/k6-v${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
+          k6 version
+
+      - name: Start six_feat + genius-gateway + mock Genius
+        run: |
+          SIX_FEAT_BINARY=/install/bin/six_feat \
+          SIX_FEAT_GENIUS_GATEWAY_BINARY=/install/bin/six_feat_genius_gateway \
+          /opt/testenv/bin/python3 scripts/e2e_env.py up &
+          echo $! > /tmp/e2e_env.pid
+          for i in $(seq 1 60); do
+            [ -f "$E2E_ENV_FILE" ] && break
+            sleep 1
+          done
+          test -f "$E2E_ENV_FILE" || { echo "::error::E2E environment did not come up"; exit 1; }
+
+      # BLOCKING — no continue-on-error, no `|| true`: run-all.sh exits
+      # non-zero if any scenario's thresholds were breached (see its own
+      # header comment), which fails this step and the job.
+      - name: Run k6 load test (loadtest/run-all.sh, PROFILE=smoke)
+        env:
+          PROFILE: smoke
+        run: |
+          chmod +x loadtest/run-all.sh
+          loadtest/run-all.sh
+
+      - name: Stop six_feat + mock Genius
+        if: always()
+        run: |
+          /opt/testenv/bin/python3 scripts/e2e_env.py down || true
+          kill "$(cat /tmp/e2e_env.pid)" 2>/dev/null || true
+
+      - name: Publish summary to job summary
+        if: always()
+        # [SF-CI-05 fix] `shopt` is a bash builtin — this job's container
+        # (the userver-framework image) doesn't put bash first for GitHub
+        # Actions' shell auto-detection here, so a bare `run:` was
+        # executing under /bin/sh ("shopt: not found"). Explicit shell:
+        # bash, same fix already applied to the clang-tidy job's "Run
+        # clang-tidy" step above for the same reason.
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for f in loadtest/.output/*-summary.txt; do
+            {
+              echo '```'
+              cat "$f"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload k6 summary artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: k6-loadtest-ci-summary
+          path: loadtest/.output/
+          retention-days: 14
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 2 — Build Docker image + Trivy vulnerability scan
   # ══════════════════════════════════════════════════════════════════════════
   docker-build-and-scan:
+    name: "Stage 2 — Image build + vuln scan (Trivy)"
     runs-on: ubuntu-22.04
     needs: build-and-test
+    # Each service now has its own standalone Dockerfile (services/<name>/
+    # Dockerfile) instead of one multi-stage Dockerfile building all 4 —
+    # matrix over them so every one still gets built AND scanned in CI (the
+    # old single-Dockerfile job only ever scanned the six-feat image, even
+    # though `docker build` compiled all 4 stages together; this restores
+    # that same "all 4 get built" coverage and adds the Trivy gate to the
+    # other 3, which it never covered before).
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: six-feat
+            dockerfile: services/six-feat/Dockerfile
+          - name: six-feat-auth
+            dockerfile: services/auth/Dockerfile
+          - name: six-feat-enrichment
+            dockerfile: services/enrichment/Dockerfile
+          - name: six-feat-genius-gateway
+            dockerfile: services/genius-gateway/Dockerfile
     steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      # No apt/node/python setup needed here, so no composite call — just
+      # the checkout that the composite action in other jobs also requires.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Set up Docker Buildx
@@ -425,13 +783,14 @@ jobs:
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
         with:
           context: .
+          file: ${{ matrix.service.dockerfile }}
           push: false
           load: true
-          tags: six-feat:ci
+          tags: ${{ matrix.service.name }}:ci
           build-args: |
             USERVER_IMAGE=${{ env.USERVER_IMAGE_REPO }}:${{ env.USERVER_IMAGE_TAG }}@${{ env.USERVER_IMAGE_DIGEST }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
 
       # Fails the job on HIGH/CRITICAL CVEs in system packages of the built
       # image. This is intentionally a hard gate (unlike clang-tidy above)
@@ -448,10 +807,168 @@ jobs:
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          image-ref: six-feat:ci
+          image-ref: ${{ matrix.service.name }}:ci
           format: table
           scanners: vuln
           vuln-type: os,library
           severity: HIGH,CRITICAL
           exit-code: "1"
           ignore-unfixed: true
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 3 — SF-CI-03: SBOM (syft, via anchore/sbom-action) — one per
+  # service image, uploaded as a build artifact. push/tag only (see the
+  # pipeline-shape note at the top of this file) — SBOM generation adds
+  # real wall-clock time (a second full image build per service) that
+  # every PR shouldn't have to pay, and only matters once an image is
+  # actually a release candidate. Builds locally (load: true, no push)
+  # rather than reusing docker-build-and-scan's matrix output: artifacts
+  # can't be shared as live Docker images across jobs, and this job
+  # doesn't need docker-build-and-scan's specific image anyway (this is a
+  # fresh, identically-built one).
+  # ══════════════════════════════════════════════════════════════════════════
+  sbom:
+    name: "Stage 3 — SBOM (push/tag only)"
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push'
+    needs:
+      - clang-tidy
+      - verify-yaml-anchors
+      - promtool-check-rules
+      - eslint
+      - bundle-size
+      - frontend-coverage
+      - docker-build-and-scan
+      - load-test
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: six-feat
+            dockerfile: services/six-feat/Dockerfile
+          - name: six-feat-auth
+            dockerfile: services/auth/Dockerfile
+          - name: six-feat-enrichment
+            dockerfile: services/enrichment/Dockerfile
+          - name: six-feat-genius-gateway
+            dockerfile: services/genius-gateway/Dockerfile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - name: Build image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ matrix.service.name }}:sbom
+          build-args: |
+            USERVER_IMAGE=${{ env.USERVER_IMAGE_REPO }}:${{ env.USERVER_IMAGE_TAG }}@${{ env.USERVER_IMAGE_DIGEST }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+
+      - name: Generate SBOM (syft, SPDX JSON)
+        uses: anchore/sbom-action@8e94d75ddd33f69f691467e42275782e4bfefe84  # v0.20.9
+        with:
+          image: ${{ matrix.service.name }}:sbom
+          format: spdx-json
+          output-file: ${{ matrix.service.name }}-sbom.spdx.json
+          artifact-name: ${{ matrix.service.name }}-sbom.spdx.json
+          upload-artifact-retention: 90
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Stage 3 — SF-CI-03: build, push to GHCR, and keylessly sign (cosign +
+  # GitHub OIDC — no long-lived signing key stored anywhere) each service
+  # image. push/tag only, same reasoning as sbom above. Runs independently
+  # of the sbom job (no needs: on it — both are Stage 3, side by side) so a
+  # slow/flaky SBOM generation never blocks a real publish.
+  # ══════════════════════════════════════════════════════════════════════════
+  publish:
+    name: "Stage 3 — Publish + sign (push/tag only)"
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push'
+    needs:
+      - clang-tidy
+      - verify-yaml-anchors
+      - promtool-check-rules
+      - eslint
+      - bundle-size
+      - frontend-coverage
+      - docker-build-and-scan
+      - load-test
+    permissions:
+      contents: read
+      packages: write   # docker push to ghcr.io
+      id-token: write   # cosign keyless signing — Sigstore Fulcio/Rekor OIDC
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: six-feat
+            dockerfile: services/six-feat/Dockerfile
+          - name: six-feat-auth
+            dockerfile: services/auth/Dockerfile
+          - name: six-feat-enrichment
+            dockerfile: services/enrichment/Dockerfile
+          - name: six-feat-genius-gateway
+            dockerfile: services/genius-gateway/Dockerfile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # tag ${{ github.sha }} always; also the git tag name itself (e.g.
+      # "v1.2.3") on a tag push, and "latest" on a branch push — never both,
+      # so "latest" only ever tracks the newest branch build, not a
+      # possibly-older tagged release.
+      - name: Derive image metadata
+        id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804  # v5.7.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.service.name }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            USERVER_IMAGE=${{ env.USERVER_IMAGE_REPO }}:${{ env.USERVER_IMAGE_TAG }}@${{ env.USERVER_IMAGE_DIGEST }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159  # v3.9.2
+
+      # Keyless (OIDC) signing: cosign mints a short-lived cert from
+      # Sigstore's public Fulcio CA using this job's ambient GitHub Actions
+      # OIDC token (id-token: write above), signs the image DIGEST (not a
+      # mutable tag — build-push-action's own digest output, immune to a
+      # tag being repointed afterward), and records the signature in the
+      # public Rekor transparency log. No signing key/passphrase is stored
+      # in this repo at all — --yes just skips the interactive Fulcio
+      # confirmation prompt, appropriate for a non-interactive CI run.
+      - name: Sign image (cosign, keyless/OIDC)
+        run: |
+          cosign sign --yes \
+            "ghcr.io/${{ github.repository_owner }}/${{ matrix.service.name }}@${{ steps.build.outputs.digest }}"

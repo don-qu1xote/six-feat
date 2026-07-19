@@ -87,6 +87,11 @@ import session_crypto  # noqa: E402  (path must be set up first)
 
 SRC_ROOT = Path(__file__).parent.parent
 BINARY = Path(os.environ.get("SIX_FEAT_BINARY", SRC_ROOT / "build" / "six_feat"))
+# [SF-API-05] Real (not /dev/null-stubbed) file — test_openapi.py fetches
+# and parses this handler's actual response body, unlike handler-index/
+# handler-script/handler-vendor-vis-network above whose content nothing in
+# this suite reads.
+OPENAPI_JSON_PATH = SRC_ROOT / "schemas" / "openapi" / "openapi.json"
 SERVICE_PORT = int(os.environ.get("SIX_FEAT_PORT", "18080"))
 MOCK_PORT = int(os.environ.get("MOCK_PORT", "18081"))
 SERVICE_BASE = f"http://localhost:{SERVICE_PORT}"
@@ -127,6 +132,7 @@ TEST_ENRICHMENT_INTERNAL_SECRET = "test-enrichment-internal-secret"
 # internal_auth.hpp — one shared secret for the whole internal mesh).
 GENIUS_GATEWAY_PORT = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_PORT", "18083"))
 GENIUS_GATEWAY_MONITOR_PORT = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_MONITOR_PORT", "18086"))
+GENIUS_GATEWAY_BASE = f"http://localhost:{GENIUS_GATEWAY_PORT}"
 GENIUS_GATEWAY_BINARY = Path(
     os.environ.get(
         "SIX_FEAT_GENIUS_GATEWAY_BINARY",
@@ -193,7 +199,12 @@ class _MockState:
             self._handlers.clear()
             self.calls.clear()
 
-    def dispatch(self, path: str, params: Dict[str, List[str]]) -> tuple[int, Any]:
+    def dispatch(
+        self,
+        path: str,
+        params: Dict[str, List[str]],
+        request_id: Optional[str] = None,
+    ) -> tuple[int, Any]:
         with self._lock:
             matched = None
             for prefix, fn in self._handlers.items():
@@ -202,9 +213,9 @@ class _MockState:
                         matched = (prefix, fn)
             if matched:
                 result = matched[1](path, params)
-                self.calls.append({"path": path, "params": params})
+                self.calls.append({"path": path, "params": params, "request_id": request_id})
                 return result
-            self.calls.append({"path": path, "params": params})
+            self.calls.append({"path": path, "params": params, "request_id": request_id})
             return 404, {"error": {"message": "Not found"}}
 
 
@@ -221,7 +232,12 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
-            status, body = _mock_state.dispatch(parsed.path, params)
+            # [SF-OBS-02] Forwarded by GeniusGateway::GeniusGet as
+            # X-Request-Id on every outbound call to Genius — recorded per
+            # call so tests can assert the same id survives the
+            # six-feat -> genius-gateway -> Genius hop (see test_trace_id.py).
+            status, body = _mock_state.dispatch(
+                parsed.path, params, self.headers.get("X-Request-Id"))
             payload = json.dumps(body).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -310,6 +326,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 
@@ -339,6 +359,15 @@ components_manager:
 
     artist-repository: {{}}
 
+    # [SF-SEC-01] Compares this process's APP_SECRET fingerprint against
+    # six-feat-auth's (auth_service_proc) — see test_app_secret_parity.py.
+    # Short timeout/interval so the suite doesn't wait on the default
+    # production values.
+    app-secret-parity-checker:
+      auth-base-url: {auth_base_url}
+      timeout-ms: 2000
+      check-interval-ms: 500
+
     # [IDEA-25/26] HTTP client for the standalone six-feat-enrichment
     # service — see ENRICHMENT_PORT / enrichment_proc_bg above.
     enrichment-client:
@@ -348,6 +377,13 @@ components_manager:
     collab-service:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
+
+    # [SF-SEC-04] backend: single — same default production uses; tests
+    # exercising the shared/Postgres backend build their own config with
+    # backend: shared instead (see test_rate_limit_store.py).
+    rate-limit-store:
+      backend: single
+      dbname: postgres-db-1
 
     # [IDEA-53] The OAuth flow itself (/auth/*) now lives in the standalone
     # six-feat-auth service (see auth_service_proc / _AUTH_TEST_CONFIG_TEMPLATE
@@ -394,6 +430,45 @@ components_manager:
       file-path: /dev/null
       content-type: application/javascript; charset=utf-8
 
+    # [SF-WEB-40] handler-style is unconditionally registered by main.cpp
+    # (StyleHandler), so — like handler-script above — every static config
+    # that boots this binary needs a matching section. The API integration
+    # suite never loads a real page, so /dev/null is fine.
+    handler-style:
+      path: /style.css
+      method: GET
+      task_processor: main-task-processor
+      file-path: /dev/null
+      content-type: text/css; charset=utf-8
+
+    # [SF-SEC-02] Self-hosted vis-network vendor bundle — unconditionally
+    # registered by main.cpp, so every static config that boots this binary
+    # needs a matching section, same as every other handler here. The API
+    # integration suite never loads a real page, so /dev/null is fine (same
+    # stub pattern as handler-index/handler-script above).
+    handler-vendor-vis-network:
+      path: /vendor/vis-network.min.js
+      method: GET
+      task_processor: main-task-processor
+      file-path: /dev/null
+      content-type: application/javascript; charset=utf-8
+
+    # [SF-API-05] Unlike the /dev/null-stubbed handlers above, this one
+    # points at the real checked-in schemas/openapi/openapi.json —
+    # test_openapi.py actually fetches and parses this response body.
+    # __OPENAPI_JSON_PATH__ is a literal sentinel substituted via a plain
+    # .replace() call right after this template's definition below, not a
+    # str-dot-format placeholder — this comment must stay brace-free itself
+    # (the whole template is passed through str.format() at every one of
+    # its several call sites), or a stray pair of curly braces here gets
+    # parsed as a positional format field and breaks every one of them.
+    handler-openapi:
+      path: /api/v1/openapi.json
+      method: GET
+      task_processor: main-task-processor
+      file-path: __OPENAPI_JSON_PATH__
+      content-type: application/json; charset=utf-8
+
     handler-healthz:
       path: /healthz
       method: GET
@@ -409,17 +484,50 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — see
+    # services/six-feat/src/http/artist_handler.hpp. Every static config
+    # that boots this binary needs a matching section, same as every other
+    # handler here.
+    handler-artist:
+      path: /api/v1/artist
+      method: GET
+      task_processor: main-task-processor
+
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET
       task_processor: main-task-processor
       response-body-stream: true
 
+    # [SF-API-12] `allowed-hosts` overrides the compiled-in real Genius CDN
+    # hostnames (image_proxy_handler.cpp's kDefaultAllowedImageHosts) so
+    # tests can point this handler at a local stub instead of the real
+    # internet — same testability pattern genius-gateway-base-url/
+    # enrichment-base-url/auth-base-url above already use. "127.0.0.1" is
+    # ONLY ever allowlisted here, in the test binary's own config — real
+    # image_cdn_mock.py URLs are http://127.0.0.1:<port>/... (see
+    # test_image_proxy.py); the port is stripped for host comparison (see
+    # ParseUrl in image_proxy_handler.cpp), so the mock's actual port
+    # doesn't need to be templated into this config at all.
+    handler-image:
+      path: /api/v1/image
+      method: GET
+      task_processor: main-task-processor
+      timeout-ms: 2000
+      allowed-hosts: ["127.0.0.1"]
+
     handler-server-monitor:
       path: /metrics
       method: GET
       task_processor: monitor-task-processor
 """
+
+# [SF-API-05] Splice in the real openapi.json path — see the sentinel's own
+# comment above. Done once, at import time, so every one of this template's
+# .format() call sites is unaffected (no new required kwarg).
+_TEST_CONFIG_TEMPLATE = _TEST_CONFIG_TEMPLATE.replace(
+    "__OPENAPI_JSON_PATH__", str(OPENAPI_JSON_PATH)
+)
 
 # [IDEA-53] Standalone six-feat-auth static config (auth_service_proc below)
 # — same shape as services/auth/static_config.yaml, minus the $var
@@ -462,6 +570,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 
@@ -494,6 +606,25 @@ components_manager:
 
     handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # [SF-INF-03] Unified readiness contract — always ready with an empty
+    # checks map for this service (no runtime-degradable dependency), see
+    # services/auth/internal_handlers.hpp's ReadinessHandler doc-comment.
+    # [fix] Keep this comment brace-free: the whole template is passed
+    # through str.format() below (auth_service_proc), so any unescaped
+    # curly brace here is parsed as a format field, not literal text, and
+    # breaks every auth-backed test with a KeyError.
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: main-task-processor
+
+    # [SF-SEC-01] Publishes this process's APP_SECRET fingerprint — see
+    # test_app_secret_parity.py.
+    handler-internal-key-fingerprint:
+      path: /internal/key-fingerprint
       method: GET
       task_processor: main-task-processor
 
@@ -543,6 +674,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 
@@ -583,8 +718,16 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
-    handler-internal-healthz:
+    handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # [SF-INF-03] Unified readiness contract — gates on the shared
+    # CircuitBreaker's state, see services/genius-gateway/
+    # internal_handlers.hpp's ReadinessHandler doc-comment.
+    handler-readyz:
+      path: /readyz
       method: GET
       task_processor: main-task-processor
 
@@ -729,10 +872,18 @@ def service_proc(
     tmp_db_dir: Path,
     mock_server: _MockState,
     genius_gateway_proc: subprocess.Popen,
+    auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
     """
     Start the service binary with a test config.
     Skip the whole session gracefully if the binary is not present.
+
+    [SF-SEC-01] Now also depends on auth_service_proc — AppSecretParityChecker
+    checks against it at startup, and both are launched with the same
+    TEST_APP_SECRET (see auth_service_proc below), so the parity check
+    passes deterministically for every test that doesn't deliberately use
+    a mismatched secret (see service_proc_badsecret / auth_service_proc_badsecret
+    in test_app_secret_parity.py).
     """
     if not BINARY.exists():
         pytest.skip(
@@ -749,6 +900,7 @@ def service_proc(
             genius_gateway_port=GENIUS_GATEWAY_PORT,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
+            auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
         )
     )
 
@@ -820,9 +972,13 @@ def auth_service_proc(
             **os.environ,
             # Same TEST_APP_SECRET as service_proc — a cookie minted by this
             # process is exactly what the six_feat instance's
-            # RequireSession/ExtractToken decrypt successfully.
+            # RequireSession/ExtractToken decrypt successfully, and its
+            # AppSecretParityChecker (SF-SEC-01) reports "ok" against it.
             "APP_SECRET": TEST_APP_SECRET,
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
+            # [SF-SEC-01] Gates GET /internal/key-fingerprint — same shared
+            # secret as the rest of the internal mesh.
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
         },
     )
 
@@ -830,6 +986,132 @@ def auth_service_proc(
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(f"Auth service did not start within timeout.\nstderr:\n{stderr}")
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# [SF-SEC-01] Third, independent six-feat + six-feat-auth pair, deliberately
+# started with MISMATCHED APP_SECRET values — see test_app_secret_parity.py.
+# Reuses the session-scoped mock_server/genius_gateway_proc (never actually
+# exercised by these tests) so only two new processes are spun up.
+# ─────────────────────────────────────────────────────────────────────────────
+
+AUTH_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_AUTH_PORT_BADSECRET", "18098"))
+AUTH_MONITOR_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_AUTH_MONITOR_PORT_BADSECRET", "18099"))
+SERVICE_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_PORT_BADSECRET", "18100"))
+MONITOR_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_MONITOR_PORT_BADSECRET", "18101"))
+SERVICE_BASE_BADSECRET = f"http://localhost:{SERVICE_PORT_BADSECRET}"
+
+# Any value that differs from TEST_APP_SECRET — deliberately mismatched.
+TEST_APP_SECRET_WRONG = "e" * 64
+
+
+@pytest.fixture(scope="session")
+def auth_service_proc_badsecret(
+    tmp_db_dir: Path, mock_server: _MockState
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-SEC-01] A second six-feat-auth instance started with a deliberately
+    different APP_SECRET than service_proc_badsecret below — proves
+    AppSecretParityChecker actually detects the mismatch instead of
+    six-feat silently 401-ing every session.
+    """
+    if not AUTH_BINARY.exists():
+        pytest.skip(
+            f"Auth service binary not found at {AUTH_BINARY}. "
+            "Build the project first or set SIX_FEAT_AUTH_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir / "auth_static_config_badsecret.yaml"
+    cfg_path.write_text(
+        _AUTH_TEST_CONFIG_TEMPLATE.format(
+            auth_port=AUTH_PORT_BADSECRET,
+            auth_monitor_port=AUTH_MONITOR_PORT_BADSECRET,
+            mock_port=MOCK_PORT,
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(AUTH_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "APP_SECRET": TEST_APP_SECRET_WRONG,
+            "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(AUTH_PORT_BADSECRET):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Auth (badsecret) service did not start within timeout.\nstderr:\n{stderr}")
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+@pytest.fixture(scope="session")
+def service_proc_badsecret(
+    tmp_db_dir: Path,
+    mock_server: _MockState,
+    genius_gateway_proc: subprocess.Popen,
+    auth_service_proc_badsecret: subprocess.Popen,
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-SEC-01] A six-feat instance using the SAME TEST_APP_SECRET as
+    service_proc, but pointed at auth_service_proc_badsecret (a DIFFERENT
+    APP_SECRET) — its AppSecretParityChecker must observe and report the
+    mismatch via /readyz instead of silently 401-ing sessions.
+    """
+    if not BINARY.exists():
+        pytest.skip(
+            f"Service binary not found at {BINARY}. "
+            "Build the project first or set SIX_FEAT_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir / "static_config_badsecret.yaml"
+    cfg_path.write_text(
+        _TEST_CONFIG_TEMPLATE.format(
+            service_port=SERVICE_PORT_BADSECRET,
+            monitor_port=MONITOR_PORT_BADSECRET,
+            mock_port=MOCK_PORT,
+            genius_gateway_port=GENIUS_GATEWAY_PORT,
+            db_connection_string=DB_CONNECTION_STRING,
+            enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
+            auth_base_url=f"http://127.0.0.1:{AUTH_PORT_BADSECRET}",
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "APP_SECRET": TEST_APP_SECRET,
+            "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(SERVICE_PORT_BADSECRET):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Service (badsecret) did not start within timeout.\nstderr:\n{stderr}")
 
     yield proc
 
@@ -864,6 +1146,7 @@ MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_MONITOR_PORT_BG", "18095"))
 # default profile.
 ENRICHMENT_SERVICE_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_PORT_BG", "18092"))
 ENRICHMENT_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_BG", "18096"))
+ENRICHMENT_BASE_BG = f"http://localhost:{ENRICHMENT_SERVICE_PORT_BG}"
 
 # [IDEA-46] Real six-feat-genius-gateway instance backing the BG profile —
 # both service_proc_bg and enrichment_proc_bg point their GeniusGatewayClient
@@ -873,6 +1156,7 @@ ENRICHMENT_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_POR
 # behaviour.
 GENIUS_GATEWAY_PORT_BG = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_PORT_BG", "18093"))
 GENIUS_GATEWAY_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_MONITOR_PORT_BG", "18097"))
+GENIUS_GATEWAY_BASE_BG = f"http://localhost:{GENIUS_GATEWAY_PORT_BG}"
 
 
 def _make_mock_handler(state: _MockState):
@@ -891,7 +1175,8 @@ def _make_mock_handler(state: _MockState):
             try:
                 parsed = urlparse(self.path)
                 params = parse_qs(parsed.query)
-                status, body = state.dispatch(parsed.path, params)
+                status, body = state.dispatch(
+                    parsed.path, params, self.headers.get("X-Request-Id"))
                 payload = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -980,6 +1265,10 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
+          # [SF-OBS-03] Matches the production static_config.yaml templates'
+          # own logging block (format: json) so a locally-run pytest
+          # session's stderr output looks like what CI/prod actually emits.
+          format: json
 
     testsuite-support:
 
@@ -987,7 +1276,15 @@ components_manager:
       dbconnection: {db_connection_string}
       blocking_task_processor: fs-task-processor
       dns_resolver: async
-      sync-start: true
+      # [SF-INF-03] Parameterized (was hardcoded "true") so
+      # enrichment_proc_baddb below can boot with sync-start: false against
+      # a deliberately unreachable DB (matching production's own
+      # sync-start: false — see services/enrichment/static_config.yaml) to
+      # exercise /readyz's database check actually reporting not_ready,
+      # instead of the whole process failing to start. Every existing
+      # caller (enrichment_proc_bg) still passes "true" explicitly, so this
+      # is purely additive.
+      sync-start: {sync_start}
       connlimit_mode: manual
       min_pool_size: 1
       max_pool_size: 5
@@ -1011,6 +1308,12 @@ components_manager:
       queue-capacity: {queue_capacity}
       drain-timeout-ms: {drain_timeout_ms}
 
+    # [SF-DB-06] Off by default (see PRUNE_TTL_DAYS env var, 0 = off) —
+    # interval-seconds/batch-size only matter once a caller sets that > 0.
+    prune-task:
+      interval-seconds: {prune_interval_seconds}
+      batch-size: {prune_batch_size}
+
     handler-internal-enqueue:
       path: /internal/enqueue
       method: POST
@@ -1021,8 +1324,16 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    handler-internal-healthz:
+    handler-healthz:
       path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    # [SF-INF-03] Unified readiness contract — pings postgres-db-1, see
+    # services/enrichment/internal_handlers.hpp's ReadinessHandler
+    # doc-comment.
+    handler-readyz:
+      path: /readyz
       method: GET
       task_processor: main-task-processor
 
@@ -1117,6 +1428,12 @@ def enrichment_proc_bg(
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=8,
             drain_timeout_ms=5000,
+            sync_start="true",
+            # [SF-DB-06] PRUNE_TTL_DAYS isn't set on this fixture's process
+            # env (see below) — prune-task never starts regardless of these
+            # values, so plain production-like defaults are fine here.
+            prune_interval_seconds=3600,
+            prune_batch_size=500,
         )
     )
 
@@ -1146,12 +1463,190 @@ def enrichment_proc_bg(
         proc.kill()
 
 
+ENRICHMENT_SERVICE_PORT_BADDB = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_PORT_BADDB", "18088")
+)
+ENRICHMENT_MONITOR_PORT_BADDB = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_BADDB", "18089")
+)
+ENRICHMENT_BASE_BADDB = f"http://localhost:{ENRICHMENT_SERVICE_PORT_BADDB}"
+
+# [SF-INF-03] Deliberately unreachable: port 1 is a privileged port no
+# Postgres ever listens on in this test environment, so every connection
+# attempt fails immediately (connection refused) rather than timing out.
+_BAD_DB_CONNECTION_STRING = "postgresql://{user}:{password}@127.0.0.1:1/{dbname}".format(
+    user=DB_CONN_PARAMS["user"],
+    password=DB_CONN_PARAMS["password"],
+    dbname=DB_CONN_PARAMS["dbname"],
+)
+
+
+@pytest.fixture(scope="session")
+def enrichment_proc_baddb(
+    tmp_db_dir_bg: Path,
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-INF-03] Dedicated six-feat-enrichment instance pointed at an
+    unreachable Postgres (see _BAD_DB_CONNECTION_STRING), isolated from
+    enrichment_proc_bg (own port, own process) so it can't affect any other
+    test's DB access. sync-start: false (unlike enrichment_proc_bg's
+    "true") means the process still comes up and starts serving HTTP —
+    matching production's own sync-start: false — instead of
+    components::Run throwing at boot, so GET /readyz can be observed
+    reporting the database check as not_ready/503 instead of the container
+    just failing to start. No genius-gateway dependency needed — this
+    fixture only exercises /readyz, never enrichment's actual enqueue/status
+    endpoints.
+    """
+    if not ENRICHMENT_BINARY.exists():
+        pytest.skip(
+            f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
+            "Build the project first or set SIX_FEAT_ENRICHMENT_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir_bg / "enrichment_baddb_static_config.yaml"
+    cfg_path.write_text(
+        _ENRICHMENT_TEST_CONFIG_TEMPLATE.format(
+            enrichment_port=ENRICHMENT_SERVICE_PORT_BADDB,
+            enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_BADDB,
+            # No real genius-gateway backing this instance — fine, since
+            # nothing in this fixture's tests ever calls a handler that
+            # would need it.
+            genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            db_connection_string=_BAD_DB_CONNECTION_STRING,
+            queue_capacity=8,
+            drain_timeout_ms=5000,
+            sync_start="false",
+            prune_interval_seconds=3600,
+            prune_batch_size=500,
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(ENRICHMENT_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(ENRICHMENT_SERVICE_PORT_BADDB):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(
+            f"bad-DB enrichment service did not start within timeout.\nstderr:\n{stderr}"
+        )
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+ENRICHMENT_SERVICE_PORT_PRUNE = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_PORT_PRUNE", "18102")
+)
+ENRICHMENT_MONITOR_PORT_PRUNE = int(
+    os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_PRUNE", "18103")
+)
+
+
+@pytest.fixture(scope="module")
+def enrichment_proc_prune(
+    tmp_db_dir_bg: Path,
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    [SF-DB-06] Dedicated six-feat-enrichment instance with the prune task
+    actually enabled (PRUNE_TTL_DAYS set on this process's env only — see
+    prune_task.cpp's PruneTtlDaysFromEnv, read once at startup, so toggling
+    it requires a separate process rather than a per-request switch), and a
+    short interval-seconds so tests/test_prune.py doesn't need to wait a
+    full hour for a pass to run. Isolated from enrichment_proc_bg (own
+    port, own process) so this doesn't affect any other test's enrichment
+    behavior. Points at the SAME real Postgres test DB as every other
+    fixture (DB_CONNECTION_STRING) — tests/test_prune.py seeds/inspects
+    rows directly via psycopg2 rather than through the HTTP API, and cleans
+    up its own rows (real deletion is the thing under test, so relying on
+    clean_db_state's TRUNCATE — which isn't even gated on this fixture,
+    only on service_proc/service_proc_bg — would be the wrong tool here).
+    No genius-gateway dependency needed, same reasoning as
+    enrichment_proc_baddb above: nothing in test_prune.py calls a handler
+    that would need one.
+
+    scope="module" (not "session", unlike every other proc fixture here) is
+    deliberate: this is a REAL background process that actively deletes
+    stale rows from the whole shared test Postgres on a 1s tick the moment
+    it starts, for as long as it's alive. Session scope would keep it
+    running for the rest of the entire pytest session after
+    tests/test_prune.py finishes, silently pruning any old-timestamped row
+    ANY later test file happens to leave lying around — module scope tears
+    it down (SIGTERM) as soon as test_prune.py's own tests are done, same
+    as the ordering discipline test_prune.py's own docstrings document for
+    its two test classes.
+    """
+    if not ENRICHMENT_BINARY.exists():
+        pytest.skip(
+            f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
+            "Build the project first or set SIX_FEAT_ENRICHMENT_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir_bg / "enrichment_prune_static_config.yaml"
+    cfg_path.write_text(
+        _ENRICHMENT_TEST_CONFIG_TEMPLATE.format(
+            enrichment_port=ENRICHMENT_SERVICE_PORT_PRUNE,
+            enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_PRUNE,
+            genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            db_connection_string=DB_CONNECTION_STRING,
+            queue_capacity=8,
+            drain_timeout_ms=5000,
+            sync_start="true",
+            prune_interval_seconds=1,
+            prune_batch_size=100,
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(ENRICHMENT_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+            # [SF-DB-06] The one on/off switch — see prune_task.cpp. 1 day
+            # is short enough that any last_fetch_ts a test seeds "in the
+            # past" (even a few minutes back) is comfortably past cutoff.
+            "PRUNE_TTL_DAYS": "1",
+        },
+    )
+
+    if not _wait_for_port(ENRICHMENT_SERVICE_PORT_PRUNE):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(
+            f"prune-profile enrichment service did not start within timeout.\nstderr:\n{stderr}"
+        )
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
 @pytest.fixture(scope="session")
 def service_proc_bg(
     tmp_db_dir_bg: Path,
     mock_server_bg: _MockState,
     genius_gateway_proc_bg: subprocess.Popen,
     enrichment_proc_bg: subprocess.Popen,
+    auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
     """
     Second service binary instance, config'd with:
@@ -1160,6 +1655,9 @@ def service_proc_bg(
       * genius-gateway-client pointed at genius_gateway_proc_bg, which has
         cb-failure-threshold low (3) and backoff-max-attempts > 1 so the
         CircuitBreaker/retry-backoff paths actually execute there.
+      * [SF-SEC-01] auth-base-url pointed at the same session-scoped
+        auth_service_proc as service_proc — this instance is also launched
+        with TEST_APP_SECRET below, so parity holds.
     Skips gracefully (same as service_proc) if the binary isn't built.
     """
     if not BINARY.exists():
@@ -1177,6 +1675,7 @@ def service_proc_bg(
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_SERVICE_PORT_BG}",
+            auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
         )
     )
 

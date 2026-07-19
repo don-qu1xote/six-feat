@@ -1,0 +1,60 @@
+name: Toolchain setup
+description: >-
+  SF-CI-01: composite suffix shared by six-feat CI jobs — the optional
+  apt/node/python setup each job used to duplicate inline. Every input
+  defaults to "off" (skipped step) so a caller only pays for what it asks
+  for; combining inputs reproduces each job's former duplicated prefix
+  exactly. GitHub Actions has no YAML-anchor support, so this composite
+  action is the mechanism for de-duplicating job prefixes instead.
+  NOTE: a local composite action can't checkout the repository as its own
+  bootstrap step — the runner has to already have the repo (and this
+  action.yml) on disk before it can resolve `uses: ./...` at all — so
+  callers must run actions/checkout themselves before calling this action.
+
+inputs:
+  apt-packages:
+    description: >-
+      Space-separated apt packages to install via
+      `apt-get install -y --no-install-recommends`. Empty (default) skips
+      the step entirely.
+    required: false
+    default: ""
+  python-testenv:
+    description: >-
+      If "true", create the /opt/testenv venv and pip install
+      -r requirements-test.txt into it. Default "false" skips the step.
+    required: false
+    default: "false"
+  node-version:
+    description: >-
+      If non-empty, run actions/setup-node with this version. Empty
+      (default) skips the step.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # ── System deps ─────────────────────────────────────────────────────────
+    - name: Install system deps
+      if: inputs.apt-packages != ''
+      shell: bash
+      run: |
+        apt-get update -q
+        apt-get install -y --no-install-recommends ${{ inputs.apt-packages }}
+        rm -rf /var/lib/apt/lists/*
+
+    # ── Node.js toolchain ────────────────────────────────────────────────────
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      if: inputs.node-version != ''
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # ── Python test env ──────────────────────────────────────────────────────
+    - name: Install Python test dependencies
+      if: inputs.python-testenv == 'true'
+      shell: bash
+      run: |
+        python3 -m venv /opt/testenv
+        /opt/testenv/bin/pip install --upgrade pip
+        /opt/testenv/bin/pip install -r requirements-test.txt

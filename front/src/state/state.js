@@ -23,7 +23,10 @@ const COLOR_DEFAULTS = {
   ink:    "#0B0E14"
 };
 
-function readCssVar(name, fallback) {
+// [SF-WEB-47] Exported so dom/transition.js can read --ease-emphasized the
+// same live way COLOR/MOTION read their own tokens, instead of hardcoding
+// the cubic-bezier() string a second time.
+export function readCssVar(name, fallback) {
   if (typeof document === "undefined" || !document.documentElement) return fallback;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value || fallback;
@@ -35,6 +38,132 @@ for (const key of Object.keys(COLOR_DEFAULTS)) {
     get: () => readCssVar(`--${key}`, COLOR_DEFAULTS[key]),
     enumerable: true,
   });
+}
+
+// [SF-WEB-47] MOTION — same live-getter-onto-CSS-variable pattern as COLOR
+// above, for the duration tokens (styles/tokens.css). Every
+// network.fit()/focus()/moveTo()/RAF-flyout duration used to be its own
+// hardcoded number, independently picked in physics.js/render.js/several
+// ui/*.js call sites (220/400/420/500/600/700ms) — the exact same
+// "scattered literal" problem tokens.css's own Motion section already
+// solved for CSS. MOTION reads the CSS custom properties directly rather
+// than duplicating their values as JS constants, so a token edit in one
+// place (tokens.css) moves every consumer, CSS or JS, together — it can
+// never fall out of sync the way two independent numbers could.
+const MOTION_DEFAULTS = {
+  fast:   120, base: 150, med: 200, slow: 280, slower: 320,
+  xslow:  380, flight: 420, camera: 500, xxslow: 600, loop: 800,
+};
+
+function readCssVarMs(name, fallbackMs) {
+  if (typeof document === "undefined" || !document.documentElement) return fallbackMs;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!raw) return fallbackMs;
+  const n = parseFloat(raw);
+  if (Number.isNaN(n)) return fallbackMs;
+  return raw.endsWith("ms") ? n : n * 1000; // tokens.css durations are all "Nms", but tolerate "Ns" too
+}
+
+export const MOTION = {};
+for (const key of Object.keys(MOTION_DEFAULTS)) {
+  Object.defineProperty(MOTION, key, {
+    get: () => readCssVarMs(`--duration-${key}`, MOTION_DEFAULTS[key]),
+    enumerable: true,
+  });
+}
+
+// vis.js's own animation.easingFunction is a fixed keyword string (its
+// internal easing table), not a CSS easing value — it can't read
+// --ease-standard's cubic-bezier() the way MOTION reads --duration-*, so
+// this stays a plain exported constant instead of a live getter. Centralized
+// here (instead of the literal "easeInOutQuad" typed out at every
+// network.fit()/focus()/moveTo() call site) purely to kill the copy-pasted-
+// string flavor of the same "scattered literal" problem.
+export const VIS_EASING = "easeInOutQuad";
+
+// [SF-WEB-47] Single shared prefers-reduced-motion check — previously
+// reimplemented independently in vis-adapter/physics.js and
+// dom/transition.js (two copies of the same matchMedia query). vis.js
+// network animations (fit/focus/moveTo) didn't check it AT ALL before this
+// ticket — see visAnimation() below, which is what actually wires this into
+// every one of those call sites.
+export function prefersReducedMotion() {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// [SF-WEB-53] Масштаб (network.getScale()) не влияет на длительность
+// анимации 1:1 — иначе на очень мелком zoom-out анимация станет неоправданно
+// долгой, а на очень крупном zoom-in — неоправданно короткой. clamp() держит
+// множитель в разумном коридоре: на «крупном плане» (scale выше базового
+// SCALE_BASELINE, т.е. картинка сильнее «кроплена») то же перемещение в
+// координатах графа покрывает больше экранных пикселей за кадр — там дольше
+// длящаяся анимация даёт больше кадров на тот же путь и заметно меньше «рвёт
+// глаз»; на мелком zoom-out то же перемещение — единицы экранных пикселей,
+// и там урезанная длительность незаметна и не тратит время пользователя
+// впустую. SCALE_MIN/MAX ограничивают влияние сверху и снизу, чтобы крайние
+// значения scale (глубокий зум в толпу листьев / общий обзор всего графа) не
+// давали анимацию, ощутимо длиннее ~2x или короче ~0.6x исходной MOTION-
+// длительности.
+const SCALE_BASELINE = 1;
+const SCALE_MIN = 0.35;
+const SCALE_MAX = 3;
+const DURATION_MULT_MIN = 0.6;
+const DURATION_MULT_MAX = 2;
+
+// Читает текущий zoom сети (если она уже смонтирована — State.network может
+// быть ещё null при самом первом рендере, тогда просто используем baseline,
+// т.е. никакого масштабирования длительности).
+function _currentScale() {
+  const net = State.network;
+  if (!net || typeof net.getScale !== "function") return SCALE_BASELINE;
+  const s = net.getScale();
+  return Number.isFinite(s) && s > 0 ? s : SCALE_BASELINE;
+}
+
+// Множитель длительности как функция текущего zoom: линейно по log(scale)
+// (используем log, а не сам scale, потому что зум типично меняется в разы —
+// 0.5x/2x/4x — а не на константу, так что "на сколько кропнута картинка"
+// естественнее мерить в логарифмической шкале), затем зажат в
+// [DURATION_MULT_MIN, DURATION_MULT_MAX].
+function _durationMultiplier() {
+  const scale = clamp(_currentScale(), SCALE_MIN, SCALE_MAX);
+  const t = Math.log(scale / SCALE_BASELINE) / Math.log(SCALE_MAX / SCALE_BASELINE);
+  // t ∈ [-1, 1] относительно baseline; проецируем в [MIN, MAX] вокруг 1.0
+  const mult = t >= 0
+    ? 1 + t * (DURATION_MULT_MAX - 1)
+    : 1 + t * (1 - DURATION_MULT_MIN);
+  return clamp(mult, DURATION_MULT_MIN, DURATION_MULT_MAX);
+}
+
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+// [SF-WEB-53] Тот же множитель длительности, что и внутри visAnimation() —
+// вынесен отдельной экспортируемой функцией для вызовов, которые не
+// проходят через vis.js animation-option (например, RAF-полёт нод в
+// physics.js::runFlyoutAnimation), но должны точно так же удлиняться на
+// крупном плане и укорачиваться на общем обзоре. prefers-reduced-motion
+// сюда не встроен намеренно — у не-vis.js вызывающих кода (RAF-цикл) нет
+// vis.js-эквивалента animation:false ("один кадр"), они сами решают, как
+// коротко считать анимацию неотличимой от мгновенной, поэтому здесь только
+// zoom-множитель, а не полная политика reduced-motion.
+export function scaledDuration(durationMs) {
+  return Math.round(durationMs * _durationMultiplier());
+}
+
+// Builds the {duration, easingFunction} object every network.fit()/
+// focus()/moveTo() call passes as its `animation` option — or `false` (vis.js's
+// own "skip the animation entirely" value) under prefers-reduced-motion, so
+// the camera/view jumps straight to its destination in one frame instead of
+// animating there. `durationMs` is meant to be one of MOTION's own values
+// (e.g. `visAnimation(MOTION.camera)`), not a fresh literal.
+// [SF-WEB-53] Длительность дополнительно масштабируется по текущему zoom
+// сети (см. _durationMultiplier) — «на большом растоянии [сильный zoom-in]
+// малое количество кадров заметнее, чем на маленьком [zoom-out]».
+export function visAnimation(durationMs) {
+  if (prefersReducedMotion()) return false;
+  return { duration: scaledDuration(durationMs), easingFunction: VIS_EASING };
 }
 
 // Все линии сплошные — dashes при большом числе рёбер нечитаемы
@@ -171,7 +300,20 @@ const graphSlice = {
 const interactionSlice = {
   focusedNodeId:  null,
   selectedEdgeId: null,
+  // SF-WEB-15: persistent single-node selection marker, analogous to
+  // selectedEdgeId — set by selectNode()/cleared by clearSelectedNode()
+  // (vis-adapter/highlight.js), independent of the hover-neighborhood
+  // highlight driven by focusedNodeId/highlightNeighborhood.
+  selectedNodeId: null,
   pathHighlight:  null,
+
+  // [SF-WEB-47] Graph-native Compare mode: click two nodes to compare them,
+  // instead of the old pin-to-select mechanic (physics.js's node-position
+  // pin was removed along with it — it only ever existed to gate Compare).
+  // compareModeStartId is the first node picked, or null before any pick /
+  // after a completed pick has fired the panel. See vis-adapter/compare-mode.js.
+  compareMode:        false,
+  compareModeStartId: null,
 
   // Баг "тряска графа подвисает": флаг активного перетаскивания ноды —
   // используется, чтобы на время drag'а глушить hover-подсветку и держать
@@ -195,6 +337,19 @@ const interactionSlice = {
   // Session-only (no localStorage): reset to the prefers-color-scheme
   // read on the next load instead of persisting. See setupThemeToggle.
   theme: "dark",
+
+  // [SF-WEB-25] Which top-level "surface" is active — "graph" (default,
+  // current/only real behavior) or "game" (not built yet; this is just the
+  // routing groundwork for it). Driven by ui/router.js's URL hash
+  // (#/graph, #/game), never set directly outside that module.
+  surface: "graph",
+
+  // [SF-WEB-61] BubbleSets are now a manual, user-controlled toggle — OFF by
+  // default, never auto-shown/hidden by node count (the old
+  // CONTOUR_MAX_TOTAL_MEMBERS LOD threshold from SF-WEB-58/59 is removed;
+  // see bubble-contours.js). Session-only, mirrors theme's "no persistence"
+  // spirit. See ui/canvas-controls.js's toggle button.
+  bubbleSetsEnabled: false,
 };
 
 // netFetch — in-flight graph/path requests, their AbortControllers, pollers.
@@ -265,6 +420,9 @@ bridge("songLimit",      graphSlice);
 
 bridge("focusedNodeId",  interactionSlice);
 bridge("selectedEdgeId", interactionSlice);
+bridge("selectedNodeId", interactionSlice);
+bridge("compareMode",        interactionSlice);
+bridge("compareModeStartId", interactionSlice);
 bridge("pathHighlight",  interactionSlice);
 bridge("_isDragging",    interactionSlice);
 bridge("_clickTimer",    interactionSlice);
@@ -274,6 +432,8 @@ bridge("activeFilters",  interactionSlice);
 bridge("history",        interactionSlice);
 bridge("heroMode",       interactionSlice);
 bridge("theme",          interactionSlice);
+bridge("surface",        interactionSlice);
+bridge("bubbleSetsEnabled", interactionSlice);
 
 bridge("inFlight",             netFetchSlice);
 bridge("pendingExpand",        netFetchSlice);
@@ -350,6 +510,15 @@ export function resetExpansionState() {
   graphSlice.expandedNodes.clear();
   graphSlice.lastExpandedId = null;
   interactionSlice._clickedNodeId = null;
+  // [SF-WEB-47] A fresh (non-expansion) search draws a brand-new graph — a
+  // half-picked Compare-mode start node from the graph being replaced
+  // doesn't carry meaning onto the new one. The rail toggle/markers
+  // themselves are cleared by vis-adapter/compare-mode.js's own
+  // exitCompareMode() at every explicit exit; this is the data-model safety
+  // net for the graph being replaced out from under an in-progress pick
+  // some other way (e.g. a fresh search).
+  interactionSlice.compareMode = false;
+  interactionSlice.compareModeStartId = null;
   netFetchSlice.pendingExpand = null;
   cacheSlice._bfsAdj = null;
   cacheSlice._bfsGraphHash = "";
