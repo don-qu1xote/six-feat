@@ -78,7 +78,7 @@ RUN npm run build
 # stage compiles against) avoids glibc/Boost SONAME mismatches that a switch
 # to e.g. Debian slim would risk, while dropping the ~1GB+ of compilers,
 # headers and build tooling the dev image carries.
-FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982 AS runtime
+FROM ubuntu:26.04@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb AS runtime
 
 # Without this, tzdata's postinst hits an interactive debconf prompt
 # ("Please select the geographic area...") on a fresh apt-get
