@@ -1,8 +1,12 @@
 #include "internal_handlers.hpp"
+#include "game_store.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "http/readiness_common.hpp"
 #include "schemas/handlers/game/readiness_handler_schema.hpp"
+
+#include <string>
+#include <vector>
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
@@ -16,6 +20,7 @@ using namespace userver;
 ReadinessHandler::ReadinessHandler(const components::ComponentConfig&  config,
                                    const components::ComponentContext& context)
     : HttpHandlerBase(config, context)
+    , store_(context.FindComponent<GameStore>())
 {}
 
 std::string ReadinessHandler::HandleRequestThrow(
@@ -25,10 +30,13 @@ std::string ReadinessHandler::HandleRequestThrow(
     EnsureRequestId(request);
     ApplySecurityHeaders(request);
 
-    // See this class's own header comment — no runtime-degradable dependency
-    // exists for this service at the skeleton stage, so checks{} is always
-    // empty and the response is always {"status":"ready","checks":{}}.
-    return BuildReadinessBody(request, {});
+    // [SF-GAME-11] Single runtime-degradable dependency: the game store's
+    // Postgres cluster. Same shape/posture as six-feat's ReadinessHandler.
+    const bool db_ok = store_.Ping();
+    const std::vector<ReadinessCheck> checks{
+        {"database", db_ok, db_ok ? "ok" : "error"},
+    };
+    return BuildReadinessBody(request, checks);
 }
 
 // static

@@ -1,0 +1,8 @@
+type: object
+description: Durable store for the game_* schema (owns game migrations)
+additionalProperties: false
+properties:
+    dbname:
+        type: string
+        description: Name of the components::Postgres component whose cluster backs this store
+        defaultDescription: postgres-db-1

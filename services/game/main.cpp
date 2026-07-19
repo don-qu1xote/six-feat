@@ -1,27 +1,26 @@
 // ════════════════════════════════════════════════════════════════════════════
-// six-feat-game — the fifth userver service (SF-GAME-10). Competitive
-// "connect two artists" game: players build a collaboration chain by hand and
-// are scored against our own BFS ideal. This is the SF-GAME-10 skeleton only —
-// it boots, answers GET /healthz and GET /readyz, and exposes the internal
-// metrics listener. No game logic yet: the game_* store/migrations land in
-// SF-GAME-11, the session-based profile in SF-GAME-12, the challenge/
-// validation/scoring endpoints across sprint 13. The shared Postgres
-// connection is plumbed through docker-entrypoint.sh/docker-compose.yml from
-// this ticket (DSN assembled, dependency declared) so SF-GAME-11 only has to
-// add the store component that reads it.
+// six-feat-game — the fifth userver service. Competitive "connect two artists"
+// game: players build a collaboration chain by hand and are scored against our
+// own BFS ideal. It boots, answers GET /healthz and GET /readyz, and exposes
+// the internal metrics listener. [SF-GAME-11] Now attaches the shared Postgres
+// cluster and the game store that owns the game_* schema/migrations; the
+// session-based profile lands in SF-GAME-12, the challenge/validation/scoring
+// endpoints across sprint 13.
 //
-// Modeled on services/auth/main.cpp and services/genius-gateway/main.cpp:
-// health/readiness/monitor from six_feat_common, no per-service Postgres
-// component yet. Handlers and their wire format are shared code in
-// libs/six-feat-common, not duplicated per service.
+// Modeled on services/six-feat/src/main.cpp for the Postgres+store wiring and
+// services/auth/main.cpp for the health/readiness/monitor from six_feat_common.
+// Handlers and their wire format are shared code in libs/six-feat-common, not
+// duplicated per service.
 // ════════════════════════════════════════════════════════════════════════════
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
 #include <userver/server/handlers/server_monitor.hpp>
+#include <userver/storages/postgres/component.hpp>
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#include "game_store.hpp"
 #include "http/health_handler.hpp"
 #include "internal_handlers.hpp"
 
@@ -38,11 +37,15 @@ int main(int argc, char* argv[]) {
             // not a components-manager change.
             .AppendComponentList(clients::http::ComponentList())
             .Append<components::TestsuiteSupport>()
+            // [SF-GAME-11] Shared Postgres cluster (same postgres-db-1 the
+            // other services use — game_* tables live in the same database)
+            // and the game store that owns the game_* migration registry.
+            .Append<components::Postgres>("postgres-db-1")
+            .Append<six_feat::game::GameStore>()
             .Append<six_feat::HealthHandler>()
-            // [SF-INF-03] Unified readiness contract — see
-            // internal_handlers.hpp's ReadinessHandler doc-comment for why
-            // this service's checks{} is empty at the skeleton stage (the
-            // Postgres ping arrives with the store in SF-GAME-11).
+            // [SF-INF-03] Unified readiness contract — /readyz now pings the
+            // game store's Postgres cluster (see internal_handlers.cpp), the
+            // service's one runtime-degradable dependency since SF-GAME-11.
             .Append<six_feat::game::ReadinessHandler>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never the public
