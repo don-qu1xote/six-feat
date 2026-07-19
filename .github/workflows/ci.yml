@@ -142,7 +142,7 @@ jobs:
       # A local composite action can't check itself out, so this has to stay
       # a separate step ahead of the composite call below (see the NOTE in
       # .github/actions/setup/action.yml).
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -237,7 +237,7 @@ jobs:
       # ── Upload coverage report ───────────────────────────────────────────────
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pytest-coverage-report
           path: coverage.xml
@@ -246,7 +246,7 @@ jobs:
       # ── Upload test results ──────────────────────────────────────────────────
       - name: Upload test results on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pytest-results
           path: |
@@ -276,7 +276,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -304,7 +304,7 @@ jobs:
           echo "clang-tidy finished; see clang-tidy-report.txt for findings."
 
       - name: Upload clang-tidy report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: clang-tidy-report
           path: clang-tidy-report.txt
@@ -323,7 +323,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Install PyYAML
         run: pip install pyyaml
@@ -351,7 +351,7 @@ jobs:
       PROMETHEUS_VERSION: "3.9.1"
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Install promtool
         run: |
@@ -381,7 +381,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -413,7 +413,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: build-and-test
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - uses: ./.github/actions/setup
         with:
@@ -443,7 +443,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -460,7 +460,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: frontend-coverage-report
           path: front/coverage/
@@ -508,7 +508,7 @@ jobs:
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -574,7 +574,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: playwright-report
           path: front/playwright-report/
@@ -624,7 +624,7 @@ jobs:
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       # node-version needed for the front-end build below — scripts/
@@ -738,7 +738,7 @@ jobs:
 
       - name: Upload k6 summary artifact
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: k6-loadtest-ci-summary
           path: loadtest/.output/
@@ -774,13 +774,13 @@ jobs:
       # ── Checkout ────────────────────────────────────────────────────────────
       # No apt/node/python setup needed here, so no composite call — just
       # the checkout that the composite action in other jobs also requires.
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Build image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
         with:
           context: .
           file: ${{ matrix.service.dockerfile }}
@@ -853,13 +853,13 @@ jobs:
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Build image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
         with:
           context: .
           file: ${{ matrix.service.dockerfile }}
@@ -872,7 +872,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
 
       - name: Generate SBOM (syft, SPDX JSON)
-        uses: anchore/sbom-action@8e94d75ddd33f69f691467e42275782e4bfefe84  # v0.20.9
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
         with:
           image: ${{ matrix.service.name }}:sbom
           format: spdx-json
@@ -917,13 +917,13 @@ jobs:
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -935,7 +935,7 @@ jobs:
       # possibly-older tagged release.
       - name: Derive image metadata
         id: meta
-        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804  # v5.7.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.service.name }}
           tags: |
@@ -945,7 +945,7 @@ jobs:
 
       - name: Build and push image
         id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
         with:
           context: .
           file: ${{ matrix.service.dockerfile }}
@@ -958,7 +958,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159  # v3.9.2
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
 
       # Keyless (OIDC) signing: cosign mints a short-lived cert from
       # Sigstore's public Fulcio CA using this job's ambient GitHub Actions

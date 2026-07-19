@@ -5,6 +5,13 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.js", "scripts/**/*.test.js"],
     globals: false,
+    // [deps] vitest 4 tightened restoreMocks: it restores spies but no longer
+    // clears plain vi.fn() call history between tests (vitest 2 did). Several
+    // suites assert call counts on module-level vi.fn() mocks and relied on
+    // that implicit clearing, so make it explicit — clearMocks runs
+    // .mockClear() before every test, isolating call history regardless of
+    // vitest's version-specific restoreMocks semantics.
+    clearMocks: true,
     restoreMocks: true,
     coverage: {
       provider: "v8",
