@@ -30,16 +30,20 @@ include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 six_feat_embed_schema(handlers/game/readiness_handler kGameReadinessHandlerSchema GAME_READINESS_HANDLER_SCHEMA_HEADER)
 # [SF-GAME-11] game-store component config schema (dbname).
 six_feat_embed_schema(components/game_store kGameStoreComponentSchema GAME_STORE_COMPONENT_SCHEMA_HEADER)
+# [SF-GAME-12] profile handler config schema.
+six_feat_embed_schema(handlers/game/profile_handler kGameProfileHandlerSchema GAME_PROFILE_HANDLER_SCHEMA_HEADER)
 
 add_custom_target(six_feat_game_schema_headers DEPENDS
     ${GAME_READINESS_HANDLER_SCHEMA_HEADER}
     ${GAME_STORE_COMPONENT_SCHEMA_HEADER}
+    ${GAME_PROFILE_HANDLER_SCHEMA_HEADER}
 )
 
 add_executable(six_feat_game
     main.cpp
     internal_handlers.cpp
     game_store.cpp
+    profile_handler.cpp
 )
 
 target_link_libraries(six_feat_game

@@ -8,10 +8,15 @@ set -euo pipefail
 # ready exactly like services/enrichment/docker-entrypoint.sh, so SF-GAME-11's
 # store component only has to read the already-plumbed db_connection_string.
 #
-# APP_SECRET (session decryption, SF-GAME-12) and ENRICHMENT_INTERNAL_SECRET
-# (internal-mesh calls, SF-GAME-13) are passed in by docker-compose.yml but not
-# consumed yet — their `: "${VAR:?...}"` guards get added by the ticket that
-# first needs them, exactly as they were for services/auth and enrichment.
+# [SF-GAME-12] APP_SECRET is read directly from the environment by
+# session_crypto::KeyFromEnv() to decrypt the six_feat_session cookie locally
+# (no HTTP to six-feat-auth) — it MUST be the exact same value the rest of the
+# mesh uses, or the game service can't read sessions the other services minted.
+# Fail fast here instead of throwing deep in ProfileHandler's constructor.
+: "${APP_SECRET:?APP_SECRET env var is required for session decryption — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
+
+# ENRICHMENT_INTERNAL_SECRET (internal-mesh calls, SF-GAME-13) is passed in by
+# docker-compose.yml but not consumed yet — its guard gets added by SF-GAME-13.
 
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"

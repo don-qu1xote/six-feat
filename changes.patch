@@ -1,777 +1,657 @@
-diff --git a/postgresql/migrations/game/V1__game_schema.sql b/postgresql/migrations/game/V1__game_schema.sql
+diff --git a/pytest.ini b/pytest.ini
+index 29ec005..cca3635 100644
+--- a/pytest.ini
++++ b/pytest.ini
+@@ -22,6 +22,7 @@ markers =
+     rate_limit_store: tests for the shared/Postgres-backed rate-limit-store backend (SF-SEC-04, two six-feat replicas sharing one budget)
+     artist_endpoint: tests for /api/v1/artist (SF-API-03 artist metadata + fetch_state, L1/L2 only)
+     openapi_endpoint: tests for /api/v1/openapi.json (SF-API-05 static OpenAPI 3.1 document)
++    game_profile: tests for /api/v1/game/profile (SF-GAME-12 player profile over the Genius session; needs the docker-compose stack)
+ 
+ # Output options
+ addopts =
+diff --git a/schemas/handlers/game/profile_handler.yaml b/schemas/handlers/game/profile_handler.yaml
 new file mode 100644
-index 0000000..b167568
+index 0000000..33a6c9c
 --- /dev/null
-+++ b/postgresql/migrations/game/V1__game_schema.sql
-@@ -0,0 +1,69 @@
-+-- Versioned reference copy of kGameMigrationV1 in services/game/game_store.cpp.
-+-- The code (game_migrations) is the source of truth; keep this file in sync
-+-- with it — tests/test_game_migrations.py (SF-DB-05 pattern) enforces parity.
-+--
-+-- [SF-GAME-11] Baseline game_* schema. Lives in the same Postgres database as
-+-- six-feat's own schema, gated by a dedicated game_schema_version table so the
-+-- two migration registries never collide.
-+
-+CREATE TABLE IF NOT EXISTS game_profiles (
-+    user_id      BIGINT PRIMARY KEY,
-+    display_name TEXT,
-+    avatar_url   TEXT,
-+    elo          INTEGER NOT NULL DEFAULT 1200,
-+    games        INTEGER NOT NULL DEFAULT 0,
-+    created_ts   BIGINT NOT NULL
-+);
-+
-+CREATE TABLE IF NOT EXISTS game_seasons (
-+    id        BIGSERIAL PRIMARY KEY,
-+    name      TEXT NOT NULL,
-+    starts_ts BIGINT NOT NULL,
-+    ends_ts   BIGINT NOT NULL
-+);
-+
-+CREATE TABLE IF NOT EXISTS game_challenges (
-+    id             BIGSERIAL PRIMARY KEY,
-+    from_artist_id BIGINT NOT NULL,
-+    to_artist_id   BIGINT NOT NULL,
-+    role_mask      INTEGER NOT NULL DEFAULT 0,
-+    kind           TEXT NOT NULL,
-+    season_id      BIGINT REFERENCES game_seasons(id),
-+    created_by     BIGINT,
-+    optimal_len    INTEGER,
-+    optimal_path   BIGINT[],
-+    created_ts     BIGINT NOT NULL,
-+    UNIQUE (from_artist_id, to_artist_id, role_mask, kind)
-+);
-+
-+-- season_id denormalized onto attempts (also on the challenge) so the season
-+-- leaderboard top-N is a direct (season_id, score DESC) index scan. Set at
-+-- submit time (SF-GAME-17/18); nullable until then.
-+CREATE TABLE IF NOT EXISTS game_attempts (
-+    id           BIGSERIAL PRIMARY KEY,
-+    challenge_id BIGINT NOT NULL REFERENCES game_challenges(id),
-+    user_id      BIGINT NOT NULL,
-+    season_id    BIGINT,
-+    chain        BIGINT[] NOT NULL,
-+    valid        BOOLEAN NOT NULL,
-+    hops         INTEGER NOT NULL,
-+    score        INTEGER NOT NULL,
-+    ts           BIGINT NOT NULL
-+);
-+
-+CREATE TABLE IF NOT EXISTS game_achievements (
-+    code  TEXT PRIMARY KEY,
-+    title TEXT NOT NULL,
-+    descr TEXT
-+);
-+
-+CREATE TABLE IF NOT EXISTS game_user_achievements (
-+    user_id BIGINT NOT NULL,
-+    code    TEXT NOT NULL REFERENCES game_achievements(code),
-+    ts      BIGINT NOT NULL,
-+    PRIMARY KEY (user_id, code)
-+);
-+
-+CREATE INDEX IF NOT EXISTS idx_game_attempts_challenge_score ON game_attempts(challenge_id, score DESC);
-+CREATE INDEX IF NOT EXISTS idx_game_attempts_season_score ON game_attempts(season_id, score DESC);
-+CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts);
-diff --git a/schemas/components/game_store.yaml b/schemas/components/game_store.yaml
-new file mode 100644
-index 0000000..dc73f5e
---- /dev/null
-+++ b/schemas/components/game_store.yaml
-@@ -0,0 +1,8 @@
++++ b/schemas/handlers/game/profile_handler.yaml
+@@ -0,0 +1,4 @@
 +type: object
-+description: Durable store for the game_* schema (owns game migrations)
++description: Game-service player profile handler (GET/PATCH /api/v1/game/profile)
 +additionalProperties: false
-+properties:
-+    dbname:
-+        type: string
-+        description: Name of the components::Postgres component whose cluster backs this store
-+        defaultDescription: postgres-db-1
++properties: {}
 diff --git a/services/game/CMakeLists.txt b/services/game/CMakeLists.txt
-index 2a84797..f8b8ef0 100644
+index f8b8ef0..2dfd89a 100644
 --- a/services/game/CMakeLists.txt
 +++ b/services/game/CMakeLists.txt
-@@ -28,14 +28,18 @@ include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
- # [SF-INF-03] Unified readiness contract — see internal_handlers.hpp's
- # ReadinessHandler doc-comment.
+@@ -30,16 +30,20 @@ include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
  six_feat_embed_schema(handlers/game/readiness_handler kGameReadinessHandlerSchema GAME_READINESS_HANDLER_SCHEMA_HEADER)
-+# [SF-GAME-11] game-store component config schema (dbname).
-+six_feat_embed_schema(components/game_store kGameStoreComponentSchema GAME_STORE_COMPONENT_SCHEMA_HEADER)
+ # [SF-GAME-11] game-store component config schema (dbname).
+ six_feat_embed_schema(components/game_store kGameStoreComponentSchema GAME_STORE_COMPONENT_SCHEMA_HEADER)
++# [SF-GAME-12] profile handler config schema.
++six_feat_embed_schema(handlers/game/profile_handler kGameProfileHandlerSchema GAME_PROFILE_HANDLER_SCHEMA_HEADER)
  
  add_custom_target(six_feat_game_schema_headers DEPENDS
      ${GAME_READINESS_HANDLER_SCHEMA_HEADER}
-+    ${GAME_STORE_COMPONENT_SCHEMA_HEADER}
+     ${GAME_STORE_COMPONENT_SCHEMA_HEADER}
++    ${GAME_PROFILE_HANDLER_SCHEMA_HEADER}
  )
  
  add_executable(six_feat_game
      main.cpp
      internal_handlers.cpp
-+    game_store.cpp
+     game_store.cpp
++    profile_handler.cpp
  )
  
  target_link_libraries(six_feat_game
-diff --git a/services/game/game_store.cpp b/services/game/game_store.cpp
+diff --git a/services/game/docker-entrypoint.sh b/services/game/docker-entrypoint.sh
+index fee3309..1a43822 100644
+--- a/services/game/docker-entrypoint.sh
++++ b/services/game/docker-entrypoint.sh
+@@ -8,10 +8,15 @@ set -euo pipefail
+ # ready exactly like services/enrichment/docker-entrypoint.sh, so SF-GAME-11's
+ # store component only has to read the already-plumbed db_connection_string.
+ #
+-# APP_SECRET (session decryption, SF-GAME-12) and ENRICHMENT_INTERNAL_SECRET
+-# (internal-mesh calls, SF-GAME-13) are passed in by docker-compose.yml but not
+-# consumed yet — their `: "${VAR:?...}"` guards get added by the ticket that
+-# first needs them, exactly as they were for services/auth and enrichment.
++# [SF-GAME-12] APP_SECRET is read directly from the environment by
++# session_crypto::KeyFromEnv() to decrypt the six_feat_session cookie locally
++# (no HTTP to six-feat-auth) — it MUST be the exact same value the rest of the
++# mesh uses, or the game service can't read sessions the other services minted.
++# Fail fast here instead of throwing deep in ProfileHandler's constructor.
++: "${APP_SECRET:?APP_SECRET env var is required for session decryption — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
++
++# ENRICHMENT_INTERNAL_SECRET (internal-mesh calls, SF-GAME-13) is passed in by
++# docker-compose.yml but not consumed yet — its guard gets added by SF-GAME-13.
+ 
+ DB_HOST="${DB_HOST:-postgres}"
+ DB_PORT="${DB_PORT:-5432}"
+diff --git a/services/game/game_session.hpp b/services/game/game_session.hpp
 new file mode 100644
-index 0000000..776b170
+index 0000000..55bb6dd
 --- /dev/null
++++ b/services/game/game_session.hpp
+@@ -0,0 +1,70 @@
++#pragma once
++
++// ════════════════════════════════════════════════════════════════════════════
++// game_session.hpp — [SF-GAME-12] Identify the current player from the Genius
++// OAuth session, entirely locally.
++//
++// Reuses the same primitives six-feat's services/six-feat/src/auth/
++// token_router.hpp uses (session_crypto::Decrypt over the six_feat_session
++// cookie, keyed by the shared APP_SECRET) — NO HTTP call to six-feat-auth to
++// validate a session, exactly like six-feat itself. The one difference: the
++// game service has no Genius OAuth app config (GENIUS_CLIENT_ID/SECRET), so it
++// derives the session key straight from APP_SECRET via
++// session_crypto::KeyFromEnv() instead of going through OAuthConfig.
++//
++// The decrypted SessionData carries only {access_token, name} — there is no
++// numeric Genius id anywhere in the local session (see /auth/me, which returns
++// just {authenticated, name}). game_profiles.user_id is therefore a STABLE
++// 63-bit hash of the Genius username: deterministic (same user → same row) and
++// available without any network round-trip. If the session payload ever starts
++// carrying the real numeric Genius id, StableUserId is the single place to swap.
++//
++// Header-only, no component — same shape as token_router.hpp.
++// ════════════════════════════════════════════════════════════════════════════
++
++#include "auth/session_crypto.hpp"
++
++#include <array>
++#include <cstdint>
++#include <optional>
++#include <string>
++
++#include <userver/server/http/http_request.hpp>
++
++namespace six_feat::game {
++
++struct Player {
++    std::int64_t user_id;
++    std::string  name;  // Genius username (may be empty → "Genius User" default)
++};
++
++// FNV-1a 64-bit over the username, masked to a positive 63-bit BIGINT. Stable
++// and collision-resistant enough for a display-only player key; two distinct
++// usernames colliding just means two players would share a row, astronomically
++// unlikely at this scale and never a correctness/security boundary (the row is
++// gated by the session, not by the id).
++inline std::int64_t StableUserId(std::string_view name) {
++    std::uint64_t h = 1469598103934665603ULL;  // FNV offset basis
++    for (unsigned char c : name) {
++        h ^= c;
++        h *= 1099511628211ULL;                  // FNV prime
++    }
++    return static_cast<std::int64_t>(h & 0x7FFFFFFFFFFFFFFFULL);
++}
++
++// Decrypts six_feat_session locally and resolves the player. nullopt when
++// there's no cookie or it's invalid/expired — the caller returns 401.
++inline std::optional<Player> ResolvePlayer(
++    const userver::server::http::HttpRequest& request,
++    const std::array<unsigned char, 32>&      session_key)
++{
++    const std::string cookie = request.GetCookie("six_feat_session");
++    if (cookie.empty()) return std::nullopt;
++
++    const auto session = auth::Decrypt(cookie, session_key);
++    if (!session) return std::nullopt;
++
++    return Player{StableUserId(session->name), session->name};
++}
++
++} // namespace six_feat::game
+diff --git a/services/game/game_store.cpp b/services/game/game_store.cpp
+index 776b170..7c501f5 100644
+--- a/services/game/game_store.cpp
 +++ b/services/game/game_store.cpp
-@@ -0,0 +1,252 @@
+@@ -2,6 +2,7 @@
+ 
+ #include <algorithm>
+ #include <chrono>
++#include <optional>
+ #include <stdexcept>
+ #include <string>
+ #include <vector>
+@@ -243,6 +244,68 @@ bool GameStore::Ping() const {
+     }
+ }
+ 
++// ════════════════════════════════════════════════════════════════════════════
++// Profile API — [SF-GAME-12]
++// ════════════════════════════════════════════════════════════════════════════
++
++namespace {
++
++// 1-based leaderboard rank by elo descending: how many profiles strictly
++// out-rank this one, plus one. Ties share the higher rank (COUNT of strictly
++// greater elo), which is fine for a display rank.
++int RankFor(const storages::postgres::ClusterPtr& cluster, int elo) {
++    auto res = cluster->Execute(
++        storages::postgres::ClusterHostType::kMaster,
++        "SELECT COUNT(*) FROM game_profiles WHERE elo > $1", elo);
++    return static_cast<int>(res.Front()[0].As<std::int64_t>()) + 1;
++}
++
++Profile ReadProfile(const storages::postgres::ClusterPtr& cluster,
++                    std::int64_t user_id) {
++    auto res = cluster->Execute(
++        storages::postgres::ClusterHostType::kMaster,
++        "SELECT user_id, display_name, avatar_url, elo, games "
++        "FROM game_profiles WHERE user_id = $1", user_id);
++    const auto row = res.Front();  // caller guarantees the row exists
++    Profile p;
++    p.user_id      = row[0].As<std::int64_t>();
++    p.display_name = row[1].As<std::optional<std::string>>().value_or("");
++    p.avatar_url   = row[2].As<std::optional<std::string>>().value_or("");
++    p.elo          = row[3].As<int>();
++    p.games        = row[4].As<int>();
++    p.rank         = RankFor(cluster, p.elo);
++    return p;
++}
++
++} // namespace
++
++Profile GameStore::EnsureAndGetProfile(std::int64_t user_id,
++                                       const std::string& display_name_default,
++                                       const std::string& avatar_url_default) const {
++    const std::int64_t now =
++        std::chrono::duration_cast<std::chrono::seconds>(
++            std::chrono::system_clock::now().time_since_epoch()).count();
++    // First-sight create; existing rows keep their stored values (DO NOTHING).
++    impl_->cluster->Execute(
++        storages::postgres::ClusterHostType::kMaster,
++        "INSERT INTO game_profiles (user_id, display_name, avatar_url, created_ts) "
++        "VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO NOTHING",
++        user_id,
++        display_name_default.empty() ? std::string{"Genius User"} : display_name_default,
++        avatar_url_default.empty() ? std::optional<std::string>{} : std::optional<std::string>{avatar_url_default},
++        now);
++    return ReadProfile(impl_->cluster, user_id);
++}
++
++Profile GameStore::SetDisplayName(std::int64_t user_id,
++                                  const std::string& display_name) const {
++    impl_->cluster->Execute(
++        storages::postgres::ClusterHostType::kMaster,
++        "UPDATE game_profiles SET display_name = $2 WHERE user_id = $1",
++        user_id, display_name);
++    return ReadProfile(impl_->cluster, user_id);
++}
++
+ // static
+ yaml_config::Schema GameStore::GetStaticConfigSchema() {
+     return yaml_config::MergeSchemas<components::ComponentBase>(
+diff --git a/services/game/game_store.hpp b/services/game/game_store.hpp
+index 23d8d38..1284818 100644
+--- a/services/game/game_store.hpp
++++ b/services/game/game_store.hpp
+@@ -20,7 +20,9 @@
+ // reflects live DB reachability via Ping().
+ // ════════════════════════════════════════════════════════════════════════════
+ 
++#include <cstdint>
+ #include <memory>
++#include <string>
+ #include <string_view>
+ 
+ #include <userver/components/component_base.hpp>
+@@ -31,6 +33,17 @@
+ 
+ namespace six_feat::game {
+ 
++// [SF-GAME-12] A player's game profile row (game_profiles) plus their computed
++// leaderboard rank (1-based, by elo descending).
++struct Profile {
++    std::int64_t user_id{0};
++    std::string  display_name;
++    std::string  avatar_url;
++    int          elo{0};
++    int          games{0};
++    int          rank{0};
++};
++
+ class GameStore final : public userver::components::ComponentBase {
+ public:
+     static constexpr std::string_view kName = "game-store";
+@@ -51,6 +64,22 @@ public:
+     // (see internal_handlers.cpp).
+     bool Ping() const;
+ 
++    // [SF-GAME-12] Profile API. Throw storages::postgres::Error on a DB
++    // failure (the handler maps that to 5xx); never on "row absent".
++
++    // Creates the profile on first sight (INSERT ... ON CONFLICT DO NOTHING,
++    // defaults from game_migrations: elo=1200, games=0), then returns it with
++    // its current leaderboard rank filled in. The *_default args are used only
++    // when the row is created — an existing row keeps its stored values.
++    Profile EnsureAndGetProfile(std::int64_t user_id,
++                                const std::string& display_name_default,
++                                const std::string& avatar_url_default) const;
++
++    // Updates an existing profile's display name and returns the refreshed
++    // Profile (with rank). The caller ensures the row exists first
++    // (EnsureAndGetProfile) — this is a plain UPDATE ... RETURNING.
++    Profile SetDisplayName(std::int64_t user_id, const std::string& display_name) const;
++
+     static userver::yaml_config::Schema GetStaticConfigSchema();
+ 
+ private:
+diff --git a/services/game/main.cpp b/services/game/main.cpp
+index 4550d78..6291e31 100644
+--- a/services/game/main.cpp
++++ b/services/game/main.cpp
+@@ -23,6 +23,7 @@
+ #include "game_store.hpp"
+ #include "http/health_handler.hpp"
+ #include "internal_handlers.hpp"
++#include "profile_handler.hpp"
+ 
+ using namespace userver;
+ 
+@@ -47,6 +48,9 @@ int main(int argc, char* argv[]) {
+             // game store's Postgres cluster (see internal_handlers.cpp), the
+             // service's one runtime-degradable dependency since SF-GAME-11.
+             .Append<six_feat::game::ReadinessHandler>()
++            // [SF-GAME-12] GET/PATCH /api/v1/game/profile — player profile
++            // over the Genius session (decrypted locally, no HTTP to auth).
++            .Append<six_feat::game::ProfileHandler>()
+             // [IDEA-27 pattern] Internal metrics endpoint — bound to
+             // listener-monitor (see static_config.yaml), never the public
+             // listener.
+diff --git a/services/game/profile_handler.cpp b/services/game/profile_handler.cpp
+new file mode 100644
+index 0000000..4329e86
+--- /dev/null
++++ b/services/game/profile_handler.cpp
+@@ -0,0 +1,144 @@
++#include "profile_handler.hpp"
++
++#include "game_session.hpp"
 +#include "game_store.hpp"
++#include "auth/session_crypto.hpp"
++#include "core/error_response.hpp"
++#include "core/request_id.hpp"
++#include "core/security_headers.hpp"
++#include "schemas/handlers/game/profile_handler_schema.hpp"
 +
 +#include <algorithm>
-+#include <chrono>
-+#include <stdexcept>
++#include <array>
++#include <cctype>
++#include <optional>
 +#include <string>
-+#include <vector>
 +
 +#include <userver/components/component_config.hpp>
 +#include <userver/components/component_context.hpp>
-+#include <userver/engine/sleep.hpp>
-+#include <userver/logging/log.hpp>
-+#include <userver/storages/postgres/cluster.hpp>
-+#include <userver/storages/postgres/component.hpp>
-+#include <userver/utils/async.hpp>
++#include <userver/formats/json/serialize.hpp>
++#include <userver/formats/json/value_builder.hpp>
++#include <userver/http/content_type.hpp>
++#include <userver/server/http/http_method.hpp>
++#include <userver/server/http/http_request.hpp>
++#include <userver/server/http/http_status.hpp>
 +#include <userver/yaml_config/merge_schemas.hpp>
-+
-+#include "schemas/components/game_store_schema.hpp"
 +
 +namespace six_feat::game {
 +
 +using namespace userver;
 +
-+// ════════════════════════════════════════════════════════════════════════════
-+// Schema migrations — [SF-GAME-11]
-+//
-+// Same shape as libs/six-feat-common/src/storage/persistent_store.cpp's
-+// kMigrations: forward-only DDL blocks, one statement per array element (the
-+// extended query protocol rejects multiple commands per prepared statement),
-+// applied in order inside a single transaction from the DB's current version
-+// up to kGameTargetSchemaVersion. Version state lives in a DEDICATED
-+// `game_schema_version` table so it never collides with six-feat's own
-+// `schema_version` in the same database. Registering a migration is just
-+// appending to game_migrations.
-+//
-+// Kept in sync with postgresql/migrations/game/V*.sql — the code here is the
-+// source of truth; tests/test_game_migrations.py (SF-DB-05 pattern) fails the
-+// build if the two ever drift.
-+// ════════════════════════════════════════════════════════════════════════════
-+
 +namespace {
 +
-+struct Migration {
-+    int                      version;
-+    std::vector<const char*> statements;
-+};
++constexpr std::size_t kMaxDisplayName = 32;
 +
-+// v1: baseline game schema. Tables are created in FK dependency order
-+// (seasons before challenges, challenges before attempts, achievements before
-+// user_achievements). All CREATE ... IF NOT EXISTS, so re-running is a no-op.
-+const std::vector<const char*> kGameMigrationV1 = {
-+    R"SQL(CREATE TABLE IF NOT EXISTS game_profiles (
-+        user_id      BIGINT PRIMARY KEY,
-+        display_name TEXT,
-+        avatar_url   TEXT,
-+        elo          INTEGER NOT NULL DEFAULT 1200,
-+        games        INTEGER NOT NULL DEFAULT 0,
-+        created_ts   BIGINT NOT NULL
-+    ))SQL",
-+    R"SQL(CREATE TABLE IF NOT EXISTS game_seasons (
-+        id        BIGSERIAL PRIMARY KEY,
-+        name      TEXT NOT NULL,
-+        starts_ts BIGINT NOT NULL,
-+        ends_ts   BIGINT NOT NULL
-+    ))SQL",
-+    R"SQL(CREATE TABLE IF NOT EXISTS game_challenges (
-+        id             BIGSERIAL PRIMARY KEY,
-+        from_artist_id BIGINT NOT NULL,
-+        to_artist_id   BIGINT NOT NULL,
-+        role_mask      INTEGER NOT NULL DEFAULT 0,
-+        kind           TEXT NOT NULL,
-+        season_id      BIGINT REFERENCES game_seasons(id),
-+        created_by     BIGINT,
-+        optimal_len    INTEGER,
-+        optimal_path   BIGINT[],
-+        created_ts     BIGINT NOT NULL,
-+        UNIQUE (from_artist_id, to_artist_id, role_mask, kind)
-+    ))SQL",
-+    // [SF-GAME-11] season_id is denormalized onto attempts (in addition to
-+    // living on the challenge) so the season leaderboard top-N is a direct
-+    // (season_id, score DESC) index scan on this table — the ticket's third
-+    // requested index. Set at submit time (SF-GAME-17/18); nullable until then.
-+    R"SQL(CREATE TABLE IF NOT EXISTS game_attempts (
-+        id           BIGSERIAL PRIMARY KEY,
-+        challenge_id BIGINT NOT NULL REFERENCES game_challenges(id),
-+        user_id      BIGINT NOT NULL,
-+        season_id    BIGINT,
-+        chain        BIGINT[] NOT NULL,
-+        valid        BOOLEAN NOT NULL,
-+        hops         INTEGER NOT NULL,
-+        score        INTEGER NOT NULL,
-+        ts           BIGINT NOT NULL
-+    ))SQL",
-+    R"SQL(CREATE TABLE IF NOT EXISTS game_achievements (
-+        code  TEXT PRIMARY KEY,
-+        title TEXT NOT NULL,
-+        descr TEXT
-+    ))SQL",
-+    R"SQL(CREATE TABLE IF NOT EXISTS game_user_achievements (
-+        user_id BIGINT NOT NULL,
-+        code    TEXT NOT NULL REFERENCES game_achievements(code),
-+        ts      BIGINT NOT NULL,
-+        PRIMARY KEY (user_id, code)
-+    ))SQL",
-+    // Top-N leaderboard indexes (per-challenge, per-season, per-user history).
-+    "CREATE INDEX IF NOT EXISTS idx_game_attempts_challenge_score ON game_attempts(challenge_id, score DESC)",
-+    "CREATE INDEX IF NOT EXISTS idx_game_attempts_season_score ON game_attempts(season_id, score DESC)",
-+    "CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts)",
-+};
++// [SF-GAME-12] display_name validation: length + a light-touch censor. Returns
++// the normalized name on success, or an error message on rejection. A starter
++// blocklist (substring, case-insensitive) — the point is that the seam exists,
++// not that it's exhaustive; a real deployment swaps in a maintained list.
++const char* const kBlocked[] = {"nigger", "faggot", "retard"};
 +
-+// Ordered by version; add new entries here as the game schema evolves.
-+const std::vector<Migration> game_migrations = {
-+    {1, kGameMigrationV1},
-+};
++std::optional<std::string> ValidateDisplayName(const std::string& raw,
++                                               std::string& error) {
++    // Trim surrounding whitespace.
++    std::size_t b = raw.find_first_not_of(" \t\r\n");
++    std::size_t e = raw.find_last_not_of(" \t\r\n");
++    if (b == std::string::npos) { error = "display_name must not be blank"; return std::nullopt; }
++    std::string name = raw.substr(b, e - b + 1);
 +
-+constexpr int kGameTargetSchemaVersion = 1;
-+
-+// Applies pending migrations sequentially inside one transaction, from the
-+// DB's current game_schema_version up to kGameTargetSchemaVersion. An
-+// EXCLUSIVE lock on game_schema_version serializes racing instances (the
-+// second one blocks, then observes the bumped version and no-ops). Idempotent.
-+void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
-+    cluster->Execute(storages::postgres::ClusterHostType::kMaster,
-+                     "CREATE TABLE IF NOT EXISTS game_schema_version ("
-+                     "  version SMALLINT PRIMARY KEY"
-+                     ")");
-+
-+    auto trx = cluster->Begin(storages::postgres::ClusterHostType::kMaster,
-+                              storages::postgres::TransactionOptions{});
-+    trx.Execute("LOCK TABLE game_schema_version IN EXCLUSIVE MODE");
-+
-+    auto version_result =
-+        trx.Execute("SELECT COALESCE(MAX(version), 0) FROM game_schema_version");
-+    const int current = version_result.Front()[0].As<std::int16_t>();
-+
-+    if (current > kGameTargetSchemaVersion) {
-+        throw std::runtime_error(
-+            "GameStore: DB game schema version " + std::to_string(current) +
-+            " is newer than the version this binary supports (" +
-+            std::to_string(kGameTargetSchemaVersion) + ")");
++    if (name.size() > kMaxDisplayName) {
++        error = "display_name must be at most 32 characters";
++        return std::nullopt;
 +    }
-+
-+    for (const auto& m : game_migrations) {
-+        if (m.version <= current) continue;
-+        for (const char* stmt : m.statements) {
-+            trx.Execute(stmt);
++    for (unsigned char c : name) {
++        if (std::iscntrl(c)) { error = "display_name contains control characters"; return std::nullopt; }
++    }
++    std::string lower = name;
++    std::transform(lower.begin(), lower.end(), lower.begin(),
++                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++    for (const char* bad : kBlocked) {
++        if (lower.find(bad) != std::string::npos) {
++            error = "display_name is not allowed";
++            return std::nullopt;
 +        }
-+        trx.Execute("INSERT INTO game_schema_version(version) VALUES($1)",
-+                    m.version);
 +    }
-+    trx.Commit();
++    return name;
 +}
 +
-+// Same background-retry posture as PersistentStore (postgres-db-1 has
-+// sync-start: false): absorb transient "pool not ready yet" failures during a
-+// startup race; a genuinely unreachable Postgres just leaves the schema
-+// unmigrated (logged, not fatal) until it recovers.
-+constexpr int kMigrationMaxAttempts = 10;
-+constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
-+constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
-+
-+void RunGameMigrationsWithRetry(const storages::postgres::ClusterPtr& cluster) {
-+    for (int attempt = 1;; ++attempt) {
-+        try {
-+            RunGameMigrations(cluster);
-+            return;
-+        } catch (const std::exception& ex) {
-+            if (attempt >= kMigrationMaxAttempts) {
-+                LOG_ERROR() << "[GameStore] schema migration failed after "
-+                            << attempt << " attempts, giving up: " << ex.what();
-+                throw;
-+            }
-+            const auto delay = std::min(
-+                kMigrationBackoffCap,
-+                kMigrationBackoffBase * (1 << (attempt - 1)));
-+            LOG_WARNING() << "[GameStore] schema migration attempt " << attempt
-+                          << " failed (" << ex.what() << "), retrying in "
-+                          << delay.count() << "ms — likely Postgres's "
-+                          << "connection pool is still starting up";
-+            engine::SleepFor(delay);
-+        }
-+    }
++std::string ProfileJson(const Profile& p) {
++    formats::json::ValueBuilder b(formats::json::Type::kObject);
++    b["user_id"]      = p.user_id;
++    b["display_name"] = p.display_name;
++    b["avatar_url"]   = p.avatar_url;
++    b["elo"]          = p.elo;
++    b["games"]        = p.games;
++    b["rank"]         = p.rank;
++    return formats::json::ToString(b.ExtractValue());
 +}
 +
 +} // namespace
 +
-+// ════════════════════════════════════════════════════════════════════════════
-+// Component
-+// ════════════════════════════════════════════════════════════════════════════
++ProfileHandler::ProfileHandler(const components::ComponentConfig&  config,
++                               const components::ComponentContext& context)
++    : HttpHandlerBase(config, context)
++    , store_(context.FindComponent<GameStore>())
++    // Session key derived straight from APP_SECRET (KeyFromEnv) — the game
++    // service has no Genius OAuth app config, and decryption is local, so it
++    // never needs OAuthConfig. Computed once; APP_SECRET is fixed per process.
++    , session_key_(auth::KeyFromEnv())
++{}
 +
-+struct GameStore::Impl {
-+    storages::postgres::ClusterPtr cluster;
-+
-+    // One unretried attempt up front (fast path: Postgres already reachable →
-+    // schema ready before the constructor returns). RunGameMigrations is
-+    // idempotent, so OnAllComponentsLoaded's background retry is a cheap
-+    // re-check when this already succeeded.
-+    explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
-+        try {
-+            RunGameMigrations(cluster);
-+        } catch (const std::exception& ex) {
-+            LOG_WARNING() << "[GameStore] initial schema migration attempt "
-+                          << "failed (" << ex.what() << "), deferring to the "
-+                          << "background retry";
-+        }
-+    }
-+};
-+
-+GameStore::GameStore(const components::ComponentConfig&  config,
-+                     const components::ComponentContext& context)
-+    : ComponentBase(config, context)
-+    , main_tp_(context.GetTaskProcessor("main-task-processor"))
++std::string ProfileHandler::HandleRequestThrow(
++    const server::http::HttpRequest&  request,
++    server::request::RequestContext& /*context*/) const
 +{
-+    const std::string dbname = config["dbname"].As<std::string>("postgres-db-1");
-+    auto cluster = context.FindComponent<components::Postgres>(dbname).GetCluster();
-+    impl_ = std::make_unique<Impl>(std::move(cluster));
-+    LOG_INFO() << "[GameStore] Postgres cluster attached: " << dbname;
-+}
++    EnsureRequestId(request);
++    ApplySecurityHeaders(request);
 +
-+GameStore::~GameStore() = default;
++    auto& response = request.GetHttpResponse();
 +
-+void GameStore::OnAllComponentsLoaded() {
-+    migration_task_ = utils::Async(main_tp_, "game-store-migrate", [this] {
-+        try {
-+            RunGameMigrationsWithRetry(impl_->cluster);
-+            LOG_INFO() << "[GameStore] schema migrations complete";
-+        } catch (const std::exception& ex) {
-+            LOG_ERROR() << "[GameStore] giving up on schema migrations, "
-+                        << "continuing to serve with an unmigrated/stale "
-+                        << "schema until Postgres recovers: " << ex.what();
-+        }
-+    });
-+}
-+
-+bool GameStore::Ping() const {
-+    try {
-+        auto res = impl_->cluster->Execute(
-+            storages::postgres::ClusterHostType::kMaster, "SELECT 1");
-+        return !res.IsEmpty();
-+    } catch (const std::exception& e) {
-+        LOG_ERROR() << "[GameStore] Ping failed: " << e.what();
-+        return false;
++    const auto player = ResolvePlayer(request, session_key_);
++    if (!player) {
++        response.SetStatus(server::http::HttpStatus::kUnauthorized);
++        return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized,
++                                "not authenticated");
 +    }
++
++    response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
++
++    // GET — own profile (created on first sight).
++    if (request.GetMethod() == server::http::HttpMethod::kGet) {
++        return ProfileJson(store_.EnsureAndGetProfile(player->user_id, player->name, ""));
++    }
++
++    // PATCH — change display_name.
++    std::string parse_error;
++    std::string requested;
++    try {
++        const auto body = formats::json::FromString(request.RequestBody());
++        requested = body["display_name"].As<std::string>("");
++    } catch (const std::exception&) {
++        response.SetStatus(server::http::HttpStatus::kBadRequest);
++        return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
++                                "body must be JSON with a display_name field");
++    }
++
++    std::string error;
++    const auto valid = ValidateDisplayName(requested, error);
++    if (!valid) {
++        response.SetStatus(server::http::HttpStatus::kBadRequest);
++        return BuildProblemJson(request, server::http::HttpStatus::kBadRequest, error);
++    }
++
++    // Ensure the row exists (first PATCH before any GET), then update it.
++    store_.EnsureAndGetProfile(player->user_id, player->name, "");
++    return ProfileJson(store_.SetDisplayName(player->user_id, *valid));
 +}
 +
 +// static
-+yaml_config::Schema GameStore::GetStaticConfigSchema() {
-+    return yaml_config::MergeSchemas<components::ComponentBase>(
-+        kGameStoreComponentSchema);
++yaml_config::Schema ProfileHandler::GetStaticConfigSchema() {
++    return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
++        kGameProfileHandlerSchema);
 +}
 +
 +} // namespace six_feat::game
-diff --git a/services/game/game_store.hpp b/services/game/game_store.hpp
+diff --git a/services/game/profile_handler.hpp b/services/game/profile_handler.hpp
 new file mode 100644
-index 0000000..23d8d38
+index 0000000..0a6423d
 --- /dev/null
-+++ b/services/game/game_store.hpp
-@@ -0,0 +1,66 @@
++++ b/services/game/profile_handler.hpp
+@@ -0,0 +1,48 @@
 +#pragma once
 +
 +// ════════════════════════════════════════════════════════════════════════════
-+// game_store.hpp — [SF-GAME-11] Durable store for the game_* schema.
++// profile_handler.hpp — [SF-GAME-12] GET/PATCH /api/v1/game/profile.
 +//
-+// The game service's own persistence component, modeled on
-+// libs/six-feat-common/src/storage/persistent_store.{hpp,cpp}: it attaches to
-+// the shared Postgres cluster (the same postgres-db-1 component six-feat/
-+// enrichment use — game_* tables live alongside the existing schema in the
-+// same database) and owns its OWN forward-only migration registry
-+// (game_migrations, see game_store.cpp), gated by a DEDICATED
-+// `game_schema_version` table so it never collides with six-feat's own
-+// `schema_version` in that same database.
++// One handler serving both methods (static_config `method: GET, PATCH`,
++// branched on request.GetMethod()):
++//   GET   — the caller's own profile {user_id, display_name, elo, games, rank};
++//           the row is created on first sight (EnsureAndGetProfile).
++//   PATCH — change display_name (length + censorship validation); persists and
++//           returns the refreshed profile.
 +//
-+// SF-GAME-11 scope is schema + migrations + a readiness ping only — the
-+// query API (profiles, challenges, attempts, leaderboards) lands with the
-+// tickets that need it (SF-GAME-12 onward). Migrations run in the background
-+// (OnAllComponentsLoaded), same as PersistentStore, so an unreachable
-+// Postgres at boot never blocks the HTTP listener from starting; /readyz
-+// reflects live DB reachability via Ping().
++// Auth: the six_feat_session cookie is decrypted locally (game_session.hpp) —
++// no HTTP to six-feat-auth. Anonymous (no/invalid cookie) → 401 in the unified
++// RFC 7807 envelope (core/error_response.hpp, SF-API-11). Invalid display_name
++// → 400 in the same envelope.
 +// ════════════════════════════════════════════════════════════════════════════
 +
-+#include <memory>
++#include <array>
 +#include <string_view>
 +
-+#include <userver/components/component_base.hpp>
 +#include <userver/components/component_fwd.hpp>
-+#include <userver/engine/task/task_processor_fwd.hpp>
-+#include <userver/engine/task/task_with_result.hpp>
++#include <userver/server/handlers/http_handler_base.hpp>
 +#include <userver/yaml_config/schema.hpp>
 +
 +namespace six_feat::game {
 +
-+class GameStore final : public userver::components::ComponentBase {
++class GameStore;
++
++class ProfileHandler final : public userver::server::handlers::HttpHandlerBase {
 +public:
-+    static constexpr std::string_view kName = "game-store";
++    static constexpr std::string_view kName = "handler-game-profile";
 +
-+    GameStore(const userver::components::ComponentConfig&  config,
-+              const userver::components::ComponentContext& context);
++    ProfileHandler(const userver::components::ComponentConfig&  config,
++                   const userver::components::ComponentContext& context);
 +
-+    ~GameStore() override;
-+
-+    // Migrations run here (detached on main-task-processor), not in the
-+    // constructor — same rationale as PersistentStore::OnAllComponentsLoaded:
-+    // a slow/unreachable Postgres must not block component startup / the HTTP
-+    // listener. See game_store.cpp.
-+    void OnAllComponentsLoaded() override;
-+
-+    // Readiness probe: "SELECT 1" against the cluster. Returns false (never
-+    // throws) if the DB is unreachable — drives /readyz's "database" check
-+    // (see internal_handlers.cpp).
-+    bool Ping() const;
++    std::string HandleRequestThrow(
++        const userver::server::http::HttpRequest&  request,
++        userver::server::request::RequestContext&  context) const override;
 +
 +    static userver::yaml_config::Schema GetStaticConfigSchema();
 +
 +private:
-+    struct Impl;
-+    userver::engine::TaskProcessor&        main_tp_;
-+    std::unique_ptr<Impl>                  impl_;
-+    // Declared after impl_ so its destructor (reverse declaration order) runs
-+    // FIRST — cancels/joins the background migration task before impl_'s
-+    // cluster is torn down. Same pattern PersistentStore uses.
-+    userver::engine::TaskWithResult<void>  migration_task_;
++    const GameStore&               store_;
++    std::array<unsigned char, 32>  session_key_;
 +};
 +
 +} // namespace six_feat::game
-diff --git a/services/game/internal_handlers.cpp b/services/game/internal_handlers.cpp
-index f4d3a22..48dc57f 100644
---- a/services/game/internal_handlers.cpp
-+++ b/services/game/internal_handlers.cpp
-@@ -1,9 +1,13 @@
- #include "internal_handlers.hpp"
-+#include "game_store.hpp"
- #include "core/request_id.hpp"
- #include "core/security_headers.hpp"
- #include "http/readiness_common.hpp"
- #include "schemas/handlers/game/readiness_handler_schema.hpp"
- 
-+#include <string>
-+#include <vector>
-+
- #include <userver/components/component_config.hpp>
- #include <userver/components/component_context.hpp>
- #include <userver/server/http/http_request.hpp>
-@@ -16,6 +20,7 @@ using namespace userver;
- ReadinessHandler::ReadinessHandler(const components::ComponentConfig&  config,
-                                    const components::ComponentContext& context)
-     : HttpHandlerBase(config, context)
-+    , store_(context.FindComponent<GameStore>())
- {}
- 
- std::string ReadinessHandler::HandleRequestThrow(
-@@ -25,10 +30,13 @@ std::string ReadinessHandler::HandleRequestThrow(
-     EnsureRequestId(request);
-     ApplySecurityHeaders(request);
- 
--    // See this class's own header comment — no runtime-degradable dependency
--    // exists for this service at the skeleton stage, so checks{} is always
--    // empty and the response is always {"status":"ready","checks":{}}.
--    return BuildReadinessBody(request, {});
-+    // [SF-GAME-11] Single runtime-degradable dependency: the game store's
-+    // Postgres cluster. Same shape/posture as six-feat's ReadinessHandler.
-+    const bool db_ok = store_.Ping();
-+    const std::vector<ReadinessCheck> checks{
-+        {"database", db_ok, db_ok ? "ok" : "error"},
-+    };
-+    return BuildReadinessBody(request, checks);
- }
- 
- // static
-diff --git a/services/game/internal_handlers.hpp b/services/game/internal_handlers.hpp
-index 0ecc443..ea7ebec 100644
---- a/services/game/internal_handlers.hpp
-+++ b/services/game/internal_handlers.hpp
-@@ -14,15 +14,16 @@
- 
- namespace six_feat::game {
- 
-+class GameStore;
-+
- // GET /readyz — unauthenticated readiness probe. [SF-INF-03] Unified body
- // shape (six_feat::ReadinessCheck/BuildReadinessBody, see
--// libs/six-feat-common/src/http/readiness_common.hpp). At the SF-GAME-10
--// skeleton stage this service has no Postgres component and no internal-
--// service dependency of its own to poll, so checks{} is empty and it always
--// reports ready — an honest reflection of "there is nothing here that
--// degrades yet", not a stub left unfinished. SF-GAME-11 adds the game_*
--// store; when it does, its Postgres ping belongs in checks{} here (same as
--// six-feat's own PersistentStore readiness check).
-+// libs/six-feat-common/src/http/readiness_common.hpp). [SF-GAME-11] With the
-+// game store landed, this service now has one runtime-degradable dependency —
-+// its Postgres cluster — so checks{} carries a single "database" check
-+// (GameStore::Ping), exactly like six-feat's own ReadinessHandler. Reports
-+// 503 not_ready while Postgres is unreachable (e.g. still starting up), which
-+// correctly keeps the container out of nginx's rotation until the DB is up.
- class ReadinessHandler final : public userver::server::handlers::HttpHandlerBase {
- public:
-     static constexpr std::string_view kName = "handler-readyz";
-@@ -35,6 +36,9 @@ public:
-         userver::server::request::RequestContext&  context) const override;
- 
-     static userver::yaml_config::Schema GetStaticConfigSchema();
-+
-+private:
-+    const GameStore& store_;
- };
- 
- } // namespace six_feat::game
-diff --git a/services/game/main.cpp b/services/game/main.cpp
-index e2dc1ca..4550d78 100644
---- a/services/game/main.cpp
-+++ b/services/game/main.cpp
-@@ -1,27 +1,26 @@
- // ════════════════════════════════════════════════════════════════════════════
--// six-feat-game — the fifth userver service (SF-GAME-10). Competitive
--// "connect two artists" game: players build a collaboration chain by hand and
--// are scored against our own BFS ideal. This is the SF-GAME-10 skeleton only —
--// it boots, answers GET /healthz and GET /readyz, and exposes the internal
--// metrics listener. No game logic yet: the game_* store/migrations land in
--// SF-GAME-11, the session-based profile in SF-GAME-12, the challenge/
--// validation/scoring endpoints across sprint 13. The shared Postgres
--// connection is plumbed through docker-entrypoint.sh/docker-compose.yml from
--// this ticket (DSN assembled, dependency declared) so SF-GAME-11 only has to
--// add the store component that reads it.
-+// six-feat-game — the fifth userver service. Competitive "connect two artists"
-+// game: players build a collaboration chain by hand and are scored against our
-+// own BFS ideal. It boots, answers GET /healthz and GET /readyz, and exposes
-+// the internal metrics listener. [SF-GAME-11] Now attaches the shared Postgres
-+// cluster and the game store that owns the game_* schema/migrations; the
-+// session-based profile lands in SF-GAME-12, the challenge/validation/scoring
-+// endpoints across sprint 13.
- //
--// Modeled on services/auth/main.cpp and services/genius-gateway/main.cpp:
--// health/readiness/monitor from six_feat_common, no per-service Postgres
--// component yet. Handlers and their wire format are shared code in
--// libs/six-feat-common, not duplicated per service.
-+// Modeled on services/six-feat/src/main.cpp for the Postgres+store wiring and
-+// services/auth/main.cpp for the health/readiness/monitor from six_feat_common.
-+// Handlers and their wire format are shared code in libs/six-feat-common, not
-+// duplicated per service.
- // ════════════════════════════════════════════════════════════════════════════
- #include <userver/clients/dns/component.hpp>
- #include <userver/clients/http/component_list.hpp>
- #include <userver/components/minimal_server_component_list.hpp>
- #include <userver/server/handlers/server_monitor.hpp>
-+#include <userver/storages/postgres/component.hpp>
- #include <userver/testsuite/testsuite_support.hpp>
- #include <userver/utils/daemon_run.hpp>
- 
-+#include "game_store.hpp"
- #include "http/health_handler.hpp"
- #include "internal_handlers.hpp"
- 
-@@ -38,11 +37,15 @@ int main(int argc, char* argv[]) {
-             // not a components-manager change.
-             .AppendComponentList(clients::http::ComponentList())
-             .Append<components::TestsuiteSupport>()
-+            // [SF-GAME-11] Shared Postgres cluster (same postgres-db-1 the
-+            // other services use — game_* tables live in the same database)
-+            // and the game store that owns the game_* migration registry.
-+            .Append<components::Postgres>("postgres-db-1")
-+            .Append<six_feat::game::GameStore>()
-             .Append<six_feat::HealthHandler>()
--            // [SF-INF-03] Unified readiness contract — see
--            // internal_handlers.hpp's ReadinessHandler doc-comment for why
--            // this service's checks{} is empty at the skeleton stage (the
--            // Postgres ping arrives with the store in SF-GAME-11).
-+            // [SF-INF-03] Unified readiness contract — /readyz now pings the
-+            // game store's Postgres cluster (see internal_handlers.cpp), the
-+            // service's one runtime-degradable dependency since SF-GAME-11.
-             .Append<six_feat::game::ReadinessHandler>()
-             // [IDEA-27 pattern] Internal metrics endpoint — bound to
-             // listener-monitor (see static_config.yaml), never the public
 diff --git a/services/game/static_config.yaml b/services/game/static_config.yaml
-index 7064f99..2063add 100644
+index 2063add..b5d8942 100644
 --- a/services/game/static_config.yaml
 +++ b/services/game/static_config.yaml
-@@ -61,6 +61,27 @@ components_manager:
- 
-     testsuite-support:
- 
-+    # ── Postgres cluster (backs game-store below) ───────────────────────────
-+    # [SF-GAME-11] Same shared cluster/config as six-feat's postgres-db-1 (see
-+    # services/six-feat/static_config.yaml for the full rationale on each key).
-+    # sync-start: false so an unreachable Postgres at boot doesn't crash the
-+    # process — handler-readyz reports 503 until the pool is up (see
-+    # internal_handlers.cpp's "database" check). $db_connection_string is
-+    # assembled by docker-entrypoint.sh.
-+    postgres-db-1:
-+      dbconnection: $db_connection_string
-+      blocking_task_processor: fs-task-processor
-+      dns_resolver: async
-+      sync-start: false
-+      connlimit_mode: manual
-+      min_pool_size: 4
-+      max_pool_size: 15
-+      max_queue_size: 200
-+
-+    # ── Game store (owns the game_* migration registry) ─────────────────────
-+    game-store:
-+      dbname: postgres-db-1
-+
-     # ── Handlers ────────────────────────────────────────────────────────────
-     handler-healthz:
-       path: /healthz
-@@ -68,9 +89,8 @@ components_manager:
+@@ -96,6 +96,14 @@ components_manager:
+       method: GET
        task_processor: *main_tp
  
-     # [SF-INF-03] Unified readiness contract — see
--    # libs/six-feat-common/src/http/readiness_common.hpp and
--    # internal_handlers.hpp's ReadinessHandler doc-comment for why checks{} is
--    # empty at the skeleton stage.
-+    # libs/six-feat-common/src/http/readiness_common.hpp. [SF-GAME-11] checks{}
-+    # now carries the "database" ping (game-store's Postgres cluster).
-     handler-readyz:
-       path: /readyz
-       method: GET
-diff --git a/tests/test_game_migrations.py b/tests/test_game_migrations.py
++    # [SF-GAME-12] Player profile — GET reads/creates the caller's profile,
++    # PATCH renames it. One handler, both methods (branched on GetMethod).
++    # nginx proxies /api/v1/game/* here, so the public path is the same.
++    handler-game-profile:
++      path: /api/v1/game/profile
++      method: GET, PATCH
++      task_processor: *main_tp
++
+     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
+     handler-server-monitor:
+       path: /metrics
+diff --git a/tests/test_game_profile.py b/tests/test_game_profile.py
 new file mode 100644
-index 0000000..d84b93d
+index 0000000..8785bc2
 --- /dev/null
-+++ b/tests/test_game_migrations.py
-@@ -0,0 +1,138 @@
++++ b/tests/test_game_profile.py
+@@ -0,0 +1,123 @@
 +"""
-+test_game_migrations.py — [SF-GAME-11] parity between game_migrations
-+(services/game/game_store.cpp) and the versioned reference copies under
-+postgresql/migrations/game/V*.sql.
++test_game_profile.py — [SF-GAME-12] integration tests for the game service's
++GET/PATCH /api/v1/game/profile.
 +
-+Same contract, and the same pure-text approach, as tests/test_migrations.py
-+(SF-DB-05): game_migrations is what actually runs against Postgres
-+(RunGameMigrations, applied in-process, gated by the game_schema_version
-+table) — the game/V*.sql files are a documentation-only mirror. This test
-+parses both sides and diffs them structurally (whitespace-normalized, per
-+statement, in order) so drift becomes a test failure instead of silent doc
-+rot. No C++ build, no live Postgres required.
++The game service identifies the player by decrypting the six_feat_session
++cookie locally (same APP_SECRET/session_crypto as the rest of the mesh), so a
++cookie minted here — exactly as tests/conftest.py's auth_cookie fixture does,
++with the same TEST_APP_SECRET the docker-compose stack launches every service
++with — authenticates end-to-end with no real Genius OAuth round-trip.
 +
-+Scenarios covered:
-+  1. Every game_migrations entry has a corresponding game/V{n}__*.sql file.
-+  2. Every game/V*.sql file has a corresponding game_migrations entry.
-+  3. Per migration: the .sql file's statements match the C++ array's
-+     statements, in order, modulo whitespace formatting.
++Unlike the six-feat integration tests (which run against a per-test
++service_proc subprocess fixture), the game service needs Postgres, so these
++run against the running docker-compose stack: point GAME_SERVICE_ORIGIN at the
++public nginx origin (default http://localhost:8080, which proxies /api/v1/game/
++→ six-feat-game). The module skips itself if that origin isn't reachable, so a
++`pytest` run without the stack up doesn't fail collection.
++
++Scenarios (per the ticket):
++  1. valid session → profile is created on first sight and readable (GET).
++  2. no cookie → 401 in the unified RFC 7807 envelope (SF-API-11).
++  3. PATCH display_name persists (a follow-up GET reflects the new name).
++Plus: PATCH validation rejects an over-long / disallowed name with 400.
 +"""
 +
 +from __future__ import annotations
 +
-+import re
-+from pathlib import Path
-+from typing import List, Tuple
++import os
++import time
 +
 +import pytest
++import requests
 +
-+REPO_ROOT = Path(__file__).resolve().parent.parent
-+GAME_STORE_CPP = REPO_ROOT / "services" / "game" / "game_store.cpp"
-+MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations" / "game"
++import session_crypto
 +
++TEST_APP_SECRET = "f" * 64  # same as tests/conftest.py's TEST_APP_SECRET
++ORIGIN = os.environ.get("GAME_SERVICE_ORIGIN", "http://localhost:8080")
++PROFILE_URL = f"{ORIGIN}/api/v1/game/profile"
 +
-+def _normalize(sql: str) -> str:
-+    """Collapse whitespace runs to a single space and drop a trailing
-+    semicolon, so only actual DDL differences count as a mismatch."""
-+    sql = sql.strip()
-+    if sql.endswith(";"):
-+        sql = sql[:-1]
-+    return re.sub(r"\s+", " ", sql).strip()
++pytestmark = pytest.mark.game_profile
 +
 +
-+def _extract_cpp_array(source: str, var_name: str) -> List[str]:
-+    """Pull the ordered list of string-literal statements out of
-+    `const std::vector<const char*> {var_name} = { ... };` in game_store.cpp —
-+    handles both R"SQL(...)SQL" raw strings and plain "..." literals."""
-+    block_match = re.search(
-+        rf"const std::vector<const char\*>\s+{re.escape(var_name)}\s*=\s*\{{(.*?)\}};",
-+        source,
-+        re.DOTALL,
-+    )
-+    assert block_match, f"could not find {var_name} array in game_store.cpp"
-+    block = block_match.group(1)
-+
-+    statements = []
-+    for m in re.finditer(r'R"SQL\((.*?)\)SQL"|"((?:[^"\\]|\\.)*)"', block, re.DOTALL):
-+        raw, plain = m.group(1), m.group(2)
-+        statements.append(raw if raw is not None else plain)
-+    return statements
-+
-+
-+def _extract_migrations_list(source: str) -> List[Tuple[int, str]]:
-+    """Parse `const std::vector<Migration> game_migrations = { {1, kGameMigrationV1}, ... };`
-+    into an ordered [(version, cpp_array_var_name), ...] list."""
-+    block_match = re.search(
-+        r"const std::vector<Migration>\s+game_migrations\s*=\s*\{(.*?)\};",
-+        source,
-+        re.DOTALL,
-+    )
-+    assert block_match, "could not find game_migrations array in game_store.cpp"
-+    block = block_match.group(1)
-+
-+    pairs = re.findall(r"\{\s*(\d+)\s*,\s*(kGameMigrationV\d+)\s*\}", block)
-+    assert pairs, "game_migrations array is empty or unparseable"
-+    return [(int(version), var_name) for version, var_name in pairs]
-+
-+
-+def _extract_sql_file_statements(path: Path) -> List[str]:
-+    """Strip `--` line comments and split the file into individual
-+    semicolon-terminated statements, in order."""
-+    text = path.read_text()
-+    lines = [line.split("--", 1)[0] for line in text.splitlines()]
-+    text_no_comments = "\n".join(lines)
-+    return [s for s in text_no_comments.split(";") if s.strip()]
-+
-+
-+_CPP_SOURCE = GAME_STORE_CPP.read_text()
-+_MIGRATIONS = _extract_migrations_list(_CPP_SOURCE)
-+
-+
-+def test_every_migration_has_a_versioned_sql_file():
-+    missing = []
-+    for version, _ in _MIGRATIONS:
-+        if not list(MIGRATIONS_DIR.glob(f"V{version}__*.sql")):
-+            missing.append(version)
-+    assert not missing, (
-+        f"no postgresql/migrations/game/V{{n}}__*.sql for game_migrations "
-+        f"version(s): {missing}"
++def _valid_cookie(name: str = "Test User") -> str:
++    return session_crypto.make_cookie(
++        TEST_APP_SECRET, access_token="test-genius-access-token",
++        ttl_seconds=3600, name=name,
 +    )
 +
 +
-+def test_every_versioned_sql_file_has_a_matching_migration():
-+    known_versions = {version for version, _ in _MIGRATIONS}
-+    orphans = []
-+    for path in sorted(MIGRATIONS_DIR.glob("V*__*.sql")):
-+        m = re.match(r"V(\d+)__", path.name)
-+        assert m, f"unexpected migration filename shape: {path.name}"
-+        if int(m.group(1)) not in known_versions:
-+            orphans.append(path.name)
-+    assert not orphans, (
-+        f"game/V*.sql file(s) with no matching game_migrations entry: {orphans}"
-+    )
++def _skip_if_unreachable() -> None:
++    try:
++        # An unauthenticated hit should answer 401 quickly if the service is up.
++        requests.get(PROFILE_URL, timeout=2)
++    except requests.exceptions.RequestException:
++        pytest.skip(f"game service not reachable at {ORIGIN} — start docker compose")
 +
 +
-+@pytest.mark.parametrize(
-+    "version,var_name", _MIGRATIONS, ids=[f"V{v}" for v, _ in _MIGRATIONS]
-+)
-+def test_sql_file_statements_match_cpp_array(version: int, var_name: str):
-+    """[SF-GAME-11] For each game_migrations entry, the statements actually
-+    applied in-process (kGameMigrationV{N} in game_store.cpp) must be exactly
-+    the same DDL, in the same order, as postgresql/migrations/game/V{N}__*.sql
-+    — modulo whitespace formatting."""
-+    cpp_statements = [_normalize(s) for s in _extract_cpp_array(_CPP_SOURCE, var_name)]
++@pytest.fixture(scope="module", autouse=True)
++def _require_service() -> None:
++    _skip_if_unreachable()
 +
-+    matches = list(MIGRATIONS_DIR.glob(f"V{version}__*.sql"))
-+    assert len(matches) == 1, (
-+        f"expected exactly one game/V{version}__*.sql, found {[m.name for m in matches]}"
-+    )
-+    sql_statements = [
-+        _normalize(s) for s in _extract_sql_file_statements(matches[0])
-+    ]
 +
-+    assert sql_statements == cpp_statements, (
-+        f"postgresql/migrations/game/{matches[0].name} has drifted from "
-+        f"{var_name} in game_store.cpp:\n"
-+        f"  .sql file:   {sql_statements}\n"
-+        f"  game_migrations: {cpp_statements}"
-+    )
++def _get(cookie: str | None):
++    sess = requests.Session()
++    if cookie is not None:
++        sess.cookies.update({"six_feat_session": cookie})
++    return sess.get(PROFILE_URL, timeout=5)
++
++
++def _patch(cookie: str | None, body: dict):
++    sess = requests.Session()
++    if cookie is not None:
++        sess.cookies.update({"six_feat_session": cookie})
++    return sess.patch(PROFILE_URL, json=body, timeout=5)
++
++
++def test_no_cookie_returns_401():
++    resp = _get(None)
++    assert resp.status_code == 401
++    # SF-API-11 unified envelope (application/problem+json).
++    assert "application/problem+json" in resp.headers.get("Content-Type", "")
++    body = resp.json()
++    assert body.get("status") == 401
++
++
++def test_valid_session_creates_and_reads_profile():
++    resp = _get(_valid_cookie())
++    assert resp.status_code == 200
++    body = resp.json()
++    # Created on first sight with the migration defaults; shape is complete.
++    for field in ("user_id", "display_name", "elo", "games", "rank"):
++        assert field in body, f"missing {field} in profile {body}"
++    assert isinstance(body["user_id"], int)
++    assert body["elo"] == 1200
++    assert body["games"] == 0
++    assert body["rank"] >= 1
++    # Same session → same stable user_id on a second read.
++    again = _get(_valid_cookie()).json()
++    assert again["user_id"] == body["user_id"]
++
++
++def test_patch_display_name_persists():
++    cookie = _valid_cookie()
++    new_name = f"Player-{int(time.time())}"
++
++    patched = _patch(cookie, {"display_name": new_name})
++    assert patched.status_code == 200
++    assert patched.json()["display_name"] == new_name
++
++    # Persisted: a fresh GET reflects it.
++    after = _get(cookie)
++    assert after.status_code == 200
++    assert after.json()["display_name"] == new_name
++
++
++def test_patch_rejects_invalid_name():
++    cookie = _valid_cookie()
++
++    too_long = _patch(cookie, {"display_name": "x" * 100})
++    assert too_long.status_code == 400
++    assert "application/problem+json" in too_long.headers.get("Content-Type", "")
++
++    blank = _patch(cookie, {"display_name": "   "})
++    assert blank.status_code == 400

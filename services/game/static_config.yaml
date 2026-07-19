@@ -96,6 +96,14 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
+    # [SF-GAME-12] Player profile — GET reads/creates the caller's profile,
+    # PATCH renames it. One handler, both methods (branched on GetMethod).
+    # nginx proxies /api/v1/game/* here, so the public path is the same.
+    handler-game-profile:
+      path: /api/v1/game/profile
+      method: GET, PATCH
+      task_processor: *main_tp
+
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     handler-server-monitor:
       path: /metrics

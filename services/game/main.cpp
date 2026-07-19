@@ -23,6 +23,7 @@
 #include "game_store.hpp"
 #include "http/health_handler.hpp"
 #include "internal_handlers.hpp"
+#include "profile_handler.hpp"
 
 using namespace userver;
 
@@ -47,6 +48,9 @@ int main(int argc, char* argv[]) {
             // game store's Postgres cluster (see internal_handlers.cpp), the
             // service's one runtime-degradable dependency since SF-GAME-11.
             .Append<six_feat::game::ReadinessHandler>()
+            // [SF-GAME-12] GET/PATCH /api/v1/game/profile — player profile
+            // over the Genius session (decrypted locally, no HTTP to auth).
+            .Append<six_feat::game::ProfileHandler>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never the public
             // listener.

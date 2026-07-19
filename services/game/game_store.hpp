@@ -20,7 +20,9 @@
 // reflects live DB reachability via Ping().
 // ════════════════════════════════════════════════════════════════════════════
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 
 #include <userver/components/component_base.hpp>
@@ -30,6 +32,17 @@
 #include <userver/yaml_config/schema.hpp>
 
 namespace six_feat::game {
+
+// [SF-GAME-12] A player's game profile row (game_profiles) plus their computed
+// leaderboard rank (1-based, by elo descending).
+struct Profile {
+    std::int64_t user_id{0};
+    std::string  display_name;
+    std::string  avatar_url;
+    int          elo{0};
+    int          games{0};
+    int          rank{0};
+};
 
 class GameStore final : public userver::components::ComponentBase {
 public:
@@ -50,6 +63,22 @@ public:
     // throws) if the DB is unreachable — drives /readyz's "database" check
     // (see internal_handlers.cpp).
     bool Ping() const;
+
+    // [SF-GAME-12] Profile API. Throw storages::postgres::Error on a DB
+    // failure (the handler maps that to 5xx); never on "row absent".
+
+    // Creates the profile on first sight (INSERT ... ON CONFLICT DO NOTHING,
+    // defaults from game_migrations: elo=1200, games=0), then returns it with
+    // its current leaderboard rank filled in. The *_default args are used only
+    // when the row is created — an existing row keeps its stored values.
+    Profile EnsureAndGetProfile(std::int64_t user_id,
+                                const std::string& display_name_default,
+                                const std::string& avatar_url_default) const;
+
+    // Updates an existing profile's display name and returns the refreshed
+    // Profile (with rank). The caller ensures the row exists first
+    // (EnsureAndGetProfile) — this is a plain UPDATE ... RETURNING.
+    Profile SetDisplayName(std::int64_t user_id, const std::string& display_name) const;
 
     static userver::yaml_config::Schema GetStaticConfigSchema();
 

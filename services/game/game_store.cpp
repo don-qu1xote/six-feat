@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -241,6 +242,68 @@ bool GameStore::Ping() const {
         LOG_ERROR() << "[GameStore] Ping failed: " << e.what();
         return false;
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Profile API — [SF-GAME-12]
+// ════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+// 1-based leaderboard rank by elo descending: how many profiles strictly
+// out-rank this one, plus one. Ties share the higher rank (COUNT of strictly
+// greater elo), which is fine for a display rank.
+int RankFor(const storages::postgres::ClusterPtr& cluster, int elo) {
+    auto res = cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "SELECT COUNT(*) FROM game_profiles WHERE elo > $1", elo);
+    return static_cast<int>(res.Front()[0].As<std::int64_t>()) + 1;
+}
+
+Profile ReadProfile(const storages::postgres::ClusterPtr& cluster,
+                    std::int64_t user_id) {
+    auto res = cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "SELECT user_id, display_name, avatar_url, elo, games "
+        "FROM game_profiles WHERE user_id = $1", user_id);
+    const auto row = res.Front();  // caller guarantees the row exists
+    Profile p;
+    p.user_id      = row[0].As<std::int64_t>();
+    p.display_name = row[1].As<std::optional<std::string>>().value_or("");
+    p.avatar_url   = row[2].As<std::optional<std::string>>().value_or("");
+    p.elo          = row[3].As<int>();
+    p.games        = row[4].As<int>();
+    p.rank         = RankFor(cluster, p.elo);
+    return p;
+}
+
+} // namespace
+
+Profile GameStore::EnsureAndGetProfile(std::int64_t user_id,
+                                       const std::string& display_name_default,
+                                       const std::string& avatar_url_default) const {
+    const std::int64_t now =
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    // First-sight create; existing rows keep their stored values (DO NOTHING).
+    impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "INSERT INTO game_profiles (user_id, display_name, avatar_url, created_ts) "
+        "VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO NOTHING",
+        user_id,
+        display_name_default.empty() ? std::string{"Genius User"} : display_name_default,
+        avatar_url_default.empty() ? std::optional<std::string>{} : std::optional<std::string>{avatar_url_default},
+        now);
+    return ReadProfile(impl_->cluster, user_id);
+}
+
+Profile GameStore::SetDisplayName(std::int64_t user_id,
+                                  const std::string& display_name) const {
+    impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "UPDATE game_profiles SET display_name = $2 WHERE user_id = $1",
+        user_id, display_name);
+    return ReadProfile(impl_->cluster, user_id);
 }
 
 // static
