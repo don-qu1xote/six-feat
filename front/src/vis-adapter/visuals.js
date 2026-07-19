@@ -8,6 +8,7 @@
 import { State, COLOR, ROLE_PRIORITY } from "../state/state.js";
 import { placeholderFor, roleStyle } from "../state/helpers.js";
 import { buildNodeTooltip, buildEdgeTooltip } from "./tooltips.js";
+import { ensureNodeColorSampled } from "./photo-color.js";
 
 // [SF-WEB-45] hexToRgba — same #RRGGBB parsing lightenHexColor already does
 // below, reused here so glow colors can carry an explicit alpha instead of
@@ -22,14 +23,14 @@ export function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// Централити (betweenness) полностью убрана по запросу — раньше здесь была
-// betweennessGlow(nodeData), вычислявшая glow-тень по _betweennessNorm.
-// Seed получает выраженный hero-glow (см. seedShadow), остальные узлы — свой
-// собственный, более сдержанный halo (см. nodeShadowFor) — оба через
-// border+shadow, никогда не через opacity в данных ноды (см. большой
-// комментарий "Структурный фикс" ниже: opacity:0 на входе исторически ломал
-// circularImage — тот баг про fade-in, но урок общий, glow это тоже не
-// opacity).
+// [SF-WEB-59] Централити (betweenness) убрана снова — SF-WEB-58 A её
+// вернула, но это была регрессия при текущем состоянии графа (мешала
+// читаемости, не нужна). Seed получает выраженный hero-glow (см.
+// seedShadow), остальные узлы — свой собственный, более сдержанный halo
+// (см. nodeShadowFor) — оба через border+shadow, никогда не через opacity
+// в данных ноды (см. большой комментарий "Структурный фикс" ниже: opacity:0
+// на входе исторически ломал circularImage — тот баг про fade-in, но урок
+// общий, glow это тоже не opacity).
 //
 // [SF-WEB-45] color берётся из COLOR.signal (живой геттер на CSS-переменную
 // --signal, см. state.js) вместо прежнего захардкоженного rgba(94,230,197,…)
@@ -157,6 +158,13 @@ export function nodeVisual(nodeData) {
   const domRole   = nodeData._dominantRole || (isSeed ? "featured" : "primary");
   const rs        = roleStyle(domRole);
   const image     = imageUrl || placeholderFor(name, isSeed);
+
+  // [SF-WEB-59] Kick off (idempotent) dominant-color sampling for any node
+  // with a real avatar — fire-and-forget, see photo-color.js. The result is
+  // used ONLY by bubble-contours.js (sector fill) — SF-WEB-58 B also tinted
+  // this node's own border and its cross-arcs with it, which is reverted
+  // below: nowhere else reads getCachedDominantColor for now.
+  if (imageUrl) ensureNodeColorSampled(id, imageUrl);
 
   // ─────────────────────────────────────────────────────────────────────────
   // FIX #3: Visual hierarchy - different sizes for different node types
@@ -345,6 +353,23 @@ export function resolveEdgeDominantRole(e) {
 // on the same graphs this treats as "large" — one threshold, not several
 // independently-tuned magic numbers.
 export const LARGE_GRAPH_NODE_THRESHOLD = 150;
+
+// [SF-WEB-74] Порог числа рёбер для полного отключения hover-эффектов на
+// сильном zoom-out (render.js::_attachZoomThrottle зовёт setOptions({
+// interaction: { hover:false } }) при bigGraph && scale<0.5 — это САМО
+// отключает нативный hoverNode/blurNode). edge-render.js больше не ходит
+// через нативный hoverEdge (см. SF-WEB-73 — свой DOM mousemove-хит-тест),
+// так что тот же порог здесь дублировать нельзя одним vis.js-опционом:
+// events.js читает isEdgeHoverSuppressedByZoom() сам, тем же условием, что
+// и render.js — один порог, не два независимо настроенных магических числа.
+export const FAST_RENDER_EDGE_THRESHOLD = 150;
+
+export function isEdgeHoverSuppressedByZoom() {
+  const net = State.network;
+  if (!net || typeof net.getScale !== "function") return false;
+  if (State.graphEdges.length <= FAST_RENDER_EDGE_THRESHOLD) return false;
+  return net.getScale() < 0.5;
+}
 
 export function networkOptions() {
   // [SF-WEB-51] Физика ДЕМОТИРОВАНА до опционального органик-доводчика и

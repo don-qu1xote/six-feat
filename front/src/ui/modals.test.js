@@ -24,7 +24,13 @@ vi.mock("./sidebar.js", () => ({
   showArtistSidebar: vi.fn(),
 }));
 vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
-vi.mock("../vis-adapter/index.js", () => ({ setFocus: vi.fn() }));
+const highlightPath        = vi.fn();
+const restoreDefaultColors = vi.fn();
+vi.mock("../vis-adapter/index.js", () => ({
+  setFocus: vi.fn(),
+  highlightPath:        (...a) => highlightPath(...a),
+  restoreDefaultColors: (...a) => restoreDefaultColors(...a),
+}));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
@@ -33,7 +39,7 @@ import { hideCandidatePicker } from "./candidate-picker.js";
 import {
   isPathPanelOpen, openPathPanel, closePathPanel,
   isSearchModalOpen, openSearchModal,
-  openNodeSearch,
+  openNodeSearch, closeNodeSearch, renderNodeSearchResults,
   setupDockedPanels,
 } from "./modals.js";
 
@@ -269,5 +275,48 @@ describe("[SF-WEB-24] outside-click-to-close, wired through the real registry", 
     expect(isSearchModalOpen()).toBe(true);
     document.body.click();
     expect(isSearchModalOpen()).toBe(false);
+  });
+});
+
+// [SF-WEB-75] "подсвечивай ноды как при выборе после поиска на графе" —
+// matching nodes now light up live on the canvas as you type, using the
+// same onPath/selected look highlightPath already gives regular path
+// nodes (dim:false, same reasoning Compare mode already uses — see
+// highlight.js::_applyPath's own comment).
+describe("renderNodeSearchResults — live canvas highlight (SF-WEB-75)", () => {
+  beforeEach(() => {
+    State.graphNodes = [
+      { id: 1, name: "Seed Artist", isSeed: true },
+      { id: 2, name: "Alpha", totalWeight: 3 },
+      { id: 3, name: "Beta", totalWeight: 1 },
+      { id: 4, name: "Alphabet", totalWeight: 2 },
+    ];
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set();
+  });
+
+  it("highlights every matching node on the canvas, same as a real path highlight", () => {
+    renderNodeSearchResults("alpha");
+    expect(highlightPath).toHaveBeenCalledWith([2, 4], { dim: false });
+    expect(restoreDefaultColors).not.toHaveBeenCalled();
+  });
+
+  it("clears the canvas highlight instead of lighting up the whole graph when the query is empty", () => {
+    renderNodeSearchResults("");
+    expect(highlightPath).not.toHaveBeenCalled();
+    expect(restoreDefaultColors).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the canvas highlight when a query matches nothing", () => {
+    renderNodeSearchResults("zzz-no-match");
+    expect(highlightPath).not.toHaveBeenCalled();
+    expect(restoreDefaultColors).toHaveBeenCalledTimes(1);
+  });
+
+  it("closing the overlay without picking a result clears the highlight", () => {
+    renderNodeSearchResults("alpha");
+    highlightPath.mockClear();
+    closeNodeSearch();
+    expect(restoreDefaultColors).toHaveBeenCalledTimes(1);
   });
 });

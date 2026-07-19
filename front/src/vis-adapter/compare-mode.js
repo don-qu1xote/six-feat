@@ -132,7 +132,10 @@ export function handleCompareModeNodeClick(nodeId) {
 
   if (validPath) {
     setPathHighlight(validPath);
-    highlightPath(validPath);
+    // [SF-WEB-61] "убери затемнения при компаир моде и оставь только
+    // подсветку всех нод пути и крайних" — unlike the regular path finder,
+    // Compare mode leaves the rest of the graph at its normal resting look.
+    highlightPath(validPath, { dim: false });
   }
 }
 

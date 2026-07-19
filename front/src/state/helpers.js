@@ -46,6 +46,15 @@ export function isGeniusDefaultAvatar(url) {
   return typeof url === "string" && url.includes(GENIUS_DEFAULT_IMAGE_MARKER);
 }
 
+// [SF-WEB-58 B] Same-origin proxy URL for a Genius CDN image (SF-API-12) —
+// re-serves the allowlisted bytes from THIS origin so a canvas that draws
+// it never taints. Previously inlined separately in canvas-controls.js's
+// export path (buildShadowNodes) — now the one place both that and
+// vis-adapter/photo-color.js (dominant-color sampling) build this URL from.
+export function proxiedImageUrl(rawUrl) {
+  return `/api/v1/image?url=${encodeURIComponent(rawUrl)}`;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Placeholder avatar SVG
 // ────────────────────────────────────────────────────────────────────────────

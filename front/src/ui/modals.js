@@ -19,7 +19,7 @@
 import { State, MOTION, visAnimation } from "../state/state.js";
 import { debounce, escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els, $ } from "../dom/dom.js";
-import { setFocus } from "../vis-adapter/index.js";
+import { setFocus, highlightPath, restoreDefaultColors } from "../vis-adapter/index.js";
 import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { registerDockedPanel, closeOtherDockedPanels } from "./docked-panel.js";
@@ -271,6 +271,11 @@ export function closeNodeSearch() {
   els.nodeSearchInput.setAttribute("aria-expanded", "false");
   els.nodeSearchInput.setAttribute("aria-activedescendant", "");
   _nsActiveIndex = -1;
+  // [SF-WEB-75] Live-search's own canvas highlight (see
+  // renderNodeSearchResults below) doesn't clear itself — closing the
+  // overlay without picking a result (Escape, click-outside) would
+  // otherwise leave whatever was last typed lit up on the canvas forever.
+  restoreDefaultColors();
 }
 
 export function renderNodeSearchResults(query) {
@@ -293,6 +298,19 @@ export function renderNodeSearchResults(query) {
     `<span class="ns-weight">${n._totalCollabs || n.totalWeight || 0} collab${(n._totalCollabs || n.totalWeight) === 1 ? "" : "s"}</span>` +
     `</div>`
   ).join("") || `<div class="ns-empty">No nodes match</div>`;
+
+  // [SF-WEB-75] "подсвечивай ноды как при выборе после поиска на графе" —
+  // every matching node lights up on the canvas itself, live as you type,
+  // with the SAME onPath/selected look highlightPath already gives path
+  // nodes (dim:false — Compare mode's own reasoning applies here too: the
+  // rest of the graph stays at its normal resting look, only matches pop).
+  // Only for an actual query — the overlay's empty-query "browse everything"
+  // listing isn't a search result worth lighting up the whole graph over.
+  if (q && results.length) {
+    highlightPath(results.map(n => n.id), { dim: false });
+  } else {
+    restoreDefaultColors();
+  }
 
   _nsActiveIndex = -1;
   els.nodeSearchInput.setAttribute("aria-activedescendant", "");

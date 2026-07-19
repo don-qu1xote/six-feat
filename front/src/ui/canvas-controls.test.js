@@ -14,6 +14,8 @@ import {
   updateScanStatus, buildGraphExportData, exportGraphJson, setupFilterToggles,
   buildShadowNodes, waitForImages, clearCanvas, goHome,
   fitView, focusSeed, zoomIn, zoomOut, updateRateLimitIndicator,
+  _computeFitView, _drawExportBackground, setupBubbleSetsToggle,
+  focusNextHub, _resetHubFocusIndex,
 } from "./canvas-controls.js";
 import { placeholderFor } from "../state/helpers.js";
 import { showToast } from "./toast.js";
@@ -28,6 +30,7 @@ vi.mock("./history.js", () => ({ updateShareableUrl: vi.fn() }));
 vi.mock("../vis-adapter/index.js", () => ({
   clearFocus: vi.fn(), resetCanvasToEmpty: vi.fn(), networkOptions: vi.fn(),
   isCompareModeActive: vi.fn(() => false), exitCompareMode: vi.fn(),
+  selectNode: vi.fn(),
 }));
 vi.mock("../api/analytics-client.js", () => ({ clearPathHighlight: vi.fn() }));
 vi.mock("../dom/canvas-decorator.js", () => ({ startCanvasDecorator: vi.fn() }));
@@ -213,6 +216,38 @@ describe("setupFilterToggles — SF-WEB-30", () => {
   });
 });
 
+// [SF-WEB-61] "давай добавим BubbleSet отдельной кнопкой, которая по
+// дефолту выключенна и не будем сами управлть ею" — manual toggle, no auto
+// show/hide logic anywhere else gets to flip State.bubbleSetsEnabled.
+describe("setupBubbleSetsToggle — SF-WEB-61", () => {
+  beforeEach(() => {
+    State.bubbleSetsEnabled = false;
+    els.btnBubbleSets = document.createElement("button");
+    State.network = { redraw: vi.fn() };
+    setupBubbleSetsToggle();
+  });
+
+  it("starts OFF (not marked active) — no auto-management by node count or anything else", () => {
+    expect(els.btnBubbleSets.classList.contains("active")).toBe(false);
+    expect(els.btnBubbleSets.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("turns on when clicked, marking the button active and redrawing", () => {
+    els.btnBubbleSets.click();
+    expect(State.bubbleSetsEnabled).toBe(true);
+    expect(els.btnBubbleSets.classList.contains("active")).toBe(true);
+    expect(els.btnBubbleSets.getAttribute("aria-pressed")).toBe("true");
+    expect(State.network.redraw).toHaveBeenCalled();
+  });
+
+  it("turns back off on a second click", () => {
+    els.btnBubbleSets.click();
+    els.btnBubbleSets.click();
+    expect(State.bubbleSetsEnabled).toBe(false);
+    expect(els.btnBubbleSets.classList.contains("active")).toBe(false);
+  });
+});
+
 // [SF-WEB-32] PNG export's shadow-network nodes: a node with a real Genius
 // photo (graphNode.imageUrl) must route through the same-origin
 // /api/v1/image proxy (SF-API-12) instead of the local placeholder, so the
@@ -281,6 +316,70 @@ describe("buildShadowNodes — SF-WEB-32", () => {
     );
     expect(shadowNodes[0].x).toBe(99);
     expect(shadowNodes[0].y).toBe(88);
+  });
+});
+
+// [SF-WEB-59] "она должна быть как будто я делаю скрин по fit view а
+// сейчас она кропится по размеру отрисованного мною экрана" — export used
+// to reuse the LIVE viewport's own pan/zoom (whatever was on screen), not
+// a fit-to-content view. _computeFitView is the pure math behind the new
+// behavior: fit ALL current node positions (not just visible ones) inside
+// the given canvas size, independent of whatever the live viewport was
+// showing.
+describe("_computeFitView — SF-WEB-59", () => {
+  it("centers the view on the midpoint of all node positions, not just the visible ones", () => {
+    const positions = { 1: { x: 0, y: 0 }, 2: { x: 200, y: 0 } };
+    const { position } = _computeFitView(positions, [1, 2], 1000, 1000);
+    expect(position).toEqual({ x: 100, y: 0 });
+  });
+
+  it("picks a scale that fits the whole bounding box (plus margin) inside the canvas", () => {
+    const positions = { 1: { x: -500, y: 0 }, 2: { x: 500, y: 0 } };
+    const { scale } = _computeFitView(positions, [1, 2], 1000, 1000, 100);
+    // width = 1000 (span) + 100*2 (margin) = 1200; scale = 1000/1200
+    expect(scale).toBeCloseTo(1000 / 1200, 5);
+  });
+
+  it("caps the scale so a tiny (1-2 node) graph doesn't zoom in absurdly far", () => {
+    const positions = { 1: { x: 0, y: 0 }, 2: { x: 1, y: 0 } };
+    const { scale } = _computeFitView(positions, [1, 2], 2400, 1500, 140);
+    expect(scale).toBeLessThanOrEqual(3);
+  });
+
+  it("falls back to a sane default (origin, scale 1) when no positions are available at all", () => {
+    const result = _computeFitView({}, [1, 2, 3], 1000, 1000);
+    expect(result).toEqual({ position: { x: 0, y: 0 }, scale: 1 });
+  });
+
+  it("ignores ids with no matching position instead of treating them as (0,0)", () => {
+    const positions = { 1: { x: 500, y: 500 }, 2: { x: 520, y: 500 } };
+    // id 3 has no entry — if it were wrongly treated as (0,0) it would
+    // drag the bounding box (and the computed center) far off from the
+    // real 500-520 cluster.
+    const { position } = _computeFitView(positions, [1, 2, 3], 1000, 1000);
+    expect(position.x).toBeCloseTo(510, 5);
+  });
+});
+
+// [SF-WEB-59] "игнорирует фон холста" — the exported PNG used to be
+// transparent (vis.js/our custom layers never paint a background of their
+// own — the live app relies on the DOM behind the canvas for that).
+describe("_drawExportBackground — SF-WEB-59", () => {
+  it("fills the whole physical canvas in device-pixel space, resetting any world-space transform first", () => {
+    const calls = [];
+    const ctx = {
+      canvas: { width: 800, height: 600 },
+      save() { calls.push(["save"]); },
+      restore() { calls.push(["restore"]); },
+      setTransform(...args) { calls.push(["setTransform", ...args]); },
+      fillRect(...args) { calls.push(["fillRect", ...args]); },
+      set fillStyle(v) { calls.push(["fillStyle", v]); },
+    };
+    _drawExportBackground(ctx);
+    expect(calls[0]).toEqual(["save"]);
+    expect(calls).toContainEqual(["setTransform", 1, 0, 0, 1, 0, 0]);
+    expect(calls).toContainEqual(["fillRect", 0, 0, 800, 600]);
+    expect(calls[calls.length - 1]).toEqual(["restore"]);
   });
 });
 
@@ -504,6 +603,36 @@ describe("setupKeyboard — Escape and Compare mode", () => {
     expect(exitCompareMode).not.toHaveBeenCalled();
     expect(isPathPanelOpen).toHaveBeenCalled();
   });
+
+  // [SF-WEB-62] ArrowLeft/ArrowRight drive focusNextHub through the real
+  // document keydown listener setupKeyboard() attaches — not just a direct
+  // unit call, proof the wiring itself is correct end to end.
+  it("ArrowRight/ArrowLeft call focusNextHub via the real keydown listener", async () => {
+    State.network = { focus: vi.fn() };
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set();
+    State.selectedNodeId = null;
+    _resetHubFocusIndex();
+
+    const { setupKeyboard } = await import("./canvas-controls.js");
+    setupKeyboard();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+
+    expect(State.network.focus).toHaveBeenCalledWith(1, expect.objectContaining({ scale: 1.2 }));
+  });
+
+  it("does not hijack ArrowRight when a modifier key is held (e.g. Alt+Right browser history nav)", async () => {
+    State.network = { focus: vi.fn() };
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set();
+    _resetHubFocusIndex();
+
+    const { setupKeyboard } = await import("./canvas-controls.js");
+    setupKeyboard();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true }));
+
+    expect(State.network.focus).not.toHaveBeenCalled();
+  });
 });
 
 // [SF-WEB-47 motion] fitView/focusSeed/zoomIn/zoomOut used to hardcode their
@@ -551,6 +680,78 @@ describe("fitView / focusSeed / zoomIn / zoomOut — motion tokens + reduced-mot
     for (const [call] of State.network.moveTo.mock.calls) {
       expect(call.animation).toBe(false);
     }
+  });
+});
+
+// [SF-WEB-62] "клавиатурная навигация между хабами" — Left/Right cycles the
+// camera focus through the seed + every expanded pole (deterministic order:
+// seed first, then poles sorted by id), without the mouse.
+describe("focusNextHub — keyboard navigation between hubs (SF-WEB-62)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true })); // animation details irrelevant here
+    State.network = { focus: vi.fn() };
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set([5, 3]); // deliberately out of id order
+    State.selectedNodeId = null;
+    _resetHubFocusIndex();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("starts at the seed on the first forward call", () => {
+    focusNextHub(1);
+    expect(State.network.focus).toHaveBeenCalledWith(1, expect.objectContaining({ scale: 1.2 }));
+  });
+
+  it("cycles forward through poles in sorted-id order after the seed", () => {
+    focusNextHub(1); // seed (1)
+    focusNextHub(1); // pole 3
+    focusNextHub(1); // pole 5
+    const order = State.network.focus.mock.calls.map(([id]) => id);
+    expect(order).toEqual([1, 3, 5]);
+  });
+
+  it("wraps back to the seed after the last hub", () => {
+    focusNextHub(1); focusNextHub(1); focusNextHub(1); // 1, 3, 5
+    focusNextHub(1); // wraps
+    expect(State.network.focus).toHaveBeenLastCalledWith(1, expect.objectContaining({ scale: 1.2 }));
+  });
+
+  it("cycles backward with direction -1", () => {
+    focusNextHub(1); // seed (1) — establishes a starting point
+    focusNextHub(-1); // wraps back to the last hub (5)
+    expect(State.network.focus).toHaveBeenLastCalledWith(5, expect.objectContaining({ scale: 1.2 }));
+  });
+
+  it("does nothing when there is no seed and no expanded nodes", () => {
+    State.currentSeedId = null;
+    State.expandedNodes = new Set();
+    focusNextHub(1);
+    expect(State.network.focus).not.toHaveBeenCalled();
+  });
+
+  it("starts cycling from the currently-selected node if it's one of the hubs", () => {
+    State.selectedNodeId = 3;
+    focusNextHub(1); // should move to the NEXT hub after 3 (which is 5), not restart at the seed
+    expect(State.network.focus).toHaveBeenCalledWith(5, expect.objectContaining({ scale: 1.2 }));
+  });
+
+  // [SF-WEB-74] "неинтуитивно" — used to fly the camera and reassign
+  // selectedNodeId out from under an in-progress Compare-mode first/second
+  // pick, leaving the pick's own "first" marker stranded while selection
+  // moved on underneath it. Same rule click-on-edge/empty-canvas and
+  // doubleClick already apply during a pick: exit the mode instead of
+  // running the competing action through it.
+  it("exits Compare mode instead of navigating when a pick is in progress", async () => {
+    const { isCompareModeActive, exitCompareMode } = await import("../vis-adapter/index.js");
+    isCompareModeActive.mockReturnValue(true);
+
+    focusNextHub(1);
+
+    expect(exitCompareMode).toHaveBeenCalledTimes(1);
+    expect(State.network.focus).not.toHaveBeenCalled();
   });
 });
 

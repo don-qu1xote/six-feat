@@ -12,7 +12,7 @@ import {
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   renderChips, exportGraphPng, exportGraphJson, setupThemeToggle, setupDockedPanels,
-  restoreSurfaceFromUrl
+  restoreSurfaceFromUrl, setupBubbleSetsToggle
 } from "./ui/index.js";
 import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
@@ -60,6 +60,8 @@ export function init() {
   // [SF-WEB-47] Compare's graph-native rail toggle — click two nodes to
   // open the Compare panel for that pair.
   setupCompareModeToggle();
+  // [SF-WEB-61] Manual BubbleSet toggle — off by default, user-controlled.
+  setupBubbleSetsToggle();
 
   // ТЗ-D8: idle starfield shown while #network is empty (first visit /
   // after clearCanvas). Mounted once, then just toggled via opacity.

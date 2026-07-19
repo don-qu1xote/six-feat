@@ -23,9 +23,10 @@ vi.mock("../ui/index.js", () => ({
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
 const highlightNeighborhood = vi.fn();
+const highlightEdgePair     = vi.fn();
 vi.mock("./highlight.js", () => ({
   highlightNeighborhood: (...a) => highlightNeighborhood(...a),
-  highlightEdgePair:     vi.fn(),
+  highlightEdgePair:     (...a) => highlightEdgePair(...a),
   restoreDefaultColors:  vi.fn(),
   clearHoverHighlight:   vi.fn(),
   cancelPendingHover:    vi.fn(),
@@ -34,6 +35,33 @@ vi.mock("./highlight.js", () => ({
 }));
 
 vi.mock("./physics.js", () => ({ nudgePhysics: vi.fn() }));
+
+// hoverNode/blurNode (unlike click) write els.network.style.cursor
+// directly — those two aren't exercised by any test here. [SF-WEB-73]
+// addEventListener/getBoundingClientRect/appendChild — the custom
+// mousemove-driven edge hover wiring (attachNetworkEvents calls
+// els.network.addEventListener unconditionally when els.network exists).
+// [SF-WEB-74] events.js's own _domHoverWired guard means addEventListener
+// only actually fires on the FIRST attachNetworkEvents call across this
+// whole file's run (whichever test happens to run first) — every later
+// test's vi.clearAllMocks() wipes the mock's *call history* but the
+// captured handler itself must survive that, so it's stashed in a plain
+// object via vi.hoisted rather than re-read from addEventListener.mock.calls.
+const domRefs = vi.hoisted(() => ({ moveHandler: null, leaveHandler: null }));
+vi.mock("../dom/dom.js", () => ({
+  els: {
+    network: {
+      style: {},
+      addEventListener: vi.fn((evt, cb) => {
+        if (evt === "mousemove") domRefs.moveHandler = cb;
+        if (evt === "mouseleave") domRefs.leaveHandler = cb;
+      }),
+      removeEventListener: vi.fn(),
+      getBoundingClientRect: () => ({ left: 0, top: 0 }),
+      appendChild: vi.fn(),
+    },
+  },
+}));
 
 let compareModeActive = false;
 const handleCompareModeNodeClick = vi.fn();
@@ -44,7 +72,9 @@ vi.mock("./compare-mode.js", () => ({
   exitCompareMode:            (...a) => exitCompareMode(...a),
 }));
 
-import { attachNetworkEvents } from "./events.js";
+import { attachNetworkEvents, _hoveredEdgeIdAt } from "./events.js";
+import { setEdgeCache, clearEdgeCache } from "./edge-render.js";
+import { els } from "../dom/dom.js";
 
 function makeNet() {
   const handlers = {};
@@ -110,6 +140,37 @@ describe("attachNetworkEvents click — Compare mode active", () => {
   });
 });
 
+// [SF-WEB-74] "неинтуитивно" — doubleClick used to ignore Compare mode
+// entirely: a double-click mid-pick silently ran the normal expand flow
+// (searchArtist) underneath an in-progress first/second pick instead of
+// doing anything compare-related. Same rule the click handler's own
+// isCompareModeActive() gate already applies.
+describe("attachNetworkEvents doubleClick — Compare mode (SF-WEB-74)", () => {
+  it("exits Compare mode instead of expanding when a pick is in progress", () => {
+    compareModeActive = true;
+    const net = makeNet();
+    State.network = net;
+    attachNetworkEvents({});
+
+    net._handlers.doubleClick({ nodes: [1] });
+
+    expect(exitCompareMode).toHaveBeenCalledTimes(1);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("still expands normally when Compare mode is off (unchanged)", async () => {
+    const { searchArtist } = await import("../api/api.js");
+    const net = makeNet();
+    State.network = net;
+    attachNetworkEvents({});
+
+    net._handlers.doubleClick({ nodes: [1] });
+
+    expect(exitCompareMode).not.toHaveBeenCalled();
+    expect(searchArtist).toHaveBeenCalledWith("Alpha", true, true);
+  });
+});
+
 describe("attachNetworkEvents click — Compare mode inactive (SF-WEB-28 unchanged)", () => {
   it("a node click still debounces into selectObject('node', id) → setFocus + showArtistSidebar", () => {
     const net = makeNet();
@@ -145,5 +206,136 @@ describe("attachNetworkEvents click — Compare mode inactive (SF-WEB-28 unchang
     net._handlers.click({ nodes: [], edges: [] });
     expect(hideArtistSidebar).toHaveBeenCalled();
     expect(State.focusedNodeId).toBeNull();
+  });
+});
+
+// [SF-WEB-73] "подсветка не совпадает с тултипом" — found LIVE on a dense
+// hub (65+ direct edges): vis.js's native hoverEdge event and its own
+// built-in (title-based) tooltip stayed internally inconsistent with EACH
+// OTHER, reproducibly, hovering the exact same pixel — both rely on
+// edges.smooth "continuous", a DIFFERENT curve than the one actually drawn
+// (edge-render.js's hub-bowed quadratic). hoverEdge/blurEdge are replaced
+// entirely by _hoveredEdgeIdAt (curve-aware, same curve drawEdges paints)
+// — a pure function (State.network + explicit DOM pointer in) testable
+// without a real canvas/mousemove. This also folds in SF-WEB-71's "no
+// separate edge-count threshold" — there never was one here to begin with.
+describe("_hoveredEdgeIdAt (SF-WEB-73)", () => {
+  beforeEach(() => {
+    State.graphEdges = [];
+    clearEdgeCache();
+  });
+
+  it("returns undefined (defer to native hoverNode) when a node sits under the pointer", () => {
+    State.network = { getNodeAt: () => 7, DOMtoCanvas: () => ({ x: 0, y: 0 }) };
+    expect(_hoveredEdgeIdAt({ x: 10, y: 10 })).toBeUndefined();
+  });
+
+  it("returns null when State.network doesn't support the needed hit-test methods", () => {
+    State.network = {};
+    expect(_hoveredEdgeIdAt({ x: 10, y: 10 })).toBeNull();
+  });
+
+  it("finds the cached edge whose drawn curve passes through the pointer's world position even on a graph with hundreds of edges", () => {
+    const edgeId = "1_2";
+    State.graphEdges = Array.from({ length: 500 }, (_, i) => ({ id: `e${i}`, from: 1, to: 3 + i, weight: 1 }));
+    State.graphEdges.push({ id: edgeId, from: 1, to: 2, weight: 1 });
+    setEdgeCache(new Map([[edgeId, { from: 1, to: 2, kind: "intra" }]]));
+    const positions = { 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } };
+    State.network = {
+      getPositions: () => positions,
+      getNodeAt: () => undefined,
+      // DOMtoCanvas here is the identity — the test feeds "world" coords directly.
+      DOMtoCanvas: (p) => p,
+    };
+    // Node 1's own position — always exactly on its incident edge's curve
+    // regardless of bow, same reasoning as edge-render.test.js's nearestEdgeAt case.
+    expect(_hoveredEdgeIdAt(positions[1])).toBe(edgeId);
+  });
+});
+
+// [SF-WEB-74] "подсветка нод зависит от зума (на сильном zoom-out большого
+// графа не подсвечиваем) — сделай то же для рёбер". render.js's own
+// _attachZoomThrottle disables vis.js's native interaction.hover at
+// bigGraph+scale<0.5, which used to silence hoverEdge for free (it went
+// through the same native mechanism as hoverNode). SF-WEB-73 moved edge
+// hover onto a DOM mousemove listener that bypasses interaction.hover
+// entirely, so the same threshold needs an explicit check here — this
+// drives the real mousemove → rAF-flush path end to end (attachNetworkEvents
+// wires the listener; the stubbed rAF below runs the flush synchronously).
+describe("_flushHoverEdgeFrame — zoom-based hover suppression (SF-WEB-74)", () => {
+  beforeEach(() => {
+    State.graphEdges = [];
+    clearEdgeCache();
+    vi.stubGlobal("requestAnimationFrame", (cb) => { cb(); return 1; });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    // _customHoveredEdgeId is module-level state in events.js, not reset by
+    // vi.clearAllMocks() — without this, the NEXT test's "same edge id
+    // still hovered" would look like a no-op change and skip
+    // highlightEdgePair entirely, same as a real mouseleave would reset it.
+    domRefs.leaveHandler?.();
+  });
+
+  function wireAndMove() {
+    attachNetworkEvents({});
+    domRefs.moveHandler({ clientX: 0, clientY: 0 });
+  }
+
+  it("suppresses edge hover-highlight and the tooltip on a big graph zoomed far out — same threshold node-hover already uses", () => {
+    State.graphEdges = Array.from({ length: 200 }, (_, i) => ({ id: `e${i}`, from: 1, to: 2 + i, weight: 1 }));
+    const edgeId = "1_2";
+    setEdgeCache(new Map([[edgeId, { from: 1, to: 2, kind: "intra" }]]));
+    const positions = { 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } };
+    State.network = {
+      on: () => {},
+      getPositions: () => positions,
+      getNodeAt: () => undefined,
+      DOMtoCanvas: (p) => p,
+      getScale: () => 0.3, // < 0.5 — same as render.js's native-hover cutoff
+    };
+
+    wireAndMove();
+
+    expect(highlightEdgePair).not.toHaveBeenCalled();
+    expect(els.network.style.cursor).toBe("default");
+    expect(els.network.appendChild).not.toHaveBeenCalled(); // no tooltip
+  });
+
+  it("still highlights/tooltips the same graph once zoomed back in past the cutoff", () => {
+    State.graphEdges = Array.from({ length: 200 }, (_, i) => ({ id: `e${i}`, from: 1, to: 2 + i, weight: 1 }));
+    const edgeId = "1_2";
+    setEdgeCache(new Map([[edgeId, { from: 1, to: 2, kind: "intra" }]]));
+    const positions = { 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } };
+    State.network = {
+      on: () => {},
+      getPositions: () => positions,
+      getNodeAt: () => undefined,
+      DOMtoCanvas: (p) => p,
+      getScale: () => 0.9,
+    };
+
+    wireAndMove();
+
+    expect(highlightEdgePair).toHaveBeenCalledWith(edgeId);
+  });
+
+  it("leaves a small graph's edge hover unaffected even at extreme zoom-out (threshold is edge-count-gated, like node-hover's)", () => {
+    State.graphEdges = [{ id: "1_2", from: 1, to: 2, weight: 1 }];
+    const edgeId = "1_2";
+    setEdgeCache(new Map([[edgeId, { from: 1, to: 2, kind: "intra" }]]));
+    const positions = { 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } };
+    State.network = {
+      on: () => {},
+      getPositions: () => positions,
+      getNodeAt: () => undefined,
+      DOMtoCanvas: (p) => p,
+      getScale: () => 0.1,
+    };
+
+    wireAndMove();
+
+    expect(highlightEdgePair).toHaveBeenCalledWith(edgeId);
   });
 });

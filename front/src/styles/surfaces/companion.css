@@ -171,25 +171,34 @@
    остальных, тесно скомпонованных панелей графа — 40px-аватар и
    щедрые отступы были рассчитаны на просторную главную страницу.
    Уменьшаем именно здесь; #hero-ac и Find Path на главной остаются
-   прежнего, более крупного размера — жалобы на них не было. */
-.path-panel .ac-dropdown,
-.search-modal.docked .ac-dropdown {
+   прежнего, более крупного размера — жалобы на них не было.
+   [SF-WEB-60] БАГ: это раньше было четырьмя descendant-селекторами
+   (".path-panel .ac-dropdown"/".search-modal.docked .ac-dropdown" и т.п.)
+   — но portalToOverlayRoot (overlay-root.js) физически переносит
+   .ac-dropdown ВНЕ .path-panel/.search-modal.docked в DOM ровно в момент
+   открытия (см. заголовок overlay-root.js) — то есть ровно тогда, когда
+   этот стиль и должен был бы сработать. Ни один из этих селекторов не
+   совпадает с тех пор, как появился портал (SF-WEB-41) — компактный режим
+   на графе молча переставал применяться, дропдаун рендерился в полном
+   "домашнем" размере (40px аватар, hint%, max-width 400px) даже в узком
+   докнутом контексте — ровно то, что было на скриншоте ("не получится
+   переиспользовать с главной страницы"). Класс .ac-dropdown--compact
+   переживает портал (он на самом переносимом элементе, не на предке) —
+   openDropdown (overlay-root.js) выставляет его заново при КАЖДОМ
+   открытии, проверяя контекст ЯКОРЯ (тот никуда не переносится). */
+.ac-dropdown--compact {
   max-width: min(300px, 90vw);
 }
-.path-panel .ac-item,
-.search-modal.docked .ac-item {
+.ac-dropdown--compact .ac-item {
   padding: var(--space-2) var(--space-3); gap: var(--space-2);
 }
-.path-panel .ac-avatar,
-.search-modal.docked .ac-avatar {
+.ac-dropdown--compact .ac-avatar {
   width: 30px; height: 30px;
 }
-.path-panel .ac-name,
-.search-modal.docked .ac-name {
+.ac-dropdown--compact .ac-name {
   font-size: var(--text-sm);
 }
-.path-panel .ac-hint,
-.search-modal.docked .ac-hint {
+.ac-dropdown--compact .ac-hint {
   display: none;
 }
 

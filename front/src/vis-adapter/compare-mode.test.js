@@ -220,4 +220,19 @@ describe("handleCompareModeNodeClick — path highlight", () => {
     expect(State.pathHighlight).toBeNull();
     expect(showComparePanel).toHaveBeenCalledWith(1, 2, null);
   });
+
+  // [SF-WEB-61] "убери затемнения при компаир моде и оставь только
+  // подсветку всех нод пути и крайних" — a node NOT on the found path
+  // (here: id 3, a bystander unrelated to the 1<->2 path) must be left at
+  // full resting opacity, not the path finder's usual deep-dim.
+  it("leaves an off-path node at full opacity — no deep-dim in Compare mode", () => {
+    bfsPath.mockReturnValue([1, 2]);  // node 3 is not on this path
+    enterCompareMode();
+    handleCompareModeNodeClick(1);
+    handleCompareModeNodeClick(2);
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls.at(-1);
+    const off = nodeUpdates.find(u => u.id === 3);
+    expect(off.opacity).toBe(1);
+  });
 });

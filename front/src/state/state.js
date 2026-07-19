@@ -343,6 +343,13 @@ const interactionSlice = {
   // routing groundwork for it). Driven by ui/router.js's URL hash
   // (#/graph, #/game), never set directly outside that module.
   surface: "graph",
+
+  // [SF-WEB-61] BubbleSets are now a manual, user-controlled toggle — OFF by
+  // default, never auto-shown/hidden by node count (the old
+  // CONTOUR_MAX_TOTAL_MEMBERS LOD threshold from SF-WEB-58/59 is removed;
+  // see bubble-contours.js). Session-only, mirrors theme's "no persistence"
+  // spirit. See ui/canvas-controls.js's toggle button.
+  bubbleSetsEnabled: false,
 };
 
 // netFetch — in-flight graph/path requests, their AbortControllers, pollers.
@@ -426,6 +433,7 @@ bridge("history",        interactionSlice);
 bridge("heroMode",       interactionSlice);
 bridge("theme",          interactionSlice);
 bridge("surface",        interactionSlice);
+bridge("bubbleSetsEnabled", interactionSlice);
 
 bridge("inFlight",             netFetchSlice);
 bridge("pendingExpand",        netFetchSlice);

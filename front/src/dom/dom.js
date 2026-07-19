@@ -78,6 +78,8 @@ export const els = {
   btnFindPath:   $("btn-find-path"),
   // [SF-WEB-47] Graph-native Compare mode toggle — see vis-adapter/compare-mode.js.
   btnCompareMode: $("btn-compare-mode"),
+  // [SF-WEB-61] Manual BubbleSet toggle — see ui/canvas-controls.js::setupBubbleSetsToggle.
+  btnBubbleSets: $("btn-bubble-sets"),
   btnSearchOpen: $("btn-search-open"),
 
   // [SF-WEB-14] Compact zoom/fit cluster — the one control cluster the

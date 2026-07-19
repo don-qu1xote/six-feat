@@ -24,6 +24,21 @@ export function replaceGraph(graph) {
   setNodes(graph.nodes.map(n => buildNodeState(n, seedId, existingIds, graph)));
   setEdges(graph.edges.map(e => buildEdgeState(e)));
 
+  // [SF-WEB-62] "экспандед-ноды у сида не помечаются как экспандед и не
+  // соответствующего размера" — buildNodeState defaults every node to
+  // _isNew:true (only ever cleared inside mergeNetwork's own flyout, see
+  // physics.js's `for (const n of freshNodes) n._isNew = false;`), but a
+  // FULL replaceGraph never goes through that merge path — it renders
+  // everything immediately via initNetwork/refreshNetwork. Left uncleared,
+  // EVERY node from the very first search (i.e. every direct seed
+  // neighbor) stayed _isNew:true forever. Later double-clicking one of them
+  // falls through BOTH of mergeNetwork's node buckets: not in `freshNodes`
+  // (already in the DataSet), and excluded from `existingUpdates` too (that
+  // bucket requires !_isNew) — so its HUB_RADIUS size / borderWidth 5 /
+  // expanded shadow from nodeVisual never actually got applied, even though
+  // State.expandedNodes correctly contained it.
+  State.graphNodes.forEach(n => { n._isNew = false; });
+
   finalizeGraphState(seedId, nameById, savedPositions, graph, false);
 }
 
@@ -60,8 +75,6 @@ export function mergeGraph(graph) {
   // (existingNodeIds/existingEdgeKeys are snapshotted once beforehand, same
   // as the old .filter() closures, so duplicate ids/pairs *within* the
   // incoming batch itself still both pass through, unchanged behaviour).
-  // Централити убрана — обновлять здесь больше нечего для уже
-  // существующих узлов (раньше подтягивали betweenness_normalised).
   const newNodes = [];
   for (const n of graph.nodes) {
     if (!existingNodeIds.has(n.id)) newNodes.push(buildNodeState(n, null, existingNodeIds, graph));

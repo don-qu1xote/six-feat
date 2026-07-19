@@ -77,8 +77,15 @@ export function attachGeniusAutocomplete(inputEl, dropdownEl, onSelect, geniusAc
       openDropdown(dropdownEl);
       return;
     }
+    // [SF-WEB-59] History rows previously skipped the .ac-avatar image
+    // entirely — with .ac-item's flex layout (avatar + gap + info), that
+    // made history rows visibly narrower/misaligned next to live
+    // suggestion rows (which always render one, real photo or
+    // placeholderFor fallback). History has no real photo either way, but
+    // still gets the SAME placeholder fallback for layout consistency.
     dropdownEl.innerHTML = items.map(name => `
       <div class="ac-item ac-history" data-name="${escapeHtml(name)}">
+        <img class="ac-avatar" src="${escapeHtml(placeholderFor(name, false))}" alt="" />
         <div class="ac-info">
           <span class="ac-name truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
         </div>

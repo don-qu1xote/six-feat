@@ -32,6 +32,7 @@ import {
   buildEdgeState,
   edgeKey,
   mergeGraph,
+  replaceGraph,
   computeNodeDominantRoles,
   cacheNodeCollaborations,
 } from "./graph.js";
@@ -155,6 +156,46 @@ describe("edgeKey", () => {
 });
 
 // SF-WEB-01
+// [SF-WEB-62] "экспандед-ноды у сида не помечаются как экспандед и не
+// соответствующего размера" — every node from a FULL graph load used to
+// stay _isNew:true forever (buildNodeState's default, only ever cleared
+// inside mergeNetwork's own merge-flyout — a full replaceGraph never goes
+// through that path). Later double-clicking one of those nodes (i.e. any
+// direct seed neighbor, since those are exactly the nodes a replaceGraph
+// creates) fell through BOTH of mergeNetwork's node-update buckets in
+// physics.js (`freshNodes` requires _isNew AND not-yet-in-DataSet;
+// `existingUpdates` requires !_isNew) — so its expanded styling never got
+// applied even though State.expandedNodes correctly listed it.
+describe("replaceGraph — SF-WEB-62", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    State.graphNodes    = [];
+    State.graphEdges    = [];
+    State.expandedNodes = new Set();
+    State.currentSeedId = null;
+    State.network        = null;
+    State.hasRendered    = true;
+    els.heroInput = document.createElement("input");
+  });
+
+  it("clears _isNew on every node from a full graph load, so a later expand of any of them isn't dropped by mergeNetwork's node-update buckets", () => {
+    replaceGraph({
+      seed_id: 1,
+      nodes: [
+        { id: 1, name: "Seed" },
+        { id: 2, name: "Direct neighbor" },
+        { id: 3, name: "Another neighbor" },
+      ],
+      edges: [
+        { from: 1, to: 2, weight: 1 },
+        { from: 1, to: 3, weight: 1 },
+      ],
+    });
+
+    expect(State.graphNodes.every(n => n._isNew === false)).toBe(true);
+  });
+});
+
 describe("mergeGraph", () => {
   beforeEach(() => {
     vi.clearAllMocks();

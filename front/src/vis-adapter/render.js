@@ -17,10 +17,12 @@ import { clearCanvasState } from "../ui/canvas-states.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
 import { updateEdgeRenderMode, runFlyoutAnimation, pokeFastRenderMode, resetFastRenderMode } from "./physics.js";
-import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
+import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD, FAST_RENDER_EDGE_THRESHOLD } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
 import { placeExpandedNodes, LEAF_R } from "./layout.js";
 import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from "./edge-render.js";
+import { clearDominantColorCache } from "./photo-color.js";
+import { setContourData, clearContourData, drawContours } from "./bubble-contours.js";
 
 // [SF-WEB-51] Один общий движок детерминированной раскладки для инициала И
 // re-search: и initNetwork, и refreshNetwork прогоняют граф через
@@ -40,7 +42,7 @@ import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from
 // path-режим (initPathNetwork, свой набор рёбер, БЕЗ edgeClass) остался
 // видимым как раньше.
 function _layoutNodeItems(nameById, savedPositions = {}) {
-  const { targets, edgeClass } = placeExpandedNodes(savedPositions);
+  const { targets, edgeClass, sectorMembers } = placeExpandedNodes(savedPositions);
   const nodeItems = State.graphNodes.map(n => {
     const v = nodeVisual(n);
     const t = n.isSeed ? { x: 0, y: 0 } : targets.get(n.id);
@@ -48,6 +50,7 @@ function _layoutNodeItems(nameById, savedPositions = {}) {
   });
   const edgeItems = State.graphEdges.map(e => suppressNativeEdgeColor(edgeVisual(e, nameById)));
   setEdgeCache(edgeClass);
+  setContourData(sectorMembers);
   return { nodeItems, edgeItems };
 }
 
@@ -142,6 +145,13 @@ export function initNetwork(seedId, nameById) {
   // reuses this same State.network instance (only its DataSets get
   // cleared/rebuilt), so ring-guides stay wired through expand/search
   // without needing to reattach.
+  // [SF-WEB-58 C] Registered FIRST — beforeDrawing listeners fire in
+  // registration order, and vis.js's own node/edge drawing happens AFTER
+  // every beforeDrawing listener has run, so contours (background fill) →
+  // ring-guides/our edge arcs → native nodes on top is exactly "под нодами"
+  // (and under our own edges too, which reads better than a contour tint
+  // painted over them).
+  State.network.on("beforeDrawing", drawContours);
   State.network.on("beforeDrawing", _drawRingGuides);
   // [SF-WEB-55] Same lifetime story — drawEdges reads whatever setEdgeCache()
   // last stored (_layoutNodeItems above already called it for this exact
@@ -196,6 +206,24 @@ export function initPathNetwork(nameById, targets, fromPos) {
     opts
   );
 
+  // [SF-WEB-63] "рёбра при экспандеде пропали... на скрине и на клиенте
+  // рёбр нет, а при сохранении PNG есть" — initNetwork wires these same
+  // three beforeDrawing listeners (see its own comment on registration
+  // order), but this path-mode network never did, since path mode
+  // originally only ever needed vis.js's OWN native edge rendering. Once a
+  // regular expand runs on top of this network, though, it classifies
+  // edges into edge-render.js's cache and suppresses their native color —
+  // with no beforeDrawing hook on THIS live network to actually paint the
+  // custom layer, those edges vanished from the screen entirely (while the
+  // separate export shadowNetwork, which DOES have its own copy of this
+  // hook, kept rendering them fine — exactly the "gone live, present in
+  // the PNG" split reported). All three are no-ops until their respective
+  // caches actually have content, so wiring them here doesn't change
+  // anything about path mode's own look before an expand happens.
+  State.network.on("beforeDrawing", drawContours);
+  State.network.on("beforeDrawing", _drawRingGuides);
+  State.network.on("beforeDrawing", drawEdges);
+
   updateEdgeRenderMode();
   _attachZoomThrottle();
   attachNetworkEvents(nameById);
@@ -220,9 +248,6 @@ export function initPathNetwork(nameById, targets, fromPos) {
     }
   });
 }
-
-// Порог числа рёбер для переключения в "fast render" режим.
-const FAST_RENDER_EDGE_THRESHOLD = 150;
 
 let _zoomThrottleTimer = null;
 export function _attachZoomThrottle() {
@@ -360,6 +385,11 @@ export function initGraphOnCanvas() {
 function _resetGraphState({ keepRendered = false, clearCache = false, invalidateColors = false } = {}) {
   resetFastRenderMode();
   clearEdgeCache();
+  // [SF-WEB-58 B] A fresh graph can reuse the same numeric node ids for a
+  // completely different artist — a stale sampled avatar color must never
+  // survive into it (see photo-color.js's own comment on this function).
+  clearDominantColorCache();
+  clearContourData();
   resetGraphState({ resetHasRendered: !keepRendered });
   if (clearCache) {
     // ТЗ-5: clear the graph cache when the user resets the canvas.

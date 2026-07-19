@@ -100,12 +100,116 @@ describe("[SF-WEB-41] overlay-root portal — дропдаун не обреза
     expect(dd.style.minWidth).toBe("300px");
   });
 
+  // [SF-WEB-59] "большие подсказки делают что правая граница улетает
+  // куда-то вправо и её не видно" — a dropdown anchored to an input near
+  // the RIGHT edge of the viewport (docked search / node-search overlay,
+  // both top:…;right:…) growing wide (width:max-content, up to 400px) used
+  // to overflow past window.innerWidth with left always pinned to the
+  // anchor's own left edge, regardless of how wide the dropdown ended up.
+  it("pulls the dropdown back inside the viewport when it would overflow the right edge", () => {
+    const { input, dd } = makeAnchoredDropdown();
+    vi.spyOn(input, "getBoundingClientRect").mockReturnValue(
+      { bottom: 60, left: 900, width: 380, top: 40, right: 1280, height: 20, x: 900, y: 40 }
+    );
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1024);
+    // Dropdown renders wide (its own max-width, e.g. long suggestion text) —
+    // 900 + 400 = 1300, well past the 1024px viewport.
+    vi.spyOn(dd, "getBoundingClientRect").mockReturnValue(
+      { width: 400, left: 900, right: 1300, top: 68, bottom: 200, height: 132, x: 900, y: 68 }
+    );
+
+    openDropdown(dd);
+
+    const left = parseFloat(dd.style.left);
+    expect(left).toBeLessThan(900);  // pulled back from the anchor's own left edge
+    expect(left + 400).toBeLessThanOrEqual(1024);  // fits inside the viewport
+  });
+
+  it("leaves left untouched when the dropdown comfortably fits in the viewport", () => {
+    const { input, dd } = makeAnchoredDropdown();
+    vi.spyOn(input, "getBoundingClientRect").mockReturnValue(
+      { bottom: 60, left: 40, width: 300, top: 40, right: 340, height: 20, x: 40, y: 40 }
+    );
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(1024);
+    vi.spyOn(dd, "getBoundingClientRect").mockReturnValue(
+      { width: 300, left: 40, right: 340, top: 68, bottom: 200, height: 132, x: 40, y: 68 }
+    );
+
+    openDropdown(dd);
+    expect(dd.style.left).toBe("40px");
+  });
+
   it("без зарегистрированного якоря деградирует до показа на месте (без портала)", () => {
     const dd = document.createElement("div");
     document.body.append(dd);
     openDropdown(dd); // якорь не задан
     expect(dd.classList.contains("open")).toBe(true);
     expect(dd.parentElement).toBe(document.body); // не унесён в overlay-root
+  });
+
+  // [SF-WEB-60] "не получится переиспользовать с главной страницы" —
+  // .path-panel/.search-modal.docked used to get a compact .ac-dropdown
+  // via plain CSS descendant selectors (companion.css), which stopped
+  // matching the instant portalToOverlayRoot moves the dropdown OUT of
+  // that ancestor (i.e. exactly when the style needs to apply) — the
+  // dropdown silently rendered at full "home page" size in the narrow
+  // docked/graph context instead. .ac-dropdown--compact is set on the
+  // dropdown itself (survives the portal) — openDropdown re-derives it
+  // from the ANCHOR's context (never moved) on every open.
+  describe("SF-WEB-60 — compact class survives the portal", () => {
+    it("adds .ac-dropdown--compact when the anchor lives inside .search-modal.docked", () => {
+      const modal = document.createElement("div");
+      modal.className = "search-modal docked";
+      const input = document.createElement("input");
+      const dd = document.createElement("div");
+      dd.className = "ac-dropdown";
+      modal.append(input, dd);
+      document.body.append(modal);
+      anchorDropdown(dd, input);
+
+      openDropdown(dd);
+      expect(dd.classList.contains("ac-dropdown--compact")).toBe(true);
+    });
+
+    it("adds .ac-dropdown--compact when the anchor lives inside .path-panel", () => {
+      const panel = document.createElement("div");
+      panel.className = "path-panel";
+      const input = document.createElement("input");
+      const dd = document.createElement("div");
+      dd.className = "ac-dropdown";
+      panel.append(input, dd);
+      document.body.append(panel);
+      anchorDropdown(dd, input);
+
+      openDropdown(dd);
+      expect(dd.classList.contains("ac-dropdown--compact")).toBe(true);
+    });
+
+    it("does NOT add .ac-dropdown--compact for the plain (non-docked) hero context", () => {
+      const { input, dd } = makeAnchoredDropdown();  // plain <div> container, no docked/path-panel ancestor
+      openDropdown(dd);
+      expect(dd.classList.contains("ac-dropdown--compact")).toBe(false);
+      void input;
+    });
+
+    it("re-derives the compact class on every open — #search-modal toggles .docked at runtime, same DOM node either way", () => {
+      const modal = document.createElement("div");
+      modal.className = "search-modal";  // NOT docked yet — full hero mode
+      const input = document.createElement("input");
+      const dd = document.createElement("div");
+      dd.className = "ac-dropdown";
+      modal.append(input, dd);
+      document.body.append(modal);
+      anchorDropdown(dd, input);
+
+      openDropdown(dd);
+      expect(dd.classList.contains("ac-dropdown--compact")).toBe(false);
+      closeDropdown(dd);
+
+      modal.classList.add("docked");  // page navigates to the graph — same modal, now docked
+      openDropdown(dd);
+      expect(dd.classList.contains("ac-dropdown--compact")).toBe(true);
+    });
   });
 });
 

@@ -8,8 +8,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { State } from "../state/state.js";
 import { placeExpandedNodes } from "./layout.js";
-import { setEdgeCache, clearEdgeCache, drawEdges, _edgeCacheSize, CURVE_DEGRADE_EDGE_THRESHOLD, suppressNativeEdgeColor } from "./edge-render.js";
-import { selectEdge, clearSelectedEdge, resetHoverState, highlightEdgePair } from "./highlight.js";
+import { setEdgeCache, clearEdgeCache, drawEdges, _edgeCacheSize, suppressNativeEdgeColor, nearestEdgeAt } from "./edge-render.js";
+import { selectEdge, clearSelectedEdge, resetHoverState, highlightEdgePair, selectNode, clearSelectedNode } from "./highlight.js";
+import { COLOR } from "../state/state.js";
 
 function mockCtx() {
   const calls = [];
@@ -112,14 +113,28 @@ describe("suppressNativeEdgeColor", () => {
     expect(out.color.highlight.color).toBe("rgba(0,0,0,0)");
   });
 
-  it("leaves every non-color field untouched", () => {
+  it("leaves every non-color, non-title field untouched", () => {
     const input = { id: "1_2", from: 1, to: 2, width: 3, title: "x", color: { color: "#fff", opacity: 1 } };
     const out = suppressNativeEdgeColor(input);
     expect(out.id).toBe("1_2");
     expect(out.from).toBe(1);
     expect(out.to).toBe(2);
     expect(out.width).toBe(3);
-    expect(out.title).toBe("x");
+  });
+
+  // [SF-WEB-73] "подсветка не совпадает с тултипом" — vis.js's own
+  // built-in (title-based) tooltip uses its OWN internal hit-test
+  // (edges.smooth "continuous"), provably inconsistent with both the
+  // curve actually drawn (edge-render.js) AND with the native hoverEdge
+  // event's own params.edge on a dense hub (reproduced live — see this
+  // function's header comment). A suppressed edge's title is cleared so
+  // vis.js never shows its own (potentially wrong) tooltip for it —
+  // events.js now shows its own, built from the same curve-aware hit test
+  // that drives the hover highlight.
+  it("clears title — vis.js's own built-in tooltip for a suppressed edge is unreliable (see header comment)", () => {
+    const input = { id: "1_2", from: 1, to: 2, width: 3, title: "x", color: { color: "#fff", opacity: 1 } };
+    const out = suppressNativeEdgeColor(input);
+    expect(out.title).toBeUndefined();
   });
 });
 
@@ -138,6 +153,49 @@ describe("setEdgeCache / clearEdgeCache", () => {
     expect(_edgeCacheSize()).toBeGreaterThan(0);
     clearEdgeCache();
     expect(_edgeCacheSize()).toBe(0);
+  });
+});
+
+// [SF-WEB-73] "подсветка не совпадает с тултипом" — found live on a dense
+// hub: vis.js's native click hit-test (params.edges), its hoverEdge event,
+// AND its own built-in title-tooltip each follow edges.smooth
+// "continuous" — a DIFFERENT curve than the one this module actually draws
+// (_curvePoint's hub-bowed quadratic for cross edges) — and, on a dense
+// hub, they don't even agree WITH EACH OTHER, reproducibly, for the exact
+// same cursor position. nearestEdgeAt tests a point against the SAME curve
+// drawEdges() paints, so every consumer (click, hover, tooltip in
+// events.js) gets one single, consistent answer.
+describe("nearestEdgeAt", () => {
+  it("finds the edge whose drawn curve passes through the click point (a leaf endpoint with exactly one incident edge, always exactly on the curve regardless of bow)", () => {
+    const g = buildGraph();
+    const { targets, edgeClass } = placeExpandedNodes({});
+    setEdgeCache(edgeClass);
+    State.network = mockNetworkWithPositions(targets);
+
+    // aLeaves[2] has exactly one edge (poleA→aLeaves[2]) — unlike aLeaves[0]/
+    // [1] (also share the companion cross-edge) or poleA/the seed
+    // (many incident edges), so this click point is unambiguously on only
+    // one curve.
+    const leafPos = targets.get(g.aLeaves[2]);
+    const hit = nearestEdgeAt(leafPos, 5);
+    expect(hit).toBe(`${g.poleA}_${g.aLeaves[2]}`);
+  });
+
+  it("returns null when the click point is far from every cached edge", () => {
+    const g = buildGraph();
+    const { targets, edgeClass } = placeExpandedNodes({});
+    setEdgeCache(edgeClass);
+    State.network = mockNetworkWithPositions(targets);
+
+    const hit = nearestEdgeAt({ x: 1e6, y: 1e6 }, 5);
+    expect(hit).toBeNull();
+    void g;
+  });
+
+  it("returns null when the cache is empty (no layout drawn yet)", () => {
+    buildGraph();
+    State.network = mockNetworkWithPositions(new Map());
+    expect(nearestEdgeAt({ x: 0, y: 0 }, 1000)).toBeNull();
   });
 });
 
@@ -290,13 +348,19 @@ describe("drawEdges", () => {
     expect(bow).toBeLessThan(segLen * 0.25);
   });
 
-  it("degrades to straight lineTo (never hides edges) once the cache exceeds CURVE_DEGRADE_EDGE_THRESHOLD", () => {
+  // [SF-WEB-59] SF-WEB-55/56 used to degrade curves to straight lineTo past
+  // a cache-size threshold ("cheap perf valve") — reported as a regression:
+  // the abrupt style switch itself reads worse than the load it was meant
+  // to offset, and the system should hold up under curves regardless of
+  // graph size. Locks in that a LARGE graph still gets curves, not lines.
+  it("still draws every edge as a curve (quadraticCurveTo), never degrading to straight lineTo, on a large graph", () => {
     const seedId = 1;
+    const LARGE_EDGE_COUNT = 500;
     State.graphNodes = [{ id: seedId, isSeed: true }];
     State.graphEdges = [];
     const targets = new Map([[seedId, { x: 0, y: 0 }]]);
     const edgeClass = new Map();
-    for (let i = 0; i < CURVE_DEGRADE_EDGE_THRESHOLD + 5; i++) {
+    for (let i = 0; i < LARGE_EDGE_COUNT; i++) {
       const a = 1000 + i, b = 2000 + i;
       State.graphNodes.push({ id: a, isSeed: false }, { id: b, isSeed: false });
       const e = { id: `${a}_${b}`, from: a, to: b, weight: 1 };
@@ -314,8 +378,8 @@ describe("drawEdges", () => {
 
     const curveCalls = ctx.calls.filter(c => c[0] === "quadraticCurveTo").length;
     const lineCalls  = ctx.calls.filter(c => c[0] === "lineTo").length;
-    expect(curveCalls).toBe(0);
-    expect(lineCalls).toBe(CURVE_DEGRADE_EDGE_THRESHOLD + 5);  // every edge still drawn
+    expect(curveCalls).toBe(LARGE_EDGE_COUNT);  // every edge still drawn, still curved
+    expect(lineCalls).toBe(0);
   });
 
   it("brightens (raises opacity/width) the selected edge and no other", () => {
@@ -392,3 +456,43 @@ describe("drawEdges", () => {
     expect(otherAlpha[1]).toBe(0.38);
   });
 });
+
+// [SF-WEB-59] Selection color must be the SAME (COLOR.neon) regardless of
+// whether the user clicked the edge directly or clicked a node it's
+// incident to — previously a directly-selected edge got a lightened role
+// hue while a node-selected edge (via the native DataSet, invisible for any
+// edge our canvas layer owns) got no distinct color from drawEdges at all.
+describe("drawEdges — unified selection color (SF-WEB-59)", () => {
+  it("paints a directly-selected edge with COLOR.neon", () => {
+    const g = buildGraph();
+    const { targets, edgeClass } = placeExpandedNodes({});
+    setEdgeCache(edgeClass);
+    State.network = mockNetworkWithPositions(targets);
+    State.edgesDS = { get: () => ({ _brightColor: "#fff", _color: "#000" }), update: () => {} };
+    State.nodesDS = { get: () => null };
+    selectEdge(`${g.poleA}_${g.aLeaves[0]}`);
+
+    const ctx = mockCtx();
+    drawEdges(ctx);
+    const strokeColors = ctx.calls.filter(c => c[0] === "strokeStyle").map(c => c[1]);
+    expect(strokeColors).toContain(COLOR.neon);
+  });
+
+  it("paints an edge incident to the currently-selected NODE with the same COLOR.neon", () => {
+    const g = buildGraph();
+    const { targets, edgeClass } = placeExpandedNodes({});
+    setEdgeCache(edgeClass);
+    State.network = mockNetworkWithPositions(targets);
+    State.edgesDS = { get: () => ({ _brightColor: "#fff", _color: "#000" }), update: () => {} };
+    State.nodesDS = { get: () => null, update: () => {} };
+    selectNode(g.poleA);  // poleA↔aLeaves[0] is one of poleA's incident edges
+
+    const ctx = mockCtx();
+    drawEdges(ctx);
+    const strokeColors = ctx.calls.filter(c => c[0] === "strokeStyle").map(c => c[1]);
+    expect(strokeColors).toContain(COLOR.neon);
+
+    clearSelectedNode();
+  });
+});
+

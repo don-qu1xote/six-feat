@@ -367,6 +367,17 @@ let _pendingHoverEdgeIds = new Set();
 // (much heavier, DOM/vis.js-mutating) hover machinery.
 export function getHoveredEdgeIds() { return _hoveredEdgeIds; }
 
+// [SF-WEB-59] Same reasoning as getHoveredEdgeIds — edge-render.js's canvas
+// layer needs to know which edges belong to the currently SELECTED NODE
+// (_selectedNodeEdgeIds, defined further down) so it can paint them with
+// the same neon accent a clicked EDGE gets (_selectedEdgeUpdate below).
+// Before this, clicking a node wrote neon onto the native DataSet edges
+// (_selectedNodeEdgeUpdate) but our canvas layer — which is what's actually
+// visible for any cached edge — had no idea and kept drawing them at their
+// plain resting color: clicking a node and clicking one of its edges
+// produced two different-looking "selected" states for the same edge.
+export function getSelectedNodeEdgeIds() { return _selectedNodeEdgeIds; }
+
 // Фиксированная прибавка к базовой ширине ребра (edgeWidthForWeight) для
 // hover-подсветки. Раньше ширина считалась приращением к ТЕКУЩЕЙ ширине из
 // DataSet ((ed.width || 1.5) + 2) — при повторных наведениях на одну и ту
@@ -442,11 +453,13 @@ function _hoverEdgeUpdate(edgeId) {
 
 // IDEA-37: hover ноды подсвечивает ВСЕ инцидентные ей рёбра, вычисленные
 // напрямую из State.graphEdges (O(степень ноды): e.from === nodeId ||
-// e.to === nodeId) — независимо от interaction.hoverConnectedEdges и от
-// FAST_RENDER_EDGE_THRESHOLD (events.js), который на графах с >150 рёбер
-// отключает per-edge hoverEdge целиком и на двух-хабовых графах оставлял
-// ноду без единой подсвеченной связи. Накапливаем id в тот же
-// _hoveredEdgeIds, что и _applyHoverEdge, — откат идёт общим
+// e.to === nodeId) — независимо от interaction.hoverConnectedEdges.
+// [SF-WEB-71] events.js's hoverEdge раньше (FAST_RENDER_EDGE_THRESHOLD) на
+// графах с >150 рёбер отключался целиком, оставляя ноду без единой
+// подсвеченной связи при прямом наведении на ребро — этот путь (наведение
+// на НОДУ) с самого начала не зависел от того порога, теперь ОБА пути
+// ведут себя одинаково (порог убран целиком, см. events.js). Накапливаем
+// id в тот же _hoveredEdgeIds, что и _applyHoverEdge, — откат идёт общим
 // _clearHoveredEdge.
 //
 // [SF-WEB-34] Pure builder now (returns the update array instead of
@@ -675,7 +688,18 @@ function _defaultNodeUpdate(nodeId) {
   const graphNode = _getNode(nodeId);
   if (!graphNode) return null;
   const isExpanded = State.expandedNodes.has(graphNode.id);
-  const borderWidth = graphNode.isSeed ? 5 : (isExpanded ? 4 : 2);
+  // [SF-WEB-61] "экспандед ноды связанные с сидом не помечаются экспандед"
+  // — this formula had drifted from nodeVisual's (visuals.js), which treats
+  // seed and expanded hubs IDENTICALLY (borderWidth 5, same HUB_RADIUS
+  // sizing etc — "hubs share the same size", see its own comment). This one
+  // singled seed out at 5 and gave every other expanded hub only 4 — so the
+  // instant a freshly-expanded node was hovered and the mouse moved away
+  // (the single most likely thing to happen right after double-clicking a
+  // node sitting right next to the seed, since it's the easiest one to
+  // reach next), its "revert to resting" pass silently thinned its border
+  // back down, reading as "not really marked expanded" next to the seed's
+  // own untouched 5px border.
+  const borderWidth = (graphNode.isSeed || isExpanded) ? 5 : 2;
   // [SF-WEB-45] Same nodeShadowFor formula as buildDefaultColorCache above —
   // reverting to "resting" after a hover/selection must restore the same
   // glow nodeVisual painted on first render, not always {enabled:false}.
@@ -1046,7 +1070,19 @@ function getEdgeHighlightLevel(fromId, toId, pathEdgesSet) {
   return "neverTouched";
 }
 
-function _applyPath(path) {
+// [SF-WEB-61] "убери затемнения при компаир моде и оставь только подсветку
+// всех нод пути и крайних" — Compare mode shares this same path-highlight
+// machinery with the regular path finder (same bfsPath result, same
+// highlightPath call), but the two now want different treatment of
+// off-path nodes: the path finder still dims the rest of the graph down to
+// `neverTouched` (unchanged), Compare mode instead wants the rest of the
+// graph left at its normal resting look — only the path nodes themselves
+// (which already includes both endpoints, first/last in `path`) get the
+// bright on-path highlight. `dim = false` swaps `neverTouched`'s look from
+// the deep-dim PATH_HIGHLIGHT_LEVELS entry to the same "resting" formula
+// nodeVisual/hover-revert use elsewhere (nodeShadowFor's border) — full
+// opacity, no highlight, exactly as if untouched.
+function _applyPath(path, { dim = true } = {}) {
   if (!State.nodesDS || !State.edgesDS || !path) return;
 
   const pathSet   = new Set(path);
@@ -1061,9 +1097,19 @@ function _applyPath(path) {
   const nodeIds = State.nodesDS.getIds();
   const nU = nodeIds.map(id => {
     const level  = getNodeHighlightLevel(id, pathSet);
-    const config = PATH_HIGHLIGHT_LEVELS[level];
     const graphNode = _getNode(id);
 
+    if (!dim && level === "neverTouched") {
+      return {
+        id,
+        ..._imageFieldsFor(graphNode),
+        color:       { border: graphNode?._dimBorder || "rgba(143,166,201,0.25)", background: COLOR.panel },
+        opacity:     DIM_LEVELS.off,
+        borderWidth: graphNode?.isSeed ? 5 : 2
+      };
+    }
+
+    const config = PATH_HIGHLIGHT_LEVELS[level];
     let borderColor;
     if (level === "onPath")             borderColor = COLOR.neon;
     else if (level === "expandedOffPath") borderColor = "rgba(94,230,197,0.6)";
@@ -1100,8 +1146,13 @@ function _applyPath(path) {
     }
 
     const level  = getEdgeHighlightLevel(edgeObj.from, edgeObj.to, pathEdges);
-    const config = PATH_HIGHLIGHT_LEVELS[level];
 
+    if (!dim && level === "neverTouched") {
+      const rs = roleStyle(edgeObj.dominantRole);
+      return { id, color: { color: rs.color, opacity: 0.40 }, width: edgeWidthForWeight(edgeObj.weight) };
+    }
+
+    const config = PATH_HIGHLIGHT_LEVELS[level];
     let edgeColor = "rgba(40,48,68,0.02)";
     if (level === "onPath")               edgeColor = COLOR.neon;
     else if (level === "expandedOffPath") edgeColor = "rgba(94,230,197,0.5)";
@@ -1122,7 +1173,7 @@ export function applyDimState(mode, focusIds = {}) {
   switch (mode) {
     case "hover":   return _applyHoverNode(focusIds.nodeId);
     case "edge":    return _applyHoverEdge(focusIds.edgeId);
-    case "path":    return _applyPath(focusIds.path);
+    case "path":    return _applyPath(focusIds.path, { dim: focusIds.dim !== false });
     case "default":
     default:        return _applyDefault();
   }
@@ -1131,5 +1182,8 @@ export function applyDimState(mode, focusIds = {}) {
 // ─── Тонкие обёртки для обратной совместимости ─────────────────────────────
 export function highlightNeighborhood(nodeId) { return applyDimState("hover", { nodeId }); }
 export function highlightEdgePair(edgeId)     { return applyDimState("edge",  { edgeId }); }
-export function highlightPath(path)           { return applyDimState("path", { path }); }
+// [SF-WEB-61] `dim = false` (Compare mode — see compare-mode.js) leaves the
+// rest of the graph at its normal resting look instead of the path finder's
+// usual deep-dim — see _applyPath's own comment for why the two now differ.
+export function highlightPath(path, { dim = true } = {}) { return applyDimState("path", { path, dim }); }
 export function restoreDefaultColors()        { return applyDimState("default"); }

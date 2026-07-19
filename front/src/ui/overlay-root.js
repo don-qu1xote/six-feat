@@ -63,9 +63,25 @@ export function restoreFromOverlayRoot(el) {
   _origin.delete(el);
 }
 
+// [SF-WEB-59] Right-edge overflow guard's own margin — same spirit (and
+// same "reuse an existing convention" reasoning) as tooltips.js's
+// ensureTooltipCollisionGuard, just for anchored dropdowns instead of
+// .vis-tooltip.
+const EDGE_MARGIN = 8;
+
 // Anchored positioning: ставит el фиксированно под якорем. Инлайн-стили
 // перекрывают контейнер-относительные правила .ac-dropdown (top/left/position),
 // которые в overlay-root уже не к чему привязывать.
+//
+// [SF-WEB-59] Баг: .ac-dropdown растёт шире якоря (width:max-content, до
+// max-width:min(400px,90vw) — длинное имя/подсказка легко этого
+// достигает), а left здесь всегда брался от ЛЕВОГО края якоря без учёта
+// итоговой ширины. Для якоря, живущего у ПРАВОГО края вьюпорта (докнутый
+// поиск/node-search — оба top:…;right:…), правый край такого дропдауна
+// уезжал за пределы вьюпорта: не виден, не кликабелен. Меряем фактическую
+// отрисованную ширину ПОСЛЕ позиционирования (el уже в overlay-root, уже
+// применены top/left/minWidth — фактическая ширина известна) и подтягиваем
+// left обратно внутрь вьюпорта, если понадобится.
 export function positionAnchored(el, anchor, { gap = 8 } = {}) {
   if (!el || !anchor) return;
   const r = anchor.getBoundingClientRect();
@@ -74,6 +90,12 @@ export function positionAnchored(el, anchor, { gap = 8 } = {}) {
   el.style.left = `${r.left}px`;
   el.style.right = "auto";
   el.style.minWidth = `${r.width}px`;
+
+  const actualWidth = el.getBoundingClientRect().width;
+  const overflowRight = r.left + actualWidth - (window.innerWidth - EDGE_MARGIN);
+  if (overflowRight > 0) {
+    el.style.left = `${Math.max(EDGE_MARGIN, r.left - overflowRight)}px`;
+  }
 }
 
 // Якорь дропдауна задаётся один раз при привязке автокомплита (там, где есть
@@ -84,6 +106,21 @@ export function anchorDropdown(el, anchor) {
   if (el && anchor) _anchors.set(el, anchor);
 }
 
+// [SF-WEB-60] Контексты, где .ac-dropdown должен рендериться в компактном
+// виде (меньше аватар/шрифт, без hint%, уже max-width) — узкие докнутые
+// панели графа, а не просторная главная страница. Раньше это решалось
+// обычными CSS descendant-селекторами (".search-modal.docked .ac-dropdown"
+// и т.п., companion.css) — но portalToOverlayRoot переносит .ac-dropdown
+// ФИЗИЧЕСКИ ВНЕ .search-modal.docked/.path-panel в DOM (см. заголовок
+// файла) ИМЕННО в момент открытия, то есть ровно тогда, когда этот стиль
+// должен был бы сработать — те селекторы никогда не совпадают, с тех пор
+// как появился портал. #hero-input/#hero-ac переиспользуются И для полной
+// главной страницы, И для докнутой карточки на графе (тот же #search-modal
+// переключается классом .docked) — решение не может быть статичным,
+// нужно проверять контекст ЯКОРЯ (который никуда не переносится) заново
+// при каждом открытии.
+const COMPACT_ANCHOR_SELECTOR = ".search-modal.docked, .path-panel";
+
 // Открыть дропдаун: портал в overlay-root + позиционирование от якоря + класс
 // .open. Если якорь не зарегистрирован — деградируем до старого поведения
 // (просто показать на месте), не роняя вызов.
@@ -91,6 +128,11 @@ export function openDropdown(el) {
   if (!el) return;
   const anchor = _anchors.get(el);
   if (anchor) {
+    // [SF-WEB-60] Проверяется ДО портала (хотя это и не обязательно —
+    // якорь сам никогда не переносится — но так нагляднее: решение о
+    // компактности принимается по исходному месту якоря в DOM).
+    const compact = typeof anchor.closest === "function" && !!anchor.closest(COMPACT_ANCHOR_SELECTOR);
+    el.classList.toggle("ac-dropdown--compact", compact);
     portalToOverlayRoot(el);
     positionAnchored(el, anchor);
   }

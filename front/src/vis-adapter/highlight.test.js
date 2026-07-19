@@ -8,7 +8,7 @@
 //                                  hand-built mock graph data.
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { State, COLOR, DIM_LEVELS } from "../state/state.js";
+import { State, COLOR, DIM_LEVELS, PATH_HIGHLIGHT_LEVELS } from "../state/state.js";
 import { seedShadow, nodeShadowFor } from "./visuals.js";
 import {
   buildDefaultColorCache,
@@ -21,6 +21,7 @@ import {
   selectEdge,
   clearSelectedEdge,
   highlightEdgePair,
+  highlightPath,
   recolorInPlace,
 } from "./highlight.js";
 
@@ -428,6 +429,41 @@ describe("clearHoverHighlight(blurredNodeId) — stale blur guard", () => {
   });
 });
 
+// [SF-WEB-61] "экспандед ноды связанные с сидом не помечаются экспандед" —
+// _defaultNodeUpdate (the "revert to resting state" formula hover/blur and
+// selection-clear all funnel through) had drifted from nodeVisual's own
+// borderWidth rule: nodeVisual treats seed and any expanded hub identically
+// (5px, same HUB_RADIUS sizing — "hubs share the same size"), but this path
+// singled seed out at 5 and gave every OTHER expanded hub only 4 — so the
+// first hover-out after expanding a node quietly thinned its border back
+// down, undercutting its own "this is expanded" marking.
+describe("[SF-WEB-61] hover-revert borderWidth matches nodeVisual's for expanded (non-seed) hubs", () => {
+  it("reverts an expanded, non-seed node to the SAME borderWidth nodeVisual gives it on first render", () => {
+    vi.stubGlobal("requestAnimationFrame", cb => { cb(0); return 1; });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },  // expanded pole, directly adjacent to seed
+    ];
+    State.graphEdges = [{ id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 }];
+    State.expandedNodes = new Set([2]);
+    invalidateColorCache();
+    State.nodesDS = mockDataSet();
+    State.edgesDS = { update: vi.fn(), get: id => ({ id, _brightColor: "#fff" }) };
+
+    applyDimState("hover", { nodeId: 2 });
+    State.nodesDS.update.mockClear();
+    clearHoverHighlight(2);
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls[0];
+    const upd = nodeUpdates.find(u => u.id === 2);
+    expect(upd.borderWidth).toBe(5);  // same as nodeVisual's HUB_RADIUS-tier borderWidth, same as the seed's own
+
+    vi.unstubAllGlobals();
+  });
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // SF-WEB-15: selectNode/clearSelectedNode — persistent single-node selection.
 // Regression guard for "clicking different nodes accumulates highlighting":
@@ -649,6 +685,69 @@ describe("[SF-WEB-28] selectNode/selectEdge mutual exclusion", () => {
 // against the live app — suppressNativeEdgeColor() only covers the
 // moment an edge is first created, not any of these later re-colors.
 // ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-61] "убери затемнения при компаир моде и оставь только подсветку
+// всех нод пути и крайних" — highlightPath(path, {dim:false}) (Compare
+// mode's own call, see compare-mode.js) must leave off-path nodes/edges at
+// their normal resting opacity/look instead of the path finder's usual
+// deep-dim `neverTouched` treatment. The plain highlightPath(path) call
+// (no options — the regular six-degrees path finder) must be UNCHANGED.
+describe("highlightPath — dim option (SF-WEB-61)", () => {
+  function graphWithOffPathNode() {
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },
+      { id: 3, isSeed: false, _dimBorder: "#222222" },  // off-path — never touched by the 1->2 path below
+    ];
+    State.graphEdges = [
+      { id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 },
+      { id: "1_3", from: 1, to: 3, dominantRole: "producer", weight: 1 },
+    ];
+    invalidateColorCache();
+    State.nodesDS = { update: vi.fn(), getIds: () => [1, 2, 3] };
+    State.edgesDS = { update: vi.fn(), getIds: () => ["1_2", "1_3"] };
+  }
+
+  it("dims the off-path node down to neverTouched by default (regular path finder, unchanged)", () => {
+    graphWithOffPathNode();
+    highlightPath([1, 2]);
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls[0];
+    const off = nodeUpdates.find(u => u.id === 3);
+    expect(off.opacity).toBe(PATH_HIGHLIGHT_LEVELS.neverTouched.opacity);
+
+    const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
+    const offEdge = edgeUpdates.find(u => u.id === "1_3");
+    expect(offEdge.color.opacity).toBe(PATH_HIGHLIGHT_LEVELS.neverTouched.edgeOpacity);
+  });
+
+  it("leaves the off-path node at full resting opacity with dim:false (Compare mode)", () => {
+    graphWithOffPathNode();
+    highlightPath([1, 2], { dim: false });
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls[0];
+    const off = nodeUpdates.find(u => u.id === 3);
+    expect(off.opacity).toBe(1);
+    expect(off.color.border).toBe("#222222");  // its own normal _dimBorder, not the deep-dim rgba
+
+    const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
+    const offEdge = edgeUpdates.find(u => u.id === "1_3");
+    expect(offEdge.color.opacity).toBeGreaterThan(PATH_HIGHLIGHT_LEVELS.neverTouched.edgeOpacity);
+  });
+
+  it("still highlights every path node AND both endpoints brightly with dim:false", () => {
+    graphWithOffPathNode();
+    highlightPath([1, 2], { dim: false });
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls[0];
+    const seed = nodeUpdates.find(u => u.id === 1);   // path start
+    const end  = nodeUpdates.find(u => u.id === 2);   // path end
+    expect(seed.opacity).toBe(1);
+    expect(seed.color.border).toBe(COLOR.neon);
+    expect(end.opacity).toBe(1);
+    expect(end.color.border).toBe(COLOR.neon);
+  });
+});
+
 describe("[SF-WEB-56 follow-up] suppressed (canvas-drawn) edges stay invisible through every recolor path", () => {
   function graphWithSuppressedEdge() {
     State.graphNodes = [

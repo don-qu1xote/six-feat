@@ -541,15 +541,17 @@ describe("placeExpandedNodes — nested (2nd-degree) pole placement", () => {
   // (dR) used to be the ONLY thing considered when spacing it apart from a
   // neighboring root pole — a nested (2nd-degree) subtree hanging off that
   // pole extends well past its own dR, in roughly the same direction, but
-  // was invisible to that spacing math. [SF-WEB-52] Now guaranteed by
-  // construction: poleA (with its whole nested subtree) and poleB own
-  // DISJOINT angular sectors, so poleB's leaves cannot land in poleA's
-  // subtree's wedge regardless of how deep/heavy that subtree is. The
-  // savedPositions below no longer pin angles (sector rule ignores them —
-  // placement is deterministic from the expansion tree), they're just inert
-  // now. 300px is comfortably above MIN_SEP (78) — proving clear separation
-  // — and below the actual ~470px this scenario produces under the sector
-  // rule (it would fail only if the two subtrees' wedges started overlapping).
+  // was invisible to that spacing math.
+  //
+  // [SF-WEB-59] savedPositions is no longer "inert" for poles — an entry
+  // there now PINS that pole permanently (never repositioned on a later
+  // call, see placeChildren's pinned/fresh split), by explicit request
+  // ("экспайред [=раскрытые] и сид ноды... насмерть прибиты"). Feeding an
+  // artificially bad (too-close) savedPositions pair here would just lock
+  // in that bad placement — correct new behavior, not something this test
+  // should exercise. Testing FRESH placement instead (no savedPositions for
+  // the poles): the vector+nudge engine (SF-WEB-57) still has to keep
+  // poleA's whole nested subtree clear of poleB's leaves by construction.
   it("keeps a neighboring root pole's leaves clear of another pole's nested subtree", () => {
     const seedId = 1, poleA = 2, poleB = 3, nestedUnderA = 200;
     const aLeaves = Array.from({ length: 12 }, (_, i) => 1000 + i);
@@ -576,12 +578,7 @@ describe("placeExpandedNodes — nested (2nd-degree) pole placement", () => {
     State.currentSeedId = seedId;
     State.expandedNodes = new Set([poleA, poleB, nestedUnderA]);
 
-    const ang = (20 * Math.PI) / 180;
-    const savedPositions = {
-      [poleA]: { x: 900, y: 0 },
-      [poleB]: { x: 900 * Math.cos(ang), y: 900 * Math.sin(ang) },
-    };
-    const { targets } = placeExpandedNodes(savedPositions);
+    const { targets } = placeExpandedNodes({});
 
     const aSidePoints = [poleA, nestedUnderA, ...aLeaves, ...nestedLeaves].map(id => targets.get(id));
     const bSidePoints = [poleB, ...bLeaves].map(id => targets.get(id));
@@ -1420,5 +1417,467 @@ describe("[SF-WEB-56] cluster gap scales with shared-member count", () => {
     // …but nowhere near proportionally — a naive linear formula would have
     // made d80 roughly 4x d20 (80/20); the capped sqrt version stays close.
     expect(d80).toBeLessThan(d20 * 1.5);
+  });
+});
+
+// [SF-WEB-59] "экспайред [=раскрытые] и сид ноды... насмерть прибиты к
+// своим местам и никакими расширениями не должны быть смещены" — once a
+// pole has a saved (previously rendered) position, placeExpandedNodes must
+// reuse it EXACTLY on every later call, regardless of what else gets
+// expanded alongside it.
+describe("placeExpandedNodes — pole/seed pinning across re-layout (SF-WEB-59)", () => {
+  it("keeps an already-placed pole's position exactly unchanged when a new sibling is expanded", () => {
+    const seedId = 1, poleA = 2, poleC = 4;
+    const aLeaves = [10, 11, 12];
+    State.graphNodes = [
+      { id: seedId, isSeed: true }, { id: poleA, isSeed: false },
+      ...aLeaves.map(id => ({ id, isSeed: false })),
+    ];
+    State.graphEdges = [
+      { from: seedId, to: poleA, weight: 1 },
+      ...aLeaves.map(id => ({ from: poleA, to: id, weight: 1 })),
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA]);
+
+    const { targets: first } = placeExpandedNodes({});
+    const firstPos = { ...first.get(poleA) };
+
+    // Second call: poleA now has a saved position (as if already rendered),
+    // AND a brand-new sibling poleC (lower id than poleA — under the OLD
+    // "recompute everything from scratch, sorted by id" scheme this would
+    // have been processed FIRST and could steal poleA's slot).
+    const cLeaves = [30, 31, 32, 33, 34];
+    State.graphNodes.push({ id: poleC, isSeed: false }, ...cLeaves.map(id => ({ id, isSeed: false })));
+    State.graphEdges.push(
+      { from: seedId, to: poleC, weight: 1 },
+      ...cLeaves.map(id => ({ from: poleC, to: id, weight: 1 })),
+    );
+    State.expandedNodes = new Set([poleA, poleC]);
+    const savedPositions = { [poleA]: firstPos };
+    const { targets: second } = placeExpandedNodes(savedPositions);
+
+    expect(second.get(poleA)).toEqual(firstPos);
+  });
+
+  it("gives a pinned pole's fromPos equal to its target — zero animation for a node that isn't moving", () => {
+    const seedId = 1, poleA = 2;
+    State.graphNodes = [{ id: seedId, isSeed: true }, { id: poleA, isSeed: false }, { id: 10, isSeed: false }];
+    State.graphEdges = [{ from: seedId, to: poleA, weight: 1 }, { from: poleA, to: 10, weight: 1 }];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA]);
+
+    const { targets: first } = placeExpandedNodes({});
+    const firstPos = { ...first.get(poleA) };
+    const { targets: second, fromPos: fromPos2 } = placeExpandedNodes({ [poleA]: firstPos });
+    expect(fromPos2.get(poleA)).toEqual(second.get(poleA));
+  });
+
+  it("a fresh pole's placement direction accounts for ALL its real hub connections, not only its expand-tree parent", () => {
+    const seedId = 1, poleA = 2, poleB = 3, poleX = 200;
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      // [SF-WEB-60] _poleSettled: true — same "already went through one
+      // full placement pass" marker placeChildren itself sets on a real
+      // graphNode after freshly placing it (see layout.js). Without it, a
+      // mere savedPositions entry is no longer enough to pin a pole (that
+      // was the SF-WEB-60 bug: a node's OLD LEAF position, present in
+      // savedPositions long before it ever became a pole, used to get
+      // mistaken for an already-settled POLE position) — poleA/poleB
+      // would just get recomputed fresh here instead of staying at the
+      // controlled positions this test needs.
+      { id: poleA, isSeed: false, _poleSettled: true },
+      { id: poleB, isSeed: false, _poleSettled: true },
+      // poleX's expand-TREE parent is poleA, but it also has a direct real
+      // edge to poleB — both must pull its placement vector.
+      { id: poleX, isSeed: false, _expandParent: poleA },
+    ];
+    State.graphEdges = [
+      { from: seedId, to: poleA, weight: 1 },
+      { from: seedId, to: poleB, weight: 1 },
+      { from: poleA, to: poleX, weight: 1 },
+      { from: poleB, to: poleX, weight: 1 },  // the EXTRA connection
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([poleA, poleB, poleX]);
+
+    // Pin poleA and poleB far apart at controlled angles (0° and 90°) so
+    // poleX's own vector-sum direction is predictable.
+    const savedPositions = {
+      [poleA]: { x: 1000, y: 0 },
+      [poleB]: { x: 0, y: 1000 },
+    };
+    const { targets } = placeExpandedNodes(savedPositions);
+    const x = targets.get(poleX);
+    const angle = Math.atan2(x.y, x.x);
+
+    // Pure "continue from tree-parent poleA" would give angle ≈ 0. The
+    // extra edge to poleB (at 90°) must pull it meaningfully off that.
+    // [SF-WEB-70] Threshold lowered from 0.2 to 0.1: trilateration (now used
+    // here — 2 real hub connections) pulls by the actual GEOMETRICALLY
+    // required amount, not a naive position-average like the old
+    // _ownerVector path did — genuinely smaller in this fixture, but still
+    // clearly non-zero (real signal, not noise).
+    expect(Math.abs(angle)).toBeGreaterThan(0.1);
+    // But it shouldn't overshoot past poleB's own angle either — the
+    // result is a genuine blend, not a jump to the OTHER extreme.
+    expect(angle).toBeLessThan(Math.PI / 2);
+  });
+
+  // [SF-WEB-60] THE actual regression report: "мы прибили полюс к его
+  // старой позиции ЛИСТА, а не дали ему полноценно разместиться как
+  // полюс" — a node that already exists on the graph as a plain LEAF (in
+  // savedPositions from being drawn in a ring around its parent) gets
+  // double-clicked to become a NEW pole for the very first time. It must
+  // get a REAL vector+nudge pole placement (far enough from its parent for
+  // its own dandelion + gap, per baseR), not simply stay glued to its old,
+  // much-closer-in leaf-ring coordinate just because that id already had
+  // *some* entry in savedPositions.
+  it("gives a leaf being promoted to a pole for the first time a real pole placement, not its old leaf position", () => {
+    const seedId = 1, poleA = 2, promoted = 300;
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: poleA, isSeed: false, _poleSettled: true },
+      { id: promoted, isSeed: false },  // still a plain leaf as far as this call knows
+    ];
+    State.graphEdges = [
+      { from: seedId, to: poleA, weight: 1 },
+      { from: poleA, to: promoted, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    // `promoted` is now expanded (double-clicked) — but its _poleSettled
+    // flag was never set, because until this exact call it was only ever
+    // a leaf, never placed as a pole.
+    State.expandedNodes = new Set([poleA, promoted]);
+
+    const oldLeafPos = { x: 160, y: 5 };  // where it sat in poleA's leaf ring
+    const savedPositions = {
+      [poleA]: { x: 900, y: 0 },
+      [promoted]: oldLeafPos,
+    };
+    const { targets } = placeExpandedNodes(savedPositions);
+
+    const newPos = targets.get(promoted);
+    // A real pole placement sits baseR away from its parent (poleA's own
+    // dandelion radius + gap + this node's own dandelion radius) — that's
+    // necessarily much farther than a leaf-ring radius (~150-200px). If
+    // the old bug were still present, newPos would equal oldLeafPos exactly.
+    expect(newPos).not.toEqual(oldLeafPos);
+    const distFromPoleA = Math.hypot(newPos.x - 900, newPos.y - 0);
+    expect(distFromPoleA).toBeGreaterThan(200);
+  });
+});
+
+// [SF-WEB-61] THE "ЧП" regression report: "наша с тобой реализация
+// векторами работает плохо для нескольких отцов с одной стороны" — when
+// many siblings under one parent ALSO share a real edge to the same other
+// hub, their _ownerVector attemptAngle clusters near-identically. Enough of
+// them independently exhaust the 24-try angular nudge and used to fall back
+// to an UNBOUNDED radius-growth escape valve (`r *= 1.15` up to 32 times,
+// ≈111x max) — producing a few nodes stretched wildly farther than their
+// siblings (repro measured ≈88x). The fix tracks the best angle found
+// during nudging and caps the growth fallback to a small bounded multiple.
+describe("placeExpandedNodes — bounded radial growth for crowded shared-hub siblings (SF-WEB-61)", () => {
+  it("never lets a same-round sibling's radius balloon far beyond its peers, even when many siblings share a second hub", () => {
+    const seedId = 1, hubA = 2, hubB = 3;
+    const soloLeaves = Array.from({ length: 8 }, (_, i) => 100 + i);
+    const sharedLeaves = Array.from({ length: 7 }, (_, i) => 200 + i);
+
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: hubA, isSeed: false, _poleSettled: true },
+      { id: hubB, isSeed: false, _poleSettled: true },
+      ...soloLeaves.map(id => ({ id, isSeed: false })),
+      ...sharedLeaves.map(id => ({ id, isSeed: false })),
+    ];
+    State.graphEdges = [
+      { from: seedId, to: hubA, weight: 1 },
+      { from: seedId, to: hubB, weight: 1 },
+      ...soloLeaves.map(id => ({ from: hubA, to: id, weight: 1 })),
+      // Every "shared" leaf hangs off hubA in the expand tree AND also has
+      // a real edge to hubB — this is the "second father" pulling all of
+      // their attemptAngle toward roughly the same direction.
+      ...sharedLeaves.map(id => ({ from: hubA, to: id, weight: 1 })),
+      ...sharedLeaves.map(id => ({ from: hubB, to: id, weight: 1 })),
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([hubA, hubB, ...soloLeaves, ...sharedLeaves]);
+
+    const savedPositions = {
+      [hubA]: { x: 900, y: 0 },
+      [hubB]: { x: 0, y: 900 },
+    };
+    const { targets } = placeExpandedNodes(savedPositions);
+
+    const dist = id => {
+      const p = targets.get(id);
+      return Math.hypot(p.x - 900, p.y - 0);
+    };
+    const soloDists = soloLeaves.map(dist);
+    const sharedDists = sharedLeaves.map(dist);
+    const maxSolo = Math.max(...soloDists);
+    const maxShared = Math.max(...sharedDists);
+
+    // Before the fix this ratio measured ≈88x on an equivalent repro.
+    expect(maxShared).toBeLessThan(maxSolo * 4);
+  });
+});
+
+// [SF-WEB-62] "мы посчитали направление правильно, а вот растояние нас
+// подвело" — SF-WEB-61's fix capped the radial-growth fallback at a
+// MULTIPLIER of baseR (1.15^6 ≈ 2.3x), which meant the absolute extra
+// distance it could add scaled with how far the pole already was from the
+// seed: a small, reasonable jump for a shallow pole, but a huge one for a
+// pole several expand-levels deep. This regression pins the fix's actual
+// requirement: the ABSOLUTE extra distance the growth fallback ever adds
+// must stay roughly the same regardless of depth/baseR magnitude.
+describe("placeExpandedNodes — radial growth adds a bounded ABSOLUTE distance, independent of depth (SF-WEB-62)", () => {
+  function buildCrowdedHub({ hubId, siblingCount = 15, hubB }) {
+    const solo = Array.from({ length: Math.ceil(siblingCount / 2) }, (_, i) => hubId * 100000 + i);
+    const shared = Array.from({ length: Math.floor(siblingCount / 2) }, (_, i) => hubId * 100000 + 1000 + i);
+    const nodes = [
+      { id: hubId, isSeed: false, _poleSettled: true },
+      { id: hubB, isSeed: false, _poleSettled: true },
+      ...solo.map(id => ({ id, isSeed: false })),
+      ...shared.map(id => ({ id, isSeed: false })),
+    ];
+    const edges = [
+      ...solo.map(id => ({ from: hubId, to: id, weight: 1 })),
+      ...shared.map(id => ({ from: hubId, to: id, weight: 1 })),
+      ...shared.map(id => ({ from: hubB, to: id, weight: 1 })), // second father, same crowding as SF-WEB-61's repro
+    ];
+    return { nodes, edges, solo, shared };
+  }
+
+  it("caps the extra distance a crowded pole's own siblings can be pushed to a similar absolute amount whether that pole is near or far from the seed", () => {
+    const seedId = 1;
+    const nearHub = 2, nearHubB = 3;
+    const farHub = 20, farHubB = 21;
+
+    const near = buildCrowdedHub({ seedId, hubId: nearHub, hubB: nearHubB });
+    const far  = buildCrowdedHub({ seedId, hubId: farHub,  hubB: farHubB });
+
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      ...near.nodes, ...far.nodes,
+    ];
+    State.graphEdges = [
+      { from: seedId, to: nearHub,  weight: 1 },
+      { from: seedId, to: nearHubB, weight: 1 },
+      { from: seedId, to: farHub,   weight: 1 },
+      { from: seedId, to: farHubB,  weight: 1 },
+      ...near.edges, ...far.edges,
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([
+      nearHub, nearHubB, farHub, farHubB,
+      ...near.solo, ...near.shared, ...far.solo, ...far.shared,
+    ]);
+
+    // farHub/farHubB pinned MUCH farther from the seed than nearHub/nearHubB
+    // — this is the "several expand-levels deep" case, all else equal.
+    const savedPositions = {
+      [nearHub]:  { x: 900,   y: 0 },
+      [nearHubB]: { x: 0,     y: 900 },
+      [farHub]:   { x: 20000, y: 0 },
+      [farHubB]:  { x: 0,     y: 20000 },
+    };
+    const { targets } = placeExpandedNodes(savedPositions);
+
+    const maxExtra = (hubPos, siblingIds) => {
+      let maxExtra = 0;
+      for (const id of siblingIds) {
+        const p = targets.get(id);
+        const dist = Math.hypot(p.x - hubPos.x, p.y - hubPos.y);
+        // solo siblings (no growth fallback triggered) give the "expected"
+        // un-grown distance baseline for this hub.
+        maxExtra = Math.max(maxExtra, dist);
+      }
+      return maxExtra;
+    };
+
+    const nearSharedMax = maxExtra(savedPositions[nearHub], near.shared);
+    const nearSoloMax   = maxExtra(savedPositions[nearHub], near.solo);
+    const farSharedMax  = maxExtra(savedPositions[farHub], far.shared);
+    const farSoloMax    = maxExtra(savedPositions[farHub], far.solo);
+
+    const nearExtra = nearSharedMax - nearSoloMax;
+    const farExtra   = farSharedMax - farSoloMax;
+
+    // Before this fix (multiplicative 1.15^6 cap), farExtra would be
+    // roughly farHub's own baseR / nearHub's baseR times bigger than
+    // nearExtra (here that ratio is ~20000/900 ≈ 22x) — an absolute-step
+    // cap keeps the two comparable instead.
+    expect(farExtra).toBeLessThan(nearExtra * 4 + 50);
+  });
+});
+
+// [SF-WEB-70] "для больших толчках (сильный вектор) пользуйся
+// трилатерацией" — a node with 2+ real hub connections lands at
+// (approximately) the exact ideal distance from BOTH hubs simultaneously
+// (true 2-circle trilateration) instead of just "roughly pulled toward
+// both" the way _ownerVector's plain position-average did. A node with
+// exactly ONE real connection (the common case) is completely unaffected —
+// still the plain baseR+_ownerVector path, byte-for-byte.
+describe("placeExpandedNodes — trilateration for nodes with 2 real hub connections (SF-WEB-70)", () => {
+  it("lands a node at (approximately) the exact ideal distance from BOTH of its real hub connections when their circles actually intersect", () => {
+    const seedId = 1, hubA = 2, hubB = 3, poleX = 200;
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: hubA, isSeed: false, _poleSettled: true },
+      { id: hubB, isSeed: false, _poleSettled: true },
+      { id: poleX, isSeed: false, _expandParent: hubA },
+    ];
+    State.graphEdges = [
+      { from: seedId, to: hubA, weight: 1 },
+      { from: seedId, to: hubB, weight: 1 },
+      { from: hubA, to: poleX, weight: 1 },
+      { from: hubB, to: poleX, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([hubA, hubB, poleX]);
+
+    const savedPositions = {
+      [hubA]: { x: 400, y: 0 },
+      [hubB]: { x: 0, y: 400 },
+    };
+    const { targets } = placeExpandedNodes(savedPositions);
+    const pos = targets.get(poleX);
+
+    const distA = Math.hypot(pos.x - 400, pos.y - 0);
+    const distB = Math.hypot(pos.x - 0, pos.y - 400);
+    expect(Math.abs(distA - distB)).toBeLessThan(1);
+    expect(pos.x).toBeGreaterThan(0);
+    expect(pos.y).toBeGreaterThan(0);
+  });
+
+  it("degrades gracefully (distance-weighted direction blend, no crash) when the two hubs are too far apart for their circles to intersect", () => {
+    const seedId = 1, hubA = 2, hubB = 3, poleX = 200;
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: hubA, isSeed: false, _poleSettled: true },
+      { id: hubB, isSeed: false, _poleSettled: true },
+      { id: poleX, isSeed: false, _expandParent: hubA },
+    ];
+    State.graphEdges = [
+      { from: seedId, to: hubA, weight: 1 },
+      { from: seedId, to: hubB, weight: 1 },
+      { from: hubA, to: poleX, weight: 1 },
+      { from: hubB, to: poleX, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([hubA, hubB, poleX]);
+
+    const savedPositions = {
+      [hubA]: { x: 5000, y: 0 },
+      [hubB]: { x: 0, y: 5000 },
+    };
+    const { targets } = placeExpandedNodes(savedPositions);
+    const pos = targets.get(poleX);
+
+    expect(Number.isFinite(pos.x)).toBe(true);
+    expect(Number.isFinite(pos.y)).toBe(true);
+    const distFromHubAOutwardOnly = Math.hypot(pos.x - 5000, pos.y - 0);
+    expect(distFromHubAOutwardOnly).toBeGreaterThan(0);
+    expect(pos.y).toBeGreaterThan(0);
+  });
+
+  // [SF-WEB-65] "картина далека от целевой... несколько несвязанных
+  // кластеров" — a degenerate-blend node whose PRIMARY hub (h1) itself
+  // carries a huge dandelion (hundreds of leaves, so a huge R1) used to
+  // fly off into its own visually separate "island": the same small
+  // ANGULAR deviation toward a secondary hub, multiplied by a giant R1,
+  // is a giant ABSOLUTE sideways displacement. The fix caps that lateral
+  // displacement in absolute px, not degrees — this pins the node close
+  // to h1's own honest "continue straight outward" line regardless of how
+  // large h1's own dandelion is.
+  it("keeps a node close to its primary hub's own outward line even when that hub carries a huge dandelion (no more flying off into a separate island)", () => {
+    const seedId = 1, hubA = 2, hubB = 3, poleX = 200;
+    const hubALeaves = Array.from({ length: 120 }, (_, i) => 1000 + i);
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: hubA, isSeed: false, _poleSettled: true },
+      { id: hubB, isSeed: false, _poleSettled: true },
+      { id: poleX, isSeed: false, _expandParent: hubA },
+      ...hubALeaves.map(id => ({ id, isSeed: false })),
+    ];
+    State.graphEdges = [
+      { from: seedId, to: hubA, weight: 1 },
+      { from: seedId, to: hubB, weight: 1 },
+      { from: hubA, to: poleX, weight: 1 },
+      { from: hubB, to: poleX, weight: 1 },
+      ...hubALeaves.map(id => ({ from: hubA, to: id, weight: 1 })),
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([hubA, hubB, poleX]);
+
+    const savedPositions = {
+      [hubA]: { x: 5000, y: 0 },
+      [hubB]: { x: 0, y: 500 },
+    };
+    const { targets } = placeExpandedNodes(savedPositions);
+    const pos = targets.get(poleX);
+
+    // The node's lateral distance off hubA's own straight "continue
+    // outward from seed" line (the x-axis here, since hubA sits at
+    // (5000,0)) must stay bounded — not a multi-thousand-px swing.
+    expect(Math.abs(pos.y)).toBeLessThan(MIN_SEP * 6 + 1);
+  });
+
+  // [SF-WEB-70] The anchor bug found in the earlier session (SF-WEB-66):
+  // when the node's TREE PARENT is the seed itself (no real direction —
+  // seed sits at (0,0)) but it ALSO has a real edge to an already-placed,
+  // large hub, the degenerate "pure" line must anchor on the hub that
+  // actually has a direction — not on the seed's arbitrary fallback angle.
+  it("anchors the degenerate-blend 'pure' line on the real hub (not the seed's arbitrary fallback angle) when the node's tree parent is the seed itself", () => {
+    const seedId = 1, hubA = 2, poleX = 200;
+    const hubALeaves = Array.from({ length: 120 }, (_, i) => 1000 + i);
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: hubA, isSeed: false, _poleSettled: true },
+      { id: poleX, isSeed: false, _expandParent: seedId },
+      ...hubALeaves.map(id => ({ id, isSeed: false })),
+    ];
+    State.graphEdges = [
+      { from: seedId, to: hubA, weight: 1 },
+      { from: seedId, to: poleX, weight: 1 },
+      { from: hubA, to: poleX, weight: 1 },
+      ...hubALeaves.map(id => ({ from: hubA, to: id, weight: 1 })),
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([hubA, poleX]);
+
+    const savedPositions = { [hubA]: { x: 5000, y: 0 } };
+    const { targets } = placeExpandedNodes(savedPositions);
+    const pos = targets.get(poleX);
+
+    expect(pos.x).toBeGreaterThan(4000);
+    expect(Math.hypot(pos.x - 5000, pos.y)).toBeLessThan(2500);
+  });
+
+  // A node with exactly ONE real connection must be completely unaffected
+  // — _trilaterationPoint returns null (< 2 hubs), the plain baseR+
+  // _ownerVector path runs exactly as it did before this ticket.
+  it("leaves single-hub nodes on the plain baseR+_ownerVector path, unaffected by trilateration", () => {
+    const seedId = 1, hubA = 2, poleX = 200;
+    State.graphNodes = [
+      { id: seedId, isSeed: true },
+      { id: hubA, isSeed: false, _poleSettled: true },
+      { id: poleX, isSeed: false, _expandParent: hubA },
+    ];
+    State.graphEdges = [
+      { from: seedId, to: hubA, weight: 1 },
+      { from: hubA, to: poleX, weight: 1 },
+    ];
+    State.currentSeedId = seedId;
+    State.expandedNodes = new Set([hubA, poleX]);
+
+    const savedPositions = { [hubA]: { x: 1000, y: 0 } };
+    const { targets } = placeExpandedNodes(savedPositions);
+    const pos = targets.get(poleX);
+
+    // Continues straight out from hubA along the seed→hubA ray (x-axis).
+    expect(pos.y).toBeCloseTo(0, 5);
+    expect(pos.x).toBeGreaterThan(1000);
   });
 });

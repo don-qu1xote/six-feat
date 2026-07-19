@@ -126,11 +126,24 @@
       <path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
-    <!-- [SF-WEB-20] Compare rail button — two overlapping
-         circles (Venn intersection). -->
+    <!-- [SF-WEB-75] Compare rail button icon — was a Venn-diagram
+         intersection (two overlapping circles), which reads as "set
+         overlap" rather than "click two graph nodes". Redrawn as two graph
+         nodes joined by a connecting line — the literal mechanic
+         (compare-mode.js::handleCompareModeNodeClick picks a first, then a
+         second node) instead of an abstract set operation. -->
     <symbol id="icon-compare" viewBox="0 0 24 24">
-      <circle cx="9" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="15" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="18" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.5 2" stroke-linecap="round"/>
+    </symbol>
+
+    <!-- [SF-WEB-61] BubbleSet toggle rail button — three soft overlapping
+         circles, echoing the haze-per-sector visual it turns on/off. -->
+    <symbol id="icon-haze" viewBox="0 0 24 24">
+      <circle cx="9"  cy="9"  r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="15" cy="9"  r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="12" cy="15" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
     </symbol>
 
     <!-- IDEA-23: theme toggle icons — sun shown while dark (switch to
@@ -375,8 +388,14 @@
            (see canvas-controls.css). Replaces the old pin-to-select
            mechanic (object-action-bar's Pin/Unpin, removed) this used to
            gate on. -->
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-compare-mode" data-tip="Compare mode — click two nodes" aria-pressed="false">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-compare"/></svg><span class="rl">Compare mode</span>
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-compare-mode" data-tip="Click two nodes to compare them" aria-pressed="false">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-compare"/></svg><span class="rl">Compare 2 nodes</span>
+      </button>
+      <!-- [SF-WEB-61] BubbleSet is now a manual toggle, OFF by default — no
+           more auto show/hide by node count (see bubble-contours.js). Same
+           .rail-btn.active/aria-pressed kit as Compare mode above. -->
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-bubble-sets" data-tip="BubbleSets — soft cluster haze" aria-pressed="false">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-haze"/></svg><span class="rl">BubbleSets</span>
       </button>
 
       <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always

@@ -103,9 +103,20 @@
   width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
   flex-shrink: 0; border: 1px solid var(--line);
 }
-.ac-info { flex: 1; min-width: 0; overflow: hidden; }
-.ac-name { font-size: var(--text-base); font-weight: 600; color: var(--paper); }
-.ac-hint { font-size: var(--text-xs); color: var(--mist); margin-top: var(--space-1); letter-spacing: 0.5px; }
+/* [SF-WEB-60] БАГ: .ac-name (<span class="ac-name truncate">) — .truncate
+   (base.css) sets white-space:nowrap+overflow:hidden+text-overflow:
+   ellipsis, but a plain inline <span> doesn't reliably size/clip to an
+   available width the way a block-level box does (ellipsis on a bare
+   inline element is effectively inert in practice) — a long single-word
+   name (no natural line-break point) just overflowed past .ac-info's own
+   edge instead of getting "…"-truncated, running into/past .ac-hint and
+   the dropdown's own right edge. .ac-info as a real flex row (name
+   shrinks via flex+min-width:0, hint stays fixed-size) + .ac-name as a
+   block-level flex item is what actually makes .truncate's ellipsis take
+   effect, regardless of how wide .ac-dropdown itself ends up being. */
+.ac-info { display: flex; align-items: baseline; gap: var(--space-2); flex: 1; min-width: 0; overflow: hidden; }
+.ac-name { display: block; min-width: 0; font-size: var(--text-base); font-weight: 600; color: var(--paper); }
+.ac-hint { flex-shrink: 0; font-size: var(--text-xs); color: var(--mist); letter-spacing: 0.5px; }
 .ac-spinner {
   padding: var(--space-4); text-align: center;
   font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);

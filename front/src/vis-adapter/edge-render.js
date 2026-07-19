@@ -31,26 +31,15 @@
 import { State, COLOR } from "../state/state.js";
 import { roleStyle } from "../state/helpers.js";
 import { resolveEdgeDominantRole, lightenHexColor, edgeWidthForWeight } from "./visuals.js";
-import { getHoveredEdgeIds } from "./highlight.js";
+import { getHoveredEdgeIds, getSelectedNodeEdgeIds } from "./highlight.js";
 
-// [SF-WEB-55 п.4] На очень больших графах даже дешёвая quadraticCurveTo на
-// каждое ребро каждый кадр заметно дороже lineTo — вместо того чтобы
-// скрывать рёбра (запрещено тикетом), деградируем КРИВИЗНУ до прямых линий.
-// Все рёбра по-прежнему рисуются — просто без изгиба.
-//
-// [SF-WEB-56 follow-up] Поднимался до 2000 в расчёте на то, что батчинг по
-// стилю (см. drawEdges ниже) снял основную стоимость (число stroke()-
-// вызовов) — это верно для ПЕРФА, но подъём порога попутно рассекретил
-// другую, отдельную и на тот момент ещё не решённую проблему: кросс-
-// секторная дуга между двумя далеко разнесёнными полюсами (см. историю
-// правок CROSS_BOW_FRACTION выше) на графах такого размера всё ещё может
-// визуально читаться как «вторая линия», даже с капом по длине хорды —
-// сама геометрия дуги для by-widely-separated пар остаётся не до конца
-// решённой (см. заголовочный комментарий про «математический предел» у
-// Эйлер-зоны в layout.js). Возвращён к исходному 400 — то состояние,
-// которое уже было подтверждено рабочим, — пока эта дуговая геометрия не
-// станет надёжной при любом расстоянии между полюсами.
-export const CURVE_DEGRADE_EDGE_THRESHOLD = 400;
+// [SF-WEB-59] Раньше (SF-WEB-55/56) здесь стоял CURVE_DEGRADE_EDGE_THRESHOLD
+// — деградация кривизны рёбер до прямых линий на больших графах ради
+// перфа. Признано регрессией: резкая смена стиля (кривые → прямые) сама по
+// себе бросается в глаза и заметно хуже читается, чем нагрузка на
+// систему — рёбра теперь ВСЕГДА рисуются кривыми, независимо от размера
+// графа; батчинг по стилю (см. drawEdges ниже) остаётся единственным
+// перф-рычагом.
 
 // [SF-WEB-56 follow-up] Кросс-рёбра: изгиб к хабу. Первая версия тянула
 // контрольную точку на 35% ДИСТАНЦИИ ДО ХАБА — на плотных графах хаб (сид)
@@ -99,6 +88,20 @@ export function suppressNativeEdgeColor(edgeItem) {
   const invisible = { color: INVISIBLE_EDGE_COLOR, opacity: 0 };
   return {
     ...edgeItem,
+    // [SF-WEB-73] "подсветка не совпадает с тултипом" — suppressed edges
+    // ALSO get their native `title` cleared here: vis.js's own built-in
+    // tooltip uses ITS OWN internal hit-test (independent of, and provably
+    // inconsistent with, the hoverEdge event's own params.edge on a dense
+    // hub — see nearestEdgeAt's header comment) — a suppressed edge's
+    // VISIBLE curve is entirely custom-drawn (edge-render.js), so vis.js's
+    // native tooltip for it would show content for whatever edge ITS OWN
+    // (also curve-mismatched) hit-test happened to guess, not necessarily
+    // the one actually under the cursor. events.js now shows its own
+    // tooltip for these edges, built from the SAME curve-aware hit-test
+    // that drives the hover highlight — one consistent source of truth.
+    // Non-suppressed edges (path-mode) are untouched — their native curve
+    // IS what's drawn, so vis.js's own tooltip stays reliable for them.
+    title: undefined,
     color: {
       ...edgeItem.color,
       color:     INVISIBLE_EDGE_COLOR,
@@ -153,6 +156,69 @@ export function clearEdgeCache() {
 // Только для тестов/отладки.
 export function _edgeCacheSize() { return _cache.size; }
 
+// [SF-WEB-73] "подсветка не совпадает с тултипом" — обнаружено вживую на
+// плотном хабе (65+ прямых рёбер сида): нативный hoverEdge vis.js стабильно
+// стрелял по одному ребру (params.edge), а СОБСТВЕННЫЙ built-in тултип
+// vis.js (через title-поле, показывается его же внутренним хит-тестом)
+// стабильно показывал ДРУГОЕ ребро — воспроизводится 100% на одной и той
+// же точке курсора при повторных наведениях, значит это не гонка/дребезг, а
+// два РАЗНЫХ внутренних алгоритма vis.js, не согласованных друг с другом
+// (у обоих К ТОМУ ЖЕ своя кривизна — edges.smooth "continuous" — которая
+// САМА ПО СЕБЕ отличается от того, что рисует этот модуль, см. заголовок
+// nearestEdgeAt ниже). Единственный надёжный источник истины — наша
+// СОБСТВЕННАЯ нарисованная кривая: и подсветка (events.js), и тултип
+// (events.js) теперь читают ОДИН и тот же ответ отсюда, а не два разных
+// внутренних vis.js-механизма, которые физически не обязаны совпадать.
+//
+// Тестировалось так же, как SF-WEB-67 в этой же сессии: ближайшая точка на
+// квадратичной кривой каждого закэшированного ребра до точки клика/курсора
+// (мировые координаты, тот же getPositions()/ctx-контекст, что и draw()) —
+// сэмплирование (не аналитическое решение), кривые везде гладкие, дёшево.
+function _distToSegment(pt, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-9) return Math.hypot(pt.x - a.x, pt.y - a.y);
+  let t = ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(pt.x - (a.x + t * dx), pt.y - (a.y + t * dy));
+}
+
+function _distToCurve(pt, p0, control, p1, samples = 16) {
+  let minD = Infinity;
+  let prev = p0;
+  for (let i = 1; i <= samples; i++) {
+    const t = i / samples, mt = 1 - t;
+    const cur = control
+      ? { x: mt * mt * p0.x + 2 * mt * t * control.x + t * t * p1.x,
+          y: mt * mt * p0.y + 2 * mt * t * control.y + t * t * p1.y }
+      : { x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t };
+    const d = _distToSegment(pt, prev, cur);
+    if (d < minD) minD = d;
+    prev = cur;
+  }
+  return minD;
+}
+
+// pt — точка в тех же мировых координатах, что getPositions() (т.е.
+// network.DOMtoCanvas()'нутый указатель, см. events.js). maxDist — допуск в
+// тех же единицах (мировых px — вызывающая сторона делит экранный допуск на
+// текущий network.getScale(), чтобы допуск был постоянным в ЭКРАННЫХ px
+// независимо от зума). null, если ни одно закэшированное ребро не попало в
+// допуск.
+export function nearestEdgeAt(pt, maxDist) {
+  if (!_cache.size || !State.network) return null;
+  const positions = State.network.getPositions();
+  let bestId = null, bestDist = Infinity;
+  for (const [edgeId, meta] of _cache) {
+    const from = positions[meta.from], to = positions[meta.to];
+    if (!from || !to) continue;
+    const control = _curvePoint(meta, from, to, positions);
+    const d = _distToCurve(pt, from, control, to);
+    if (d < bestDist) { bestDist = d; bestId = edgeId; }
+  }
+  return bestDist <= maxDist ? bestId : null;
+}
+
 function _pathEdgeKeySet(path) {
   const set = new Set();
   if (!Array.isArray(path)) return set;
@@ -163,8 +229,7 @@ function _pathEdgeKeySet(path) {
   return set;
 }
 
-function _curvePoint(meta, from, to, positions, degradeCurves) {
-  if (degradeCurves) return null;  // прямая линия — управляющая точка не нужна
+function _curvePoint(meta, from, to, positions) {
   if (meta.kind === "intra") {
     const mx = (from.x + to.x) / 2, my = (from.y + to.y) / 2;
     const dx = to.x - from.x, dy = to.y - from.y;
@@ -211,8 +276,11 @@ export function drawEdges(ctx) {
   const positions   = State.network.getPositions();
   const hoveredIds  = getHoveredEdgeIds();
   const selectedId  = State.selectedEdgeId;
+  // [SF-WEB-59] Edges incident to the currently SELECTED NODE — unified
+  // under the same neon accent a directly-clicked edge gets (see below),
+  // so "select via node" and "select via edge" never disagree on color.
+  const selectedNodeEdgeIds = getSelectedNodeEdgeIds();
   const onPathSet   = _pathEdgeKeySet(State.pathHighlight);
-  const degradeCurves = _cache.size > CURVE_DEGRADE_EDGE_THRESHOLD;
 
   const groups = new Map();  // "color|opacity|width" → { color, opacity, width, segments: [...] }
 
@@ -221,16 +289,23 @@ export function drawEdges(ctx) {
     const to   = positions[meta.to];
     if (!from || !to) continue;  // нода вне текущего DataSet (устаревший кэш) — пропускаем, не рисуем мусор
 
-    const isSelected = edgeId === selectedId;
+    const isSelected = edgeId === selectedId || selectedNodeEdgeIds.has(edgeId);
     const isHovered  = hoveredIds.has(edgeId);
     const onPath      = onPathSet.has(edgeId);
 
+    // [SF-WEB-59] Selection (whether triggered by clicking this edge
+    // directly OR by clicking a node it's incident to) always paints
+    // COLOR.neon — the SAME accent a selected node's border uses
+    // (_selectedNodeUpdate/_selectedEdgeUpdate in highlight.js). Previously
+    // this branch lightened the edge's own role hue instead, so a
+    // node-click and an edge-click could leave visibly different
+    // "selected" colors on screen for what should read as one state.
     let opacity = BASE_OPACITY, color = meta.color, width = meta.width;
-    if (isSelected)    { opacity = SELECT_OPACITY; color = lightenHexColor(meta.color, 0.35); width = meta.width + 2; }
+    if (isSelected)    { opacity = SELECT_OPACITY; color = COLOR.neon; width = meta.width + 2; }
     else if (isHovered) { opacity = HOVER_OPACITY; color = lightenHexColor(meta.color, 0.35); width = meta.width + 1.4; }
     else if (onPath)    { opacity = PATH_OPACITY; color = COLOR.neon; width = meta.width + 2; }
 
-    const control = _curvePoint(meta, from, to, positions, degradeCurves);
+    const control = _curvePoint(meta, from, to, positions);
 
     const key = `${color}|${opacity}|${width}`;
     let group = groups.get(key);

@@ -91,7 +91,8 @@ export {
   setupFilterToggles, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   fitView, focusSeed, zoomIn, zoomOut, setupKeyboard,
   clearCanvas, goHome, updateStatus, updateRateLimitIndicator, updateTruncationBanner,
-  updateScanStatus, exportGraphPng, exportGraphJson, buildGraphExportData
+  updateScanStatus, exportGraphPng, exportGraphJson, buildGraphExportData,
+  setupBubbleSetsToggle, focusNextHub
 } from "./canvas-controls.js";
 
 export {

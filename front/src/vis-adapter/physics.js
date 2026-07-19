@@ -13,6 +13,8 @@ import { resetHoverState } from "./highlight.js";
 import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD, _imageFieldsFor } from "./visuals.js";
 import { placeExpandedNodes } from "./layout.js";
 import { setEdgeCache, suppressNativeEdgeColor } from "./edge-render.js";
+import { highlightPath, highlightNeighborhood } from "./highlight.js";
+import { setContourData } from "./bubble-contours.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // PHYSICS HELPERS
@@ -43,6 +45,16 @@ const LARGE_GRAPH_SETTLE_MS = 500;
 // sub-animation that's already racing the much longer flyout).
 const ENTRANCE_START_SCALE   = 0.55;
 const ENTRANCE_START_OPACITY = 0.35;
+
+// [SF-WEB-61] "придумай что-нибудь с плавностью и новыми анимациями" —
+// staggered bloom: new leaves no longer all bloom in on the exact same
+// frame, they ripple in one after another like a dandelion actually
+// opening. Purely a per-node START-TIME offset inside the SAME rAF loop
+// runFlyoutAnimation already runs (see entranceDelays below) — no extra
+// per-frame work added for the whole graph, just an offset comparison per
+// already-iterated entranceTargets entry.
+const ENTRANCE_STAGGER_MS     = 18; // delay between consecutive new nodes' bloom start
+const ENTRANCE_STAGGER_MAX_MS = 220; // cap total spread so a big expand's wave still finishes quickly
 
 export function scheduleFreeze(ms) {
   clearTimeout(State.physicsTimer);
@@ -177,12 +189,12 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   // обычном expand-режиме, не в path-режиме (options.pathTargets/pathFromPos
   // уже готовы заранее и мимо placeExpandedNodes не идут — там свой,
   // видимый нативный рендер рёбер, без нашего canvas-слоя).
-  let targets, fromPos, edgeClass;
+  let targets, fromPos, edgeClass, sectorMembers;
   if (options.pathTargets && options.pathFromPos) {
     targets = options.pathTargets;
     fromPos = options.pathFromPos;
   } else {
-    ({ targets, fromPos, edgeClass } = placeExpandedNodes(savedPositions));
+    ({ targets, fromPos, edgeClass, sectorMembers } = placeExpandedNodes(savedPositions));
   }
 
   // [SF-WEB-55] Только НОВЫЕ (только что добавляемые) рёбра гасим до
@@ -197,7 +209,31 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
       const v = edgeVisual(e, nameById);
       return edgeClass ? suppressNativeEdgeColor(v) : v;
     });
-  if (edgeClass) setEdgeCache(edgeClass);
+  if (edgeClass) {
+    setEdgeCache(edgeClass);
+    // [SF-WEB-62] "в файнд пафе рёбра при экспандеде пропали" —
+    // initPathNetwork (ui/path-result.js's linear path layout) draws its
+    // OWN edges with full native visible color, no custom canvas layer
+    // involved. A regular double-click expand on TOP of that network still
+    // runs this normal (non-path) branch — placeExpandedNodes classifies
+    // EVERY edge in the graph into edgeClass, including the path's own
+    // pre-existing ones, but only brand-new edges (via newEdgeItems above)
+    // ever got suppressNativeEdgeColor() applied. Left un-suppressed, a
+    // pre-existing path edge now had TWO conflicting renderers drawing it
+    // at once — vis.js's own native line AND our custom curved one, at
+    // different offsets — reading as broken/missing rather than doubled.
+    // Catch those up here so every edge our cache now covers is
+    // consistently native-invisible, regardless of which code path first
+    // added it to the DataSet.
+    const catchUpUpdates = [];
+    for (const e of State.graphEdges) {
+      if (!dsEdgeIds.has(e.id)) continue;  // brand-new — newEdgeItems above already handled it
+      if (!edgeClass.has(e.id)) continue;  // not covered by our cache — leave its native color alone
+      catchUpUpdates.push(suppressNativeEdgeColor({ id: e.id }));
+    }
+    if (catchUpUpdates.length && State.edgesDS) State.edgesDS.update(catchUpUpdates);
+  }
+  if (sectorMembers) setContourData(sectorMembers);
 
   // Сначала фиксируем seed — он уже в DS, просто обновляем координату и fixed.
   // Это делается до add() чтобы vis.js не двигал его при добавлении соседей.
@@ -230,6 +266,33 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
                shadow: v.shadow, mass: v.mass, title: v.title, fixed: v.fixed };
     });
   if (existingUpdates.length) State.nodesDS.update(existingUpdates);
+
+  // [SF-WEB-62] "сохранять подсветку пути при экспанде" — existingUpdates
+  // just reset EVERY node (including any on the currently highlighted
+  // path) back to nodeVisual's plain resting look, silently dropping the
+  // path highlight even though State.pathHighlight itself still holds the
+  // path. Re-apply it now the new graph shape is in place — dim:false, the
+  // same "highlight path + endpoints, leave everything else at its normal
+  // look" treatment Compare mode uses (SF-WEB-61), since the freshly
+  // expanded node's own new leaves are ordinary graph content, not
+  // something to dim down.
+  if (State.pathHighlight) highlightPath(State.pathHighlight, { dim: false });
+
+  // [SF-WEB-70] Same gap as pathHighlight above, just never reported under
+  // that name — existingUpdates resets EVERY existing node's color/border/
+  // shadow back to nodeVisual's plain resting look (see its own comment),
+  // including a persistently FOCUSED node (State.focusedNodeId, set by
+  // setFocus in events.js). highlightNeighborhood is the exact same call
+  // setFocus itself uses for that persistent look (visually the
+  // "hover-style" accent border, just held rather than reverted on blur) —
+  // this is a 1:1 replay, not a different code path. Left unre-applied,
+  // any expand triggered while a node is focused silently drops its
+  // highlight — a plausible root cause behind "подсветка... ломается"
+  // reports tied to expand/animation timing: the node's incident edges'
+  // color is driven by _hoverNodeEdgeUpdates/getSelectedNodeEdgeIds, which
+  // this same call recomputes — a dropped node focus here also reads as
+  // "edge highlighting broken".
+  if (State.focusedNodeId != null) highlightNeighborhood(State.focusedNodeId);
 
   // SF-WEB-09: раньше здесь стоял отдельный синхронный net.moveNode() на
   // каждую уже существующую ноду ("телепорт" в fromPos ДО начала полёта) —
@@ -281,30 +344,43 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
       const fixAll = State.graphNodes.map(n => ({ id: n.id, fixed: { x: true, y: true } }));
       if (State.nodesDS) State.nodesDS.update(fixAll);
 
-      // Камера: seed — постоянный смысловой центр графа. Раньше позиция
-      // камеры считалась как центр bbox { minX..maxX, minY..maxY } самих
-      // targets (полюсов+листьев), а bbox всегда асимметричен относительно
-      // seed (кластеры растут в одну сторону от (0,0), seed в bbox не
-      // участвует, только неявно как нулевая точка отсчёта) — из-за этого
-      // при КАЖДОМ expand камера панорамировалась в новую точку где-то между
-      // seed и новым кластером, и seed визуально "прыгал" по экрану (его
-      // экранные координаты менялись, хотя graph-координата всегда (0,0)).
-      // Фикс: camera position всегда (0,0) — seed остаётся неподвижным на
-      // экране, меняется только scale (по симметричному радиусу до самой
-      // дальней target-точки), т.е. только зум, без панорамирования.
+      // [SF-WEB-61] "при каждом появлении новой экспандед ноды у нас
+      // отезжает экран... нужно делать фокус на новый экспандед, а не
+      // оттдалять камеру" — the old rule fit the WHOLE graph's targets
+      // (every pole and leaf ever placed, not just this expand's), always
+      // centered on the seed. As the graph grew across expands, that
+      // farthest-point radius only ever grew too — every single new expand
+      // zoomed the camera OUT a bit further, regardless of where the node
+      // the user just double-clicked actually was, which reads as "the
+      // screen keeps pulling away" exactly as reported. Fix: fit the camera
+      // to THIS expand's own new content (the freshly-expanded hub + its
+      // brand-new children) instead of the graph's full historical extent —
+      // the camera now pans/zooms toward what the user just asked to see,
+      // not away from it.
       try {
-        let maxAbsX = 0, maxAbsY = 0;
-        for (const t of targets.values()) {
-          maxAbsX = Math.max(maxAbsX, Math.abs(t.x));
-          maxAbsY = Math.max(maxAbsY, Math.abs(t.y));
+        const focusIds = State.lastExpandedId != null
+          ? [State.lastExpandedId, ...freshNodes.map(n => n.id)]
+          : [...targets.keys()];  // path mode / no known expand target — fall back to fitting everything
+
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const id of focusIds) {
+          const t = targets.get(id);
+          if (!t) continue;
+          if (t.x < minX) minX = t.x;
+          if (t.x > maxX) maxX = t.x;
+          if (t.y < minY) minY = t.y;
+          if (t.y > maxY) maxY = t.y;
         }
+        if (!isFinite(minX)) throw new Error("no focus target");
+
+        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        const w  = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
         const pad = 140;
         const cw  = (els.network && els.network.clientWidth)  || 1100;
         const ch  = (els.network && els.network.clientHeight) || 720;
-        const sc  = Math.min(cw / Math.max(1, 2 * maxAbsX + pad * 2),
-                             ch / Math.max(1, 2 * maxAbsY + pad * 2));
+        const sc  = Math.min(cw / (w + pad * 2), ch / (h + pad * 2));
         net.moveTo({
-          position: { x: 0, y: 0 },
+          position: { x: cx, y: cy },
           scale:    Math.max(0.14, Math.min(sc, 1.25)),
           // [SF-WEB-47] Was its own literal (700) and never checked
           // prefers-reduced-motion — visAnimation(MOTION.xxslow) covers
@@ -346,7 +422,37 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
 // @returns {number|null} RAF handle текущего шага (для отмены через cancelAnimationFrame),
 //        или null если анимация была пропущена (reduced motion / пустой ids)
 // ─────────────────────────────────────────────────────────────────────────────
-function _easeOutFlyout(t) { return 1 - Math.pow(1 - t, 3); }
+// [SF-WEB-63] "золотой стандарт по анимациям... всё как у больших сервисов"
+// — pure ease-OUT (1-(1-t)^3, SF-WEB-59-and-earlier) snaps to near-full
+// velocity right at t=0. The SF-WEB-61/62 attempt at fixing that switched
+// to ease-IN-OUT, which traded the snap for the opposite problem: a full
+// 50%-of-duration ease-IN ramp reads as sluggish/"provisaem" (sagging) —
+// nodes visibly lag behind before they get moving. Real large-scale
+// products (Material Design's own "standard" motion curve, used for
+// exactly this "object moves to a new position" case) use
+// cubic-bezier(0.4, 0.0, 0.2, 1.0): a SHORT acceleration phase (roughly the
+// first fifth of the duration) into a long, gentle deceleration — enough
+// ease-in to not feel like a snap, nowhere near enough to feel laggy.
+function _cubicBezierEase(p1x, p1y, p2x, p2y) {
+  const bezier = (t, a1, a2) =>
+    ((1 - 3 * a2 + 3 * a1) * t * t * t) + ((3 * a2 - 6 * a1) * t * t) + (3 * a1 * t);
+  const bezierSlope = (t, a1, a2) =>
+    3 * (1 - 3 * a2 + 3 * a1) * t * t + 2 * (3 * a2 - 6 * a1) * t + 3 * a1;
+  return function (x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    // Newton-Raphson: solve bezier(t, p1x, p2x) = x for t, then evaluate y.
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const dx = bezier(t, p1x, p2x) - x;
+      const slope = bezierSlope(t, p1x, p2x);
+      if (Math.abs(slope) < 1e-6) break;
+      t -= dx / slope;
+    }
+    return bezier(t, p1y, p2y);
+  };
+}
+const _easeOutFlyout = _cubicBezierEase(0.4, 0.0, 0.2, 1.0);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _fastMoveNode — единственная точка хрупкости: обращение к недокументированному
@@ -420,6 +526,19 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, entrance
   // прекращаем слать nodesDS.update() для entranceTargets на каждый кадр.
   let entranceDone = !entranceTargets || !entranceTargets.size;
 
+  // [SF-WEB-61] Per-node bloom start offset — entranceTargets' own insertion
+  // order (== freshNodes' order from mergeNetwork) drives the ripple, capped
+  // at ENTRANCE_STAGGER_MAX_MS regardless of how many new nodes there are.
+  let entranceDelays = null;
+  if (!entranceDone) {
+    entranceDelays = new Map();
+    let i = 0;
+    for (const id of entranceTargets.keys()) {
+      entranceDelays.set(id, Math.min(i * ENTRANCE_STAGGER_MS, ENTRANCE_STAGGER_MAX_MS));
+      i++;
+    }
+  }
+
   function step(ts) {
     if (!State.network) { State._expandAnimId = null; return; }
     if (t0 === null) t0 = ts;
@@ -438,9 +557,12 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, entrance
     // источник микро-дёрга при быстрой анимации).
 
     if (!entranceDone) {
-      const ePct = Math.min(elapsed / MOTION.med, 1);
       const updates = [];
+      let allDone = true;
       for (const [id, v] of entranceTargets) {
+        const delay = entranceDelays.get(id) || 0;
+        const ePct  = Math.min(Math.max(elapsed - delay, 0) / MOTION.med, 1);
+        if (ePct < 1) allDone = false;
         updates.push({
           id,
           size:    v.size * (ENTRANCE_START_SCALE + (1 - ENTRANCE_START_SCALE) * ePct),
@@ -448,7 +570,7 @@ export function runFlyoutAnimation({ ids, fromPos, targets, durationMs, entrance
         });
       }
       if (updates.length && State.nodesDS) State.nodesDS.update(updates);
-      if (ePct >= 1) entranceDone = true;
+      if (allDone) entranceDone = true;
     }
 
     if (pct < 1) {

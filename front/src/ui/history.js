@@ -116,7 +116,15 @@ export function loadArtistFromUrl() {
 
   if (roles.size) {
     State.activeFilters = roles;
-    [els.filterFeatured, els.filterProducer, els.filterWriter,
+    // [SF-WEB-61] Was still referencing els.filterFeatured/-Producer/-Writer
+    // — the rail's OLD role-filter buttons, removed back in SF-WEB-14 (see
+    // canvas-controls.js's own comment on this). Those keys don't exist in
+    // dom.js at all anymore, so this loop silently synced nothing for the
+    // buttons that are actually visible post-load — the always-visible
+    // .role-filter-segment (canvasFilter*) — leaving them stuck on their
+    // hardcoded-in-HTML "active" default regardless of the roles a shared
+    // URL actually restored.
+    [els.canvasFilterFeatured, els.canvasFilterProducer, els.canvasFilterWriter,
      els.heroFilterFeatured, els.heroFilterProducer, els.heroFilterWriter].forEach(btn => {
       if (!btn?.dataset.role) return;
       btn.classList.toggle("active", State.activeFilters.has(btn.dataset.role));

@@ -86,8 +86,7 @@ const LEAF_GAP      = 58;    // px: базовый шаг между кольц�
 // линзам известны только на конкретный граф, не константа уровня модуля).
 // ОДНА формула для ОБОИХ случаев (родитель — сид ИЛИ другой полюс) —
 // гарантирует, что зазор сид↔полюс и полюс↔полюс считаются одинаково.
-const CLUSTER_GAP_FLOOR    = MIN_SEP * 4;    // px: минимум даже без общих участников
-const CLUSTER_GAP_FRACTION = 0.45;           // доля от dR: крупный кластер — шире просвет
+const CLUSTER_GAP_FLOOR    = MIN_SEP * 2;    // px: минимум даже без общих участников (SF-WEB-69, см. clusterGap ниже)
 // [SF-WEB-56 follow-up] Первая версия росла ЛИНЕЙНО (sharedCount*39px) —
 // на плотных реальных графах (десятки общих фичерящих у популярного
 // артиста — обычное дело) это разгоняло зазор до тысяч пикселей, оставляя
@@ -472,22 +471,20 @@ export function placeExpandedNodes(savedPositions) {
     return sharedCountCache.get(Math.min(a, b) + "_" + Math.max(a, b)) || 0;
   }
 
-  // [SF-WEB-56] Зазор для узла с собственным радиусом dR, чей сосед-родитель
-  // делит с ним sharedCount общих листьев — максимум из трёх оценок:
-  // (1) безусловный пол, (2) пропорция от dR (SF-WEB-54), (3) пропорция от
-  // sharedCount (см. заголовочный комментарий у CLUSTER_GAP_FLOOR выше).
-  // sharedCount передаётся вызывающей стороной — placePole ниже берёт его из
-  // sharedCountBetween(id, parent) (пара полюс↔сид/полюс↔полюс), а
-  // Эйлер-линза (шаг 4 ниже) — напрямую leaves.length своей зоны (общее
-  // число листьев у пары владельцев зоны — та же величина по построению, но
-  // без лишнего похода через sharedCountBetween ради ровно того же числа).
-  function clusterGap(dR, sharedCount) {
+  // [SF-WEB-69] "радиус родителя + зазор + размер линзы + зазор + радиус
+  // ребёнка, зазор минимален — 1-3 размера ноды" — зазор БОЛЬШЕ НЕ растёт
+  // пропорционально dR (убран SF-WEB-54's dR*CLUSTER_GAP_FRACTION член
+  // max()). Формула-дистанция (_idealDistFromHub/baseR) УЖЕ включает оба
+  // радиуса (хаба и самого узла) целиком — пропорциональный член здесь
+  // добавлял ВТОРОЙ, избыточный запас поверх уже правильной геометрической
+  // дистанции, растущий вместе с размером хаба без предела — источник
+  // разрастающихся пустых зон на плотных многополюсных графах.
+  // CLUSTER_GAP_FLOOR — единственный безусловный пол (буквально "1-3
+  // размера ноды"), плюс ограниченная (SHARED_GAP_MAX) надбавка за общих
+  // участников (SF-WEB-56, отдельная причина — путаница в зоне линзы).
+  function clusterGap(sharedCount) {
     const sharedExtra = Math.min(Math.sqrt(Math.max(0, sharedCount)) * SHARED_GAP_STEP, SHARED_GAP_MAX);
-    return Math.max(
-      CLUSTER_GAP_FLOOR,
-      dR * CLUSTER_GAP_FRACTION,
-      CLUSTER_GAP_FLOOR + sharedExtra
-    );
+    return CLUSTER_GAP_FLOOR + sharedExtra;
   }
 
   // Seed-only листья (см. блок 5 ниже) — считаем заранее, до размещения
@@ -564,6 +561,30 @@ export function placeExpandedNodes(savedPositions) {
 
   const rootPoleIds = poles.filter(id => poleParent.get(id) === seedId);
 
+  // [SF-WEB-59] Все РЕАЛЬНЫЕ рёбра между двумя "хабами" (полюс↔полюс,
+  // полюс↔сид) — не только дерево раскрытий (poleParent, один родитель на
+  // полюс), а ЛЮБАЯ прямая связь. Нужно для placeChildren ниже: направление
+  // свежего полюса теперь — векторная сумма ПОЗИЦИЙ ВСЕХ уже размещённых
+  // хабов, с которыми у него есть реальное ребро (тикет: «все экспайред [=
+  // раскрытые] и сид ноды, с которыми лист связан, считаются родительскими
+  // и участвуют в вычислении его положения») — не только его единственного
+  // родителя по дереву раскрытий. Для типичного полюса с ровно одной такой
+  // связью (сам _expandParent) это в точности прежнее поведение (сумма из
+  // одного слагаемого); разница — только когда у полюса ЕСТЬ ещё одна
+  // прямая связь с другим уже раскрытым хабом помимо родителя.
+  const poleNeighbors = new Map();  // hubId → Set<hubId>
+  {
+    const isHub = id => id === seedId || poleSet.has(id);
+    for (const e of State.graphEdges) {
+      const a = e.from, b = e.to;
+      if (a === b || !isHub(a) || !isHub(b)) continue;
+      if (!poleNeighbors.has(a)) poleNeighbors.set(a, new Set());
+      if (!poleNeighbors.has(b)) poleNeighbors.set(b, new Set());
+      poleNeighbors.get(a).add(b);
+      poleNeighbors.get(b).add(a);
+    }
+  }
+
   // Дети каждого полюса (для рекурсии секторов) и радиус одуванчика каждого
   // полюса — как в SF-WEB-29 (_dandelionR по числу его эксклюзивных листьев).
   const poleDR = new Map(poles.map(id => [id, _dandelionR(exclusive.get(id).length)]));
@@ -616,36 +637,264 @@ export function placeExpandedNodes(savedPositions) {
     return Math.abs(_normAngle(a - b));
   }
 
-  // [SF-WEB-57] Размещает всех детей parentId (корневые полюсы — дети сида)
-  // по одному, в детерминированном порядке (id). У каждого — «естественное»
-  // направление (направление на parentId от seed; для сида это направления
-  // не существует — _fallbackAngle) и расстояние baseR (та же
-  // clusterGap-цепочка, что и раньше, без изменений). Коллизия с уже
-  // поставленным в ЭТОМ ЖЕ раунде сиблингом решается СНАЧАЛА нуджем угла
-  // (в обе стороны от естественного направления), и только если это не
-  // помогает за разумное число попыток — увеличением радиуса (тикет: «сперва
-  // угол, потом длина»).
+  // [SF-WEB-61] Насколько СИЛЬНО угол `angle` (с половиной footprint'а
+  // `half`) пересекается с худшим из уже размещённых в этом раунде
+  // сиблингов — 0, если коллизий нет вообще, иначе положительная величина
+  // (радианы недостающего разноса). Используется, чтобы среди неудачных
+  // попыток нуджа запомнить ЛУЧШУЮ (не просто последнюю), см. заголовок
+  // fresh-цикла ниже про «несколько отцов с одной стороны».
+  function _overlapAmount(angle, half, placed) {
+    let worst = 0;
+    for (const s of placed) {
+      const need = half + s.half;
+      const have = _angularSep(angle, s.angle);
+      if (need - have > worst) worst = need - have;
+    }
+    return worst;
+  }
+
+  // [SF-WEB-59] Направление узла — векторная сумма позиций ВСЕХ уже
+  // размещённых хабов (poleNeighbors выше — полюс↔полюс/полюс↔сид РЕАЛЬНЫЕ
+  // рёбра, не только дерево раскрытий), а не только его единственного
+  // родителя по дереву. Для типичного полюса с одной такой связью — тот же
+  // результат, что и раньше (направление НА родителя). null, если сумма
+  // вырождается в (0,0) (единственная связь — с сидом, либо связи взаимно
+  // погасились) — вызывающая сторона обязана подставить _fallbackAngle.
+  //
+  // [SF-WEB-70] Остаётся ЕДИНСТВЕННЫМ путём для типичного узла с РОВНО
+  // одним реальным хабом — простое "направление на родителя" не нуждается
+  // ни в какой более сложной геометрии. Для узла с 2+ реальными связями
+  // ("большой толчок"/"сильный вектор" — несколько хабов ощутимо тянут в
+  // разные стороны) ниже есть отдельный, более точный путь —
+  // _trilaterationPoint — который заменяет и направление (эта функция), и
+  // baseR (дистанцию от ОДНОГО родителя) сразу настоящей геометрической
+  // точкой, учитывающей точную требуемую дистанцию до КАЖДОГО реального
+  // хаба, а не только направление на них.
+  function _ownerVector(id) {
+    const neighbors = poleNeighbors.get(id);
+    if (!neighbors) return null;
+    let sx = 0, sy = 0, n = 0;
+    for (const nb of neighbors) {
+      const p = P.get(nb);
+      if (!p) continue;  // сосед ещё не размещён в этом проходе — пропускаем
+      sx += p.x; sy += p.y; n++;
+    }
+    if (!n) return null;
+    const mag = Math.hypot(sx, sy);
+    return mag >= 1e-6 ? Math.atan2(sy, sx) : null;
+  }
+
+  // [SF-WEB-70] "для больших толчках (сильный вектор) пользуйся
+  // трилатерацией" — ТОЛЬКО для узлов с 2+ реальными хаб-связями (обычный
+  // узел с одной связью — по-прежнему _ownerVector+baseR выше, без
+  // изменений). Идеальная дистанция до хаба: его СОБСТВЕННЫЙ радиус
+  // одуванчика + зазор + радиус этого узла — та же единица, что baseR уже
+  // использовал для ОДНОГО родителя, здесь считается для КАЖДОГО реального
+  // хаба отдельно.
+  function _idealDistFromHub(hubId, dR, gap) {
+    const hubR = hubId === seedId ? dRSeed : poleDR.get(hubId);
+    return hubR + gap + dR;
+  }
+
+  // Стандартное пересечение двух окружностей — 0 точек (слишком далеко/одна
+  // внутри другой/совпадающие центры), 1 (касание) или 2 решения.
+  function _circleIntersections(p1, r1, p2, r2) {
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-6 || d > r1 + r2 || d < Math.abs(r1 - r2)) return [];
+    const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+    const hSq = r1 * r1 - a * a;
+    const h = hSq > 0 ? Math.sqrt(hSq) : 0;
+    const mx = p1.x + (a * dx) / d, my = p1.y + (a * dy) / d;
+    if (h < 1e-6) return [{ x: mx, y: my }];
+    const ox = (-dy / d) * h, oy = (dx / d) * h;
+    return [{ x: mx + ox, y: my + oy }, { x: mx - ox, y: my - oy }];
+  }
+
+  // [SF-WEB-70] Точка для узла с 2+ реальными хаб-связями (трилатерация —
+  // тот же принцип, что GPS/радио-позиционирование: точка на пересечении
+  // окружностей ИДЕАЛЬНЫХ дистанций до двух сильнейших хабов). null, если
+  // связей < 2 — вызывающая сторона обязана откатиться на обычный
+  // baseR+_ownerVector путь (это НЕ редкий "деградированный" случай, а
+  // основной путь для подавляющего большинства узлов).
+  function _trilaterationPoint(id, dR, gap) {
+    const neighbors = poleNeighbors.get(id);
+    if (!neighbors) return null;
+    const placed = [];
+    for (const nb of neighbors) {
+      const p = P.get(nb);
+      if (!p) continue;
+      placed.push({ id: nb, pos: p, R: _idealDistFromHub(nb, dR, gap) });
+    }
+    if (placed.length < 2) return null;
+
+    // Дерево-родитель — самая "первичная" связь, всегда h1, когда их 2+.
+    const treeParent = poleParent.get(id);
+    placed.sort((a, b) => (a.id === treeParent ? -1 : 0) - (b.id === treeParent ? -1 : 0));
+
+    const fallbackAngle = _fallbackAngle(id);
+    const outwardAngle = hub => {
+      const d = Math.hypot(hub.pos.x, hub.pos.y);
+      return d > 1e-6 ? Math.atan2(hub.pos.y, hub.pos.x) : fallbackAngle;
+    };
+
+    const h1 = placed[0], h2 = placed[1];
+
+    // Взвешенная (вес = 1/R — "чем дальше хаб, тем меньше влияет") сумма
+    // направлений "продолжить наружу" от каждого реального хаба — тай-брейк
+    // между решениями пересечения окружностей И направление вырожденного
+    // отката, когда окружности физически не пересекаются.
+    let wx = 0, wy = 0;
+    for (const hub of placed) {
+      const a = outwardAngle(hub);
+      const w = 1 / Math.max(hub.R, 1e-6);
+      wx += Math.cos(a) * w;
+      wy += Math.sin(a) * w;
+    }
+    const wMag = Math.hypot(wx, wy);
+    const blendAngle = wMag >= 1e-6 ? Math.atan2(wy, wx) : fallbackAngle;
+
+    const points = _circleIntersections(h1.pos, h1.R, h2.pos, h2.R);
+    if (points.length) {
+      const refX = h1.pos.x + h1.R * Math.cos(blendAngle);
+      const refY = h1.pos.y + h1.R * Math.sin(blendAngle);
+      let best = points[0], bestDist = Math.hypot(points[0].x - refX, points[0].y - refY);
+      for (let i = 1; i < points.length; i++) {
+        const d = Math.hypot(points[i].x - refX, points[i].y - refY);
+        if (d < bestDist) { best = points[i]; bestDist = d; }
+      }
+      return best;
+    }
+
+    // [SF-WEB-70] "могут возникнуть проблемы из-за более плотного графа" —
+    // окружности идеальных дистанций физически не пересекаются; на реальных
+    // плотных графах, где многие полюса несут большие собственные
+    // одуванчики, это оказался НЕ редкий случай, а частый. Полный блендинг
+    // направления (blendAngle выше), БЕЗ углового потолка, но с капом на
+    // АБСОЛЮТНОЕ боковое смещение (не угол — иначе крупный хаб даёт
+    // огромное абсолютное смещение при том же маленьком угле). Опорный
+    // ("pure") хаб — h1, ЕСЛИ у него есть настоящее направление (не
+    // сид/начало координат), иначе — h2 (оба соседа не могут быть сидом
+    // одновременно — разные узлы по построению).
+    const anchor = Math.hypot(h1.pos.x, h1.pos.y) > 1e-6 ? h1 : h2;
+    const anchorAngle = outwardAngle(anchor);
+    const pureX = anchor.pos.x + anchor.R * Math.cos(anchorAngle);
+    const pureY = anchor.pos.y + anchor.R * Math.sin(anchorAngle);
+    const blendX = anchor.pos.x + anchor.R * Math.cos(blendAngle);
+    const blendY = anchor.pos.y + anchor.R * Math.sin(blendAngle);
+
+    const dx = blendX - pureX, dy = blendY - pureY;
+    const lateral = Math.hypot(dx, dy);
+    const MAX_LATERAL = MIN_SEP * 6;
+    if (lateral <= MAX_LATERAL || lateral < 1e-6) {
+      return { x: blendX, y: blendY };
+    }
+    const scale = MAX_LATERAL / lateral;
+    return { x: pureX + dx * scale, y: pureY + dy * scale };
+  }
+
+  // [SF-WEB-59/60] Уже размещённые полюсы «намертво прибиты» — их позиция
+  // здесь ТОЛЬКО читается, никогда не пересчитывается заново. Раньше
+  // КАЖДЫЙ вызов полностью пересобирал позиции ВСЕХ полюсов с нуля
+  // (детерминированно, но заново) — на графе с несколькими уровнями
+  // раскрытий любой новый expand мог перетасовать угол уже видимых на
+  // экране полюсов, из-за чего уже раскрытые узлы визуально «прыгали» —
+  // это и есть баг из тикета («экспайред [=раскрытые] и сид ноды...
+  // насмерть прибиты»).
+  //
+  // [SF-WEB-60] БАГ (реальный, ломал ровно то, что тикет требовал
+  // защитить): "прибит" здесь раньше означало "id есть в savedPositions" —
+  // но узел, который ТОЛЬКО ЧТО стал полюсом (пользователь впервые
+  // дабл-кликнул по нему в ЭТОМ ЖЕ вызове), уже присутствует в
+  // savedPositions почти всегда — он существовал на графе как ОБЫЧНЫЙ
+  // ЛИСТ (в кольце вокруг своего старого родителя) до этого клика. Прежняя
+  // проверка ошибочно "прибивала" такой полюс к его старой ПОЗИЦИИ ЛИСТА
+  // — координате, оптимизированной под маленькую точку в кольце, а не под
+  // якорь целого нового поддерева — вместо того чтобы дать ему пройти
+  // полноценное размещение (вектор + нудж) хотя бы один раз. Именно это
+  // выглядело как "все ноды слиплись у сида" на живом графе: каждый новый
+  // expand полюс молча наследовал тесную листовую позицию вместо
+  // нормального якоря. "Прибит" теперь означает буквально "уже прошёл
+  // полное размещение как полюс хотя бы один раз" (_poleSettled на самом
+  // graphNode — тот же объект переживает между вызовами, см.
+  // graphNodeById выше) — ДО первой отрисовки по дабл-клику ничего не
+  // прибито, посл — прибито навсегда, ровно как просили.
   function placeChildren(parentId, childIds, parentR) {
     if (!childIds.length) return;
-    const isRoot = parentId === seedId;
-    const parentPos = P.get(parentId);
-    const naturalAngle = isRoot ? null : Math.atan2(parentPos.y, parentPos.x);
     const sorted = [...childIds].sort((a, b) => a - b);
-    const placedThisRound = [];  // { angle, half }
-
+    const pinned = [], fresh = [];
     for (const id of sorted) {
+      const alreadySettled = graphNodeById.get(id)?._poleSettled && savedPositions[id];
+      (alreadySettled ? pinned : fresh).push(id);
+    }
+
+    const placedThisRound = [];  // { angle, half }
+    const placedR = new Map();   // id → r, needed for the recursion pass below
+
+    // [SF-WEB-59] Три отдельных прохода, НЕ один совмещённый: прибитые
+    // узлы, потом свежие, потом — рекурсия в детей КАЖДОГО из них. Если бы
+    // рекурсия в детей полюса A запускалась сразу внутри цикла прибитых (до
+    // того, как сосед B из ТОГО ЖЕ уровня попал в P), _ownerVector детей A
+    // не видел бы связь с B вообще — на плотных графах с прямыми рёбрами
+    // между разными полюсами это давало ЧАСТИЧНЫЙ вектор (только через A),
+    // хотя тикет требует ВСЕ реальные связи. Три прохода гарантируют: весь
+    // текущий уровень (и прибитый, и свежий) полностью в P до того, как
+    // рекурсия спустится глубже.
+
+    // Прибитые полюсы — читаем позицию как есть, никакого пересчёта угла/
+    // радиуса. fromPos совпадает с target (savedPositions уже даёт то же
+    // значение через getFrom) — ноль анимации для узла, который никуда не
+    // движется, ровно как того требует тикет.
+    for (const id of pinned) {
+      const { x, y } = savedPositions[id];
+      const dR = poleDR.get(id);
+      const r = Math.max(Math.hypot(x, y), 1e-6);
+      P.set(id, { x, y, dR });
+      targets.set(id, { x, y });
+      fromPos.set(id, getFrom(id));
+      const sharedCount = Math.max(sharedCountBetween(id, parentId), maxSiblingShared.get(id) || 0);
+      const gap = clusterGap(sharedCount);
+      placedThisRound.push({ angle: Math.atan2(y, x), half: _footprintHalf(dR, gap, r) });
+      placedR.set(id, r);
+    }
+
+    for (const id of fresh) {
       const dR = poleDR.get(id);
       // [SF-WEB-56] Оба сигнала: сколько id делит с РОДИТЕЛЕМ и сколько — с
       // самым "делящимся" сиблингом по тому же уровню — больший побеждает.
       const sharedCount = Math.max(sharedCountBetween(id, parentId), maxSiblingShared.get(id) || 0);
-      const gap = clusterGap(dR, sharedCount);
-      const baseR = isRoot ? dRSeed + dR + gap : parentR + poleDR.get(parentId) + dR + gap;
-      const attemptAngle = naturalAngle == null ? _fallbackAngle(id) : naturalAngle;
+      const gap = clusterGap(sharedCount);
+      const isRoot = parentId === seedId;
+
+      // [SF-WEB-70] "большой толчок"/"сильный вектор" — 2+ реальных
+      // хаб-связи уже размещены — трилатерация вместо простого
+      // baseR+_ownerVector (см. заголовок _trilaterationPoint выше).
+      // Обычный узел (одна связь, подавляющее большинство) — путь ниже НЕ
+      // меняется вообще.
+      const triPoint = _trilaterationPoint(id, dR, gap);
+      let baseR, attemptAngle;
+      if (triPoint) {
+        baseR = Math.hypot(triPoint.x, triPoint.y);
+        attemptAngle = Math.atan2(triPoint.y, triPoint.x);
+      } else {
+        baseR = isRoot ? dRSeed + dR + gap : parentR + poleDR.get(parentId) + dR + gap;
+        attemptAngle = _ownerVector(id) ?? _fallbackAngle(id);
+      }
 
       let r = baseR;
       let angle = attemptAngle;
       let half = _footprintHalf(dR, gap, r);
       let ok = placedThisRound.every(s => _angularSep(angle, s.angle) >= half + s.half);
+
+      // [SF-WEB-61] Пока нуджим угол, запоминаем ЛУЧШИЙ (наименее
+      // пересекающийся) вариант — не просто последнюю попытку. Раньше при
+      // провале всех 24 попыток мы отбрасывали весь этот прогресс и
+      // откатывались на attemptAngle, из-за чего "несколько отцов с одной
+      // стороны" (когда много сиблингов тянутся к почти одному углу общей
+      // связью с другим хабом) синхронно проваливали нудж и все вместе
+      // улетали в неограниченный радиальный рост.
+      let bestAngle = angle;
+      let bestOverlap = _overlapAmount(angle, half, placedThisRound);
 
       let tries = 0;
       while (!ok && tries < 24) {
@@ -654,18 +903,40 @@ export function placeExpandedNodes(savedPositions) {
         const sign = tries % 2 === 1 ? 1 : -1;
         angle = _normAngle(attemptAngle + sign * k * (half + ANGULAR_GAP) * 1.3);
         ok = placedThisRound.every(s => _angularSep(angle, s.angle) >= half + s.half);
+        const overlap = _overlapAmount(angle, half, placedThisRound);
+        if (overlap < bestOverlap) {
+          bestOverlap = overlap;
+          bestAngle = angle;
+        }
       }
       if (!ok) {
-        // Углом не разошлись за разумное число попыток (типично — очень
-        // много сиблингов с большими облаками вокруг одного узкого родителя)
-        // — жертвуем расстоянием: растим радиус, пока собственный footprint
-        // не сузится настолько, что ИСХОДНЫЙ угол уже ни с кем не пересекается.
-        angle = attemptAngle;
-        for (let grow = 0; grow < 32 && !ok; grow++) {
-          r *= 1.15;
+        // [SF-WEB-62] "направление правильно, а вот растояние нас
+        // подвело" — the SF-WEB-61 fix capped growth at a *multiplier* of
+        // baseR (1.15^6 ≈ 2.3x), which sounded bounded but wasn't: 2.3x of
+        // a SMALL baseR (a pole near the seed) is a small, reasonable jump,
+        // but 2.3x of a LARGE baseR (a pole several expand-levels deep,
+        // already far from the seed) is a proportionally huge absolute
+        // displacement — exactly the "flying away" the user is still
+        // seeing, just now scaling with depth instead of with sibling
+        // count. Direction (bestAngle) was never the problem here.
+        // Fix: grow the radius by a small ADDITIVE step (derived from
+        // `gap`, the same footprint unit baseR itself already uses — not a
+        // multiple of baseR), capped at a handful of steps — the absolute
+        // extra distance this can ever add is now the same small amount
+        // regardless of how far from the seed this pole already sits.
+        angle = bestAngle;
+        half = _footprintHalf(dR, gap, r);
+        ok = placedThisRound.every(s => _angularSep(angle, s.angle) >= half + s.half);
+        const GROW_STEP = Math.max(gap, dR); // one footprint-sized step, independent of baseR's own magnitude
+        const GROW_CAP  = 5;                  // ≤ 5 * GROW_STEP total extra distance, ever
+        for (let grow = 0; grow < GROW_CAP && !ok; grow++) {
+          r += GROW_STEP;
           half = _footprintHalf(dR, gap, r);
           ok = placedThisRound.every(s => _angularSep(angle, s.angle) >= half + s.half);
         }
+        // Если даже на потолке роста разошлись не до конца — смиряемся с
+        // небольшим остаточным пересечением на лучшем найденном угле, а не
+        // продолжаем расти неограниченно.
       }
 
       const x = Math.cos(angle) * r, y = Math.sin(angle) * r;
@@ -673,8 +944,20 @@ export function placeExpandedNodes(savedPositions) {
       targets.set(id, { x, y });
       fromPos.set(id, getFrom(id));
       placedThisRound.push({ angle, half });
+      placedR.set(id, r);
+      // [SF-WEB-60] Marks this pole as having been through one full
+      // vector+nudge placement — from the NEXT placeExpandedNodes call
+      // onward it counts as "pinned" (see the pinned/fresh split above),
+      // never this one: this call still computed its position fresh.
+      const gn = graphNodeById.get(id);
+      if (gn) gn._poleSettled = true;
+    }
 
-      placeChildren(id, poleChildren.get(id) || [], r);
+    // Третий проход: теперь, когда ВЕСЬ этот уровень (прибитый + свежий)
+    // виден в P, можно безопасно спускаться в детей каждого узла — их
+    // _ownerVector увидит любые реальные связи с сиблингами на этом уровне.
+    for (const id of sorted) {
+      placeChildren(id, poleChildren.get(id) || [], placedR.get(id));
     }
   }
 
@@ -736,7 +1019,7 @@ export function placeExpandedNodes(savedPositions) {
     // [SF-WEB-56] leaves.length — число листьев именно ЭТОЙ линзы, тот же
     // sharedCount, что clusterGap ждёт от placeChildren (см. его заголовок)
     // — чем крупнее сама линза, тем дальше её отталкивает от сида.
-    const minRFromSeed = dRSeed + clusterGap(dRSeed, leaves.length) * 0.5;
+    const minRFromSeed = dRSeed + clusterGap(leaves.length) * 0.5;
 
     let cx = 0, cy = 0;
     valid.forEach(o => { cx += P.get(o).x; cy += P.get(o).y; });
@@ -756,6 +1039,27 @@ export function placeExpandedNodes(savedPositions) {
     // _placeZoneLeafRings выше). Раньше это было одно раздувающееся кольцо —
     // при больших N см. комментарий у _placeZoneLeafRings.
     _placeZoneLeafRings(leaves, cx, cy, targets, fromPos, getFrom);
+  }
+
+  // [SF-WEB-58/59 C] hubId → Set<nodeId> — членство "хаб-сектора" для
+  // BubbleSets-контуров (bubble-contours.js): полюс/сид + его собственный
+  // одуванчик (эксклюзивные листья, шаг 3, либо seed-only листья для сида)
+  // + любые общие/линза-листья (шаг 4), где этот хаб — один из владельцев
+  // зоны. Общий лист попадает В НЕСКОЛЬКО Set-ов сразу (по одному на
+  // каждого своего владельца) — это и есть "перекрытие только на общих
+  // листьях", которое требует тикет: эксклюзивный лист принадлежит РОВНО
+  // одному сектору, общий — двум и более, ничему другому пересекаться
+  // неоткуда. [SF-WEB-59] Сид ТЕПЕРЬ тоже полноправный "сектор" — контур
+  // должен окружать его собственный одуванчик (seedLeaves) и расти вместе с
+  // любыми новыми линзами Эйлера, которые сид делит с полюсами.
+  const sectorMembers = new Map(poles.map(id => [id, new Set([id, ...exclusive.get(id)])]));
+  sectorMembers.set(seedId, new Set([seedId, ...seedLeaves]));
+  for (const { owners, leaves: zoneLeaves } of eulerZones.values()) {
+    for (const owner of owners) {
+      const members = sectorMembers.get(owner);
+      if (!members) continue;
+      for (const leaf of zoneLeaves) members.add(leaf);
+    }
   }
 
   // ── 5. Seed-only листья: собственный «одуванчик» вокруг seed ─────────────────
@@ -881,7 +1185,7 @@ export function placeExpandedNodes(savedPositions) {
     edgeClass.set(key, { from: a, to: b, kind, hub });
   }
 
-  return { targets, fromPos, edgeClass };
+  return { targets, fromPos, edgeClass, sectorMembers };
 }
 
 // SF-WEB-17: floor on node spacing — comfortably larger than the biggest
