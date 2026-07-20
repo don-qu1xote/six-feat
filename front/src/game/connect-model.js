@@ -9,7 +9,7 @@
 // "build a chain" mechanic be unit-tested without a canvas, a running
 // game-service, or a real mousemove.
 //
-// A chain is `{ start, goal, hops, completed, validation }`:
+// A chain is `{ start, goal, hops, completed, validation, result }`:
 //   - start / goal   — the two fixed endpoints (normalized artist names).
 //   - hops           — ordered intermediate artist names the player added,
 //                      EXCLUDING the goal (the goal is always the endpoint,
@@ -18,18 +18,23 @@
 //   - validation     — [SF-GAME-14/02] the server's last verdict on this
 //                      EXACT chain, or null if it hasn't been checked (or was
 //                      edited since) — see applyValidation/hopStatuses below.
+//   - result         — [SF-GAME-15/03] the server's last POST
+//                      /api/v1/game/submit response for this EXACT chain, or
+//                      null before any submit — see applyResult/resultView
+//                      below. The ideal (optimal_path) never enters this
+//                      model any other way, so "hidden until submit" is
+//                      structural, not a flag someone could forget to check.
 // The full visible chain is always [start, ...hops, goal] (chainNodes) so the
 // goal shows as the target endpoint whether or not it's been reached yet.
 //
 // Artist identity here is by NAME, not id: SF-GAME-01 has no backend, and the
 // autocomplete (ui/autocomplete.js) hands back a name string on select — so
 // the model honestly keys on the same thing the UI actually has. The server
-// validator (SF-GAME-14, POST /api/v1/game/validate) needs numeric Genius
-// ids, which this model still doesn't carry — wiring a real submit call is
-// blocked on that id-resolution gap, left to whichever ticket adds it
-// (likely bundled with SF-GAME-15/16's scoring submit, which needs ids
-// anyway). applyValidation/hopStatuses below only render an already-computed
-// server verdict; they don't fetch one.
+// validator/submit endpoints (SF-GAME-14/15) need numeric Genius ids, which
+// this model still doesn't carry — wiring the real network calls is blocked
+// on that id-resolution gap, left to whichever ticket adds it.
+// applyValidation/hopStatuses and applyResult/resultView below only render
+// an already-computed server response; none of them fetch one.
 // ════════════════════════════════════════════════════════════════════════════
 
 // Collapse surrounding/inner whitespace and drop empties — the same light
@@ -44,7 +49,10 @@ function eq(a, b) {
 }
 
 export function createConnectChain(startName, goalName) {
-  return { start: norm(startName), goal: norm(goalName), hops: [], completed: false, validation: null };
+  return {
+    start: norm(startName), goal: norm(goalName), hops: [],
+    completed: false, validation: null, result: null,
+  };
 }
 
 // The full visible chain, endpoints included: [start, ...hops, goal].
@@ -81,11 +89,13 @@ export function addHop(game, rawName) {
   if (eq(name, game.goal)) {
     game.completed = true;
     game.validation = null;
+    game.result = null;
     return { ok: true, completed: true };
   }
 
   game.hops.push(name);
   game.validation = null;
+  game.result = null;
   return { ok: true, completed: false };
 }
 
@@ -95,6 +105,7 @@ export function addHop(game, rawName) {
 // a hop name, or null when there was nothing to undo).
 export function undoHop(game) {
   game.validation = null;
+  game.result = null;
   if (game.completed) {
     game.completed = false;
     return { undone: "goal" };
@@ -109,6 +120,7 @@ export function resetChain(game) {
   game.hops = [];
   game.completed = false;
   game.validation = null;
+  game.result = null;
 }
 
 // ── Server validation (SF-GAME-14/02) ───────────────────────────────────────
@@ -160,4 +172,56 @@ export function hopStatuses(game) {
       i < v.invalidHopIndex ? "valid" : i === v.invalidHopIndex ? "invalid" : "unknown");
   }
   return new Array(n).fill("unknown");
+}
+
+// ── Result screen (SF-GAME-15/03) ───────────────────────────────────────────
+//
+// POST /api/v1/game/submit (services/game/submit_handler.cpp) is the ONLY
+// place the ideal path is ever sent to the client — every field below comes
+// straight from that one response, stored as-is by applyResult. There is no
+// separate "peek at the ideal" call anywhere in this codebase for this
+// module to accidentally expose early: resultView() returns null (nothing
+// to show) until applyResult() has actually been called with a real
+// {valid:true, ...} response, which — per submit_handler.hpp's own
+// contract — can only happen after the player has finished (or failed) an
+// attempt.
+
+export function applyResult(game, submitResponse) {
+  game.result = normalizeResult(game, submitResponse);
+}
+
+export function clearResult(game) {
+  game.result = null;
+}
+
+function normalizeResult(game, r) {
+  if (!r || typeof r !== "object") return null;
+  if (r.valid !== true) {
+    return {
+      revealed: false,
+      reason: r.reason || "unknown",
+      invalidHopIndex: Number.isInteger(r.invalid_hop_index) ? r.invalid_hop_index : null,
+    };
+  }
+  return {
+    revealed: true,
+    playerChain: chainNodes(game),
+    playerLen: r.player_len,
+    optimalPath: Array.isArray(r.optimal_path) ? [...r.optimal_path] : [],
+    optimalLen: r.optimal_len,
+    score: r.score,
+    maxScore: r.max_score,
+    eloBefore: r.elo_before,
+    eloAfter: r.elo_after,
+    eloDelta: r.elo_delta,
+  };
+}
+
+// The stored result view, or null if nothing has been submitted yet (or the
+// chain was edited since — see the *_result clearing in addHop/undoHop/
+// resetChain above). Pass-through accessor kept alongside hopStatuses() for
+// symmetry — game.result is already the normalized view, but callers
+// shouldn't need to know that.
+export function resultView(game) {
+  return game.result;
 }

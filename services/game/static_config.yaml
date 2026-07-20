@@ -119,6 +119,15 @@ components_manager:
       method: POST
       task_processor: *main_tp
 
+    # [SF-GAME-15] Scores a confirmed-valid attempt against the challenge's
+    # own BFS ideal (game_challenges.optimal_len/optimal_path) and updates
+    # the player's Elo — see scoring.hpp, game_store.hpp's RecordValidAttempt.
+    # nginx proxies /api/v1/game/* here, so the public path is the same.
+    handler-game-submit:
+      path: /api/v1/game/submit
+      method: POST
+      task_processor: *main_tp
+
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     handler-server-monitor:
       path: /metrics

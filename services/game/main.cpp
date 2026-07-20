@@ -25,6 +25,7 @@
 #include "internal_handlers.hpp"
 #include "neighbours_client.hpp"
 #include "profile_handler.hpp"
+#include "submit_handler.hpp"
 #include "validate_handler.hpp"
 
 using namespace userver;
@@ -57,6 +58,11 @@ int main(int argc, char* argv[]) {
             // anti-cheat chain check, needs NeighboursClient (already
             // appended above).
             .Append<six_feat::game::ValidateHandler>()
+            // [SF-GAME-15] POST /api/v1/game/submit — scores a confirmed-
+            // valid attempt against the challenge's own BFS ideal and
+            // updates Elo; needs both GameStore and NeighboursClient
+            // (already appended above).
+            .Append<six_feat::game::SubmitHandler>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never the public
             // listener.

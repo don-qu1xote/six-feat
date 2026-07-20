@@ -798,6 +798,13 @@
       <div id="connect-chain" class="connect-chain" aria-live="polite"></div>
       <p id="connect-status" class="connect-status" aria-live="polite"></p>
 
+      <!-- [SF-GAME-15/03] Result screen — populated by connect.js's
+           renderResult() from State.connect.game.result (see
+           connect-model.js's applyResult/resultView). Hidden until a real
+           POST /api/v1/game/submit response has been applied; the ideal
+           (optimal path) only ever appears here, never before. -->
+      <div id="connect-result" class="connect-result" aria-live="polite" hidden></div>
+
       <div class="connect-builder">
         <label class="connect-field connect-field--grow">
           <span class="connect-label">Add artist</span>

@@ -110,6 +110,31 @@
 
 .connect-status { font-size: var(--text-sm); color: var(--mist); margin: 0; min-height: 1.2em; }
 
+/* [SF-GAME-15/03] Result screen — populated by connect.js's renderResult()
+   from State.connect.game.result (connect-model.js's applyResult/
+   resultView). Hidden by default (index.html's [hidden] attribute); shown
+   only once a real submit response has been applied. */
+.connect-result {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+.connect-result-status--rejected { color: var(--neon); font-size: var(--text-sm); margin: 0; }
+.connect-result-score {
+  font-family: "Syne", var(--font-display, sans-serif);
+  font-weight: 800; font-size: 28px; color: var(--signal); margin: 0;
+}
+.connect-result-score .cr-of { font-size: var(--text-sm); font-weight: 500; color: var(--mist); }
+.connect-result-elo { font-size: var(--text-sm); color: var(--paper); margin: 0; }
+.cr-delta--up   { color: var(--signal); }
+.cr-delta--down { color: var(--neon); }
+.connect-result-compare { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.cr-row { display: flex; justify-content: space-between; font-size: var(--text-sm); }
+.cr-label { color: var(--mist); }
+.cr-val { color: var(--paper); font-weight: 600; }
+.cr-row--ideal .cr-val { color: var(--pulse); }
+
 .connect-builder { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; }
 .connect-actions { display: flex; gap: var(--space-2); }
 .connect-actions .ui-btn { flex: 1; }

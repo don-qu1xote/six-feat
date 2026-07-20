@@ -1,4 +1,5 @@
 #include "game_store.hpp"
+#include "scoring.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -13,6 +14,7 @@
 #include <userver/logging/log.hpp>
 #include <userver/storages/postgres/cluster.hpp>
 #include <userver/storages/postgres/component.hpp>
+#include <userver/storages/postgres/transaction.hpp>
 #include <userver/utils/async.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
@@ -250,6 +252,11 @@ bool GameStore::Ping() const {
 
 namespace {
 
+std::int64_t NowUnix() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
 // 1-based leaderboard rank by elo descending: how many profiles strictly
 // out-rank this one, plus one. Ties share the higher rank (COUNT of strictly
 // greater elo), which is fine for a display rank.
@@ -282,9 +289,7 @@ Profile ReadProfile(const storages::postgres::ClusterPtr& cluster,
 Profile GameStore::EnsureAndGetProfile(std::int64_t user_id,
                                        const std::string& display_name_default,
                                        const std::string& avatar_url_default) const {
-    const std::int64_t now =
-        std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
+    const std::int64_t now = NowUnix();
     // First-sight create; existing rows keep their stored values (DO NOTHING).
     impl_->cluster->Execute(
         storages::postgres::ClusterHostType::kMaster,
@@ -304,6 +309,95 @@ Profile GameStore::SetDisplayName(std::int64_t user_id,
         "UPDATE game_profiles SET display_name = $2 WHERE user_id = $1",
         user_id, display_name);
     return ReadProfile(impl_->cluster, user_id);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Challenge + submission API — [SF-GAME-15]
+// ════════════════════════════════════════════════════════════════════════════
+
+std::optional<Challenge> GameStore::GetChallenge(std::int64_t challenge_id) const {
+    auto res = impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "SELECT id, from_artist_id, to_artist_id, role_mask, kind, "
+        "       optimal_len, optimal_path "
+        "FROM game_challenges WHERE id = $1", challenge_id);
+    if (res.IsEmpty()) return std::nullopt;
+
+    const auto row = res.Front();
+    Challenge c;
+    c.id             = row[0].As<std::int64_t>();
+    c.from_artist_id = row[1].As<std::int64_t>();
+    c.to_artist_id   = row[2].As<std::int64_t>();
+    c.role_mask      = row[3].As<int>();
+    c.kind           = row[4].As<std::string>();
+    c.optimal_len    = row[5].As<std::optional<int>>();
+    c.optimal_path   = row[6].As<std::optional<std::vector<std::int64_t>>>()
+                            .value_or(std::vector<std::int64_t>{});
+    return c;
+}
+
+void GameStore::RecordInvalidAttempt(std::int64_t user_id, std::int64_t challenge_id,
+                                     const std::vector<std::int64_t>& chain) const {
+    const int hops = std::max(0, static_cast<int>(chain.size()) - 1);
+    impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "INSERT INTO game_attempts (challenge_id, user_id, chain, valid, hops, score, ts) "
+        "VALUES ($1, $2, $3, false, $4, 0, $5)",
+        challenge_id, user_id, chain, hops, NowUnix());
+}
+
+SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id, std::int64_t challenge_id,
+                                           const std::vector<std::int64_t>& chain,
+                                           int optimal_len,
+                                           std::optional<int> elapsed_ms) const {
+    const int player_len = static_cast<int>(chain.size()) - 1;
+
+    // One transaction for the whole read-score-write sequence, per the
+    // ticket's explicit requirement — a crash partway through must never
+    // leave the attempt row and the profile's elo/games disagreeing.
+    auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
+                                     storages::postgres::TransactionOptions{});
+
+    // Counted BEFORE this attempt's own INSERT below, so it only reflects
+    // attempts strictly earlier than this one (see scoring.hpp's own
+    // comment on prior_attempts).
+    const auto prior_res = trx.Execute(
+        "SELECT COUNT(*) FROM game_attempts WHERE challenge_id = $1 AND user_id = $2",
+        challenge_id, user_id);
+    const int prior_attempts =
+        static_cast<int>(prior_res.Front()[0].As<std::int64_t>());
+
+    const int score = ComputeScore(optimal_len, player_len, prior_attempts, elapsed_ms);
+
+    // FOR UPDATE: serializes concurrent submits by the same player (e.g. two
+    // browser tabs) against a read-then-write elo race. The caller
+    // (submit_handler.cpp) ensures this row already exists (EnsureAndGetProfile)
+    // before starting the attempt, same convention SetDisplayName relies on.
+    const auto elo_res = trx.Execute(
+        "SELECT elo FROM game_profiles WHERE user_id = $1 FOR UPDATE", user_id);
+    const int elo_before = elo_res.IsEmpty() ? 1200 : elo_res.Front()[0].As<int>();
+
+    const auto elo = UpdateElo(elo_before, optimal_len, score, kMaxScore);
+
+    trx.Execute(
+        "INSERT INTO game_attempts (challenge_id, user_id, chain, valid, hops, score, ts) "
+        "VALUES ($1, $2, $3, true, $4, $5, $6)",
+        challenge_id, user_id, chain, player_len, score, NowUnix());
+
+    trx.Execute(
+        "UPDATE game_profiles SET elo = $2, games = games + 1 WHERE user_id = $1",
+        user_id, elo.new_rating);
+
+    trx.Commit();
+
+    SubmitResult r;
+    r.player_len = player_len;
+    r.score      = score;
+    r.max_score  = kMaxScore;
+    r.elo_before = elo_before;
+    r.elo_after  = elo.new_rating;
+    r.elo_delta  = elo.new_rating - elo_before;
+    return r;
 }
 
 // static

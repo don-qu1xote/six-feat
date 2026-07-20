@@ -179,6 +179,9 @@ export const els = {
   connectGoalAc:     $("connect-goal-ac"),
   connectChain:      $("connect-chain"),
   connectStatus:     $("connect-status"),
+  // [SF-GAME-15/03] Result screen — see src/game/connect-model.js's
+  // applyResult/resultView.
+  connectResult:     $("connect-result"),
   connectAddInput:   $("connect-add-input"),
   connectAddAc:      $("connect-add-ac"),
   connectUndo:       $("connect-undo"),

@@ -9,6 +9,7 @@ import {
   createConnectChain, chainNodes, hopCount, isComplete,
   addHop, undoHop, resetChain,
   applyValidation, clearValidation, hopStatuses,
+  applyResult, clearResult, resultView,
 } from "./connect-model.js";
 
 describe("createConnectChain / chainNodes", () => {
@@ -216,5 +217,113 @@ describe("validation is invalidated by any chain edit", () => {
     applyValidation(g, { valid: true });
     resetChain(g);
     expect(hopStatuses(g)).toEqual(["unknown"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// [SF-GAME-15/03] Result screen — applyResult/resultView are driven entirely
+// off a hand-built mock response shaped exactly like POST
+// /api/v1/game/submit's real 200 body (see services/game/submit_handler.cpp).
+// No network, no game-service, no Elo math re-implemented here — the whole
+// point, same as the rest of this file.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resultView (before any submit)", () => {
+  it("is null — nothing to show, and specifically nothing about the ideal", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    expect(resultView(g)).toBeNull();
+  });
+});
+
+describe("applyResult / resultView — the ideal is revealed only on a valid result", () => {
+  it("reveals the player chain, the ideal, and the score/Elo breakdown", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    applyResult(g, {
+      valid: true,
+      player_len: 2,
+      optimal_len: 1,
+      optimal_path: [1, 2],
+      score: 900,
+      max_score: 1000,
+      elo_before: 1200,
+      elo_after: 1212,
+      elo_delta: 12,
+    });
+    const view = resultView(g);
+    expect(view).toEqual({
+      revealed: true,
+      playerChain: ["Drake", "Rihanna", "Adele"],
+      playerLen: 2,
+      optimalPath: [1, 2],
+      optimalLen: 1,
+      score: 900,
+      maxScore: 1000,
+      eloBefore: 1200,
+      eloAfter: 1212,
+      eloDelta: 12,
+    });
+  });
+
+  it("does NOT reveal the ideal on a rejected (invalid) submit response", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    applyResult(g, { valid: false, reason: "invalid_hop", invalid_hop_index: 0 });
+    const view = resultView(g);
+    expect(view).toEqual({
+      revealed: false,
+      reason: "invalid_hop",
+      invalidHopIndex: 0,
+    });
+    expect(view.optimalPath).toBeUndefined();
+  });
+
+  it("falls back to reason 'unknown' on a rejection with no reason field", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyResult(g, { valid: false });
+    expect(resultView(g)).toEqual({ revealed: false, reason: "unknown", invalidHopIndex: null });
+  });
+
+  it("ignores a malformed/garbage response instead of throwing", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyResult(g, null);
+    expect(resultView(g)).toBeNull();
+    applyResult(g, "not an object");
+    expect(resultView(g)).toBeNull();
+  });
+
+  it("clearResult resets to the unsubmitted state", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyResult(g, { valid: true, player_len: 1, optimal_len: 1, optimal_path: [1, 2], score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14 });
+    clearResult(g);
+    expect(resultView(g)).toBeNull();
+  });
+});
+
+describe("result is invalidated by any chain edit, same as validation", () => {
+  const mockResult = { valid: true, player_len: 1, optimal_len: 1, optimal_path: [1, 2], score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14 };
+
+  it("addHop (on success) clears a prior result", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyResult(g, mockResult);
+    addHop(g, "Rihanna");
+    expect(resultView(g)).toBeNull();
+  });
+
+  it("undoHop clears a prior result", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    applyResult(g, mockResult);
+    undoHop(g);
+    expect(resultView(g)).toBeNull();
+  });
+
+  it("resetChain clears a prior result", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    applyResult(g, mockResult);
+    resetChain(g);
+    expect(resultView(g)).toBeNull();
   });
 });

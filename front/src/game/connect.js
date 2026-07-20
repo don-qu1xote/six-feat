@@ -11,19 +11,22 @@
 //
 // [SF-GAME-14/02] Per-hop valid/invalid highlighting renders off
 // State.connect.game.validation (see connect-model.js's applyValidation/
-// hopStatuses) whenever it's set — but nothing here actually calls the
-// server yet: the wire contract (POST /api/v1/game/validate) needs numeric
-// Genius artist ids, and this model still only carries names (see
-// connect-model.js's own header comment). Once a later ticket adds id-aware
-// endpoints, wiring the real submit is a call to applyValidation() plus a
-// render() — the rendering side is already complete and tested.
+// hopStatuses) whenever it's set. [SF-GAME-15/03] The result screen
+// (renderResult below) renders off State.connect.game.result (applyResult/
+// resultView) the same way — but nothing here actually calls the server
+// yet: both wire contracts (POST /api/v1/game/validate, POST
+// /api/v1/game/submit) need numeric Genius artist ids, and this model
+// still only carries names (see connect-model.js's own header comment).
+// Once a later ticket adds id-aware endpoints, wiring the real calls is
+// just applyValidation()/applyResult() plus a render() — the rendering
+// side for both is already complete and tested.
 //
-// Still no scoring (SF-GAME-15): this is purely the input mechanic on the
-// existing design kit, on the #/game surface the router (ui/router.js,
-// SF-WEB-25) already knows about. Every field also accepts a plain typed
-// name on Enter, so it works even with no backend reachable (the Genius
-// autocomplete needs one; the mechanic doesn't). The whole game lives in
-// State.connect (per the ticket) — no module-local game state.
+// This is purely the input mechanic on the existing design kit, on the
+// #/game surface the router (ui/router.js, SF-WEB-25) already knows about.
+// Every field also accepts a plain typed name on Enter, so it works even
+// with no backend reachable (the Genius autocomplete needs one; the
+// mechanic doesn't). The whole game lives in State.connect (per the
+// ticket) — no module-local game state.
 // ════════════════════════════════════════════════════════════════════════════
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
@@ -32,7 +35,7 @@ import { onSurfaceChange, getCurrentSurface, navigateToSurface, SURFACE_GAME, SU
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
 import {
   createConnectChain, chainNodes, hopCount, isComplete,
-  addHop, undoHop, resetChain, hopStatuses,
+  addHop, undoHop, resetChain, hopStatuses, resultView,
 } from "./connect-model.js";
 import { drawChain } from "./chain-graph.js";
 
@@ -100,6 +103,41 @@ function renderControls() {
   if (els.connectReset) els.connectReset.disabled = !active || (hopCount(s.game) === 0 && !completed);
 }
 
+// [SF-GAME-15/03] Renders State.connect.game.result — see resultView's own
+// doc-comment for why the ideal (optimalPath/optimalLen) can only ever show
+// up here, never earlier. Hidden whenever there's nothing to show yet.
+function renderResult() {
+  const s = slice();
+  if (!els.connectResult) return;
+  const view = s.game ? resultView(s.game) : null;
+  if (!view) {
+    els.connectResult.hidden = true;
+    els.connectResult.innerHTML = "";
+    return;
+  }
+  els.connectResult.hidden = false;
+
+  if (!view.revealed) {
+    const at = view.invalidHopIndex != null ? `hop ${view.invalidHopIndex + 1}` : "a hop";
+    els.connectResult.innerHTML =
+      `<p class="connect-result-status connect-result-status--rejected">` +
+      `Not a real chain — the check failed at ${escapeHtml(at)}.</p>`;
+    return;
+  }
+
+  const sign = view.eloDelta > 0 ? "+" : "";
+  els.connectResult.innerHTML =
+    `<p class="connect-result-score">${view.score} <span class="cr-of">/ ${view.maxScore}</span></p>` +
+    `<p class="connect-result-elo">Elo ${view.eloBefore} → ${view.eloAfter} ` +
+    `<span class="cr-delta ${view.eloDelta >= 0 ? "cr-delta--up" : "cr-delta--down"}">(${sign}${view.eloDelta})</span></p>` +
+    `<div class="connect-result-compare">` +
+    `<div class="cr-row"><span class="cr-label">You</span>` +
+    `<span class="cr-val">${view.playerLen} hop${view.playerLen === 1 ? "" : "s"}</span></div>` +
+    `<div class="cr-row cr-row--ideal"><span class="cr-label">Ideal</span>` +
+    `<span class="cr-val">${view.optimalLen} hop${view.optimalLen === 1 ? "" : "s"}</span></div>` +
+    `</div>`;
+}
+
 function draw() {
   if (els.connectCanvas) drawChain(els.connectCanvas, slice().game);
 }
@@ -107,6 +145,7 @@ function draw() {
 function render() {
   renderChainList();
   renderStatus();
+  renderResult();
   renderControls();
   draw();
 }

@@ -1,0 +1,4 @@
+type: object
+description: Chain submission endpoint — scoring + Elo update (SF-GAME-15)
+additionalProperties: false
+properties: {}

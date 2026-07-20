@@ -22,8 +22,10 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>
@@ -42,6 +44,34 @@ struct Profile {
     int          elo{0};
     int          games{0};
     int          rank{0};
+};
+
+// [SF-GAME-15] A game_challenges row. optimal_len/optimal_path are nullopt/
+// empty until whatever creates the challenge (SF-GAME-16) computes and
+// stores our own BFS ideal — GetChallenge returns them as-is either way;
+// callers decide what "not computed yet" means for them (submit_handler.cpp
+// treats it as 409, not a 404 or a silently-unscored attempt).
+struct Challenge {
+    std::int64_t               id{0};
+    std::int64_t                from_artist_id{0};
+    std::int64_t                to_artist_id{0};
+    int                          role_mask{0};
+    std::string                  kind;
+    std::optional<int>           optimal_len;
+    std::vector<std::int64_t>    optimal_path;
+};
+
+// [SF-GAME-15] Result of scoring + applying a valid, chain_validator-
+// confirmed attempt. elo_delta is elo_after - elo_before, kept explicit
+// rather than left for the caller to subtract (avoids ever disagreeing with
+// the transaction that actually computed it).
+struct SubmitResult {
+    int player_len{0};
+    int score{0};
+    int max_score{0};
+    int elo_before{0};
+    int elo_after{0};
+    int elo_delta{0};
 };
 
 class GameStore final : public userver::components::ComponentBase {
@@ -79,6 +109,32 @@ public:
     // Profile (with rank). The caller ensures the row exists first
     // (EnsureAndGetProfile) — this is a plain UPDATE ... RETURNING.
     Profile SetDisplayName(std::int64_t user_id, const std::string& display_name) const;
+
+    // [SF-GAME-15] Challenge + submission API.
+
+    // nullopt if no challenge with this id exists. Never throws on "row
+    // absent" — only on a genuine DB failure.
+    std::optional<Challenge> GetChallenge(std::int64_t challenge_id) const;
+
+    // Records a chain_validator-CONFIRMED-invalid attempt: no scoring, no
+    // Elo change — just persisted so it counts toward a later valid
+    // attempt's prior_attempts penalty (see scoring.hpp).
+    void RecordInvalidAttempt(std::int64_t user_id, std::int64_t challenge_id,
+                              const std::vector<std::int64_t>& chain) const;
+
+    // Records a chain_validator-CONFIRMED-valid attempt: computes score
+    // (scoring.hpp::ComputeScore, using this challenge's optimal_len, the
+    // submitted chain's length, and this user's prior attempt count on this
+    // SAME challenge — queried inside the same transaction) and the
+    // resulting Elo update, then persists the attempt row and the profile's
+    // new elo/games count in ONE transaction — the ticket's explicit
+    // requirement, so a crash between the two can never leave them
+    // disagreeing. The caller ensures the profile row exists first
+    // (EnsureAndGetProfile), same convention as SetDisplayName.
+    SubmitResult RecordValidAttempt(std::int64_t user_id, std::int64_t challenge_id,
+                                    const std::vector<std::int64_t>& chain,
+                                    int optimal_len,
+                                    std::optional<int> elapsed_ms) const;
 
     static userver::yaml_config::Schema GetStaticConfigSchema();
 
