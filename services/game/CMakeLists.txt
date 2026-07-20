@@ -38,6 +38,9 @@ six_feat_embed_schema(components/neighbours_client kNeighboursClientComponentSch
 six_feat_embed_schema(handlers/game/validate_handler kGameValidateHandlerSchema GAME_VALIDATE_HANDLER_SCHEMA_HEADER)
 # [SF-GAME-15] Submission (scoring + Elo) handler config schema.
 six_feat_embed_schema(handlers/game/submit_handler kGameSubmitHandlerSchema GAME_SUBMIT_HANDLER_SCHEMA_HEADER)
+# [SF-GAME-16] Challenge create/get handler + daily-challenge task schemas.
+six_feat_embed_schema(handlers/game/challenge_handler kGameChallengeHandlerSchema GAME_CHALLENGE_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(components/daily_challenge_task kDailyChallengeTaskComponentSchema DAILY_CHALLENGE_TASK_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_game_schema_headers DEPENDS
     ${GAME_READINESS_HANDLER_SCHEMA_HEADER}
@@ -46,6 +49,8 @@ add_custom_target(six_feat_game_schema_headers DEPENDS
     ${NEIGHBOURS_CLIENT_COMPONENT_SCHEMA_HEADER}
     ${GAME_VALIDATE_HANDLER_SCHEMA_HEADER}
     ${GAME_SUBMIT_HANDLER_SCHEMA_HEADER}
+    ${GAME_CHALLENGE_HANDLER_SCHEMA_HEADER}
+    ${DAILY_CHALLENGE_TASK_COMPONENT_SCHEMA_HEADER}
 )
 
 add_executable(six_feat_game
@@ -56,6 +61,8 @@ add_executable(six_feat_game
     neighbours_client.cpp
     validate_handler.cpp
     submit_handler.cpp
+    challenge_handler.cpp
+    daily_challenge_task.cpp
 )
 
 target_link_libraries(six_feat_game

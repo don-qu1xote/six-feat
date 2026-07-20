@@ -88,6 +88,15 @@ components_manager:
       six-feat-base-url: $six_feat_base_url
       timeout-ms: 2000
 
+    # [SF-GAME-16] Once-a-day publisher for kind="daily" challenges — see
+    # daily_challenge_task.hpp. Always on (no env-var toggle, unlike
+    # PruneTask): cheap, idempotent, no operational reason to disable it.
+    daily-challenge-task:
+      interval-seconds: 86400
+      min-path-len: 2
+      max-attempts: 20
+      candidate-pool-size: 50
+
     # ── Handlers ────────────────────────────────────────────────────────────
     handler-healthz:
       path: /healthz
@@ -126,6 +135,17 @@ components_manager:
     handler-game-submit:
       path: /api/v1/game/submit
       method: POST
+      task_processor: *main_tp
+
+    # [SF-GAME-16] Challenge create/get — POST creates (or returns the
+    # existing) challenge and lazily computes+caches its ideal
+    # (ideal_finder.hpp); GET reads one by id, minus optimal_path (see
+    # challenge_handler.hpp for why GET uses ?id= instead of a path
+    # parameter). nginx proxies /api/v1/game/* here, so the public path is
+    # the same.
+    handler-game-challenge:
+      path: /api/v1/game/challenge
+      method: GET, POST
       task_processor: *main_tp
 
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────

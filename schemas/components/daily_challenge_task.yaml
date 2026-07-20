@@ -1,0 +1,20 @@
+type: object
+description: Once-a-day background publisher for kind="daily" challenges (SF-GAME-16)
+additionalProperties: false
+properties:
+    interval-seconds:
+        type: integer
+        description: How often the daily-challenge task runs (also runs once at startup)
+        defaultDescription: '86400'
+    min-path-len:
+        type: integer
+        description: Minimum BFS hop count for a candidate pair to count as "interesting"
+        defaultDescription: '2'
+    max-attempts:
+        type: integer
+        description: How many random candidate pairs to try in one pass before giving up
+        defaultDescription: '20'
+    candidate-pool-size:
+        type: integer
+        description: How many distinct L1-credited artist ids to draw candidate pairs from
+        defaultDescription: '50'

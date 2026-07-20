@@ -20,6 +20,8 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#include "challenge_handler.hpp"
+#include "daily_challenge_task.hpp"
 #include "game_store.hpp"
 #include "http/health_handler.hpp"
 #include "internal_handlers.hpp"
@@ -63,6 +65,12 @@ int main(int argc, char* argv[]) {
             // updates Elo; needs both GameStore and NeighboursClient
             // (already appended above).
             .Append<six_feat::game::SubmitHandler>()
+            // [SF-GAME-16] POST/GET /api/v1/game/challenge — needs GameStore
+            // and NeighboursClient (already appended above).
+            .Append<six_feat::game::ChallengeHandler>()
+            // [SF-GAME-16] Once-a-day publisher for kind="daily" challenges
+            // — same dependencies as ChallengeHandler.
+            .Append<six_feat::game::DailyChallengeTask>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never the public
             // listener.

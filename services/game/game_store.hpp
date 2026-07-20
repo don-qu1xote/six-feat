@@ -74,6 +74,20 @@ struct SubmitResult {
     int elo_delta{0};
 };
 
+// [SF-GAME-16] Result of UpsertChallenge: `created` is true only when this
+// call actually inserted a NEW row (Postgres's `xmax = 0` trick — see
+// game_store.cpp) — false means the (from, to, role_mask, kind) tuple
+// already existed and this is that same row, per the ticket's "повторный
+// create отдаёт тот же [id]" requirement. optimal_len/optimal_path are
+// whatever was already stored (nullopt/empty for a brand new row, or for an
+// existing one whose ideal hasn't been computed yet).
+struct ChallengeUpsertResult {
+    std::int64_t               id{0};
+    bool                        created{false};
+    std::optional<int>         optimal_len;
+    std::vector<std::int64_t>  optimal_path;
+};
+
 class GameStore final : public userver::components::ComponentBase {
 public:
     static constexpr std::string_view kName = "game-store";
@@ -135,6 +149,35 @@ public:
                                     const std::vector<std::int64_t>& chain,
                                     int optimal_len,
                                     std::optional<int> elapsed_ms) const;
+
+    // [SF-GAME-16] Challenge lifecycle API.
+
+    // Creates the (from, to, role_mask, kind) challenge if it doesn't exist
+    // yet (the UNIQUE constraint from SF-GAME-11's migration), or returns
+    // the existing one unchanged — NEVER overwrites an already-computed
+    // optimal_len/optimal_path. created_by is only stored on a genuine
+    // insert (nullable — a daily challenge has no player creator).
+    ChallengeUpsertResult UpsertChallenge(std::int64_t from_artist_id,
+                                          std::int64_t to_artist_id,
+                                          int role_mask, const std::string& kind,
+                                          std::optional<std::int64_t> created_by) const;
+
+    // Fills in optimal_len/optimal_path for a challenge whose ideal hasn't
+    // been computed yet. A no-op (returns false) if it's already set — an
+    // ideal is computed once and never recomputed, so repeated create/get
+    // calls on the same pair only pay for the BFS on the very first one
+    // that doesn't already have L1 data covering it.
+    bool SetChallengeIdeal(std::int64_t challenge_id, int optimal_len,
+                          const std::vector<std::int64_t>& optimal_path) const;
+
+    // [SF-GAME-16 daily task] Up to `limit` distinct artist ids with at
+    // least one L1 credit row, in random order — the candidate pool the
+    // daily-challenge task draws a "from"/"to" pair from. Reads six-feat's
+    // own artists/credits tables directly: legitimate because game-store
+    // and six-feat share the exact same Postgres database (see this
+    // component's own module comment) — no network hop for a read this
+    // cheap and this infrequent (once a day).
+    std::vector<std::int64_t> RandomArtistIdsWithCredits(int limit) const;
 
     static userver::yaml_config::Schema GetStaticConfigSchema();
 

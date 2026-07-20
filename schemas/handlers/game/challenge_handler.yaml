@@ -1,0 +1,4 @@
+type: object
+description: Challenge create/get endpoint (SF-GAME-16)
+additionalProperties: false
+properties: {}

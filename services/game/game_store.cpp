@@ -400,6 +400,63 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id, std::int64_t ch
     return r;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// Challenge lifecycle — [SF-GAME-16]
+// ════════════════════════════════════════════════════════════════════════════
+
+ChallengeUpsertResult GameStore::UpsertChallenge(
+    std::int64_t from_artist_id, std::int64_t to_artist_id, int role_mask,
+    const std::string& kind, std::optional<std::int64_t> created_by) const {
+    // "kind = game_challenges.kind" is a deliberate no-op update: the ONLY
+    // reason for a DO UPDATE clause here (instead of DO NOTHING) is that
+    // RETURNING otherwise produces zero rows on a conflict — this makes
+    // RETURNING fire whether the row was just inserted or already existed,
+    // which is exactly the "create or return existing" behaviour the ticket
+    // asks for. "(xmax = 0)" is the standard Postgres idiom for telling
+    // those two cases apart from the query result: a fresh INSERT leaves
+    // xmax at its default 0, an UPDATE (even a no-op one, via ON CONFLICT)
+    // always sets it.
+    auto res = impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "INSERT INTO game_challenges "
+        "(from_artist_id, to_artist_id, role_mask, kind, created_by, created_ts) "
+        "VALUES ($1, $2, $3, $4, $5, $6) "
+        "ON CONFLICT (from_artist_id, to_artist_id, role_mask, kind) "
+        "DO UPDATE SET kind = game_challenges.kind "
+        "RETURNING id, optimal_len, optimal_path, (xmax = 0) AS inserted",
+        from_artist_id, to_artist_id, role_mask, kind, created_by, NowUnix());
+
+    const auto row = res.Front();
+    ChallengeUpsertResult r;
+    r.id           = row[0].As<std::int64_t>();
+    r.created      = row[3].As<bool>();
+    r.optimal_len  = row[1].As<std::optional<int>>();
+    r.optimal_path = row[2].As<std::optional<std::vector<std::int64_t>>>()
+                          .value_or(std::vector<std::int64_t>{});
+    return r;
+}
+
+bool GameStore::SetChallengeIdeal(std::int64_t challenge_id, int optimal_len,
+                                  const std::vector<std::int64_t>& optimal_path) const {
+    auto res = impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "UPDATE game_challenges SET optimal_len = $2, optimal_path = $3 "
+        "WHERE id = $1 AND optimal_len IS NULL",
+        challenge_id, optimal_len, optimal_path);
+    return res.RowsAffected() > 0;
+}
+
+std::vector<std::int64_t> GameStore::RandomArtistIdsWithCredits(int limit) const {
+    auto res = impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kMaster,
+        "SELECT DISTINCT artist_id FROM credits ORDER BY random() LIMIT $1",
+        limit);
+    std::vector<std::int64_t> out;
+    out.reserve(res.Size());
+    for (const auto& row : res) out.push_back(row[0].As<std::int64_t>());
+    return out;
+}
+
 // static
 yaml_config::Schema GameStore::GetStaticConfigSchema() {
     return yaml_config::MergeSchemas<components::ComponentBase>(
