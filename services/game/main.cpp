@@ -25,6 +25,7 @@
 #include "internal_handlers.hpp"
 #include "neighbours_client.hpp"
 #include "profile_handler.hpp"
+#include "validate_handler.hpp"
 
 using namespace userver;
 
@@ -52,6 +53,10 @@ int main(int argc, char* argv[]) {
             // [SF-GAME-12] GET/PATCH /api/v1/game/profile — player profile
             // over the Genius session (decrypted locally, no HTTP to auth).
             .Append<six_feat::game::ProfileHandler>()
+            // [SF-GAME-14] POST /api/v1/game/validate — server-side
+            // anti-cheat chain check, needs NeighboursClient (already
+            // appended above).
+            .Append<six_feat::game::ValidateHandler>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never the public
             // listener.

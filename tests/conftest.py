@@ -493,6 +493,18 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    # [SF-GAME-13] Internal-mesh anti-cheat lookup for six-feat-game — see
+    # services/six-feat/src/http/internal_neighbours_handler.hpp. Every
+    # static config that boots this binary needs a matching section, same as
+    # every other handler here (this one was missed when the handler was
+    # added, which is exactly what broke every service_proc-based test:
+    # userver's component-system startup fails outright — not just this
+    # handler — if ANY registered handler has no config.yaml section).
+    handler-internal-neighbours:
+      path: /internal/neighbours
+      method: POST
+      task_processor: main-task-processor
+
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET

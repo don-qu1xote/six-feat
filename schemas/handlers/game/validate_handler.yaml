@@ -1,0 +1,4 @@
+type: object
+description: Server-side anti-cheat chain validation endpoint (SF-GAME-14)
+additionalProperties: false
+properties: {}

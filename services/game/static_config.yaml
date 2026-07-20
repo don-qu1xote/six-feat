@@ -110,6 +110,15 @@ components_manager:
       method: GET, PATCH
       task_processor: *main_tp
 
+    # [SF-GAME-14] Server-side anti-cheat: verifies every hop of a submitted
+    # chain against six-feat's /internal/neighbours (see chain_validator.hpp,
+    # neighbours-client above). nginx proxies /api/v1/game/* here, so the
+    # public path is the same.
+    handler-game-validate:
+      path: /api/v1/game/validate
+      method: POST
+      task_processor: *main_tp
+
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     handler-server-monitor:
       path: /metrics

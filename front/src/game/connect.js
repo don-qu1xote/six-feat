@@ -9,13 +9,21 @@
 // as a list, the add-artist field, undo/reset, status). Both drive the same
 // pure, unit-tested model (connect-model.js).
 //
-// No validation or scoring yet (SF-GAME-14/15 — those need the game-service):
-// this is purely the input mechanic on the existing design kit, on the #/game
-// surface the router (ui/router.js, SF-WEB-25) already knows about. Every
-// field also accepts a plain typed name on Enter, so it works even with no
-// backend reachable (the Genius autocomplete needs one; the mechanic doesn't).
-// The whole game lives in State.connect (per the ticket) — no module-local
-// game state.
+// [SF-GAME-14/02] Per-hop valid/invalid highlighting renders off
+// State.connect.game.validation (see connect-model.js's applyValidation/
+// hopStatuses) whenever it's set — but nothing here actually calls the
+// server yet: the wire contract (POST /api/v1/game/validate) needs numeric
+// Genius artist ids, and this model still only carries names (see
+// connect-model.js's own header comment). Once a later ticket adds id-aware
+// endpoints, wiring the real submit is a call to applyValidation() plus a
+// render() — the rendering side is already complete and tested.
+//
+// Still no scoring (SF-GAME-15): this is purely the input mechanic on the
+// existing design kit, on the #/game surface the router (ui/router.js,
+// SF-WEB-25) already knows about. Every field also accepts a plain typed
+// name on Enter, so it works even with no backend reachable (the Genius
+// autocomplete needs one; the mechanic doesn't). The whole game lives in
+// State.connect (per the ticket) — no module-local game state.
 // ════════════════════════════════════════════════════════════════════════════
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
@@ -24,7 +32,7 @@ import { onSurfaceChange, getCurrentSurface, navigateToSurface, SURFACE_GAME, SU
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
 import {
   createConnectChain, chainNodes, hopCount, isComplete,
-  addHop, undoHop, resetChain,
+  addHop, undoHop, resetChain, hopStatuses,
 } from "./connect-model.js";
 import { drawChain } from "./chain-graph.js";
 
@@ -57,12 +65,18 @@ function renderChainList() {
   }
   const nodes = chainNodes(s.game);
   const last = nodes.length - 1;
+  // [SF-GAME-14/02] statuses[i-1] is the server's verdict on the transition
+  // INTO row i (nodes[i-1] -> nodes[i]) — rendered on the connecting line
+  // (ct-link), since it's the HOP that was checked, not the arriving artist.
+  const statuses = hopStatuses(s.game);
   els.connectChain.innerHTML = nodes.map((name, i) => {
     const role = i === 0 ? "start" : i === last ? "goal" : "hop";
     const ini = name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
     const tag = role === "start" ? '<span class="ct-tag ct-start">Start</span>'
       : role === "goal" ? '<span class="ct-tag ct-goal">Goal</span>' : "";
-    return `<div class="ct-row ct-${role}${i > 0 ? " ct-link" : ""}">` +
+    const st = i > 0 ? statuses[i - 1] : null;
+    const stClass = st && st !== "unknown" ? ` ct-hop-${st}` : "";
+    return `<div class="ct-row ct-${role}${i > 0 ? " ct-link" : ""}${stClass}">` +
       `<span class="ct-node">${escapeHtml(ini)}</span>` +
       `<span class="ct-name">${escapeHtml(name)}${tag}</span></div>`;
   }).join("");

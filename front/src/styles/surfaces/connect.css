@@ -92,6 +92,15 @@
 .ct-goal  .ct-node { border-color: var(--pulse);  color: var(--pulse); }
 .ct-hop   .ct-node { border-color: var(--amber);  color: var(--amber); }
 .ct-name { font-weight: 600; font-size: var(--text-sm); color: var(--paper); }
+
+/* [SF-GAME-14/02] Server-verified hop state — modifier on the connecting
+   line (ct-link), since it's the transition into this row that was checked,
+   not the arriving artist's node. Set once State.connect.game.validation is
+   populated (connect-model.js's applyValidation/hopStatuses); absent
+   ("unknown") rows keep the plain --line connector above. */
+.ct-row.ct-hop-valid::before   { background: var(--signal); }
+.ct-row.ct-hop-invalid::before { background: var(--neon); }
+.ct-row.ct-hop-invalid .ct-node { border-color: var(--neon); color: var(--neon); }
 .ct-tag {
   font-size: 9.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
   padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; margin-left: 8px; vertical-align: middle;

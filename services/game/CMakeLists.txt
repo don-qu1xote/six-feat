@@ -34,12 +34,15 @@ six_feat_embed_schema(components/game_store kGameStoreComponentSchema GAME_STORE
 six_feat_embed_schema(handlers/game/profile_handler kGameProfileHandlerSchema GAME_PROFILE_HANDLER_SCHEMA_HEADER)
 # [SF-GAME-13] Anti-cheat neighbours-lookup client config schema.
 six_feat_embed_schema(components/neighbours_client kNeighboursClientComponentSchema NEIGHBOURS_CLIENT_COMPONENT_SCHEMA_HEADER)
+# [SF-GAME-14] Chain-validation handler config schema.
+six_feat_embed_schema(handlers/game/validate_handler kGameValidateHandlerSchema GAME_VALIDATE_HANDLER_SCHEMA_HEADER)
 
 add_custom_target(six_feat_game_schema_headers DEPENDS
     ${GAME_READINESS_HANDLER_SCHEMA_HEADER}
     ${GAME_STORE_COMPONENT_SCHEMA_HEADER}
     ${GAME_PROFILE_HANDLER_SCHEMA_HEADER}
     ${NEIGHBOURS_CLIENT_COMPONENT_SCHEMA_HEADER}
+    ${GAME_VALIDATE_HANDLER_SCHEMA_HEADER}
 )
 
 add_executable(six_feat_game
@@ -48,6 +51,7 @@ add_executable(six_feat_game
     game_store.cpp
     profile_handler.cpp
     neighbours_client.cpp
+    validate_handler.cpp
 )
 
 target_link_libraries(six_feat_game

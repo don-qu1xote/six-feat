@@ -4,25 +4,32 @@
 // The Connect game: the player is given a fixed start and goal artist and
 // builds a collaboration chain between them by entering intermediate artists
 // one at a time, WITHOUT seeing our own ideal path. This module is only the
-// data model of that chain — no DOM, no network, no validation/scoring
-// (those are separate, backend-gated tickets: SF-GAME-14 server-side
-// anti-cheat validation, SF-GAME-15 scoring/ELO). Keeping the model pure and
-// framework-free is what lets the whole "build a chain" mechanic be unit-
-// tested without a canvas, a running game-service, or a real mousemove.
+// data model of that chain — no DOM, no network. Still no scoring (SF-GAME-15,
+// ELO). Keeping the model pure and framework-free is what lets the whole
+// "build a chain" mechanic be unit-tested without a canvas, a running
+// game-service, or a real mousemove.
 //
-// A chain is `{ start, goal, hops, completed }`:
+// A chain is `{ start, goal, hops, completed, validation }`:
 //   - start / goal   — the two fixed endpoints (normalized artist names).
 //   - hops           — ordered intermediate artist names the player added,
 //                      EXCLUDING the goal (the goal is always the endpoint,
 //                      never stored as a hop — see addHop's goal branch).
 //   - completed      — the player connected the last hop to the goal.
+//   - validation     — [SF-GAME-14/02] the server's last verdict on this
+//                      EXACT chain, or null if it hasn't been checked (or was
+//                      edited since) — see applyValidation/hopStatuses below.
 // The full visible chain is always [start, ...hops, goal] (chainNodes) so the
 // goal shows as the target endpoint whether or not it's been reached yet.
 //
 // Artist identity here is by NAME, not id: SF-GAME-01 has no backend, and the
 // autocomplete (ui/autocomplete.js) hands back a name string on select — so
-// the model honestly keys on the same thing the UI actually has. Genius-id
-// resolution + real hop validation arrive with SF-GAME-13/14.
+// the model honestly keys on the same thing the UI actually has. The server
+// validator (SF-GAME-14, POST /api/v1/game/validate) needs numeric Genius
+// ids, which this model still doesn't carry — wiring a real submit call is
+// blocked on that id-resolution gap, left to whichever ticket adds it
+// (likely bundled with SF-GAME-15/16's scoring submit, which needs ids
+// anyway). applyValidation/hopStatuses below only render an already-computed
+// server verdict; they don't fetch one.
 // ════════════════════════════════════════════════════════════════════════════
 
 // Collapse surrounding/inner whitespace and drop empties — the same light
@@ -37,7 +44,7 @@ function eq(a, b) {
 }
 
 export function createConnectChain(startName, goalName) {
-  return { start: norm(startName), goal: norm(goalName), hops: [], completed: false };
+  return { start: norm(startName), goal: norm(goalName), hops: [], completed: false, validation: null };
 }
 
 // The full visible chain, endpoints included: [start, ...hops, goal].
@@ -73,10 +80,12 @@ export function addHop(game, rawName) {
 
   if (eq(name, game.goal)) {
     game.completed = true;
+    game.validation = null;
     return { ok: true, completed: true };
   }
 
   game.hops.push(name);
+  game.validation = null;
   return { ok: true, completed: false };
 }
 
@@ -85,6 +94,7 @@ export function addHop(game, rawName) {
 // pops the last hop. Returns what was undone (the goal sentinel "goal",
 // a hop name, or null when there was nothing to undo).
 export function undoHop(game) {
+  game.validation = null;
   if (game.completed) {
     game.completed = false;
     return { undone: "goal" };
@@ -98,4 +108,56 @@ export function undoHop(game) {
 export function resetChain(game) {
   game.hops = [];
   game.completed = false;
+  game.validation = null;
+}
+
+// ── Server validation (SF-GAME-14/02) ───────────────────────────────────────
+//
+// The server (POST /api/v1/game/validate, services/game/chain_validator.hpp)
+// is the only authority on whether a chain's hops are real collaborations —
+// this module never re-derives that verdict locally, and never looks at any
+// "valid"-shaped field a caller might pass in besides the server's own
+// response. applyValidation just stores that response shape on the chain
+// ({valid:true} | {valid:false, reason:"endpoint_mismatch"} |
+// {valid:false, reason:"invalid_hop", invalid_hop_index}) so the UI can
+// render it. Every mutating call above (addHop on success, undoHop,
+// resetChain) clears it: a verdict computed against a chain that no longer
+// exists is actively misleading, not just stale.
+
+export function applyValidation(game, result) {
+  game.validation = normalizeValidation(result);
+}
+
+export function clearValidation(game) {
+  game.validation = null;
+}
+
+function normalizeValidation(result) {
+  if (!result || typeof result !== "object") return null;
+  if (result.valid === true) return { valid: true, reason: null, invalidHopIndex: null };
+  if (result.reason === "invalid_hop" && Number.isInteger(result.invalid_hop_index)) {
+    return { valid: false, reason: "invalid_hop", invalidHopIndex: result.invalid_hop_index };
+  }
+  return { valid: false, reason: result.reason || "unknown", invalidHopIndex: null };
+}
+
+// Per-transition status for chainNodes(game) — one entry per edge
+// a_i -> a_{i+1}, so length is chainNodes(game).length - 1:
+//   "valid"   — confirmed real (at or before the first break, or the whole
+//               chain came back valid)
+//   "invalid" — the first transition the server rejected
+//   "unknown" — no check has run yet, or this transition is past the first
+//               break (chain_validator.hpp never checks past it, so there is
+//               genuinely nothing to report here yet)
+export function hopStatuses(game) {
+  const n = chainNodes(game).length - 1;
+  if (n <= 0) return [];
+  const v = game.validation;
+  if (!v) return new Array(n).fill("unknown");
+  if (v.valid) return new Array(n).fill("valid");
+  if (v.reason === "invalid_hop" && v.invalidHopIndex != null) {
+    return Array.from({ length: n }, (_, i) =>
+      i < v.invalidHopIndex ? "valid" : i === v.invalidHopIndex ? "invalid" : "unknown");
+  }
+  return new Array(n).fill("unknown");
 }
