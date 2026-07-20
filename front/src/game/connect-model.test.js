@@ -10,6 +10,7 @@ import {
   addHop, undoHop, resetChain,
   applyValidation, clearValidation, hopStatuses,
   applyResult, clearResult, resultView,
+  applyLeaderboard, clearLeaderboard, leaderboardView,
 } from "./connect-model.js";
 
 describe("createConnectChain / chainNodes", () => {
@@ -325,5 +326,93 @@ describe("result is invalidated by any chain edit, same as validation", () => {
     applyResult(g, mockResult);
     resetChain(g);
     expect(resultView(g)).toBeNull();
+  });
+});
+
+// [SF-GAME-17/04] Leaderboard — applyLeaderboard/leaderboardView are driven
+// entirely off a mocked GET /api/v1/game/leaderboard response, mirroring
+// applyResult/resultView above. "After submit the challenge's leaderboard is
+// shown" means: once a real result has been revealed AND the leaderboard
+// page for it has been applied, leaderboardView returns the normalized page.
+describe("leaderboardView (before any leaderboard fetch)", () => {
+  it("is null on a fresh chain", () => {
+    const g = createConnectChain("Drake", "Adele");
+    expect(leaderboardView(g)).toBeNull();
+  });
+});
+
+describe("applyLeaderboard / leaderboardView — shown after a submit result", () => {
+  const mockResult = { valid: true, player_len: 1, optimal_len: 1, optimal_path: [1, 2], score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14 };
+  const mockLeaderboard = {
+    entries: [
+      { user_id: 1, display_name: "Alice", score: 1000, hops: 1, ts: 100 },
+      { user_id: 2, display_name: "Bob", score: 850, hops: 2, ts: 200 },
+    ],
+    next_cursor: "850:2",
+  };
+
+  it("normalizes the leaderboard response after a result is revealed", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Adele");
+    applyResult(g, mockResult);
+    applyLeaderboard(g, mockLeaderboard);
+
+    expect(resultView(g).revealed).toBe(true);
+    const view = leaderboardView(g);
+    expect(view).toEqual({
+      entries: [
+        { userId: 1, displayName: "Alice", score: 1000, hops: 1, ts: 100 },
+        { userId: 2, displayName: "Bob", score: 850, hops: 2, ts: 200 },
+      ],
+      nextCursor: "850:2",
+    });
+  });
+
+  it("treats a missing/non-string next_cursor as null", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyLeaderboard(g, { entries: [], next_cursor: null });
+    expect(leaderboardView(g)).toEqual({ entries: [], nextCursor: null });
+  });
+
+  it("normalizes a malformed response to null", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyLeaderboard(g, null);
+    expect(leaderboardView(g)).toBeNull();
+    applyLeaderboard(g, { not: "shaped like a leaderboard" });
+    expect(leaderboardView(g)).toBeNull();
+  });
+
+  it("clearLeaderboard resets to the not-yet-fetched state", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyLeaderboard(g, mockLeaderboard);
+    clearLeaderboard(g);
+    expect(leaderboardView(g)).toBeNull();
+  });
+});
+
+describe("leaderboard is invalidated by any chain edit, same as result", () => {
+  const mockLeaderboard = { entries: [{ user_id: 1, display_name: "Alice", score: 1000, hops: 1, ts: 100 }], next_cursor: null };
+
+  it("addHop (on success) clears a prior leaderboard", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyLeaderboard(g, mockLeaderboard);
+    addHop(g, "Rihanna");
+    expect(leaderboardView(g)).toBeNull();
+  });
+
+  it("undoHop clears a prior leaderboard", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    applyLeaderboard(g, mockLeaderboard);
+    undoHop(g);
+    expect(leaderboardView(g)).toBeNull();
+  });
+
+  it("resetChain clears a prior leaderboard", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    applyLeaderboard(g, mockLeaderboard);
+    resetChain(g);
+    expect(leaderboardView(g)).toBeNull();
   });
 });

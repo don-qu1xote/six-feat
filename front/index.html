@@ -805,6 +805,12 @@
            (optimal path) only ever appears here, never before. -->
       <div id="connect-result" class="connect-result" aria-live="polite" hidden></div>
 
+      <!-- [SF-GAME-17/04] Challenge leaderboard — populated by connect.js's
+           renderLeaderboard() from State.connect.game.leaderboard (see
+           connect-model.js's applyLeaderboard/leaderboardView). Shown
+           alongside the result screen after a submit. -->
+      <div id="connect-leaderboard" class="connect-leaderboard" aria-live="polite" hidden></div>
+
       <div class="connect-builder">
         <label class="connect-field connect-field--grow">
           <span class="connect-label">Add artist</span>

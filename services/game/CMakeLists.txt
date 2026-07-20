@@ -41,6 +41,10 @@ six_feat_embed_schema(handlers/game/submit_handler kGameSubmitHandlerSchema GAME
 # [SF-GAME-16] Challenge create/get handler + daily-challenge task schemas.
 six_feat_embed_schema(handlers/game/challenge_handler kGameChallengeHandlerSchema GAME_CHALLENGE_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(components/daily_challenge_task kDailyChallengeTaskComponentSchema DAILY_CHALLENGE_TASK_COMPONENT_SCHEMA_HEADER)
+# [SF-GAME-17] Leaderboard handler config schema. (SubmitHandler's new
+# rate-limit dependency, RateLimitStoreComponent, is six_feat_common's own
+# component — its schema is already embedded there, no new line needed here.)
+six_feat_embed_schema(handlers/game/leaderboard_handler kGameLeaderboardHandlerSchema GAME_LEADERBOARD_HANDLER_SCHEMA_HEADER)
 
 add_custom_target(six_feat_game_schema_headers DEPENDS
     ${GAME_READINESS_HANDLER_SCHEMA_HEADER}
@@ -51,6 +55,7 @@ add_custom_target(six_feat_game_schema_headers DEPENDS
     ${GAME_SUBMIT_HANDLER_SCHEMA_HEADER}
     ${GAME_CHALLENGE_HANDLER_SCHEMA_HEADER}
     ${DAILY_CHALLENGE_TASK_COMPONENT_SCHEMA_HEADER}
+    ${GAME_LEADERBOARD_HANDLER_SCHEMA_HEADER}
 )
 
 add_executable(six_feat_game
@@ -63,6 +68,7 @@ add_executable(six_feat_game
     submit_handler.cpp
     challenge_handler.cpp
     daily_challenge_task.cpp
+    leaderboard_handler.cpp
 )
 
 target_link_libraries(six_feat_game

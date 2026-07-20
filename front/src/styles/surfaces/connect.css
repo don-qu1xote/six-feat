@@ -135,6 +135,25 @@
 .cr-val { color: var(--paper); font-weight: 600; }
 .cr-row--ideal .cr-val { color: var(--pulse); }
 
+/* [SF-GAME-17/04] Leaderboard — populated by connect.js's
+   renderLeaderboard() from State.connect.game.leaderboard (connect-model.js's
+   applyLeaderboard/leaderboardView). Hidden by default; shown alongside the
+   result screen once a leaderboard page has been applied. */
+.connect-leaderboard {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+.connect-leaderboard-title {
+  margin: 0 0 4px; font-size: var(--text-sm); font-weight: 700; color: var(--mist);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.cl-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.cl-rank { width: 1.5em; color: var(--mist); font-weight: 600; }
+.cl-name { flex: 1; color: var(--paper); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-score { color: var(--signal); font-weight: 700; }
+
 .connect-builder { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; }
 .connect-actions { display: flex; gap: var(--space-2); }
 .connect-actions .ui-btn { flex: 1; }

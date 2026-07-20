@@ -11,8 +11,10 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
@@ -76,6 +78,32 @@ std::string ProfileJson(const Profile& p) {
     return formats::json::ToString(b.ExtractValue());
 }
 
+// [SF-GAME-17] Same profile fields as ProfileJson, plus "history" — the
+// public ?user= lookup's one extra field self-profile GET doesn't carry.
+std::string PublicProfileJson(const Profile& p, const std::vector<AttemptSummary>& history) {
+    formats::json::ValueBuilder b(formats::json::Type::kObject);
+    b["user_id"]      = p.user_id;
+    b["display_name"] = p.display_name;
+    b["avatar_url"]   = p.avatar_url;
+    b["elo"]          = p.elo;
+    b["games"]        = p.games;
+    b["rank"]         = p.rank;
+    formats::json::ValueBuilder hist(formats::json::Type::kArray);
+    for (const auto& a : history) {
+        formats::json::ValueBuilder ab(formats::json::Type::kObject);
+        ab["challenge_id"] = a.challenge_id;
+        ab["valid"]        = a.valid;
+        ab["score"]        = a.score;
+        ab["hops"]         = a.hops;
+        ab["ts"]           = a.ts;
+        hist.PushBack(ab.ExtractValue());
+    }
+    b["history"] = std::move(hist);
+    return formats::json::ToString(b.ExtractValue());
+}
+
+constexpr int kHistoryLimit = 20;
+
 } // namespace
 
 ProfileHandler::ProfileHandler(const components::ComponentConfig&  config,
@@ -96,6 +124,35 @@ std::string ProfileHandler::HandleRequestThrow(
     ApplySecurityHeaders(request);
 
     auto& response = request.GetHttpResponse();
+
+    // [SF-GAME-17] GET ?user=<id> — public lookup of ANOTHER player's
+    // profile, no session involved at all (checked before the self-profile
+    // auth gate below, and only for GET — PATCH always means "change MY
+    // OWN name", ?user= has no meaning there).
+    if (request.GetMethod() == server::http::HttpMethod::kGet) {
+        const auto& user_arg = request.GetArg("user");
+        if (!user_arg.empty()) {
+            response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
+            std::int64_t user_id = 0;
+            try {
+                std::size_t pos = 0;
+                user_id = std::stoll(user_arg, &pos);
+                if (pos != user_arg.size() || user_id <= 0) throw std::invalid_argument("bad user");
+            } catch (const std::exception&) {
+                response.SetStatus(server::http::HttpStatus::kBadRequest);
+                return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
+                                        "user must be a positive integer");
+            }
+            const auto profile = store_.GetProfileIfExists(user_id);
+            if (!profile) {
+                response.SetStatus(server::http::HttpStatus::kNotFound);
+                return BuildProblemJson(request, server::http::HttpStatus::kNotFound,
+                                        "no such player");
+            }
+            const auto history = store_.ListRecentAttempts(user_id, kHistoryLimit);
+            return PublicProfileJson(*profile, history);
+        }
+    }
 
     const auto player = ResolvePlayer(request, session_key_);
     if (!player) {

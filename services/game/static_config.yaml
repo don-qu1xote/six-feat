@@ -88,6 +88,16 @@ components_manager:
       six-feat-base-url: $six_feat_base_url
       timeout-ms: 2000
 
+    # [SF-GAME-17] Backend (single in-process, default | shared Postgres-
+    # backed) for handler-game-submit's per-player rate limit — same
+    # component six-feat's own graph/path/search handlers use (SF-SEC-04),
+    # reused as-is. backend: shared here too, so N replicas of this service
+    # enforce ONE combined per-player submit budget instead of N times the
+    # configured limit.
+    rate-limit-store:
+      backend: shared
+      dbname: postgres-db-1
+
     # [SF-GAME-16] Once-a-day publisher for kind="daily" challenges — see
     # daily_challenge_task.hpp. Always on (no env-var toggle, unlike
     # PruneTask): cheap, idempotent, no operational reason to disable it.
@@ -147,6 +157,15 @@ components_manager:
       path: /api/v1/game/challenge
       method: GET, POST
       task_processor: *main_tp
+
+    # [SF-GAME-17] Top-N leaderboard for a challenge or a season — reads
+    # straight off game_attempts/game_profiles (see leaderboard_handler.hpp
+    # for why there's no separate leaderboard table). Public, no session.
+    handler-game-leaderboard:
+      path: /api/v1/game/leaderboard
+      method: GET
+      task_processor: *main_tp
+      cache-ttl-ms: 15000
 
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     handler-server-monitor:

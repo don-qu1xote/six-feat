@@ -7,13 +7,21 @@
 // branched on request.GetMethod()):
 //   GET   — the caller's own profile {user_id, display_name, elo, games, rank};
 //           the row is created on first sight (EnsureAndGetProfile).
+//           [SF-GAME-17] GET ?user=<int64> instead looks up ANOTHER
+//           player's profile, read-only (never creates a row) and PUBLIC
+//           (no session required — same posture as challenge_handler.hpp's
+//           GET/leaderboard_handler.hpp: reading isn't an action that needs
+//           to know who's asking). Adds a "history" array (their most
+//           recent attempts, valid or not) that self-profile GET doesn't
+//           carry. 404 if that user_id has no profile.
 //   PATCH — change display_name (length + censorship validation); persists and
-//           returns the refreshed profile.
+//           returns the refreshed profile. Always self — ?user= has no
+//           effect here, PATCH always requires a session.
 //
 // Auth: the six_feat_session cookie is decrypted locally (game_session.hpp) —
-// no HTTP to six-feat-auth. Anonymous (no/invalid cookie) → 401 in the unified
-// RFC 7807 envelope (core/error_response.hpp, SF-API-11). Invalid display_name
-// → 400 in the same envelope.
+// no HTTP to six-feat-auth. Anonymous self GET/PATCH (no/invalid cookie) →
+// 401 in the unified RFC 7807 envelope (core/error_response.hpp, SF-API-11).
+// Invalid display_name → 400 in the same envelope.
 // ════════════════════════════════════════════════════════════════════════════
 
 #include <array>

@@ -59,6 +59,13 @@ struct Challenge {
     std::string                  kind;
     std::optional<int>           optimal_len;
     std::vector<std::int64_t>    optimal_path;
+    // [SF-GAME-17] Denormalized onto game_attempts at submit time (see
+    // RecordValidAttempt) so the season leaderboard is a direct
+    // (season_id, score DESC) index scan — SF-GAME-11's own third index.
+    // nullopt for every challenge today: nothing creates a game_seasons row
+    // yet (no season-management ticket exists), so this is wired correctly
+    // for when one does, not exercised by anything yet.
+    std::optional<std::int64_t> season_id;
 };
 
 // [SF-GAME-15] Result of scoring + applying a valid, chain_validator-
@@ -86,6 +93,36 @@ struct ChallengeUpsertResult {
     bool                        created{false};
     std::optional<int>         optimal_len;
     std::vector<std::int64_t>  optimal_path;
+};
+
+// [SF-GAME-17] One entry in a leaderboard page — a player's BEST valid
+// attempt within the scope (challenge or season), not every attempt they
+// ever made (see GetLeaderboard's own comment for why).
+struct LeaderboardEntry {
+    std::int64_t user_id{0};
+    std::string  display_name;
+    int          score{0};
+    int          hops{0};
+    std::int64_t ts{0};
+};
+
+struct LeaderboardPage {
+    std::vector<LeaderboardEntry> entries;
+    // Opaque "score:attempt_id" cursor for the next page, or nullopt when
+    // `entries` already reached the end of the leaderboard.
+    std::optional<std::string> next_cursor;
+};
+
+enum class LeaderboardScope { kChallenge, kSeason };
+
+// [SF-GAME-17] One row of a player's attempt history (ProfileHandler's
+// public ?user= lookup).
+struct AttemptSummary {
+    std::int64_t challenge_id{0};
+    bool         valid{false};
+    int          score{0};
+    int          hops{0};
+    std::int64_t ts{0};
 };
 
 class GameStore final : public userver::components::ComponentBase {
@@ -124,6 +161,18 @@ public:
     // (EnsureAndGetProfile) — this is a plain UPDATE ... RETURNING.
     Profile SetDisplayName(std::int64_t user_id, const std::string& display_name) const;
 
+    // [SF-GAME-17] Read-only profile lookup for the PUBLIC ?user= endpoint
+    // (profile_handler.cpp) — unlike EnsureAndGetProfile, NEVER creates a
+    // row: looking up an arbitrary user_id that happens to not exist yet
+    // shouldn't conjure a profile into being. nullopt if there's no such
+    // profile (the handler maps that to 404).
+    std::optional<Profile> GetProfileIfExists(std::int64_t user_id) const;
+
+    // Up to `limit` of this player's most recent attempts (valid or not),
+    // newest first — the "история" (history) half of the public profile
+    // lookup.
+    std::vector<AttemptSummary> ListRecentAttempts(std::int64_t user_id, int limit) const;
+
     // [SF-GAME-15] Challenge + submission API.
 
     // nullopt if no challenge with this id exists. Never throws on "row
@@ -145,10 +194,14 @@ public:
     // requirement, so a crash between the two can never leave them
     // disagreeing. The caller ensures the profile row exists first
     // (EnsureAndGetProfile), same convention as SetDisplayName.
+    // [SF-GAME-17] season_id is the challenge's OWN season_id (denormalized
+    // onto the attempt row so the season leaderboard is a direct index
+    // scan) — pass challenge.season_id straight through, never invent one.
     SubmitResult RecordValidAttempt(std::int64_t user_id, std::int64_t challenge_id,
                                     const std::vector<std::int64_t>& chain,
                                     int optimal_len,
-                                    std::optional<int> elapsed_ms) const;
+                                    std::optional<int> elapsed_ms,
+                                    std::optional<std::int64_t> season_id) const;
 
     // [SF-GAME-16] Challenge lifecycle API.
 
@@ -178,6 +231,20 @@ public:
     // component's own module comment) — no network hop for a read this
     // cheap and this infrequent (once a day).
     std::vector<std::int64_t> RandomArtistIdsWithCredits(int limit) const;
+
+    // [SF-GAME-17] Leaderboard read API.
+
+    // One page of the top attempts within `scope_id` (a challenge_id or a
+    // season_id, per `scope`), ranked by score descending, ONE ENTRY PER
+    // PLAYER — their single best valid attempt in scope, not every attempt
+    // they ever submitted (so a player who retried 50 times doesn't flood
+    // their own top-N with duplicates). `cursor`, when set, must be exactly
+    // what a previous call's `next_cursor` returned; nullopt starts from
+    // the top. `limit` is clamped to a sane range by the caller
+    // (leaderboard_handler.cpp), not here.
+    LeaderboardPage GetLeaderboard(LeaderboardScope scope, std::int64_t scope_id,
+                                  const std::optional<std::string>& cursor,
+                                  int limit) const;
 
     static userver::yaml_config::Schema GetStaticConfigSchema();
 

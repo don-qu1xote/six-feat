@@ -312,6 +312,40 @@ Profile GameStore::SetDisplayName(std::int64_t user_id,
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Public profile lookup + history — [SF-GAME-17]
+// ════════════════════════════════════════════════════════════════════════════
+
+std::optional<Profile> GameStore::GetProfileIfExists(std::int64_t user_id) const {
+    auto res = impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kSlave,
+        "SELECT 1 FROM game_profiles WHERE user_id = $1", user_id);
+    if (res.IsEmpty()) return std::nullopt;
+    return ReadProfile(impl_->cluster, user_id);
+}
+
+std::vector<AttemptSummary> GameStore::ListRecentAttempts(std::int64_t user_id,
+                                                          int limit) const {
+    auto res = impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kSlave,
+        "SELECT challenge_id, valid, score, hops, ts FROM game_attempts "
+        "WHERE user_id = $1 ORDER BY ts DESC LIMIT $2",
+        user_id, limit);
+
+    std::vector<AttemptSummary> out;
+    out.reserve(res.Size());
+    for (const auto& row : res) {
+        AttemptSummary a;
+        a.challenge_id = row[0].As<std::int64_t>();
+        a.valid        = row[1].As<bool>();
+        a.score        = row[2].As<int>();
+        a.hops         = row[3].As<int>();
+        a.ts           = row[4].As<std::int64_t>();
+        out.push_back(a);
+    }
+    return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // Challenge + submission API — [SF-GAME-15]
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -319,7 +353,7 @@ std::optional<Challenge> GameStore::GetChallenge(std::int64_t challenge_id) cons
     auto res = impl_->cluster->Execute(
         storages::postgres::ClusterHostType::kMaster,
         "SELECT id, from_artist_id, to_artist_id, role_mask, kind, "
-        "       optimal_len, optimal_path "
+        "       optimal_len, optimal_path, season_id "
         "FROM game_challenges WHERE id = $1", challenge_id);
     if (res.IsEmpty()) return std::nullopt;
 
@@ -333,6 +367,7 @@ std::optional<Challenge> GameStore::GetChallenge(std::int64_t challenge_id) cons
     c.optimal_len    = row[5].As<std::optional<int>>();
     c.optimal_path   = row[6].As<std::optional<std::vector<std::int64_t>>>()
                             .value_or(std::vector<std::int64_t>{});
+    c.season_id      = row[7].As<std::optional<std::int64_t>>();
     return c;
 }
 
@@ -349,12 +384,18 @@ void GameStore::RecordInvalidAttempt(std::int64_t user_id, std::int64_t challeng
 SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id, std::int64_t challenge_id,
                                            const std::vector<std::int64_t>& chain,
                                            int optimal_len,
-                                           std::optional<int> elapsed_ms) const {
+                                           std::optional<int> elapsed_ms,
+                                           std::optional<std::int64_t> season_id) const {
     const int player_len = static_cast<int>(chain.size()) - 1;
 
     // One transaction for the whole read-score-write sequence, per the
     // ticket's explicit requirement — a crash partway through must never
-    // leave the attempt row and the profile's elo/games disagreeing.
+    // leave the attempt row and the profile's elo/games disagreeing. The
+    // attempt row this INSERT writes IS the leaderboard update: there is no
+    // separate leaderboard table to keep in sync — GetLeaderboard reads
+    // straight off game_attempts (see its own comment) — so writing it here
+    // already satisfies "пишет attempt + обновляет лидерборд в одной
+    // транзакции" without a second write.
     auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
                                      storages::postgres::TransactionOptions{});
 
@@ -380,9 +421,9 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id, std::int64_t ch
     const auto elo = UpdateElo(elo_before, optimal_len, score, kMaxScore);
 
     trx.Execute(
-        "INSERT INTO game_attempts (challenge_id, user_id, chain, valid, hops, score, ts) "
-        "VALUES ($1, $2, $3, true, $4, $5, $6)",
-        challenge_id, user_id, chain, player_len, score, NowUnix());
+        "INSERT INTO game_attempts (challenge_id, user_id, season_id, chain, valid, hops, score, ts) "
+        "VALUES ($1, $2, $3, $4, true, $5, $6, $7)",
+        challenge_id, user_id, season_id, chain, player_len, score, NowUnix());
 
     trx.Execute(
         "UPDATE game_profiles SET elo = $2, games = games + 1 WHERE user_id = $1",
@@ -455,6 +496,107 @@ std::vector<std::int64_t> GameStore::RandomArtistIdsWithCredits(int limit) const
     out.reserve(res.Size());
     for (const auto& row : res) out.push_back(row[0].As<std::int64_t>());
     return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Leaderboard — [SF-GAME-17]
+// ════════════════════════════════════════════════════════════════════════════
+
+namespace {
+
+// "score:attempt_id" — opaque only in the sense that callers must treat it
+// as such, not cryptographically signed (a public leaderboard's own
+// pagination internals aren't sensitive). A malformed/tampered cursor
+// degrades to nullopt, which GetLeaderboard treats exactly like "no
+// cursor" (starts from the top) — harmless, never an error.
+std::optional<std::pair<int, std::int64_t>> ParseLeaderboardCursor(
+    const std::optional<std::string>& cursor) {
+    if (!cursor) return std::nullopt;
+    const auto sep = cursor->find(':');
+    if (sep == std::string::npos) return std::nullopt;
+    try {
+        const int          score = std::stoi(cursor->substr(0, sep));
+        const std::int64_t id    = std::stoll(cursor->substr(sep + 1));
+        return std::make_pair(score, id);
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+} // namespace
+
+LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t scope_id,
+                                          const std::optional<std::string>& cursor,
+                                          int limit) const {
+    const auto parsed = ParseLeaderboardCursor(cursor);
+    const std::optional<int>          cursor_score = parsed ? std::optional<int>(parsed->first) : std::nullopt;
+    const std::optional<std::int64_t> cursor_id    = parsed ? std::optional<std::int64_t>(parsed->second) : std::nullopt;
+
+    // `scope_column` is one of two hardcoded literals chosen by the enum
+    // above — never derived from request input — so splicing it into the
+    // SQL text (rather than as a bind parameter, which can't parametrize a
+    // column name anyway) carries no injection risk.
+    const char* scope_column =
+        scope == LeaderboardScope::kChallenge ? "challenge_id" : "season_id";
+
+    // Best-per-player subquery (DISTINCT ON — one row per user_id, their
+    // own highest score in scope), then keyset-paginated by
+    // (score DESC, attempt id DESC) over that de-duplicated set. Fetches
+    // limit+1 rows to know whether a next page exists without a separate
+    // COUNT(*) round-trip.
+    const std::string sql =
+        std::string("SELECT best.user_id, p.display_name, best.score, best.hops, "
+                    "best.ts, best.id "
+                    "FROM ( "
+                    "  SELECT DISTINCT ON (a.user_id) a.user_id, a.score, a.hops, a.ts, a.id "
+                    "  FROM game_attempts a "
+                    "  WHERE a.") + scope_column + " = $1 AND a.valid = true "
+                    "  ORDER BY a.user_id, a.score DESC, a.ts ASC "
+                    ") best "
+                    "JOIN game_profiles p ON p.user_id = best.user_id "
+                    "WHERE ($2::int IS NULL OR (best.score, best.id) < ($2::int, $3::bigint)) "
+                    "ORDER BY best.score DESC, best.id DESC "
+                    "LIMIT $4";
+
+    auto res = impl_->cluster->Execute(
+        storages::postgres::ClusterHostType::kSlave, sql,
+        scope_id, cursor_score, cursor_id, limit + 1);
+
+    struct Row {
+        std::int64_t user_id;
+        std::string  display_name;
+        int          score;
+        int          hops;
+        std::int64_t ts;
+        std::int64_t attempt_id;
+    };
+    std::vector<Row> rows;
+    rows.reserve(res.Size());
+    for (const auto& row : res) {
+        rows.push_back(Row{
+            row[0].As<std::int64_t>(),
+            row[1].As<std::optional<std::string>>().value_or(""),
+            row[2].As<int>(),
+            row[3].As<int>(),
+            row[4].As<std::int64_t>(),
+            row[5].As<std::int64_t>(),
+        });
+    }
+
+    LeaderboardPage page;
+    const std::size_t take = std::min<std::size_t>(rows.size(), static_cast<std::size_t>(limit));
+    page.entries.reserve(take);
+    for (std::size_t i = 0; i < take; ++i) {
+        page.entries.push_back(LeaderboardEntry{
+            rows[i].user_id, rows[i].display_name, rows[i].score,
+            rows[i].hops, rows[i].ts,
+        });
+    }
+    if (rows.size() > take) {
+        page.next_cursor = std::to_string(rows[take - 1].score) + ":" +
+                          std::to_string(rows[take - 1].attempt_id);
+    }
+    return page;
 }
 
 // static

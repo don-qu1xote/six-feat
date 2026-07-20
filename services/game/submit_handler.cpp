@@ -6,6 +6,7 @@
 #include "neighbours_client.hpp"
 #include "auth/session_crypto.hpp"
 #include "core/error_response.hpp"
+#include "core/rate_limit_store_component.hpp"
 #include "core/request_id.hpp"
 #include "core/security_headers.hpp"
 #include "schemas/handlers/game/submit_handler_schema.hpp"
@@ -54,6 +55,13 @@ SubmitHandler::SubmitHandler(
     , store_(context.FindComponent<GameStore>())
     , neighbours_(context.FindComponent<NeighboursClient>())
     , session_key_(auth::KeyFromEnv())
+    // [SF-GAME-17] 5 submits per 10s per player — generous enough for a
+    // real player retrying by hand, tight enough to blunt a scripted
+    // hammering loop. Namespaced "game-submit" so it can safely share one
+    // RateLimitStoreComponent-backed store with any other rate limit this
+    // service adds later, same convention six-feat's own handlers use.
+    , rate_limit_("game-submit", 5, 10,
+                  context.FindComponent<RateLimitStoreComponent>().MakeStore())
 {}
 
 std::string SubmitHandler::HandleRequestThrow(
@@ -70,6 +78,19 @@ std::string SubmitHandler::HandleRequestThrow(
         response.SetStatus(server::http::HttpStatus::kUnauthorized);
         return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized,
                                 "not authenticated");
+    }
+
+    // [SF-GAME-17] Keyed by user_id (a stable, per-player identity, unlike
+    // an IP any number of players could share) — this is the auth-gated
+    // submit endpoint, not the anonymous graph/path/search traffic
+    // PerIpRateLimit was originally written for, but it's already just a
+    // string-keyed counter (see its own doc-comment), so it works here
+    // unchanged.
+    if (!rate_limit_.Allow(std::to_string(player->user_id))) {
+        response.SetStatus(server::http::HttpStatus::kTooManyRequests);
+        response.SetHeader(std::string{"Retry-After"}, std::string{"10"});
+        return BuildProblemJson(request, server::http::HttpStatus::kTooManyRequests,
+                                "too many submissions — slow down");
     }
 
     response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
@@ -131,7 +152,8 @@ std::string SubmitHandler::HandleRequestThrow(
     store_.EnsureAndGetProfile(player->user_id, player->name, "");
 
     const auto outcome = store_.RecordValidAttempt(
-        player->user_id, challenge_id, chain, *challenge->optimal_len, elapsed_ms);
+        player->user_id, challenge_id, chain, *challenge->optimal_len,
+        elapsed_ms, challenge->season_id);
 
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     b["valid"]       = true;

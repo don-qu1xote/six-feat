@@ -29,9 +29,17 @@
 //      (optimal_len is NULL — the challenge-creation flow, SF-GAME-16,
 //      hasn't run for it) — nothing to score against, so this is refused
 //      rather than silently scored as "infinitely bad".
+// 429: this player is submitting faster than the per-player rate limit
+//      allows (see rate_limit_ below) — [SF-GAME-17] anti-abuse, not
+//      anti-cheat: chain_validator.hpp already rejects fabricated chains
+//      regardless of how fast/slow they arrive; this just stops someone
+//      from hammering the endpoint (e.g. to brute-force the prior_attempts
+//      penalty window, or just to load-test the service by accident).
 // 503: six-feat's /internal/neighbours couldn't be reached — distinct from
 //      a confirmed-invalid verdict, same posture as validate_handler.cpp.
 // ════════════════════════════════════════════════════════════════════════════
+
+#include "core/rate_limiter.hpp"
 
 #include <array>
 #include <string_view>
@@ -62,6 +70,15 @@ private:
     const GameStore&               store_;
     const NeighboursClient&        neighbours_;
     std::array<unsigned char, 32>  session_key_;
+    // [SF-GAME-17] Per-player submit throttle. Backed by
+    // RateLimitStoreComponent the same way six-feat's own GraphHandler/
+    // PathHandler/SearchHandler are (SF-SEC-04) — reusing PerIpRateLimit
+    // as-is (it's already keyed by an arbitrary caller-supplied string, not
+    // literally an IP — see its own doc-comment) means this is
+    // multi-replica-safe for free when the component's `backend: shared`
+    // config points it at the same Postgres cluster every replica shares,
+    // with zero new rate-limiting code.
+    PerIpRateLimit rate_limit_;
 };
 
 } // namespace six_feat::game

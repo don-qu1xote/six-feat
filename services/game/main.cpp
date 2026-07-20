@@ -21,10 +21,12 @@
 #include <userver/utils/daemon_run.hpp>
 
 #include "challenge_handler.hpp"
+#include "core/rate_limit_store_component.hpp"
 #include "daily_challenge_task.hpp"
 #include "game_store.hpp"
 #include "http/health_handler.hpp"
 #include "internal_handlers.hpp"
+#include "leaderboard_handler.hpp"
 #include "neighbours_client.hpp"
 #include "profile_handler.hpp"
 #include "submit_handler.hpp"
@@ -48,6 +50,12 @@ int main(int argc, char* argv[]) {
             // and the game store that owns the game_* migration registry.
             .Append<components::Postgres>("postgres-db-1")
             .Append<six_feat::game::GameStore>()
+            // [SF-GAME-17] Backend (single in-process, default | shared
+            // Postgres-backed) for SubmitHandler's per-player rate limit —
+            // reused as-is from six-feat's own SF-SEC-04 component. Must
+            // come before SubmitHandler below, which looks it up in its own
+            // constructor.
+            .Append<six_feat::RateLimitStoreComponent>()
             .Append<six_feat::HealthHandler>()
             // [SF-INF-03] Unified readiness contract — /readyz now pings the
             // game store's Postgres cluster (see internal_handlers.cpp), the
@@ -71,6 +79,9 @@ int main(int argc, char* argv[]) {
             // [SF-GAME-16] Once-a-day publisher for kind="daily" challenges
             // — same dependencies as ChallengeHandler.
             .Append<six_feat::game::DailyChallengeTask>()
+            // [SF-GAME-17] GET /api/v1/game/leaderboard — needs GameStore
+            // (already appended above).
+            .Append<six_feat::game::LeaderboardHandler>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never the public
             // listener.

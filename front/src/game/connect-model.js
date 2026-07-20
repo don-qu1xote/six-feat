@@ -24,6 +24,13 @@
 //                      below. The ideal (optimal_path) never enters this
 //                      model any other way, so "hidden until submit" is
 //                      structural, not a flag someone could forget to check.
+//   - leaderboard    — [SF-GAME-17/04] the server's last GET
+//                      /api/v1/game/leaderboard response for this challenge,
+//                      or null until one has been shown — see
+//                      applyLeaderboard/leaderboardView below. Only ever
+//                      populated after a submit reveals a result (same
+//                      "after finish" gate as result itself), never fetched
+//                      by this module on its own.
 // The full visible chain is always [start, ...hops, goal] (chainNodes) so the
 // goal shows as the target endpoint whether or not it's been reached yet.
 //
@@ -51,7 +58,7 @@ function eq(a, b) {
 export function createConnectChain(startName, goalName) {
   return {
     start: norm(startName), goal: norm(goalName), hops: [],
-    completed: false, validation: null, result: null,
+    completed: false, validation: null, result: null, leaderboard: null,
   };
 }
 
@@ -90,12 +97,14 @@ export function addHop(game, rawName) {
     game.completed = true;
     game.validation = null;
     game.result = null;
+    game.leaderboard = null;
     return { ok: true, completed: true };
   }
 
   game.hops.push(name);
   game.validation = null;
   game.result = null;
+  game.leaderboard = null;
   return { ok: true, completed: false };
 }
 
@@ -106,6 +115,7 @@ export function addHop(game, rawName) {
 export function undoHop(game) {
   game.validation = null;
   game.result = null;
+  game.leaderboard = null;
   if (game.completed) {
     game.completed = false;
     return { undone: "goal" };
@@ -121,6 +131,7 @@ export function resetChain(game) {
   game.completed = false;
   game.validation = null;
   game.result = null;
+  game.leaderboard = null;
 }
 
 // ── Server validation (SF-GAME-14/02) ───────────────────────────────────────
@@ -224,4 +235,43 @@ function normalizeResult(game, r) {
 // shouldn't need to know that.
 export function resultView(game) {
   return game.result;
+}
+
+// ── Leaderboard (SF-GAME-17/04) ─────────────────────────────────────────────
+//
+// GET /api/v1/game/leaderboard?challenge_id=… (services/game/
+// leaderboard_handler.cpp) is the source for this — applyLeaderboard just
+// stores that response shape ({entries:[{user_id, display_name, score,
+// hops, ts}], next_cursor}) so the UI can render "the challenge's
+// leaderboard" right after a result is shown. Like validation/result, every
+// mutating call above clears it: a leaderboard snapshot fetched for a chain
+// that's since been edited is stale, not just unlabeled.
+
+export function applyLeaderboard(game, leaderboardResponse) {
+  game.leaderboard = normalizeLeaderboard(leaderboardResponse);
+}
+
+export function clearLeaderboard(game) {
+  game.leaderboard = null;
+}
+
+function normalizeLeaderboard(r) {
+  if (!r || typeof r !== "object" || !Array.isArray(r.entries)) return null;
+  return {
+    entries: r.entries.map(e => ({
+      userId: e.user_id,
+      displayName: String(e.display_name || ""),
+      score: e.score,
+      hops: e.hops,
+      ts: e.ts,
+    })),
+    nextCursor: typeof r.next_cursor === "string" ? r.next_cursor : null,
+  };
+}
+
+// The stored leaderboard view, or null if none has been shown yet (or the
+// chain was edited since — see the *_leaderboard clearing in addHop/undoHop/
+// resetChain above).
+export function leaderboardView(game) {
+  return game.leaderboard;
 }

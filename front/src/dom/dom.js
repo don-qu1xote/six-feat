@@ -182,6 +182,9 @@ export const els = {
   // [SF-GAME-15/03] Result screen — see src/game/connect-model.js's
   // applyResult/resultView.
   connectResult:     $("connect-result"),
+  // [SF-GAME-17/04] Leaderboard shown alongside the result screen — see
+  // src/game/connect-model.js's applyLeaderboard/leaderboardView.
+  connectLeaderboard: $("connect-leaderboard"),
   connectAddInput:   $("connect-add-input"),
   connectAddAc:      $("connect-add-ac"),
   connectUndo:       $("connect-undo"),

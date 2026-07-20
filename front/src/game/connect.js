@@ -35,7 +35,7 @@ import { onSurfaceChange, getCurrentSurface, navigateToSurface, SURFACE_GAME, SU
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
 import {
   createConnectChain, chainNodes, hopCount, isComplete,
-  addHop, undoHop, resetChain, hopStatuses, resultView,
+  addHop, undoHop, resetChain, hopStatuses, resultView, leaderboardView,
 } from "./connect-model.js";
 import { drawChain } from "./chain-graph.js";
 
@@ -138,6 +138,28 @@ function renderResult() {
     `</div>`;
 }
 
+// [SF-GAME-17/04] Renders State.connect.game.leaderboard — see
+// leaderboardView's own doc-comment. Only ever has something to show once a
+// result has been revealed (applyLeaderboard is only ever called after
+// applyResult in practice), and is hidden otherwise.
+function renderLeaderboard() {
+  const s = slice();
+  if (!els.connectLeaderboard) return;
+  const view = s.game ? leaderboardView(s.game) : null;
+  if (!view || !view.entries.length) {
+    els.connectLeaderboard.hidden = true;
+    els.connectLeaderboard.innerHTML = "";
+    return;
+  }
+  els.connectLeaderboard.hidden = false;
+  const rows = view.entries.map((e, i) =>
+    `<div class="cl-row"><span class="cl-rank">${i + 1}</span>` +
+    `<span class="cl-name">${escapeHtml(e.displayName)}</span>` +
+    `<span class="cl-score">${e.score}</span></div>`).join("");
+  els.connectLeaderboard.innerHTML =
+    `<h4 class="connect-leaderboard-title">Leaderboard</h4>${rows}`;
+}
+
 function draw() {
   if (els.connectCanvas) drawChain(els.connectCanvas, slice().game);
 }
@@ -146,6 +168,7 @@ function render() {
   renderChainList();
   renderStatus();
   renderResult();
+  renderLeaderboard();
   renderControls();
   draw();
 }

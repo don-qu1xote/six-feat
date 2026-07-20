@@ -1,0 +1,8 @@
+type: object
+description: Challenge/season top-N leaderboard endpoint (SF-GAME-17)
+additionalProperties: false
+properties:
+    cache-ttl-ms:
+        type: integer
+        description: How long a first-page (no cursor) leaderboard response is cached in-process
+        defaultDescription: '15000'
