@@ -13,6 +13,7 @@ import { showToast } from "./toast.js";
 import { isPathPanelOpen, openPathPanel, closePathPanel } from "./modals.js";
 import { attachNodeAutocomplete } from "./autocomplete.js";
 import { runServerPath } from "./path-result.js";
+import { navigateToSurface, SURFACE_GAME } from "./router.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // TASK 4: PATH PANEL
@@ -141,6 +142,12 @@ export function setupHeroModeSwitch() {
     next.focus();
     activate(next === tabConnect ? "connect" : "explore");
   });
+
+  // [SF-GAME landing entry] Third tab, "Game" — replaces the old
+  // #btn-game-mode rail button. Unlike the two tabs above it doesn't
+  // toggle a local .hero-mode-panel; it's a full surface switch, wired the
+  // same way connect.js's own back button does it.
+  els.heroModeTabGame?.addEventListener("click", () => navigateToSurface(SURFACE_GAME));
 }
 
 // ────────────────────────────────────────────────────────────────────────────

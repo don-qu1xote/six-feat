@@ -263,6 +263,18 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    # [SF-GAME-13] main.cpp unconditionally registers InternalNeighboursHandler,
+    # so every static config that boots the six_feat binary needs a matching
+    # block or components::Run fails outright (InvariantError: "registered,
+    # but not present in components_manager.components section") — same
+    # reason every other handler block above/below exists here. Not exercised
+    # by the e2e smoke/load-test suites (nothing here calls six-feat-game),
+    # but must still be present for the process to start at all.
+    handler-internal-neighbours:
+      path: /internal/neighbours
+      method: POST
+      task_processor: main-task-processor
+
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET

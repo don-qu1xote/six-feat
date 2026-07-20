@@ -74,11 +74,16 @@
    component's own selected-state thumb keeps working exactly as
    .ui-segment's own doc comment says every segment consumer should. */
 .hero-mode-switch {
-  display: flex; position: relative;
-  width: min(360px, 92vw); margin: 0 auto;
+  display: flex; align-items: center; position: relative;
+  width: min(440px, 96vw); margin: 0 auto;
   border: 1px solid var(--line); border-radius: 999px;
   background: rgba(var(--panel-rgb),.8); padding: 3px;
 }
+/* [SF-GAME landing entry] Explore/Connect keep their original 2-tab pill +
+   sliding thumb, now scoped to this inner flex:1 wrapper instead of the
+   whole switch — the thumb's 50%-width math (below) stays correct
+   regardless of the "Game" nav tab sitting outside it. */
+.hero-mode-switch-pair { display: flex; position: relative; flex: 1; }
 .hero-mode-tab {
   position: relative; z-index: 1; flex: 1;
   display: flex; align-items: center; justify-content: center; gap: var(--space-2);
@@ -89,6 +94,16 @@
      .ui-chip/.ui-btn already use for their own hover-color fade. */
   transition: color var(--duration-base) var(--ease-standard);
 }
+/* [SF-GAME landing entry] The "Game" tab doesn't toggle a local panel — it
+   navigates straight to #/game (see setupHeroModeSwitch's doc-comment) —
+   so it never carries aria-selected="true" in practice and gets a
+   divider instead of joining the thumb's sliding-selection affordance. */
+.hero-mode-tab--nav {
+  flex: 0 0 auto; margin-left: 2px; padding-inline: var(--space-3);
+  border-left: 1px solid var(--line);
+  border-radius: 0 999px 999px 0;
+}
+.hero-mode-tab--nav:hover { color: var(--signal); }
 .hero-mode-tab .ri { width: 15px; height: 15px; display: flex; flex-shrink: 0; }
 .hero-mode-tab .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .hero-mode-tab:hover { color: var(--paper); }

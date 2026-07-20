@@ -228,7 +228,10 @@ export function setupConnectMode() {
 
   els.connectUndo?.addEventListener("click", undoLast);
   els.connectReset?.addEventListener("click", resetGame);
-  els.btnGameMode?.addEventListener("click", () => navigateToSurface(SURFACE_GAME));
+  // [SF-GAME landing entry] Entry into #/game now happens from the landing
+  // hero-mode-switch's "Game" tab (src/ui/path-panel.js's
+  // setupHeroModeSwitch) — the old in-surface #btn-game-mode rail button
+  // this used to wire is gone.
   els.connectBack?.addEventListener("click", () => navigateToSurface(SURFACE_GRAPH));
 
   // The chain-graph canvas is sized to its (flex) stage, so it must be
