@@ -15,8 +15,12 @@ set -euo pipefail
 # Fail fast here instead of throwing deep in ProfileHandler's constructor.
 : "${APP_SECRET:?APP_SECRET env var is required for session decryption — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
 
-# ENRICHMENT_INTERNAL_SECRET (internal-mesh calls, SF-GAME-13) is passed in by
-# docker-compose.yml but not consumed yet — its guard gets added by SF-GAME-13.
+# [SF-GAME-13] Shared secret for internal-mesh calls to six-feat
+# (POST /internal/neighbours, see neighbours_client.cpp) — read directly from
+# the environment by internal_api::SharedSecretFromEnv(), MUST be the exact
+# same value the rest of the mesh uses. Fail fast here instead of throwing
+# deep in NeighboursClient's constructor.
+: "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required for internal-mesh calls to six-feat — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
 
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
@@ -37,6 +41,11 @@ else
 fi
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
+# [SF-GAME-13] Where six-feat itself listens, for the anti-cheat neighbours
+# lookup (see neighbours_client.cpp). Same compose-network addressing
+# convention as ENRICHMENT_BASE_URL/GENIUS_GATEWAY_BASE_URL/AUTH_BASE_URL in
+# six-feat's own entrypoint.
+SIX_FEAT_BASE_URL="${SIX_FEAT_BASE_URL:-http://six-feat:8080}"
 
 if [[ -n "$DB_REPLICA_HOST" ]]; then
   echo "[entrypoint] six-feat-game Postgres target: ${DB_HOST}:${DB_PORT} (master), ${DB_REPLICA_HOST}:${DB_REPLICA_PORT} (replica), db=${DB_NAME}"
@@ -73,6 +82,7 @@ sleep 1
 cat > /tmp/config_vars.yaml <<EOF
 logging_level: ${LOGGING_LEVEL}
 db_connection_string: "${DB_CONNECTION_STRING}"
+six_feat_base_url: "${SIX_FEAT_BASE_URL}"
 EOF
 
 exec /app/six_feat_game \

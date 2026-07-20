@@ -4,3 +4,6 @@
 # component reads db_connection_string yet (SF-GAME-11 adds the store), so it
 # has no direct-run default here.
 logging_level: info
+# [SF-GAME-13] Base URL of the six-feat service (POST /internal/neighbours).
+# In Docker this is overwritten by docker-entrypoint.sh from SIX_FEAT_BASE_URL.
+six_feat_base_url: http://localhost:8080

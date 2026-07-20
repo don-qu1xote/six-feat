@@ -23,6 +23,7 @@
 #include "game_store.hpp"
 #include "http/health_handler.hpp"
 #include "internal_handlers.hpp"
+#include "neighbours_client.hpp"
 #include "profile_handler.hpp"
 
 using namespace userver;
@@ -31,13 +32,13 @@ int main(int argc, char* argv[]) {
     const auto component_list =
         components::MinimalServerComponentList()
             .Append<clients::dns::Component>()
-            // [SF-GAME-13] The http-client is wired from the skeleton on
-            // purpose: sprint 13 adds outbound internal calls to six-feat
-            // (/internal/neighbours anti-cheat, /api/v1/graph/path ideal) via
-            // core/internal_http — keeping that a pure handler addition later,
-            // not a components-manager change.
             .AppendComponentList(clients::http::ComponentList())
             .Append<components::TestsuiteSupport>()
+            // [SF-GAME-13] Anti-cheat client: verifies a claimed hop A→B via
+            // six-feat's internal /internal/neighbours (see
+            // neighbours_client.hpp). Only needs the http-client above —
+            // no Postgres/game-store dependency of its own.
+            .Append<six_feat::game::NeighboursClient>()
             // [SF-GAME-11] Shared Postgres cluster (same postgres-db-1 the
             // other services use — game_* tables live in the same database)
             // and the game store that owns the game_* migration registry.

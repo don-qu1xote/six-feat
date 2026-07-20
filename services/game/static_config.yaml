@@ -43,9 +43,6 @@ components_manager:
     dns-client:
       fs-task-processor: fs-task-processor
 
-    # [SF-GAME-13] Wired from the skeleton — sprint 13's anti-cheat
-    # (/internal/neighbours) and ideal-path (/api/v1/graph/path) calls to
-    # six-feat go through this client.
     http-client:
 
     logging:
@@ -81,6 +78,15 @@ components_manager:
     # ── Game store (owns the game_* migration registry) ─────────────────────
     game-store:
       dbname: postgres-db-1
+
+    # [SF-GAME-13] Anti-cheat client — verifies a claimed hop A→B against
+    # six-feat's internal /internal/neighbours instead of six-feat-game ever
+    # talking to Genius itself. Shares ENRICHMENT_INTERNAL_SECRET as the
+    # internal-mesh secret, same convention genius-gateway's own internal API
+    # already established (see core/internal_auth.hpp's module comment).
+    neighbours-client:
+      six-feat-base-url: $six_feat_base_url
+      timeout-ms: 2000
 
     # ── Handlers ────────────────────────────────────────────────────────────
     handler-healthz:

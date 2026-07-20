@@ -16,6 +16,7 @@
 #include "http/graph_handler.hpp"
 #include "http/health_handler.hpp"
 #include "http/image_proxy_handler.hpp"
+#include "http/internal_neighbours_handler.hpp"
 #include "http/path_handler.hpp"
 #include "storage/persistent_store.hpp"
 #include "core/rate_limit_store_component.hpp"
@@ -65,6 +66,10 @@ int main(int argc, char *argv[]) {
             .Append<six_feat::ReadinessHandler>()
             .Append<six_feat::StatusHandler>()
             .Append<six_feat::ArtistHandler>()
+            // [SF-GAME-13] Internal-mesh anti-cheat lookup for six-feat-game
+            // — X-Internal-Secret-gated, answers purely from L1
+            // (ArtistRepository, already appended above).
+            .Append<six_feat::InternalNeighboursHandler>()
             .Append<six_feat::SseStatusHandler>()
             .Append<six_feat::ImageProxyHandler>()
             .Append<six_feat::IndexHandler>()

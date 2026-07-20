@@ -32,6 +32,7 @@ import os
 import signal
 import subprocess
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Generator, List
@@ -120,6 +121,46 @@ def _stop(proc: subprocess.Popen) -> None:  # type: ignore[type-arg]
         proc.kill()
 
 
+def _warm_up(base_url: str) -> None:
+    """[fix] One throwaway request per replica before the timed burst
+    below — forces both the HTTP listener and its (cold, min_pool_size: 1)
+    Postgres connection pool to actually grow past their very first
+    connection ahead of time. Without this, the real burst's own first
+    few requests paid that one-time connection-establishment cost, which
+    was enough to push the 80-request burst's total wall-clock time close
+    to (and sometimes past) the rate limiter's 1s fixed window. See
+    TestPathRateLimit's near-identical flake-fix comment in
+    test_rate_limit.py for the same underlying failure mode: a burst that
+    isn't processed fast enough silently straddles two fixed windows,
+    landing under the 50 cap in both and producing zero 429s even though
+    the shared budget was genuinely exceeded.
+    """
+    try:
+        requests.get(
+            f"{base_url}/api/v1/graph",
+            params={"artist": "SFSEC04RateLimitStoreWarmup"},
+            timeout=5.0,
+        )
+    except requests.RequestException:
+        pass
+
+
+def _sleep_until_fresh_window(window_seconds: float = 1.0) -> None:
+    """[fix] Start the timed burst right after a rate-limit window
+    boundary instead of at a random point inside it, so it gets close to
+    the full window of headroom rather than possibly just the tail end of
+    one — the same fixed-window-straddling risk _warm_up above addresses
+    from the other side (making the burst itself faster instead of giving
+    it more room). window_seconds=1.0 matches GraphHandler's hardcoded
+    rate-limit window (see graph_handler.cpp's GraphHandler constructor).
+    """
+    now = time.time()
+    remainder = now % window_seconds
+    if remainder < window_seconds * 0.1:
+        return
+    time.sleep(window_seconds - remainder)
+
+
 @pytest.fixture(scope="module")
 def shared_backend_replicas(
     genius_gateway_proc: subprocess.Popen,  # type: ignore[type-arg]
@@ -146,10 +187,14 @@ def shared_backend_replicas(
             tmp_dir, SERVICE_PORT_SHARED_B, MONITOR_PORT_SHARED_B
         )
         try:
-            yield [
-                f"http://localhost:{SERVICE_PORT_SHARED_A}",
-                f"http://localhost:{SERVICE_PORT_SHARED_B}",
-            ]
+            base_a = f"http://localhost:{SERVICE_PORT_SHARED_A}"
+            base_b = f"http://localhost:{SERVICE_PORT_SHARED_B}"
+            # [fix] See _warm_up's own comment — grow both replicas'
+            # Postgres pools past their cold min_pool_size: 1 before any
+            # test times a burst against them.
+            _warm_up(base_a)
+            _warm_up(base_b)
+            yield [base_a, base_b]
         finally:
             _stop(proc_a)
             _stop(proc_b)
@@ -191,6 +236,8 @@ class TestSharedRateLimitStore:
         precisely the bug this ticket fixes."""
         base_a, base_b = shared_backend_replicas
 
+        # [fix] See _sleep_until_fresh_window's own comment.
+        _sleep_until_fresh_window()
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_a = pool.submit(_fire, base_a, 40)
             fut_b = pool.submit(_fire, base_b, 40)

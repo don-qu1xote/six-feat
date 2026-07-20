@@ -522,6 +522,10 @@ services:
       # [SF-GAME-13] Shared secret for internal-mesh calls to six-feat
       # (/internal/neighbours anti-cheat, ideal-path).
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      # [SF-GAME-13] Where six-feat itself listens, for the anti-cheat
+      # neighbours lookup — same compose-network addressing convention as
+      # ENRICHMENT_BASE_URL/GENIUS_GATEWAY_BASE_URL/AUTH_BASE_URL above.
+      SIX_FEAT_BASE_URL: ${SIX_FEAT_BASE_URL:-http://six-feat:${SIX_FEAT_PORT:-8080}}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
     depends_on:
       postgres:

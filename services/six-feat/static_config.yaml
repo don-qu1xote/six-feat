@@ -300,6 +300,15 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
+    # [SF-GAME-13] Internal-mesh anti-cheat lookup — six-feat-game verifies a
+    # claimed hop A→B against ArtistRepository::Neighbours (L1) here, instead
+    # of talking to Genius itself. X-Internal-Secret-gated, not routed
+    # through nginx (called service-to-service over the compose network).
+    handler-internal-neighbours:
+      path: /internal/neighbours
+      method: POST
+      task_processor: *main_tp
+
     handler-status-stream:
       path: /api/v1/status/stream
       method: GET

@@ -1,0 +1,4 @@
+type: object
+description: Internal L1-neighbours lookup endpoint (SF-GAME-13 anti-cheat)
+additionalProperties: false
+properties: {}
