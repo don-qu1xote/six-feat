@@ -1,5 +1,7 @@
 type: object
-description: Durable store for the game_* schema (owns game migrations)
+description: >-
+    [SF-GAME-11] Durable store for the game_* schema — attaches to the shared
+    Postgres cluster and owns its own forward-only migration registry.
 additionalProperties: false
 properties:
     dbname:

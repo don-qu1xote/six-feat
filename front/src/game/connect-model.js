@@ -1,52 +1,46 @@
 // ════════════════════════════════════════════════════════════════════════════
-// game/connect-model.js — [SF-GAME-01] Pure chain model for "Connect" mode.
+// game/connect-model.js — [design: ветвящийся веб] Branching web model for
+// "Connect" mode.
 //
-// The Connect game: the player is given a fixed start and goal artist and
-// builds a collaboration chain between them by entering intermediate artists
-// one at a time, WITHOUT seeing our own ideal path. This module is only the
-// data model of that chain — no DOM, no network. Still no scoring (SF-GAME-15,
-// ELO). Keeping the model pure and framework-free is what lets the whole
-// "build a chain" mechanic be unit-tested without a canvas, a running
-// game-service, or a real mousemove.
+// The player is given a fixed start and goal artist and grows a WEB of
+// collaborators between them — not a single line. Every artist they add
+// attaches to a `parent` node already in the web (a tree rooted at `start`),
+// and they can move the `focus` to ANY node and branch off it, running
+// several routes toward the goal at once. The round is won the moment the
+// goal joins the web (from any node); scoring uses the winning line — the
+// start→goal path through the tree (winningPath).
 //
-// A chain is `{ start, goal, hops, completed, validation, result }`:
+// This module is only the data model — no DOM, no network — so the mechanic
+// is unit-testable without a canvas or a running game service.
+//
+// A game is `{ start, goal, nodes, focus, completed, gaveUp, startedAt,
+// finishedAt, challengeId, result, leaderboard }`:
 //   - start / goal   — the two fixed endpoints (normalized artist names).
-//   - hops           — ordered intermediate artist names the player added,
-//                      EXCLUDING the goal (the goal is always the endpoint,
-//                      never stored as a hop — see addHop's goal branch).
-//   - completed      — the player connected the last hop to the goal.
-//   - validation     — [SF-GAME-14/02] the server's last verdict on this
-//                      EXACT chain, or null if it hasn't been checked (or was
-//                      edited since) — see applyValidation/hopStatuses below.
-//   - result         — [SF-GAME-15/03] the server's last POST
-//                      /api/v1/game/submit response for this EXACT chain, or
-//                      null before any submit — see applyResult/resultView
-//                      below. The ideal (optimal_path) never enters this
-//                      model any other way, so "hidden until submit" is
-//                      structural, not a flag someone could forget to check.
-//   - leaderboard    — [SF-GAME-17/04] the server's last GET
-//                      /api/v1/game/leaderboard response for this challenge,
-//                      or null until one has been shown — see
-//                      applyLeaderboard/leaderboardView below. Only ever
-//                      populated after a submit reveals a result (same
-//                      "after finish" gate as result itself), never fetched
-//                      by this module on its own.
-// The full visible chain is always [start, ...hops, goal] (chainNodes) so the
-// goal shows as the target endpoint whether or not it's been reached yet.
+//   - nodes          — the web as a flat list of { name, parent } (start is
+//                      the root, parent null). Edges are each node→parent.
+//   - focus          — the node the next add attaches to (click any node to
+//                      move it and branch from there). Typing keeps chaining
+//                      linearly because a successful add moves focus onto the
+//                      new node.
+//   - completed      — the goal has joined the web.
+//   - gaveUp         — the player explicitly gave up before completing.
+//   - startedAt/finishedAt — see elapsedMs below (the right-hand timer).
+//   - challengeId    — the numeric id POST /api/v1/game/challenge handed
+//                      back for this (start, goal) pair — set once by
+//                      connect.js; submit needs it, this model just carries it.
+//   - result         — the server's last POST /api/v1/game/submit response
+//                      for this game, or null before any submit. The ideal
+//                      (optimal_path) never enters this model any other way,
+//                      so "hidden until submit" is structural.
+//   - leaderboard    — the server's last GET /api/v1/game/leaderboard
+//                      response, or null until one has been shown.
 //
-// Artist identity here is by NAME, not id: SF-GAME-01 has no backend, and the
-// autocomplete (ui/autocomplete.js) hands back a name string on select — so
-// the model honestly keys on the same thing the UI actually has. The server
-// validator/submit endpoints (SF-GAME-14/15) need numeric Genius ids, which
-// this model still doesn't carry — wiring the real network calls is blocked
-// on that id-resolution gap, left to whichever ticket adds it.
-// applyValidation/hopStatuses and applyResult/resultView below only render
-// an already-computed server response; none of them fetch one.
+// Artist identity here is by NAME for the web shape itself — numeric Genius
+// ids (needed for the real network calls) are kept separately by connect.js
+// (setId/idFor), the same "presentation/network detail, not shape" split
+// photos already use there.
 // ════════════════════════════════════════════════════════════════════════════
 
-// Collapse surrounding/inner whitespace and drop empties — the same light
-// touch the search input already tolerates, so "  Drake " and "Drake" are one
-// artist. Case is preserved for display but compared case-insensitively (eq).
 function norm(name) {
   return String(name || "").replace(/\s+/g, " ").trim();
 }
@@ -56,156 +50,184 @@ function eq(a, b) {
 }
 
 export function createConnectChain(startName, goalName) {
+  const start = norm(startName);
   return {
-    start: norm(startName), goal: norm(goalName), hops: [],
-    completed: false, validation: null, result: null, leaderboard: null,
+    start, goal: norm(goalName),
+    nodes: [{ name: start, parent: null }],
+    focus: start,
+    completed: false, gaveUp: false,
+    startedAt: Date.now(), finishedAt: null,
+    challengeId: null, result: null, leaderboard: null,
   };
 }
 
-// The full visible chain, endpoints included: [start, ...hops, goal].
-export function chainNodes(game) {
-  return [game.start, ...game.hops, game.goal];
+function findNode(game, name) {
+  return game.nodes.find(n => eq(n.name, name)) || null;
 }
 
+// The start→name path by walking parents up to the root. `name` must be in
+// the web. Cycle-guarded (a well-formed tree never has one, but never loop).
+function pathTo(game, name) {
+  const out = [];
+  const seen = new Set();
+  let cur = findNode(game, name);
+  while (cur && !seen.has(cur.name.toLowerCase())) {
+    seen.add(cur.name.toLowerCase());
+    out.unshift(cur.name);
+    cur = cur.parent ? findNode(game, cur.parent) : null;
+  }
+  return out;
+}
+
+// [compat] "The current line" — the branch from start to the focused node.
+// The panel's "Your line" renders this; completing focuses the goal, so it
+// becomes the winning line then.
+export function chainNodes(game) {
+  return pathTo(game, game.focus);
+}
+
+// Every artist in the web (for the graph).
+export function webNodes(game) {
+  return game.nodes.map(n => n.name);
+}
+
+// Every built edge as { from: parent, to: child } (for the graph).
+export function webEdges(game) {
+  return game.nodes.filter(n => n.parent).map(n => ({ from: n.parent, to: n.name }));
+}
+
+// The start→goal path once the goal has joined the web, else null — the
+// winning line, and exactly what gets submitted for scoring.
+export function winningPath(game) {
+  return game.completed ? pathTo(game, game.goal) : null;
+}
+
+export function focusName(game) {
+  return game.focus;
+}
+
+// Move the focus (branch point) to any node already in the web. No-op once
+// the round is over or if the name isn't in the web.
+export function setFocus(game, rawName) {
+  if (game.completed || game.gaveUp) return { ok: false };
+  const node = findNode(game, rawName);
+  if (!node) return { ok: false };
+  game.focus = node.name;
+  return { ok: true };
+}
+
+// Hops along the current line (start→focus), i.e. the winning line once
+// complete. The "N hops" badge reads "your line so far", not "nodes built".
 export function hopCount(game) {
-  return game.hops.length;
+  return Math.max(0, chainNodes(game).length - 1);
 }
 
 export function isComplete(game) {
   return game.completed === true;
 }
 
-// Adds an intermediate artist to the chain. Returns { ok, reason?, completed }.
-//   - empty/whitespace name         → rejected ("empty")
-//   - same as the current tail node → rejected ("duplicate"): a self-loop
-//     A→A is never a real collaboration hop, and the one guard that's true
-//     without any backend (you can't collaborate with yourself in the same
-//     step). The tail is the last hop, or the start if there are no hops yet.
-//   - equals the goal               → does NOT push a hop (the goal is the
-//     endpoint, not an intermediate); marks the chain completed instead.
-//   - anything else                 → appended as the newest hop.
-// Adding to an already-completed chain is a no-op ("completed") — undo first.
+// Total artists the player has added (start excluded) — "web size".
+export function webSize(game) {
+  return Math.max(0, game.nodes.length - 1);
+}
+
+// [design: path hidden until victory] Marks the round done without claiming
+// the goal was reached. No-op once already complete or given up.
+export function giveUp(game) {
+  if (game.completed || game.gaveUp) return;
+  game.gaveUp = true;
+  game.finishedAt = Date.now();
+}
+
+export function pathRevealed(game) {
+  return game.completed === true || game.gaveUp === true;
+}
+
+// Milliseconds since the game was created, frozen at game.finishedAt once
+// the round is over — a live read (not a stored value).
+export function elapsedMs(game) {
+  return (game.finishedAt || Date.now()) - game.startedAt;
+}
+
+// Attaches an artist to the web as a child of the current focus. Returns
+// { ok, reason?, completed }.
+//   - empty/whitespace name        → rejected ("empty")
+//   - same as the focused node     → rejected ("duplicate")
+//   - already elsewhere in the web → rejected ("exists"): re-focus it to
+//                                     branch, don't clone it.
+//   - equals the goal              → joins the web under focus, marks complete.
+//   - anything else                → new node under focus; focus moves onto it
+//                                     (so typing keeps chaining linearly).
+// Adding to an already-completed or given-up web is a no-op.
 export function addHop(game, rawName) {
-  if (game.completed) return { ok: false, reason: "completed" };
+  if (game.completed || game.gaveUp) return { ok: false, reason: "over" };
   const name = norm(rawName);
   if (!name) return { ok: false, reason: "empty" };
-
-  const tail = game.hops.length ? game.hops[game.hops.length - 1] : game.start;
-  if (eq(name, tail)) return { ok: false, reason: "duplicate" };
+  if (eq(name, game.focus)) return { ok: false, reason: "duplicate" };
 
   if (eq(name, game.goal)) {
+    if (!findNode(game, game.goal)) game.nodes.push({ name: game.goal, parent: game.focus });
     game.completed = true;
-    game.validation = null;
-    game.result = null;
-    game.leaderboard = null;
+    game.finishedAt = Date.now();
+    game.focus = game.goal;
     return { ok: true, completed: true };
   }
 
-  game.hops.push(name);
-  game.validation = null;
-  game.result = null;
-  game.leaderboard = null;
+  if (findNode(game, name)) return { ok: false, reason: "exists" };
+
+  game.nodes.push({ name, parent: game.focus });
+  game.focus = name;
   return { ok: true, completed: false };
 }
 
-// Removes the most recent step. If the chain was completed, the first undo
-// re-opens it (drops the goal connection) without touching hops; otherwise it
-// pops the last hop. Returns what was undone (the goal sentinel "goal",
-// a hop name, or null when there was nothing to undo).
+// Undo the last action. A completed round reopens (drops the goal node,
+// focuses its parent, resumes the clock). Otherwise removes the
+// most-recently-added node (always a leaf — adds only ever append) and
+// focuses its parent.
 export function undoHop(game) {
-  game.validation = null;
-  game.result = null;
-  game.leaderboard = null;
   if (game.completed) {
+    const goalNode = findNode(game, game.goal);
+    const parent = goalNode && goalNode.parent ? goalNode.parent : game.start;
+    game.nodes = game.nodes.filter(n => !eq(n.name, game.goal));
     game.completed = false;
+    game.finishedAt = null;
+    game.focus = parent;
     return { undone: "goal" };
   }
-  const popped = game.hops.length ? game.hops.pop() : null;
-  return { undone: popped };
+  if (game.nodes.length <= 1) return { undone: null };
+  const last = game.nodes[game.nodes.length - 1];
+  game.nodes = game.nodes.slice(0, -1);
+  game.focus = last.parent || game.start;
+  return { undone: last.name };
 }
 
-// Clears every intermediate + the completion flag, keeping the two fixed
-// endpoints — "start over on the same challenge", not "pick new artists".
+// Clears the whole web back to just the start, refocuses it and restarts the
+// clock — same challenge, fresh attempt.
 export function resetChain(game) {
-  game.hops = [];
+  game.nodes = [{ name: game.start, parent: null }];
+  game.focus = game.start;
   game.completed = false;
-  game.validation = null;
+  game.gaveUp = false;
+  game.startedAt = Date.now();
+  game.finishedAt = null;
   game.result = null;
   game.leaderboard = null;
 }
 
-// ── Server validation (SF-GAME-14/02) ───────────────────────────────────────
-//
-// The server (POST /api/v1/game/validate, services/game/chain_validator.hpp)
-// is the only authority on whether a chain's hops are real collaborations —
-// this module never re-derives that verdict locally, and never looks at any
-// "valid"-shaped field a caller might pass in besides the server's own
-// response. applyValidation just stores that response shape on the chain
-// ({valid:true} | {valid:false, reason:"endpoint_mismatch"} |
-// {valid:false, reason:"invalid_hop", invalid_hop_index}) so the UI can
-// render it. Every mutating call above (addHop on success, undoHop,
-// resetChain) clears it: a verdict computed against a chain that no longer
-// exists is actively misleading, not just stale.
-
-export function applyValidation(game, result) {
-  game.validation = normalizeValidation(result);
+export function setChallengeId(game, id) {
+  game.challengeId = id;
 }
 
-export function clearValidation(game) {
-  game.validation = null;
-}
-
-function normalizeValidation(result) {
-  if (!result || typeof result !== "object") return null;
-  if (result.valid === true) return { valid: true, reason: null, invalidHopIndex: null };
-  if (result.reason === "invalid_hop" && Number.isInteger(result.invalid_hop_index)) {
-    return { valid: false, reason: "invalid_hop", invalidHopIndex: result.invalid_hop_index };
-  }
-  return { valid: false, reason: result.reason || "unknown", invalidHopIndex: null };
-}
-
-// Per-transition status for chainNodes(game) — one entry per edge
-// a_i -> a_{i+1}, so length is chainNodes(game).length - 1:
-//   "valid"   — confirmed real (at or before the first break, or the whole
-//               chain came back valid)
-//   "invalid" — the first transition the server rejected
-//   "unknown" — no check has run yet, or this transition is past the first
-//               break (chain_validator.hpp never checks past it, so there is
-//               genuinely nothing to report here yet)
-export function hopStatuses(game) {
-  const n = chainNodes(game).length - 1;
-  if (n <= 0) return [];
-  const v = game.validation;
-  if (!v) return new Array(n).fill("unknown");
-  if (v.valid) return new Array(n).fill("valid");
-  if (v.reason === "invalid_hop" && v.invalidHopIndex != null) {
-    return Array.from({ length: n }, (_, i) =>
-      i < v.invalidHopIndex ? "valid" : i === v.invalidHopIndex ? "invalid" : "unknown");
-  }
-  return new Array(n).fill("unknown");
-}
-
-// ── Result screen (SF-GAME-15/03) ───────────────────────────────────────────
-//
-// POST /api/v1/game/submit (services/game/submit_handler.cpp) is the ONLY
-// place the ideal path is ever sent to the client — every field below comes
-// straight from that one response, stored as-is by applyResult. There is no
-// separate "peek at the ideal" call anywhere in this codebase for this
-// module to accidentally expose early: resultView() returns null (nothing
-// to show) until applyResult() has actually been called with a real
-// {valid:true, ...} response, which — per submit_handler.hpp's own
-// contract — can only happen after the player has finished (or failed) an
-// attempt.
-
+// ── Result (SF-GAME-15/03) ──────────────────────────────────────────────
 export function applyResult(game, submitResponse) {
-  game.result = normalizeResult(game, submitResponse);
+  game.result = normalizeResult(submitResponse);
 }
 
 export function clearResult(game) {
   game.result = null;
 }
 
-function normalizeResult(game, r) {
+function normalizeResult(r) {
   if (!r || typeof r !== "object") return null;
   if (r.valid !== true) {
     return {
@@ -216,10 +238,9 @@ function normalizeResult(game, r) {
   }
   return {
     revealed: true,
-    playerChain: chainNodes(game),
     playerLen: r.player_len,
-    optimalPath: Array.isArray(r.optimal_path) ? [...r.optimal_path] : [],
     optimalLen: r.optimal_len,
+    optimalPath: Array.isArray(r.optimal_path) ? [...r.optimal_path] : [],
     score: r.score,
     maxScore: r.max_score,
     eloBefore: r.elo_before,
@@ -228,25 +249,11 @@ function normalizeResult(game, r) {
   };
 }
 
-// The stored result view, or null if nothing has been submitted yet (or the
-// chain was edited since — see the *_result clearing in addHop/undoHop/
-// resetChain above). Pass-through accessor kept alongside hopStatuses() for
-// symmetry — game.result is already the normalized view, but callers
-// shouldn't need to know that.
 export function resultView(game) {
   return game.result;
 }
 
-// ── Leaderboard (SF-GAME-17/04) ─────────────────────────────────────────────
-//
-// GET /api/v1/game/leaderboard?challenge_id=… (services/game/
-// leaderboard_handler.cpp) is the source for this — applyLeaderboard just
-// stores that response shape ({entries:[{user_id, display_name, score,
-// hops, ts}], next_cursor}) so the UI can render "the challenge's
-// leaderboard" right after a result is shown. Like validation/result, every
-// mutating call above clears it: a leaderboard snapshot fetched for a chain
-// that's since been edited is stale, not just unlabeled.
-
+// ── Leaderboard (SF-GAME-17/04) ─────────────────────────────────────────
 export function applyLeaderboard(game, leaderboardResponse) {
   game.leaderboard = normalizeLeaderboard(leaderboardResponse);
 }
@@ -269,9 +276,6 @@ function normalizeLeaderboard(r) {
   };
 }
 
-// The stored leaderboard view, or null if none has been shown yet (or the
-// chain was edited since — see the *_leaderboard clearing in addHop/undoHop/
-// resetChain above).
 export function leaderboardView(game) {
   return game.leaderboard;
 }

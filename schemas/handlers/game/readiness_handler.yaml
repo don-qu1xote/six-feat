@@ -1,4 +1,4 @@
 type: object
-description: Game-service readiness-check handler
+description: 'Game service /readyz handler configuration (SF-INF-03 contract)'
 additionalProperties: false
 properties: {}

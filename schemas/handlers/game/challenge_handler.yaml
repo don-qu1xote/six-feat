@@ -1,4 +1,4 @@
 type: object
-description: Challenge create/get endpoint (SF-GAME-16)
+description: 'GET/POST /api/v1/game/challenge — challenge creation and lookup'
 additionalProperties: false
 properties: {}

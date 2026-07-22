@@ -105,7 +105,8 @@ export {
 } from "./compare-panel.js";
 
 export {
-  SURFACE_GRAPH, SURFACE_GAME, DEFAULT_SURFACE,
+  SURFACE_GRAPH, SURFACE_GAME, SURFACE_GAME_LEADERBOARD, SURFACE_GAME_PROFILE,
+  SURFACE_GAME_CHALLENGES, SURFACE_GAME_SEASON, DEFAULT_SURFACE, isGameSurface,
   parseSurfaceFromHash, getCurrentSurface, onSurfaceChange,
   navigateToSurface, restoreSurfaceFromUrl
 } from "./router.js";

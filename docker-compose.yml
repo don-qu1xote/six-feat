@@ -349,12 +349,8 @@ services:
       NGINX_PUBLIC_PORT: ${NGINX_PUBLIC_PORT:-8080}
       SIX_FEAT_PORT: ${SIX_FEAT_PORT:-8080}
       SIX_FEAT_AUTH_PORT: ${SIX_FEAT_AUTH_PORT:-8083}
-      # [SF-GAME-10] nginx's entrypoint runs envsubst over default.conf.template,
-      # substituting only the ${VAR}s present in THIS container's environment —
-      # the /api/v1/game/ location added there references ${SIX_FEAT_GAME_PORT},
-      # so it must be passed here too, or nginx fails to start with
-      # `[emerg] unknown "six_feat_game_port" variable` and crash-loops, taking
-      # down the whole public entry point.
+      # [SF-GAME-10] Routes /api/v1/game/ to the standalone game service —
+      # see default.conf.template's own location block below.
       SIX_FEAT_GAME_PORT: ${SIX_FEAT_GAME_PORT:-8084}
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
@@ -371,6 +367,10 @@ services:
       six-feat:
         condition: service_healthy
       six-feat-auth:
+        condition: service_healthy
+      # [SF-GAME-10] Same "wait for a real readiness check, not just process
+      # exists" rationale as the two deps above.
+      six-feat-game:
         condition: service_healthy
     restart: unless-stopped
 
@@ -483,16 +483,15 @@ services:
           cpus: "1"
           memory: 256M
 
-  # [SF-GAME-10] Competitive "connect two artists" game service — the fifth
-  # userver service. Skeleton stage: boots, answers /healthz and /readyz,
-  # exposes its internal monitor listener. Shares the same Postgres cluster
-  # as the rest of the mesh (its game_* tables land in SF-GAME-11) — the DSN
-  # is assembled in services/game/docker-entrypoint.sh from the DB_* env
-  # below, same as six-feat/enrichment. APP_SECRET/ENRICHMENT_INTERNAL_SECRET
-  # are passed for the session/profile (SF-GAME-12) and internal-mesh calls
-  # (SF-GAME-13) that follow. Reached over the compose network at
-  # six-feat-game:${SIX_FEAT_GAME_PORT}; nginx proxies /api/v1/game/ to it.
-  # Internal-only — no host port mapping.
+  # [SF-GAME-10] Standalone "connect two artists" game service. Same shared
+  # Postgres cluster as six-feat (game_* tables, see game_store.cpp) and
+  # calls six-feat's own /internal/neighbours for anti-cheat chain
+  # verification (SF-GAME-13) — same ENRICHMENT_INTERNAL_SECRET as the rest
+  # of the internal mesh. APP_SECRET must be the exact same value six-feat/
+  # six-feat-auth use so it can decrypt the six_feat_session cookie locally
+  # (see docker-entrypoint.sh). Kept published like six-feat-auth for direct
+  # backend access/debugging — normal traffic goes through nginx on :8080
+  # (see nginx/default.conf.template's /api/v1/game/ location below).
   six-feat-game:
     platform: linux/amd64
     pull_policy: build
@@ -503,11 +502,11 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-game:latest
     container_name: six-feat-game
-    expose:
-      - "${SIX_FEAT_GAME_PORT:-8084}"
+    ports:
+      - "${SIX_FEAT_GAME_PORT:-8084}:${SIX_FEAT_GAME_PORT:-8084}"
     environment:
-      # Same shared Postgres cluster as six-feat/enrichment. game_* tables
-      # (SF-GAME-11) live alongside the existing schema in the same DB.
+      APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
       DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
@@ -515,29 +514,28 @@ services:
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
-      # MUST be the same value the rest of the mesh uses — six-feat-game
-      # decrypts the six_feat_session cookie locally (SF-GAME-12), no HTTP
-      # call to auth, same as six-feat's own token_router.
-      APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
-      # [SF-GAME-13] Shared secret for internal-mesh calls to six-feat
-      # (/internal/neighbours anti-cheat, ideal-path).
-      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
-      # [SF-GAME-13] Where six-feat itself listens, for the anti-cheat
-      # neighbours lookup — same compose-network addressing convention as
-      # ENRICHMENT_BASE_URL/GENIUS_GATEWAY_BASE_URL/AUTH_BASE_URL above.
-      SIX_FEAT_BASE_URL: ${SIX_FEAT_BASE_URL:-http://six-feat:${SIX_FEAT_PORT:-8080}}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [SF-GAME-13] Reached over the compose network by service name, same
+      # addressing convention as ENRICHMENT_BASE_URL/AUTH_BASE_URL above.
+      SIX_FEAT_BASE_URL: ${SIX_FEAT_BASE_URL:-http://six-feat:${SIX_FEAT_PORT:-8080}}
+      # [admin] Owner allowlist for /api/v1/game/admin — comma-separated Genius
+      # usernames (or user_ids). Empty (the default) means nobody is an admin.
+      GAME_ADMIN_GENIUS_IDS: ${GAME_ADMIN_GENIUS_IDS:-}
     depends_on:
       postgres:
         condition: service_healthy
+      # Soft dependency, same rationale as six-feat's own depends_on above:
+      # NeighboursClient already tolerates six-feat being briefly
+      # unavailable (validate/submit surface that as 503, not a crash).
+      six-feat:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GAME_PORT:-8084}/healthz"]
-      interval: 15s
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GAME_PORT:-8084}/readyz"]
+      interval: 5s
       timeout: 5s
-      retries: 3
-      # Covers the entrypoint's bounded Postgres wait plus normal userver
-      # boot (PreheatStacktraceCollector etc. can take over a minute under
-      # emulation), same 120s the other app services use.
+      retries: 5
+      # Same budget as six-feat's own healthcheck above — covers Postgres
+      # wait + userver startup with headroom for one restart+retry cycle.
       start_period: 120s
     restart: unless-stopped
     <<: *hardening

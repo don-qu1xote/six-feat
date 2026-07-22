@@ -179,6 +179,29 @@ def test_create_computes_ideal_and_is_idempotent_by_pair():
     assert third.json()["id"] == first_body["id"]
 
 
+def test_create_stamps_a_season_and_leaderboard_accepts_it():
+    # [SF-GAME-18] A fresh challenge is stamped with the current season, and
+    # that season_id is a real, usable scope for GET .../leaderboard — the
+    # same endpoint that's answered ?challenge_id= since SF-GAME-17.
+    cookie = _fresh_cookie()
+    created = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
+    assert isinstance(created.get("season_id"), int)
+    assert created["season_id"] > 0
+
+    # Idempotent create against the SAME pair keeps the SAME season_id —
+    # UpsertChallenge never rewrites it on conflict.
+    again = _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
+    assert again["season_id"] == created["season_id"]
+
+    leaderboard = requests.get(
+        f"{ORIGIN}/api/v1/game/leaderboard",
+        params={"season_id": created["season_id"], "limit": 5},
+        timeout=5,
+    )
+    assert leaderboard.status_code == 200
+    assert "entries" in leaderboard.json()
+
+
 def test_get_matches_create_but_never_reveals_optimal_path():
     cookie = _fresh_cookie()
     created = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
@@ -223,6 +246,29 @@ def _daily_challenge_row():
             return cur.fetchone()
     finally:
         conn.close()
+
+
+def test_daily_query_param_404s_before_any_daily_challenge_exists_or_200s_with_names():
+    """[design: challenge setup on the landing page] GET .../challenge?
+    daily=1 — same self-skip-free but run-order-tolerant posture as
+    test_daily_challenge_task_publishes_a_valid_non_empty_ideal_if_it_has_run
+    below: whether a daily challenge has been published yet in THIS
+    environment depends on a background task's own timer, not anything this
+    test controls. Either outcome is asserted as correct, not skipped,
+    because unlike the raw-DB check below, 404 vs 200 are BOTH contractual
+    or exactly what a fresh empty DB row for `_daily_challenge_row()` would
+    predict."""
+    resp = requests.get(CHALLENGE_URL, params={"daily": "1"}, timeout=5)
+    row = _daily_challenge_row()
+    if row is None:
+        assert resp.status_code == 404
+        return
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["kind"] == "daily"
+    assert isinstance(body["from_name"], str) and body["from_name"]
+    assert isinstance(body["to_name"], str) and body["to_name"]
+    assert "optimal_path" not in body  # never revealed before a submit, same as the plain GET
 
 
 def test_daily_challenge_task_publishes_a_valid_non_empty_ideal_if_it_has_run():

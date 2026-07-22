@@ -105,7 +105,11 @@ bool DailyChallengeTask::RunOnce() {
         const int path_len = static_cast<int>(path->size()) - 1;
         if (path_len < min_path_len_) continue;
 
-        auto challenge = store_.UpsertChallenge(from, to, kAllRolesMask, "daily", std::nullopt);
+        // [SF-GAME-18] Daily challenges count toward the season leaderboard
+        // too — same stamping as ChallengeHandler's own POST.
+        const auto season = store_.EnsureCurrentSeason();
+        auto challenge = store_.UpsertChallenge(from, to, kAllRolesMask, "daily",
+                                                std::nullopt, season.id);
         if (!challenge.optimal_len) {
             store_.SetChallengeIdeal(challenge.id, path_len, *path);
         }

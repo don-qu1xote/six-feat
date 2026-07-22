@@ -19,7 +19,8 @@
      hovers, the companion/compare/path panels' open/close transitions,
      tooltips, the context-panel's own opacity fade — all still animated
      under reduced-motion. ".canvas-chrome *" closes that gap. */
-  .search-modal, .search-modal *, .canvas-chrome, .canvas-chrome *, .canvas-decorator, .decor-dot {
+  .search-modal, .search-modal *, .canvas-chrome, .canvas-chrome *, .canvas-decorator, .decor-dot,
+  .connect-surface, .connect-surface * {
     transition: none !important; animation: none !important;
   }
   .decor-dot { opacity: var(--decor-o, .5); }

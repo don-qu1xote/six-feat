@@ -16,7 +16,9 @@ export function initialOf(name) {
 
 export function debounce(fn, ms) {
   let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  const debounced = (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  debounced.cancel = () => clearTimeout(t);
+  return debounced;
 }
 
 export function lerp(a, b, t) { return a + (b - a) * t; }

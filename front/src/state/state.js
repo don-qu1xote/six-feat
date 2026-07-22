@@ -338,15 +338,11 @@ const interactionSlice = {
   // read on the next load instead of persisting. See setupThemeToggle.
   theme: "dark",
 
-  // [SF-WEB-25] Which top-level "surface" is active — "graph" (default) or
-  // "game" (the Connect surface, SF-GAME-01). Driven by ui/router.js's URL
-  // hash (#/graph, #/game), never set directly outside that module.
+  // [SF-WEB-25] Which top-level "surface" is active — "graph" (default,
+  // current/only real behavior) or "game" (not built yet; this is just the
+  // routing groundwork for it). Driven by ui/router.js's URL hash
+  // (#/graph, #/game), never set directly outside that module.
   surface: "graph",
-
-  // [SF-GAME-01] Connect game state: the two fixed endpoint names and the
-  // pure chain model (game/connect-model.js) once both are chosen. Owned by
-  // game/connect.js; null game means no challenge in progress.
-  connect: { startName: "", goalName: "", game: null },
 
   // [SF-WEB-61] BubbleSets are now a manual, user-controlled toggle — OFF by
   // default, never auto-shown/hidden by node count (the old

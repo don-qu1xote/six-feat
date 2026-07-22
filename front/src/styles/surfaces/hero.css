@@ -58,13 +58,19 @@
 .role-filter-btn[data-role="producer"].active { color: var(--pulse);  border-color: rgba(185,138,255,.5); background: rgba(185,138,255,.10); }
 .role-filter-btn[data-role="writer"].active   { color: var(--amber);  border-color: rgba(255,210,122,.5); background: rgba(255,210,122,.10); }
 
-/* ─ IDEA-41: hero mode switch (Explore / Connect) ───────────────────
+/* ─ IDEA-41 + [design: 3-way switch] hero mode switch (Explore / Connect /
+   Game) ──────────────────────────────────────────────────────────────
    Replaces the old hidden "Find a path" toggle button + a dual-input
    panel that only ever appeared below the hero search. A segmented
    tablist now sits above the hero search itself: "Explore" is the
    existing single-artist graph search, "Connect" swaps in a two-input
-   path finder. Both panels share one grid cell (.hero-mode-stage) so
-   switching between them crossfades instead of causing a layout jump. */
+   path finder — both still crossfade in .hero-mode-stage's shared grid
+   cell, unchanged from IDEA-41. "Game" is the third, EQUAL segment
+   (approved mockup: all three share one thumb, not a visually-demoted
+   afterthought) — it navigates to #/game instead of toggling a panel
+   (see path-panel.js's setupHeroModeSwitch), but looks and behaves like
+   any other tab in this switch otherwise: same aria-selected treatment,
+   same thumb sliding under it once #/game is the current surface. */
 /* [SF-WEB-24] border/radius/background/padding here already match the
    SF-WEB-11 kit's .ui-segment recipe exactly (border:1px solid
    var(--line); border-radius:999px; background:rgba(var(--panel-rgb),
@@ -74,36 +80,21 @@
    component's own selected-state thumb keeps working exactly as
    .ui-segment's own doc comment says every segment consumer should. */
 .hero-mode-switch {
-  display: flex; align-items: center; position: relative;
-  width: min(440px, 96vw); margin: 0 auto;
+  display: flex; position: relative;
+  width: min(420px, 92vw); margin: 0 auto;
   border: 1px solid var(--line); border-radius: 999px;
   background: rgba(var(--panel-rgb),.8); padding: 3px;
 }
-/* [SF-GAME landing entry] Explore/Connect keep their original 2-tab pill +
-   sliding thumb, now scoped to this inner flex:1 wrapper instead of the
-   whole switch — the thumb's 50%-width math (below) stays correct
-   regardless of the "Game" nav tab sitting outside it. */
-.hero-mode-switch-pair { display: flex; position: relative; flex: 1; }
 .hero-mode-tab {
   position: relative; z-index: 1; flex: 1;
   display: flex; align-items: center; justify-content: center; gap: var(--space-2);
   border: 0; background: transparent; border-radius: 999px;
   color: var(--mist); font: inherit; font-size: var(--text-sm); font-weight: 600;
-  padding: var(--space-2) var(--space-4); cursor: pointer;
+  padding: var(--space-2) var(--space-3); cursor: pointer;
   /* [SF-WEB-24] Kit motion tokens (were .18s ease) — same pattern
      .ui-chip/.ui-btn already use for their own hover-color fade. */
   transition: color var(--duration-base) var(--ease-standard);
 }
-/* [SF-GAME landing entry] The "Game" tab doesn't toggle a local panel — it
-   navigates straight to #/game (see setupHeroModeSwitch's doc-comment) —
-   so it never carries aria-selected="true" in practice and gets a
-   divider instead of joining the thumb's sliding-selection affordance. */
-.hero-mode-tab--nav {
-  flex: 0 0 auto; margin-left: 2px; padding-inline: var(--space-3);
-  border-left: 1px solid var(--line);
-  border-radius: 0 999px 999px 0;
-}
-.hero-mode-tab--nav:hover { color: var(--signal); }
 .hero-mode-tab .ri { width: 15px; height: 15px; display: flex; flex-shrink: 0; }
 .hero-mode-tab .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .hero-mode-tab:hover { color: var(--paper); }
@@ -111,7 +102,7 @@
 .hero-mode-tab[aria-selected="true"]:hover { color: var(--on-accent); }
 .hero-mode-thumb {
   position: absolute; top: 3px; left: 3px; bottom: 3px;
-  width: calc(50% - 3px); border-radius: 999px;
+  width: calc(33.333% - 2px); border-radius: 999px;
   background: linear-gradient(100deg, var(--signal), var(--pulse));
   /* [SF-WEB-24] Both tokens' own definitions (up top) name this rule as
      their reason for existing (".28s" → --duration-slow, the literal
@@ -119,7 +110,9 @@
      them here instead of just documenting the match. Same value. */
   transition: transform var(--duration-slow) var(--ease-standard);
 }
+/* Three equal stops — explore (default, 0), connect (1), game (2). */
 .hero-mode-switch[data-mode="connect"] .hero-mode-thumb { transform: translateX(100%); }
+.hero-mode-switch[data-mode="game"]    .hero-mode-thumb { transform: translateX(200%); }
 
 /* Both mode panels occupy the same grid cell so toggling `.is-active`
    crossfades in place instead of shifting layout — the inactive panel
@@ -221,6 +214,101 @@
   .hero-connect-actions { flex-direction: column; align-items: stretch; }
   .hero-connect-actions .hero-connect-run { flex: 1 1 100%; }
 }
+
+/* ─ [design: challenge setup, revised] Game panel — a "vs" duel, not
+   Connect's route-track (feedback: the two read as the same trick
+   reused right next to each other). Each side is its own compact card:
+   a ring-avatar (signal/pulse, matching chain-graph.js's own node
+   colors) + inline input, no separate label row, no big empty card —
+   the whole panel is exactly as tall as the two rows it needs. ─ */
+.hero-game-panel { display: flex; flex-direction: column; gap: var(--space-4); }
+.hero-game-duel { display: flex; align-items: center; gap: var(--space-3); }
+.duel-side {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-3);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--space-3) var(--space-4);
+  transition: border-color var(--duration-med) var(--ease-standard), box-shadow var(--duration-med) var(--ease-standard), background var(--duration-med) var(--ease-standard);
+}
+.duel-side--from:focus-within { background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(var(--signal-rgb),.14); }
+.duel-side--to:focus-within   { background: var(--panel-2); border-color: var(--pulse);  box-shadow: 0 0 0 4px rgba(var(--pulse-rgb),.14); }
+.duel-avatar {
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center; overflow: hidden;
+  font-family: "Syne", sans-serif; font-weight: 700; font-size: var(--text-sm);
+  background: transparent;
+}
+.duel-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.duel-side--from .duel-avatar { border: 2px solid var(--signal); color: var(--signal); }
+.duel-side--to   .duel-avatar { border: 2px solid var(--pulse);  color: var(--pulse); }
+.duel-field { flex: 1; min-width: 0; position: relative; }
+.duel-input {
+  width: 100%; background: transparent; border: 0; outline: 0;
+  color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-1) 0;
+}
+.duel-input::placeholder { color: var(--mist); }
+.duel-vs {
+  flex-shrink: 0; font-family: "Space Mono", monospace; font-weight: 700; font-size: var(--text-xs);
+  color: var(--mist); letter-spacing: .08em;
+}
+.hero-game-start {
+  width: 100%; padding: var(--space-4) var(--space-6); font-size: var(--text-base); font-weight: 700;
+}
+.hero-game-start .ri { width: 18px; height: 18px; display: flex; flex-shrink: 0; }
+.hero-game-start .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+@media (max-width: 640px) {
+  .hero-game-duel { flex-direction: column; align-items: stretch; }
+  .duel-vs { align-self: center; }
+}
+
+/* ─ [design: Today's Challenge + or pick a rival] Both real-data rows sit
+   ABOVE the divider, each ONE compact line — the first mockup's "large
+   amount of empty space" complaint was a tall vertical card; this is
+   exactly as tall as its own content, same posture as .hero-game-duel
+   above. ─ */
+.hero-game-daily {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--space-3) var(--space-4);
+}
+.daily-eyebrow {
+  flex-shrink: 0; font-family: "Space Mono", monospace; font-weight: 700;
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--amber);
+}
+.daily-pair { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1; }
+.duel-avatar--sm { width: 26px; height: 26px; font-size: var(--text-xs); }
+#hero-game-daily-from-avatar { border: 2px solid var(--signal); color: var(--signal); }
+#hero-game-daily-to-avatar   { border: 2px solid var(--pulse);  color: var(--pulse); }
+.daily-name {
+  font-weight: 700; color: var(--paper); font-size: var(--text-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 12ch;
+}
+.daily-arrow { flex-shrink: 0; color: var(--mist); }
+.daily-play { flex-shrink: 0; padding: var(--space-2) var(--space-5); font-size: var(--text-sm); }
+
+.hero-game-rivals { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
+.rivals-eyebrow {
+  flex-shrink: 0; font-family: "Space Mono", monospace; font-weight: 700;
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--mist);
+}
+.rivals-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.rival-chip {
+  display: flex; align-items: center; gap: var(--space-2);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+  padding: var(--space-1) var(--space-3); font-size: var(--text-sm); color: var(--paper);
+  cursor: pointer;
+  transition: border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+}
+.rival-chip:hover, .rival-chip:focus-visible { border-color: var(--pulse); background: var(--panel-2); }
+.rival-chip .rc-rank { color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs); }
+.rival-chip .rc-score { color: var(--pulse); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.hero-game-divider {
+  display: flex; align-items: center; gap: var(--space-3);
+  color: var(--mist); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
+}
+.hero-game-divider::before, .hero-game-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 .auth-bar {
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;

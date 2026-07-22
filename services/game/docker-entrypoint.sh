@@ -83,6 +83,7 @@ cat > /tmp/config_vars.yaml <<EOF
 logging_level: ${LOGGING_LEVEL}
 db_connection_string: "${DB_CONNECTION_STRING}"
 six_feat_base_url: "${SIX_FEAT_BASE_URL}"
+game_admin_genius_ids: "${GAME_ADMIN_GENIUS_IDS:-}"
 EOF
 
 exec /app/six_feat_game \

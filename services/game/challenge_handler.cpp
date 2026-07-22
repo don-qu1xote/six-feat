@@ -32,7 +32,8 @@ namespace {
 // unset/unknown value is OMITTED from the body, never emitted as null.
 std::string ChallengeJson(std::int64_t id, std::int64_t from, std::int64_t to,
                           int role_mask, const std::string& kind,
-                          const std::optional<int>& optimal_len) {
+                          const std::optional<int>& optimal_len,
+                          const std::optional<std::int64_t>& season_id) {
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     b["id"]        = id;
     b["from"]      = from;
@@ -40,6 +41,33 @@ std::string ChallengeJson(std::int64_t id, std::int64_t from, std::int64_t to,
     b["role_mask"] = role_mask;
     b["kind"]      = kind;
     if (optimal_len) b["optimal_len"] = *optimal_len;
+    // [SF-GAME-18] Lets the client point GET /api/v1/game/leaderboard at
+    // ?season_id=<this> for the season-scoped board alongside the
+    // challenge-scoped one it already had ?challenge_id=<id> for.
+    if (season_id) b["season_id"] = *season_id;
+    return formats::json::ToString(b.ExtractValue());
+}
+
+// [design: challenge setup on the landing page] Same shape as ChallengeJson
+// above, PLUS from_name/from_image/to_name/to_image — additive fields only,
+// so a client that only understands the plain shape (session-resume by id)
+// still parses this response fine. Only the daily branch below ever emits
+// these — the ?id=/POST branches are unchanged.
+std::string DailyChallengeJson(const DailyChallengeView& view) {
+    formats::json::ValueBuilder b(formats::json::Type::kObject);
+    b["id"]        = view.challenge.id;
+    b["from"]      = view.challenge.from_artist_id;
+    b["to"]        = view.challenge.to_artist_id;
+    b["role_mask"] = view.challenge.role_mask;
+    b["kind"]      = view.challenge.kind;
+    if (view.challenge.optimal_len) b["optimal_len"] = *view.challenge.optimal_len;
+    if (view.challenge.season_id)   b["season_id"]   = *view.challenge.season_id;
+    b["from_name"] = view.from.name;
+    // Same "empty/unset never emitted as null" convention as
+    // artist_handler.cpp's own "image" field.
+    if (view.from.image_url && !view.from.image_url->empty()) b["from_image"] = *view.from.image_url;
+    b["to_name"] = view.to.name;
+    if (view.to.image_url && !view.to.image_url->empty()) b["to_image"] = *view.to.image_url;
     return formats::json::ToString(b.ExtractValue());
 }
 
@@ -66,11 +94,27 @@ std::string ChallengeHandler::HandleRequestThrow(
 
     // ── GET /api/v1/game/challenge?id=<id> — open, no session required ──────
     if (request.GetMethod() == server::http::HttpMethod::kGet) {
+        // [design: challenge setup on the landing page] GET .../challenge?
+        // daily=1 — the landing page's "Today's Challenge" card. Deliberately
+        // a query-param branch on this SAME open handler rather than a new
+        // one: it's still "read one challenge", just resolved for DISPLAY
+        // instead of resume-by-id, and reuses this handler's existing
+        // registration (no new static_config.yaml/CMake/schema wiring).
+        if (!request.GetArg("daily").empty()) {
+            const auto daily = store_.GetLatestDailyChallenge();
+            if (!daily) {
+                response.SetStatus(server::http::HttpStatus::kNotFound);
+                return BuildProblemJson(request, server::http::HttpStatus::kNotFound,
+                                        "no daily challenge published yet");
+            }
+            return DailyChallengeJson(*daily);
+        }
+
         const auto& id_str = request.GetArg("id");
         if (id_str.empty()) {
             response.SetStatus(server::http::HttpStatus::kBadRequest);
             return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
-                                    "missing ?id=<challenge_id>");
+                                    "missing ?id=<challenge_id> (or ?daily=1)");
         }
         std::int64_t challenge_id = 0;
         try {
@@ -91,7 +135,8 @@ std::string ChallengeHandler::HandleRequestThrow(
         }
         return ChallengeJson(challenge->id, challenge->from_artist_id,
                              challenge->to_artist_id, challenge->role_mask,
-                             challenge->kind, challenge->optimal_len);
+                             challenge->kind, challenge->optimal_len,
+                             challenge->season_id);
     }
 
     // ── POST /api/v1/game/challenge — session required ──────────────────────
@@ -124,7 +169,14 @@ std::string ChallengeHandler::HandleRequestThrow(
     }
     if (role_mask <= 0) role_mask = 15;
 
-    auto challenge = store_.UpsertChallenge(from, to, role_mask, "custom", player->user_id);
+    // [SF-GAME-18] Every fresh challenge is stamped with the CURRENT season
+    // so its game_attempts (denormalized at submit time) count toward a
+    // season leaderboard — a no-op query cost-wise on the (overwhelmingly
+    // common) case where this pair's challenge already exists, since
+    // UpsertChallenge never touches season_id on conflict.
+    const auto season = store_.EnsureCurrentSeason();
+    auto challenge = store_.UpsertChallenge(from, to, role_mask, "custom",
+                                            player->user_id, season.id);
 
     // Lazy: the (rare, once-per-distinct-pair) BFS cost is paid by whichever
     // create/get call is first to see a still-null optimal_len, not up front.
@@ -140,7 +192,8 @@ std::string ChallengeHandler::HandleRequestThrow(
         // (yet); a later create/get call on the same pair will retry.
     }
 
-    return ChallengeJson(challenge.id, from, to, role_mask, "custom", challenge.optimal_len);
+    return ChallengeJson(challenge.id, from, to, role_mask, "custom",
+                        challenge.optimal_len, challenge.season_id);
 }
 
 yaml_config::Schema ChallengeHandler::GetStaticConfigSchema() {

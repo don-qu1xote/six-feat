@@ -221,6 +221,29 @@ def test_leaderboard_cursor_pagination_walks_distinct_pages(direct_challenge_id:
     assert page1["entries"][0]["score"] >= page2["entries"][0]["score"]
 
 
+def test_leaderboard_page1_is_briefly_stale_after_a_new_submit(direct_challenge_id: int):
+    # [SF-PERF-06] Page 1 (no cursor) of a given (scope, id, limit) is
+    # served from LeaderboardHandler's in-process TTL cache — a submit
+    # that lands immediately after a cached page was populated must NOT
+    # appear on that same page until the cache entry expires. This is the
+    # documented, intentional tradeoff (see leaderboard_handler.hpp's own
+    # comment) — not a bug — so this test locks in that a fresh player
+    # really is invisible for a beat, not just that stale data COULD show.
+    cookie1, _ = _cookie_and_user_id()
+    _submit(cookie1, direct_challenge_id, [_A_ID, _B_ID])  # score 1000-ish
+
+    warm = requests.get(LEADERBOARD_URL, params={"challenge_id": direct_challenge_id, "limit": 50}, timeout=5).json()
+    seen_before = {e["user_id"] for e in warm["entries"]}
+
+    cookie2, _ = _cookie_and_user_id()
+    _submit(cookie2, direct_challenge_id, [_A_ID, _Y_ID, _B_ID])  # a brand new player, score 900-ish
+
+    # Immediately after: still whatever the cache captured on the first
+    # call above — the new player must not appear yet.
+    still_cached = requests.get(LEADERBOARD_URL, params={"challenge_id": direct_challenge_id, "limit": 50}, timeout=5).json()
+    assert {e["user_id"] for e in still_cached["entries"]} == seen_before
+
+
 def test_leaderboard_requires_exactly_one_scope():
     both = requests.get(LEADERBOARD_URL, params={"challenge_id": "1", "season_id": "1"}, timeout=5)
     assert both.status_code == 400

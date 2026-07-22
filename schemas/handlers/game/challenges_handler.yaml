@@ -1,0 +1,4 @@
+type: object
+description: 'GET /api/v1/game/challenges — playable-challenge browser listing'
+additionalProperties: false
+properties: {}

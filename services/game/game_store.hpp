@@ -25,6 +25,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <userver/components/component_base.hpp>
@@ -46,6 +47,20 @@ struct Profile {
     int          rank{0};
 };
 
+// [SF-GAME-18] A game_seasons row — a fixed-length (30-day), non-overlapping
+// window that challenges get stamped with at creation time (see
+// EnsureCurrentSeason) so game_attempts.season_id (denormalized at submit
+// time, SF-GAME-17) can drive a season-scoped leaderboard the exact same way
+// a single challenge's leaderboard already works — GetLeaderboard has taken
+// LeaderboardScope::kSeason since SF-GAME-11/17, this is what finally
+// populates season_id instead of it staying nullopt forever.
+struct Season {
+    std::int64_t id{0};
+    std::string  name;
+    std::int64_t starts_ts{0};
+    std::int64_t ends_ts{0};
+};
+
 // [SF-GAME-15] A game_challenges row. optimal_len/optimal_path are nullopt/
 // empty until whatever creates the challenge (SF-GAME-16) computes and
 // stores our own BFS ideal — GetChallenge returns them as-is either way;
@@ -59,12 +74,12 @@ struct Challenge {
     std::string                  kind;
     std::optional<int>           optimal_len;
     std::vector<std::int64_t>    optimal_path;
-    // [SF-GAME-17] Denormalized onto game_attempts at submit time (see
+    // [SF-GAME-18] Denormalized onto game_attempts at submit time (see
     // RecordValidAttempt) so the season leaderboard is a direct
     // (season_id, score DESC) index scan — SF-GAME-11's own third index.
-    // nullopt for every challenge today: nothing creates a game_seasons row
-    // yet (no season-management ticket exists), so this is wired correctly
-    // for when one does, not exercised by anything yet.
+    // Set once, at creation (EnsureCurrentSeason), same "never overwrite an
+    // already-computed value" posture as optimal_len/optimal_path — a
+    // challenge keeps the season it was born in even once that season ends.
     std::optional<std::int64_t> season_id;
 };
 
@@ -79,6 +94,11 @@ struct SubmitResult {
     int elo_before{0};
     int elo_after{0};
     int elo_delta{0};
+    // [SF-GAME-19] The profile's games count AFTER this attempt (i.e.
+    // INCLUDING it) — 1 means this was the player's first-ever valid
+    // attempt, feeding EvaluateAndAwardAchievements' "first_win"/"veteran"
+    // rules without a second round-trip to game_profiles.
+    int games_after{0};
 };
 
 // [SF-GAME-16] Result of UpsertChallenge: `created` is true only when this
@@ -93,6 +113,44 @@ struct ChallengeUpsertResult {
     bool                        created{false};
     std::optional<int>         optimal_len;
     std::vector<std::int64_t>  optimal_path;
+    // [SF-GAME-18] The row's ACTUAL stored season_id — on a pre-existing
+    // challenge this is whatever season it was born in, not necessarily the
+    // season_id this same call passed in (which only takes effect on a
+    // fresh insert).
+    std::optional<std::int64_t> season_id;
+};
+
+// [design: challenge setup on the landing page] A resolved artist reference
+// (id + display name + optional image) — used only where a caller needs to
+// SHOW a challenge, not just resume one by id. Read straight off six-feat's
+// own `artists` table (see ResolveArtistNames' own comment for why that's a
+// legitimate direct read from this service).
+struct ArtistRef {
+    std::int64_t               id{0};
+    std::string                 name;
+    std::optional<std::string> image_url;
+};
+
+// [design: challenge setup on the landing page] The most recent kind='daily'
+// challenge, PLUS its endpoints resolved to real names/images — everything
+// the landing page's "Today's Challenge" card needs to render without a
+// second round-trip anywhere (the plain Challenge/GetChallenge pair only
+// carries numeric artist ids, fine for resuming a challenge you already
+// picked, useless for DISPLAYING one you haven't).
+struct DailyChallengeView {
+    Challenge  challenge;
+    ArtistRef  from;
+    ArtistRef  to;
+};
+
+// [game #3] One row of the challenge browser — a challenge plus its endpoints
+// resolved to names/images (same shape as DailyChallengeView) and its
+// creation timestamp (for keyset pagination + a "created" display).
+struct ChallengeListItem {
+    Challenge    challenge;
+    ArtistRef    from;
+    ArtistRef    to;
+    std::int64_t created_ts{0};
 };
 
 // [SF-GAME-17] One entry in a leaderboard page — a player's BEST valid
@@ -122,6 +180,16 @@ struct AttemptSummary {
     bool         valid{false};
     int          score{0};
     int          hops{0};
+    std::int64_t ts{0};
+};
+
+// [SF-GAME-19] One earned game_user_achievements row, joined against its
+// game_achievements catalog entry — everything ProfileHandler needs to
+// render it without a second lookup.
+struct Achievement {
+    std::string  code;
+    std::string  title;
+    std::string  descr;
     std::int64_t ts{0};
 };
 
@@ -203,17 +271,62 @@ public:
                                     std::optional<int> elapsed_ms,
                                     std::optional<std::int64_t> season_id) const;
 
+    // [SF-GAME-19] Achievement rule-engine — called once, right after
+    // RecordValidAttempt, with that SAME call's own result (never
+    // re-queried, so the rules see exactly what was just persisted).
+    // Evaluates the fixed catalog (game_achievements, seeded by
+    // kGameMigrationV2) against this one attempt + the player's now-current
+    // stats, awards (INSERT ... ON CONFLICT DO NOTHING) whichever rules
+    // newly match, and returns only the codes that were ACTUALLY newly
+    // inserted this call — a rule matching again on a later attempt is a
+    // no-op, not a duplicate award, and isn't in the returned list either
+    // time after the first.
+    std::vector<std::string> EvaluateAndAwardAchievements(
+        std::int64_t user_id, const SubmitResult& outcome,
+        std::optional<int> elapsed_ms) const;
+
+    // [game #4] The full achievement catalog (every game_achievements row),
+    // independent of any user — powers the Season & Achievements wall's
+    // "locked" tiles (the ones nobody's earned yet still need a title/descr to
+    // render). Same {code,title,descr} shape as ListAchievements; ts is always
+    // 0 (a catalog entry has no earn time). Ordered by code for a stable,
+    // deterministic render order.
+    std::vector<Achievement> ListAchievementCatalog() const;
+
+    // [SF-GAME-19] This player's earned achievements (code/title/descr,
+    // joined against the catalog) — feeds the public profile lookup
+    // (profile_handler.cpp's ?user= branch).
+    std::vector<Achievement> ListAchievements(std::int64_t user_id) const;
+
+    // [SF-GAME-18] Season lifecycle API.
+
+    // Returns the currently active season (by wall-clock time), creating one
+    // if none is active yet. Seasons are fixed 30-day, non-overlapping
+    // windows anchored at a fixed epoch (see game_store.cpp) — deterministic
+    // boundaries mean two concurrent callers computing "now"'s window always
+    // agree on its [starts_ts, ends_ts), so the EXCLUSIVE-lock transaction
+    // that guards the actual insert (same pattern RunGameMigrations uses on
+    // game_schema_version) only ever needs to break a literal race, never a
+    // logical one. Never returns nullopt — a season always exists once this
+    // has been called at least once, and it self-heals if wall-clock time
+    // ever moves past ends_ts before this is called again.
+    Season EnsureCurrentSeason() const;
+
     // [SF-GAME-16] Challenge lifecycle API.
 
     // Creates the (from, to, role_mask, kind) challenge if it doesn't exist
     // yet (the UNIQUE constraint from SF-GAME-11's migration), or returns
     // the existing one unchanged — NEVER overwrites an already-computed
-    // optimal_len/optimal_path. created_by is only stored on a genuine
-    // insert (nullable — a daily challenge has no player creator).
+    // optimal_len/optimal_path OR season_id. created_by is only stored on a
+    // genuine insert (nullable — a daily challenge has no player creator).
+    // [SF-GAME-18] season_id is the CURRENT season's id (EnsureCurrentSeason)
+    // at creation time — pass it straight through, same "never invent one"
+    // convention RecordValidAttempt's own season_id param already documents.
     ChallengeUpsertResult UpsertChallenge(std::int64_t from_artist_id,
                                           std::int64_t to_artist_id,
                                           int role_mask, const std::string& kind,
-                                          std::optional<std::int64_t> created_by) const;
+                                          std::optional<std::int64_t> created_by,
+                                          std::optional<std::int64_t> season_id) const;
 
     // Fills in optimal_len/optimal_path for a challenge whose ideal hasn't
     // been computed yet. A no-op (returns false) if it's already set — an
@@ -231,6 +344,28 @@ public:
     // component's own module comment) — no network hop for a read this
     // cheap and this infrequent (once a day).
     std::vector<std::int64_t> RandomArtistIdsWithCredits(int limit) const;
+
+    // [design: challenge setup on the landing page] The most recently
+    // published kind='daily' challenge (by created_ts, same ordering
+    // test_game_challenge.py's own _daily_challenge_row already reads by),
+    // with its from/to artist ids resolved to names/images against
+    // six-feat's own `artists` table — same "same Postgres database, legit
+    // direct read" posture as RandomArtistIdsWithCredits above. nullopt if
+    // no daily challenge has ever been published in this environment yet
+    // (a fresh stack, before DailyChallengeTask's first pass) — the caller
+    // maps that to 404, not an empty/fake body.
+    std::optional<DailyChallengeView> GetLatestDailyChallenge() const;
+
+    // [game #3] Recent PLAYABLE challenges (optimal_len computed) for the
+    // challenge-browser window, newest first, endpoints resolved to names/
+    // images. `kind` filters to "daily"/"custom" (empty = all). Keyset
+    // pagination on (created_ts, id) DESC: pass the last item's created_ts +
+    // id as the cursor to get the next page; nullopt cursor starts from the
+    // newest. `limit` is clamped by the caller (challenges_handler.cpp).
+    std::vector<ChallengeListItem> ListChallenges(
+        const std::string& kind,
+        std::optional<std::pair<std::int64_t, std::int64_t>> cursor,
+        int limit) const;
 
     // [SF-GAME-17] Leaderboard read API.
 

@@ -67,7 +67,22 @@ std::optional<std::string> ValidateDisplayName(const std::string& raw,
     return name;
 }
 
-std::string ProfileJson(const Profile& p) {
+// [SF-GAME-19] Shared by both ProfileJson and PublicProfileJson — same
+// {"code","title","descr","ts"} shape either way.
+formats::json::ValueBuilder AchievementsArray(const std::vector<Achievement>& achievements) {
+    formats::json::ValueBuilder arr(formats::json::Type::kArray);
+    for (const auto& a : achievements) {
+        formats::json::ValueBuilder ab(formats::json::Type::kObject);
+        ab["code"]  = a.code;
+        ab["title"] = a.title;
+        ab["descr"] = a.descr;
+        ab["ts"]    = a.ts;
+        arr.PushBack(ab.ExtractValue());
+    }
+    return arr;
+}
+
+std::string ProfileJson(const Profile& p, const std::vector<Achievement>& achievements) {
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     b["user_id"]      = p.user_id;
     b["display_name"] = p.display_name;
@@ -75,12 +90,14 @@ std::string ProfileJson(const Profile& p) {
     b["elo"]          = p.elo;
     b["games"]        = p.games;
     b["rank"]         = p.rank;
+    b["achievements"] = AchievementsArray(achievements);
     return formats::json::ToString(b.ExtractValue());
 }
 
 // [SF-GAME-17] Same profile fields as ProfileJson, plus "history" — the
 // public ?user= lookup's one extra field self-profile GET doesn't carry.
-std::string PublicProfileJson(const Profile& p, const std::vector<AttemptSummary>& history) {
+std::string PublicProfileJson(const Profile& p, const std::vector<AttemptSummary>& history,
+                              const std::vector<Achievement>& achievements) {
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     b["user_id"]      = p.user_id;
     b["display_name"] = p.display_name;
@@ -88,6 +105,7 @@ std::string PublicProfileJson(const Profile& p, const std::vector<AttemptSummary
     b["elo"]          = p.elo;
     b["games"]        = p.games;
     b["rank"]         = p.rank;
+    b["achievements"] = AchievementsArray(achievements);
     formats::json::ValueBuilder hist(formats::json::Type::kArray);
     for (const auto& a : history) {
         formats::json::ValueBuilder ab(formats::json::Type::kObject);
@@ -149,8 +167,9 @@ std::string ProfileHandler::HandleRequestThrow(
                 return BuildProblemJson(request, server::http::HttpStatus::kNotFound,
                                         "no such player");
             }
-            const auto history = store_.ListRecentAttempts(user_id, kHistoryLimit);
-            return PublicProfileJson(*profile, history);
+            const auto history      = store_.ListRecentAttempts(user_id, kHistoryLimit);
+            const auto achievements = store_.ListAchievements(user_id);
+            return PublicProfileJson(*profile, history, achievements);
         }
     }
 
@@ -165,7 +184,8 @@ std::string ProfileHandler::HandleRequestThrow(
 
     // GET — own profile (created on first sight).
     if (request.GetMethod() == server::http::HttpMethod::kGet) {
-        return ProfileJson(store_.EnsureAndGetProfile(player->user_id, player->name, ""));
+        const auto profile = store_.EnsureAndGetProfile(player->user_id, player->name, "");
+        return ProfileJson(profile, store_.ListAchievements(player->user_id));
     }
 
     // PATCH — change display_name.
@@ -189,7 +209,8 @@ std::string ProfileHandler::HandleRequestThrow(
 
     // Ensure the row exists (first PATCH before any GET), then update it.
     store_.EnsureAndGetProfile(player->user_id, player->name, "");
-    return ProfileJson(store_.SetDisplayName(player->user_id, *valid));
+    const auto profile = store_.SetDisplayName(player->user_id, *valid);
+    return ProfileJson(profile, store_.ListAchievements(player->user_id));
 }
 
 // static

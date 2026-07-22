@@ -45,6 +45,14 @@ six_feat_embed_schema(components/daily_challenge_task kDailyChallengeTaskCompone
 # rate-limit dependency, RateLimitStoreComponent, is six_feat_common's own
 # component — its schema is already embedded there, no new line needed here.)
 six_feat_embed_schema(handlers/game/leaderboard_handler kGameLeaderboardHandlerSchema GAME_LEADERBOARD_HANDLER_SCHEMA_HEADER)
+# [game #2] Live per-hop connection-check handler config schema.
+six_feat_embed_schema(handlers/game/link_handler kGameLinkHandlerSchema GAME_LINK_HANDLER_SCHEMA_HEADER)
+# [game #3] Challenge-browser listing handler config schema.
+six_feat_embed_schema(handlers/game/challenges_handler kGameChallengesHandlerSchema GAME_CHALLENGES_HANDLER_SCHEMA_HEADER)
+# [game #4] Season & achievements hub handler config schema.
+six_feat_embed_schema(handlers/game/season_handler kGameSeasonHandlerSchema GAME_SEASON_HANDLER_SCHEMA_HEADER)
+# [admin] Owner-gated admin handler config schema (admin-user-ids allowlist).
+six_feat_embed_schema(handlers/game/admin_handler kGameAdminHandlerSchema GAME_ADMIN_HANDLER_SCHEMA_HEADER)
 
 add_custom_target(six_feat_game_schema_headers DEPENDS
     ${GAME_READINESS_HANDLER_SCHEMA_HEADER}
@@ -56,6 +64,10 @@ add_custom_target(six_feat_game_schema_headers DEPENDS
     ${GAME_CHALLENGE_HANDLER_SCHEMA_HEADER}
     ${DAILY_CHALLENGE_TASK_COMPONENT_SCHEMA_HEADER}
     ${GAME_LEADERBOARD_HANDLER_SCHEMA_HEADER}
+    ${GAME_LINK_HANDLER_SCHEMA_HEADER}
+    ${GAME_CHALLENGES_HANDLER_SCHEMA_HEADER}
+    ${GAME_SEASON_HANDLER_SCHEMA_HEADER}
+    ${GAME_ADMIN_HANDLER_SCHEMA_HEADER}
 )
 
 add_executable(six_feat_game
@@ -69,6 +81,10 @@ add_executable(six_feat_game
     challenge_handler.cpp
     daily_challenge_task.cpp
     leaderboard_handler.cpp
+    link_handler.cpp
+    challenges_handler.cpp
+    season_handler.cpp
+    admin_handler.cpp
 )
 
 target_link_libraries(six_feat_game

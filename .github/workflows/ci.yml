@@ -188,17 +188,11 @@ jobs:
           cmake --build build-auth -j"$(nproc)"
           cmake --install build-auth
 
-      # [SF-GAME-10..17] Fifth service, same standalone-CMakeLists pattern
-      # as the four above — was missing here entirely, so services/game/
-      # was never even compile-checked in CI, only ever validated locally
-      # by hand. Not yet exercised by "Run integration tests" below:
-      # tests/test_game_*.py deliberately self-skip unless a full
-      # docker-compose stack (Postgres + nginx-routed origin) is reachable
-      # — see test_game_profile.py's own module doc-comment — which this
-      # job doesn't stand up (it launches services as bare subprocesses,
-      # no Postgres). Wiring a docker-compose-backed job to actually run
-      # them is tracked separately (SF-CI-04); this step only restores
-      # build parity with the other four services.
+      # [SF-GAME-10] Same pattern as the four builds above — tests/test_game_*
+      # below are pure-text/logic parity checks that don't need this binary
+      # (see test_game_migrations.py's own module comment), but the build
+      # itself is still the only thing in CI that catches a genuine C++
+      # compile error in services/game.
       - name: Build & install game
         run: |
           cmake -S services/game -B build-game \
@@ -776,9 +770,7 @@ jobs:
     # old single-Dockerfile job only ever scanned the six-feat image, even
     # though `docker build` compiled all 4 stages together; this restores
     # that same "all 4 get built" coverage and adds the Trivy gate to the
-    # other 3, which it never covered before). [SF-GAME-10..17] six-feat-game
-    # is the fifth entry — was never in this matrix at all, so its image was
-    # neither built nor scanned by CI until now.
+    # other 3, which it never covered before).
     strategy:
       fail-fast: false
       matrix:

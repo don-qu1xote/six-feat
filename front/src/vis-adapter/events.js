@@ -202,6 +202,15 @@ export function attachNetworkEvents(nameById) {
   _currentNameById = nameById || {};
 
   net.on("click", function(params) {
+    // [design: граф игры = граф эксплорера с ограничениями] While the game
+    // owns the graph (State.graphGameMode), every node click is a GAME move,
+    // not an Explorer expand/select — game-board.js's handler adds a hop,
+    // re-focuses, or reaches the goal. The Explorer's whole click pipeline
+    // below (compare, ctrl-seed-switch, select/expand) is out of scope here.
+    if (State.graphGameMode) {
+      if (State.gameClick) State.gameClick(params);
+      return;
+    }
     // [SF-WEB-47] Compare mode fully takes over click semantics while
     // active — a node click picks first/second instead of going through
     // selectObject; ctrl+click seed switch and the double-click-vs-click

@@ -1,24 +1,28 @@
 // ════════════════════════════════════════════════════════════════════════════
-// game/connect-model.test.js — [SF-GAME-01] the pure Connect-mode chain model.
-// No DOM, no network, no game-service — the whole point of connect-model.js
-// being framework-free (see its header) is that the "build a chain" mechanic
-// is testable exactly like this.
+// game/connect-model.test.js — [design: ветвящийся веб] the pure Connect-mode
+// branching-web model.
 // ════════════════════════════════════════════════════════════════════════════
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  createConnectChain, chainNodes, hopCount, isComplete,
-  addHop, undoHop, resetChain,
-  applyValidation, clearValidation, hopStatuses,
+  createConnectChain, chainNodes, hopCount, isComplete, webSize,
+  webNodes, webEdges, winningPath, focusName, setFocus,
+  addHop, undoHop, resetChain, setChallengeId,
   applyResult, clearResult, resultView,
   applyLeaderboard, clearLeaderboard, leaderboardView,
+  giveUp, pathRevealed, elapsedMs,
 } from "./connect-model.js";
 
-describe("createConnectChain / chainNodes", () => {
-  it("starts with the two fixed endpoints and nothing between them", () => {
+describe("createConnectChain", () => {
+  it("starts as a lone start node, focused, with the goal not yet in the web", () => {
     const g = createConnectChain("Drake", "Adele");
-    expect(chainNodes(g)).toEqual(["Drake", "Adele"]);
+    expect(webNodes(g)).toEqual(["Drake"]);
+    expect(chainNodes(g)).toEqual(["Drake"]);   // the current line is just start→focus
+    expect(focusName(g)).toBe("Drake");
     expect(hopCount(g)).toBe(0);
+    expect(webSize(g)).toBe(0);
+    expect(winningPath(g)).toBeNull();
     expect(isComplete(g)).toBe(false);
+    expect(g.challengeId).toBeNull();
   });
 
   it("normalizes endpoint whitespace on creation", () => {
@@ -28,391 +32,288 @@ describe("createConnectChain / chainNodes", () => {
   });
 });
 
-describe("addHop", () => {
-  it("appends intermediates in order between start and goal", () => {
+describe("addHop (attaches to the focus, focus follows)", () => {
+  it("appends under the focus and moves the focus onto the new node (linear typing)", () => {
     const g = createConnectChain("Drake", "Adele");
     expect(addHop(g, "Rihanna")).toEqual({ ok: true, completed: false });
+    expect(focusName(g)).toBe("Rihanna");
     expect(addHop(g, "Paul Epworth")).toEqual({ ok: true, completed: false });
-    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Paul Epworth", "Adele"]);
+    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Paul Epworth"]);
     expect(hopCount(g)).toBe(2);
+    expect(webSize(g)).toBe(2);
   });
 
-  it("rejects an empty or whitespace-only hop", () => {
+  it("rejects an empty/whitespace name", () => {
     const g = createConnectChain("Drake", "Adele");
     expect(addHop(g, "   ")).toEqual({ ok: false, reason: "empty" });
-    expect(hopCount(g)).toBe(0);
+    expect(webSize(g)).toBe(0);
   });
 
-  it("rejects a hop identical to the current tail (no self-loop), case-insensitively", () => {
+  it("rejects re-adding the focused node itself", () => {
     const g = createConnectChain("Drake", "Adele");
-    // tail is the start when there are no hops yet
-    expect(addHop(g, "drake")).toEqual({ ok: false, reason: "duplicate" });
     addHop(g, "Rihanna");
-    // tail is now the last hop
-    expect(addHop(g, "RIHANNA")).toEqual({ ok: false, reason: "duplicate" });
-    expect(hopCount(g)).toBe(1);
+    expect(addHop(g, "Rihanna")).toEqual({ ok: false, reason: "duplicate" });
   });
 
-  it("marks the chain completed when the goal is added, without storing it as a hop", () => {
+  it("rejects an artist already anywhere in the web (re-focus to branch instead)", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    addHop(g, "21 Savage");
+    expect(addHop(g, "Rihanna")).toEqual({ ok: false, reason: "exists" });
+  });
+
+  it("naming the goal joins it to the web under the focus and completes", () => {
     const g = createConnectChain("Drake", "Adele");
     addHop(g, "Rihanna");
     expect(addHop(g, "Adele")).toEqual({ ok: true, completed: true });
     expect(isComplete(g)).toBe(true);
-    expect(hopCount(g)).toBe(1); // goal did NOT become a hop
-    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Adele"]); // goal shown once
+    expect(winningPath(g)).toEqual(["Drake", "Rihanna", "Adele"]);
+    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Adele"]); // focus followed to the goal
   });
 
-  it("allows a direct start→goal connection with no intermediates", () => {
+  it("is case-insensitive for duplicate and goal checks", () => {
     const g = createConnectChain("Drake", "Adele");
-    expect(addHop(g, "Adele")).toEqual({ ok: true, completed: true });
-    expect(chainNodes(g)).toEqual(["Drake", "Adele"]);
+    addHop(g, "Rihanna");
+    expect(addHop(g, "RIHANNA")).toEqual({ ok: false, reason: "duplicate" });
+    expect(addHop(g, "adele")).toEqual({ ok: true, completed: true });
   });
 
-  it("is a no-op once completed until undone", () => {
+  it("is a no-op once completed or given up", () => {
     const g = createConnectChain("Drake", "Adele");
     addHop(g, "Adele");
-    expect(addHop(g, "Rihanna")).toEqual({ ok: false, reason: "completed" });
+    expect(addHop(g, "Rihanna")).toEqual({ ok: false, reason: "over" });
+
+    const g2 = createConnectChain("Drake", "Adele");
+    addHop(g2, "Rihanna"); giveUp(g2);
+    expect(addHop(g2, "21 Savage")).toEqual({ ok: false, reason: "over" });
+  });
+});
+
+describe("[design: ветвящийся веб] branching via setFocus", () => {
+  it("re-focusing an earlier node grows a SECOND branch from it", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");        // Drake→Rihanna (focus Rihanna)
+    addHop(g, "Calvin Harris");  // Rihanna→Calvin (focus Calvin)
+    expect(setFocus(g, "Drake").ok).toBe(true);
+    addHop(g, "Future");         // NEW branch: Drake→Future (focus Future)
+    expect(new Set(webNodes(g))).toEqual(new Set(["Drake", "Rihanna", "Calvin Harris", "Future"]));
+    expect(chainNodes(g)).toEqual(["Drake", "Future"]); // current line follows the new branch
+    expect(webSize(g)).toBe(3);
+  });
+
+  it("winningPath is the branch that actually reached the goal, not the other one", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    addHop(g, "Dead End");          // Drake→Rihanna→Dead End (a losing branch)
+    setFocus(g, "Drake");
+    addHop(g, "Paul Epworth");      // Drake→Paul Epworth
+    addHop(g, "Adele");             // Paul Epworth→Adele — wins on THIS branch
+    expect(winningPath(g)).toEqual(["Drake", "Paul Epworth", "Adele"]);
+  });
+
+  it("setFocus is a no-op for an unknown node or once the round is over", () => {
+    const g = createConnectChain("Drake", "Adele");
+    expect(setFocus(g, "Nobody").ok).toBe(false);
+    addHop(g, "Adele");
+    expect(setFocus(g, "Drake").ok).toBe(false);
+  });
+
+  it("webEdges lists every parent→child link", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    setFocus(g, "Drake");
+    addHop(g, "Future");
+    expect(webEdges(g)).toEqual([
+      { from: "Drake", to: "Rihanna" },
+      { from: "Drake", to: "Future" },
+    ]);
   });
 });
 
 describe("undoHop", () => {
-  it("pops the last hop", () => {
+  it("removes the most-recently-added node and focuses its parent", () => {
     const g = createConnectChain("Drake", "Adele");
     addHop(g, "Rihanna");
-    addHop(g, "Paul Epworth");
-    expect(undoHop(g)).toEqual({ undone: "Paul Epworth" });
-    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Adele"]);
+    addHop(g, "21 Savage");
+    expect(undoHop(g)).toEqual({ undone: "21 Savage" });
+    expect(webNodes(g)).toEqual(["Drake", "Rihanna"]);
+    expect(focusName(g)).toBe("Rihanna");
   });
 
-  it("re-opens a completed chain on the first undo without dropping a hop", () => {
+  it("re-opens a completed web on first undo (drops the goal, focuses its parent)", () => {
     const g = createConnectChain("Drake", "Adele");
     addHop(g, "Rihanna");
-    addHop(g, "Adele"); // completes
+    addHop(g, "Adele");
+    expect(isComplete(g)).toBe(true);
     expect(undoHop(g)).toEqual({ undone: "goal" });
     expect(isComplete(g)).toBe(false);
-    expect(hopCount(g)).toBe(1); // hop kept
-    // now a second undo pops the real hop
-    expect(undoHop(g)).toEqual({ undone: "Rihanna" });
+    expect(webNodes(g)).toEqual(["Drake", "Rihanna"]);
+    expect(focusName(g)).toBe("Rihanna");
   });
 
-  it("returns null when there is nothing to undo", () => {
+  it("undoing a completed web resumes the clock", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Adele");
+    expect(g.finishedAt).not.toBeNull();
+    undoHop(g);
+    expect(g.finishedAt).toBeNull();
+  });
+
+  it("returns null when there's nothing to undo", () => {
     const g = createConnectChain("Drake", "Adele");
     expect(undoHop(g)).toEqual({ undone: null });
   });
 });
 
 describe("resetChain", () => {
-  it("clears all hops and completion but keeps the endpoints", () => {
+  it("clears the whole web back to the start, keeps the endpoints and challengeId", () => {
     const g = createConnectChain("Drake", "Adele");
+    setChallengeId(g, 42);
     addHop(g, "Rihanna");
     addHop(g, "Adele");
+    applyResult(g, { valid: true, player_len: 1, optimal_len: 1, optimal_path: [], score: 10, max_score: 10, elo_before: 1200, elo_after: 1210, elo_delta: 10 });
     resetChain(g);
-    expect(hopCount(g)).toBe(0);
+    expect(g.start).toBe("Drake");
+    expect(g.goal).toBe("Adele");
+    expect(g.challengeId).toBe(42);
+    expect(webNodes(g)).toEqual(["Drake"]);
+    expect(focusName(g)).toBe("Drake");
     expect(isComplete(g)).toBe(false);
-    expect(chainNodes(g)).toEqual(["Drake", "Adele"]);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// [SF-GAME-14/02] Server validation rendering — applyValidation/hopStatuses
-// are driven entirely off a hand-built mock response shaped exactly like
-// POST /api/v1/game/validate's real 200 body (see
-// services/game/validate_handler.cpp). No network call, no Genius, no
-// game-service — the whole point, same as the rest of this file.
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("hopStatuses (before any validation)", () => {
-  it("has exactly one (unknown) transition for a bare start→goal chain", () => {
-    const g = createConnectChain("Drake", "Adele");
-    expect(hopStatuses(g)).toEqual(["unknown"]);
-  });
-
-  it("is all 'unknown' once hops exist but nothing has been checked yet", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    addHop(g, "Paul Epworth");
-    // 4 nodes → 3 transitions: Drake→Rihanna, Rihanna→Paul Epworth, Paul Epworth→Adele
-    expect(hopStatuses(g)).toEqual(["unknown", "unknown", "unknown"]);
-  });
-});
-
-describe("applyValidation / hopStatuses", () => {
-  it("marks every transition valid on a {valid: true} server response", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: true });
-    expect(hopStatuses(g)).toEqual(["valid", "valid"]);
-  });
-
-  it("marks the first bad transition invalid and leaves the rest unknown", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    addHop(g, "Paul Epworth");
-    // 3 transitions (indices 0,1,2): the server only ever checks up through
-    // the first break, so index 2 (Paul Epworth→Adele) was never examined.
-    applyValidation(g, { valid: false, reason: "invalid_hop", invalid_hop_index: 1 });
-    expect(hopStatuses(g)).toEqual(["valid", "invalid", "unknown"]);
-  });
-
-  it("treats invalid_hop_index 0 as the very first transition, not 'no index'", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: false, reason: "invalid_hop", invalid_hop_index: 0 });
-    expect(hopStatuses(g)).toEqual(["invalid", "unknown"]);
-  });
-
-  it("falls back to all-unknown on an endpoint_mismatch response (no hop was checked)", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: false, reason: "endpoint_mismatch" });
-    expect(hopStatuses(g)).toEqual(["unknown", "unknown"]);
-  });
-
-  it("ignores a malformed/garbage response instead of throwing", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, null);
-    expect(hopStatuses(g)).toEqual(["unknown", "unknown"]);
-    applyValidation(g, "not an object");
-    expect(hopStatuses(g)).toEqual(["unknown", "unknown"]);
-  });
-
-  it("clearValidation resets to the unchecked state", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: true });
-    clearValidation(g);
-    expect(hopStatuses(g)).toEqual(["unknown", "unknown"]);
-  });
-});
-
-describe("validation is invalidated by any chain edit", () => {
-  it("addHop (on success) clears a prior validation result", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: true });
-    addHop(g, "Paul Epworth");
-    expect(hopStatuses(g)).toEqual(["unknown", "unknown", "unknown"]);
-  });
-
-  it("addHop rejected (duplicate/empty) does NOT clear a prior validation result", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: true });
-    expect(addHop(g, "")).toEqual({ ok: false, reason: "empty" });
-    expect(hopStatuses(g)).toEqual(["valid", "valid"]);
-  });
-
-  it("undoHop clears a prior validation result", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: true });
-    undoHop(g);
-    // back to a bare start→goal chain: one (now unchecked) transition again
-    expect(hopStatuses(g)).toEqual(["unknown"]);
-  });
-
-  it("resetChain clears a prior validation result", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyValidation(g, { valid: true });
-    resetChain(g);
-    expect(hopStatuses(g)).toEqual(["unknown"]);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// [SF-GAME-15/03] Result screen — applyResult/resultView are driven entirely
-// off a hand-built mock response shaped exactly like POST
-// /api/v1/game/submit's real 200 body (see services/game/submit_handler.cpp).
-// No network, no game-service, no Elo math re-implemented here — the whole
-// point, same as the rest of this file.
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("resultView (before any submit)", () => {
-  it("is null — nothing to show, and specifically nothing about the ideal", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
     expect(resultView(g)).toBeNull();
   });
 });
 
-describe("applyResult / resultView — the ideal is revealed only on a valid result", () => {
-  it("reveals the player chain, the ideal, and the score/Elo breakdown", () => {
+describe("giveUp / pathRevealed", () => {
+  it("is not revealed on a fresh chain", () => {
+    const g = createConnectChain("Drake", "Adele");
+    expect(pathRevealed(g)).toBe(false);
+  });
+
+  it("reaching the goal reveals the path without calling giveUp", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Adele");
+    expect(pathRevealed(g)).toBe(true);
+  });
+
+  it("giveUp reveals an incomplete chain", () => {
     const g = createConnectChain("Drake", "Adele");
     addHop(g, "Rihanna");
+    giveUp(g);
+    expect(g.gaveUp).toBe(true);
+    expect(pathRevealed(g)).toBe(true);
+  });
+
+  it("giveUp is a no-op once the chain is already complete", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Adele");
+    giveUp(g);
+    expect(g.gaveUp).toBe(false);
+  });
+});
+
+describe("timer (elapsedMs / startedAt / finishedAt)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("starts at 0 elapsed and unfrozen on creation", () => {
+    const g = createConnectChain("Drake", "Adele");
+    expect(g.finishedAt).toBeNull();
+    expect(elapsedMs(g)).toBe(0);
+  });
+
+  it("keeps advancing with the clock while the round is open", () => {
+    const g = createConnectChain("Drake", "Adele");
+    vi.setSystemTime(new Date("2026-01-01T00:00:07.000Z"));
+    expect(elapsedMs(g)).toBe(7000);
+  });
+
+  it("freezes at the moment the goal is reached", () => {
+    const g = createConnectChain("Drake", "Adele");
+    vi.setSystemTime(new Date("2026-01-01T00:00:05.000Z"));
+    addHop(g, "Adele");
+    vi.setSystemTime(new Date("2026-01-01T00:01:00.000Z"));
+    expect(elapsedMs(g)).toBe(5000);
+  });
+
+  it("freezes at the moment the player gives up", () => {
+    const g = createConnectChain("Drake", "Adele");
+    addHop(g, "Rihanna");
+    vi.setSystemTime(new Date("2026-01-01T00:00:12.000Z"));
+    giveUp(g);
+    vi.setSystemTime(new Date("2026-01-01T00:05:00.000Z"));
+    expect(elapsedMs(g)).toBe(12000);
+  });
+});
+
+describe("result (SF-GAME-15/03)", () => {
+  it("stays null before applyResult", () => {
+    const g = createConnectChain("Drake", "Adele");
+    expect(resultView(g)).toBeNull();
+  });
+
+  it("normalizes a rejected verdict", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyResult(g, { valid: false, reason: "invalid_hop", invalid_hop_index: 1 });
+    expect(resultView(g)).toEqual({ revealed: false, reason: "invalid_hop", invalidHopIndex: 1 });
+  });
+
+  it("normalizes a revealed verdict, camelCasing the wire fields", () => {
+    const g = createConnectChain("Drake", "Adele");
     applyResult(g, {
-      valid: true,
-      player_len: 2,
-      optimal_len: 1,
-      optimal_path: [1, 2],
-      score: 900,
-      max_score: 1000,
-      elo_before: 1200,
-      elo_after: 1212,
-      elo_delta: 12,
+      valid: true, player_len: 2, optimal_len: 1, optimal_path: [1, 2],
+      score: 700, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14,
     });
-    const view = resultView(g);
-    expect(view).toEqual({
-      revealed: true,
-      playerChain: ["Drake", "Rihanna", "Adele"],
-      playerLen: 2,
-      optimalPath: [1, 2],
-      optimalLen: 1,
-      score: 900,
-      maxScore: 1000,
-      eloBefore: 1200,
-      eloAfter: 1212,
-      eloDelta: 12,
+    expect(resultView(g)).toEqual({
+      revealed: true, playerLen: 2, optimalLen: 1, optimalPath: [1, 2],
+      score: 700, maxScore: 1000, eloBefore: 1200, eloAfter: 1214, eloDelta: 14,
     });
   });
 
-  it("does NOT reveal the ideal on a rejected (invalid) submit response", () => {
+  it("clearResult resets to null", () => {
     const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyResult(g, { valid: false, reason: "invalid_hop", invalid_hop_index: 0 });
-    const view = resultView(g);
-    expect(view).toEqual({
-      revealed: false,
-      reason: "invalid_hop",
-      invalidHopIndex: 0,
-    });
-    expect(view.optimalPath).toBeUndefined();
-  });
-
-  it("falls back to reason 'unknown' on a rejection with no reason field", () => {
-    const g = createConnectChain("Drake", "Adele");
-    applyResult(g, { valid: false });
-    expect(resultView(g)).toEqual({ revealed: false, reason: "unknown", invalidHopIndex: null });
-  });
-
-  it("ignores a malformed/garbage response instead of throwing", () => {
-    const g = createConnectChain("Drake", "Adele");
-    applyResult(g, null);
-    expect(resultView(g)).toBeNull();
-    applyResult(g, "not an object");
-    expect(resultView(g)).toBeNull();
-  });
-
-  it("clearResult resets to the unsubmitted state", () => {
-    const g = createConnectChain("Drake", "Adele");
-    applyResult(g, { valid: true, player_len: 1, optimal_len: 1, optimal_path: [1, 2], score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14 });
+    applyResult(g, { valid: false, reason: "endpoint_mismatch" });
     clearResult(g);
     expect(resultView(g)).toBeNull();
   });
-});
 
-describe("result is invalidated by any chain edit, same as validation", () => {
-  const mockResult = { valid: true, player_len: 1, optimal_len: 1, optimal_path: [1, 2], score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14 };
-
-  it("addHop (on success) clears a prior result", () => {
+  it("ignores a malformed response", () => {
     const g = createConnectChain("Drake", "Adele");
-    applyResult(g, mockResult);
-    addHop(g, "Rihanna");
-    expect(resultView(g)).toBeNull();
-  });
-
-  it("undoHop clears a prior result", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyResult(g, mockResult);
-    undoHop(g);
-    expect(resultView(g)).toBeNull();
-  });
-
-  it("resetChain clears a prior result", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyResult(g, mockResult);
-    resetChain(g);
+    applyResult(g, null);
     expect(resultView(g)).toBeNull();
   });
 });
 
-// [SF-GAME-17/04] Leaderboard — applyLeaderboard/leaderboardView are driven
-// entirely off a mocked GET /api/v1/game/leaderboard response, mirroring
-// applyResult/resultView above. "After submit the challenge's leaderboard is
-// shown" means: once a real result has been revealed AND the leaderboard
-// page for it has been applied, leaderboardView returns the normalized page.
-describe("leaderboardView (before any leaderboard fetch)", () => {
-  it("is null on a fresh chain", () => {
+describe("leaderboard (SF-GAME-17/04)", () => {
+  it("stays null before applyLeaderboard", () => {
     const g = createConnectChain("Drake", "Adele");
     expect(leaderboardView(g)).toBeNull();
   });
-});
 
-describe("applyLeaderboard / leaderboardView — shown after a submit result", () => {
-  const mockResult = { valid: true, player_len: 1, optimal_len: 1, optimal_path: [1, 2], score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14 };
-  const mockLeaderboard = {
-    entries: [
-      { user_id: 1, display_name: "Alice", score: 1000, hops: 1, ts: 100 },
-      { user_id: 2, display_name: "Bob", score: 850, hops: 2, ts: 200 },
-    ],
-    next_cursor: "850:2",
-  };
-
-  it("normalizes the leaderboard response after a result is revealed", () => {
+  it("normalizes entries", () => {
     const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Adele");
-    applyResult(g, mockResult);
-    applyLeaderboard(g, mockLeaderboard);
-
-    expect(resultView(g).revealed).toBe(true);
-    const view = leaderboardView(g);
-    expect(view).toEqual({
-      entries: [
-        { userId: 1, displayName: "Alice", score: 1000, hops: 1, ts: 100 },
-        { userId: 2, displayName: "Bob", score: 850, hops: 2, ts: 200 },
-      ],
-      nextCursor: "850:2",
+    applyLeaderboard(g, {
+      entries: [{ user_id: 1, display_name: "Alice", score: 900, hops: 2, ts: 100 }],
+      next_cursor: "abc",
+    });
+    expect(leaderboardView(g)).toEqual({
+      entries: [{ userId: 1, displayName: "Alice", score: 900, hops: 2, ts: 100 }],
+      nextCursor: "abc",
     });
   });
 
-  it("treats a missing/non-string next_cursor as null", () => {
+  it("ignores a malformed response", () => {
+    const g = createConnectChain("Drake", "Adele");
+    applyLeaderboard(g, { entries: "not-an-array" });
+    expect(leaderboardView(g)).toBeNull();
+  });
+
+  it("clearLeaderboard resets to null", () => {
     const g = createConnectChain("Drake", "Adele");
     applyLeaderboard(g, { entries: [], next_cursor: null });
-    expect(leaderboardView(g)).toEqual({ entries: [], nextCursor: null });
-  });
-
-  it("normalizes a malformed response to null", () => {
-    const g = createConnectChain("Drake", "Adele");
-    applyLeaderboard(g, null);
-    expect(leaderboardView(g)).toBeNull();
-    applyLeaderboard(g, { not: "shaped like a leaderboard" });
-    expect(leaderboardView(g)).toBeNull();
-  });
-
-  it("clearLeaderboard resets to the not-yet-fetched state", () => {
-    const g = createConnectChain("Drake", "Adele");
-    applyLeaderboard(g, mockLeaderboard);
     clearLeaderboard(g);
-    expect(leaderboardView(g)).toBeNull();
-  });
-});
-
-describe("leaderboard is invalidated by any chain edit, same as result", () => {
-  const mockLeaderboard = { entries: [{ user_id: 1, display_name: "Alice", score: 1000, hops: 1, ts: 100 }], next_cursor: null };
-
-  it("addHop (on success) clears a prior leaderboard", () => {
-    const g = createConnectChain("Drake", "Adele");
-    applyLeaderboard(g, mockLeaderboard);
-    addHop(g, "Rihanna");
-    expect(leaderboardView(g)).toBeNull();
-  });
-
-  it("undoHop clears a prior leaderboard", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyLeaderboard(g, mockLeaderboard);
-    undoHop(g);
-    expect(leaderboardView(g)).toBeNull();
-  });
-
-  it("resetChain clears a prior leaderboard", () => {
-    const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");
-    applyLeaderboard(g, mockLeaderboard);
-    resetChain(g);
     expect(leaderboardView(g)).toBeNull();
   });
 });

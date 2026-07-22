@@ -47,6 +47,15 @@
       <path d="M 5 7 L 12 4 L 12 18 L 5 21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
+    <!-- [design: 3-way switch] hero-mode-tab-game's own icon — a game
+         controller, matching the approved Game-tab mockup. -->
+    <symbol id="icon-game" viewBox="0 0 24 24">
+      <rect x="2" y="7" width="20" height="10" rx="5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="8" cy="12" r="1.2" fill="currentColor"/>
+      <circle cx="16" cy="10.5" r="1" fill="currentColor"/>
+      <circle cx="18" cy="13" r="1" fill="currentColor"/>
+    </symbol>
+
     <symbol id="icon-swap" viewBox="0 0 24 24">
       <path d="M7 5v13M7 5L3.5 8.5M7 5l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
       <path d="M17 19V6M17 19l3.5-3.5M17 19l-3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
@@ -81,6 +90,11 @@
 
     <symbol id="icon-close" viewBox="0 0 24 24">
       <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <!-- [design: game rail] "Back to Explore" chevron. -->
+    <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+      <path d="M14 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
     </symbol>
 
     <symbol id="icon-download" viewBox="0 0 24 24">
@@ -138,21 +152,6 @@
       <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.5 2" stroke-linecap="round"/>
     </symbol>
 
-    <!-- [SF-GAME-01] Connect game rail button — a path of nodes with a play
-         triangle: "play the connect-the-artists game". -->
-    <!-- [SF-GAME landing entry] Redrawn: the old icon-game was two dots
-         joined by a line + play-triangle — visually near-identical to
-         icon-shuffle's connect-the-dots glyph, which now sits right next
-         to it in the hero mode switch. A gamepad reads unambiguously as
-         "game" instead of doubling up on the same connect-the-dots motif. -->
-    <symbol id="icon-game" viewBox="0 0 24 24">
-      <path d="M4 10c0-2.2 1.8-4 4-4h8c2.2 0 4 1.8 4 4v4c0 2.2-1.4 3-3 3-1 0-1.6-.6-2.2-1.3L13.6 14h-3.2l-1.2 1.7C8.6 16.4 8 17 7 17c-1.6 0-3-.8-3-3v-4z"
-        fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-      <path d="M7.2 9v3M5.7 10.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-      <circle cx="16" cy="9" r="0.9" fill="currentColor" stroke="none"/>
-      <circle cx="18" cy="11" r="0.9" fill="currentColor" stroke="none"/>
-    </symbol>
-
     <!-- [SF-WEB-61] BubbleSet toggle rail button — three soft overlapping
          circles, echoing the haze-per-sector visual it turns on/off. -->
     <symbol id="icon-haze" viewBox="0 0 24 24">
@@ -170,6 +169,40 @@
 
     <symbol id="icon-moon" viewBox="0 0 24 24">
       <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <!-- [game #4] Season & achievement icons — same 24×24 / 1.5-stroke line
+         language as the role/rail icons above, so the badges wall reads as
+         the same family as the graph's role badges. -->
+    <symbol id="icon-trophy" viewBox="0 0 24 24">
+      <path d="M7 4h10v5a5 5 0 0 1-10 0V4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7 6H4.5a2.5 2.5 0 0 0 2.5 2.7M17 6h2.5a2.5 2.5 0 0 1-2.5 2.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M12 14v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M8.5 20.5l1-3.5h5l1 3.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="icon-star" viewBox="0 0 24 24">
+      <path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.77l-5.2 2.73.99-5.79-4.21-4.1 5.82-.85z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="icon-target" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+    </symbol>
+
+    <symbol id="icon-bolt" viewBox="0 0 24 24">
+      <path d="M13 3L5 13.5h5l-1 7.5 8-11h-5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="icon-flame" viewBox="0 0 24 24">
+      <path d="M12 2.5c3 3.5 5.5 6 5.5 10a5.5 5.5 0 0 1-11 0c0-1.8.7-3.2 1.8-4.4.3 1.2 1.2 1.8 2 1.8 1.2 0 1.6-1 .9-2.6C10.3 6.6 10.8 4.4 12 2.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+
+    <symbol id="icon-medal" viewBox="0 0 24 24">
+      <path d="M8.5 3L12 9M15.5 3L12 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12" cy="15" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="12" cy="15" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/>
     </symbol>
 
   </svg>
@@ -224,33 +257,30 @@
            replacing the old hidden find-path-toggle button + dual-input
            panel. Only this landing presentation/trigger changes — the
            path search call (runServerPath) and the in-graph path finder
-           (rail/⌘K) are untouched.
-           [SF-GAME landing entry] Third tab, "Game" — unlike the two tabs
-           above it does not swap a local .hero-mode-panel, it navigates
-           straight to the #/game surface (setupHeroModeSwitch's own
-           doc-comment covers why): the Connect GAME (build-a-chain, scored)
-           is a full surface, not another hero search variant. Replaces the
-           old #btn-game-mode rail button that used to bury this entry
-           point inside the explorer canvas toolbar. -->
+           (rail/⌘K) are untouched. -->
       <div class="hero-mode-switch ui-segment" id="hero-mode-switch" role="tablist" aria-label="Search mode" data-mode="explore">
-        <div class="hero-mode-switch-pair">
-          <button type="button" class="hero-mode-tab" id="hero-mode-tab-explore" role="tab"
-            aria-selected="true" aria-controls="hero-mode-panel-explore" tabindex="0">
-            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg>
-            <span>Explore</span>
-          </button>
-          <button type="button" class="hero-mode-tab" id="hero-mode-tab-connect" role="tab"
-            aria-selected="false" aria-controls="hero-mode-panel-connect" tabindex="-1">
-            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
-            <span>Connect</span>
-          </button>
-          <span class="hero-mode-thumb" aria-hidden="true"></span>
-        </div>
-        <button type="button" class="hero-mode-tab hero-mode-tab--nav" id="hero-mode-tab-game" role="tab"
-          aria-selected="false" tabindex="0" data-tip="Connect game — link two artists by hand, scored">
+        <button type="button" class="hero-mode-tab" id="hero-mode-tab-explore" role="tab"
+          aria-selected="true" aria-controls="hero-mode-panel-explore" tabindex="0">
+          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg>
+          <span>Explore</span>
+        </button>
+        <button type="button" class="hero-mode-tab" id="hero-mode-tab-connect" role="tab"
+          aria-selected="false" aria-controls="hero-mode-panel-connect" tabindex="-1">
+          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
+          <span>Connect</span>
+        </button>
+        <!-- [design: challenge setup on the landing page] Equal third
+             segment — same in-place panel toggle as Explore/Connect now
+             (path-panel.js's setupHeroModeSwitch), not an immediate
+             navigate: picking a challenge is a landing-native step, same
+             as picking a search term or a path pair, and only the
+             in-panel "Start challenge" button actually leaves for #/game. -->
+        <button type="button" class="hero-mode-tab" id="hero-mode-tab-game" role="tab"
+          aria-selected="false" aria-controls="hero-mode-panel-game" tabindex="0">
           <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-game"/></svg>
           <span>Game</span>
         </button>
+        <span class="hero-mode-thumb" aria-hidden="true"></span>
       </div>
 
       <div class="hero-mode-stage" id="hero-mode-stage">
@@ -350,6 +380,72 @@
                instead of an element embedded in this panel. -->
           <div class="hop-chain" id="hero-hop-chain"></div>
         </div>
+
+        <!-- [design: challenge setup, revised] A "vs" duel — deliberately
+             NOT the from→to route-track Connect uses right next to it
+             (feedback: the two looked like the same trick reused). Each
+             side is its own ring-avatar + input card, colored start/goal
+             like everywhere else the game already commits to that
+             language (chain-graph.js's own node fill). "Start challenge"
+             hands off to game/connect.js's existing setStartArtist/
+             setGoalArtist (unchanged) and only THEN navigates to #/game —
+             by the time the player lands there, both endpoints already
+             read as set (see connect.js's setupGameLandingPanel). -->
+        <div class="hero-mode-panel hero-game-panel" id="hero-mode-panel-game" role="tabpanel" aria-labelledby="hero-mode-tab-game">
+          <!-- [design: Today's Challenge + or pick a rival] Real GET
+               /api/v1/game/challenge?daily=1 data (challenge_handler.cpp) —
+               a single compact row, not a tall card, so it can't reproduce
+               the empty-space complaint the first mockup drew. Hidden until
+               setupGameLandingPanel's fetch actually resolves; no
+               placeholder/skeleton state guessed at. -->
+          <div class="hero-game-daily" id="hero-game-daily" hidden>
+            <span class="daily-eyebrow" title="Auto-picked once a day from real, connected collaborators — a background job, not a curated/manual pick.">Today's Challenge</span>
+            <div class="daily-pair">
+              <span class="duel-avatar duel-avatar--sm" id="hero-game-daily-from-avatar" aria-hidden="true">?</span>
+              <span class="daily-name" id="hero-game-daily-from-name"></span>
+              <span class="daily-arrow" aria-hidden="true">→</span>
+              <span class="duel-avatar duel-avatar--sm" id="hero-game-daily-to-avatar" aria-hidden="true">?</span>
+              <span class="daily-name" id="hero-game-daily-to-name"></span>
+            </div>
+            <button type="button" class="daily-play ui-btn ui-btn--primary" id="btn-hero-play-daily">Play</button>
+          </div>
+
+          <!-- "or pick a rival" — real GET /api/v1/game/leaderboard?
+               challenge_id=<daily.id> (SF-GAME-17, unchanged) scoped to
+               TODAY's challenge. Picking one plays the same daily
+               challenge with a "chasing <name>'s score" banner carried
+               into the game surface (renderRivalBanner in connect.js). -->
+          <div class="hero-game-rivals" id="hero-game-rivals" hidden>
+            <span class="rivals-eyebrow">or pick a rival</span>
+            <div class="rivals-list" id="hero-game-rivals-list"></div>
+          </div>
+
+          <div class="hero-game-divider" id="hero-game-divider" hidden><span>or set your own</span></div>
+
+          <div class="hero-game-duel">
+            <div class="duel-side duel-side--from">
+              <span class="duel-avatar" id="hero-game-from-avatar" aria-hidden="true">?</span>
+              <div class="duel-field">
+                <label class="sr-only" for="hero-game-from-input">Start with</label>
+                <input class="duel-input" id="hero-game-from-input" type="text" autocomplete="off" placeholder="Start with…" />
+                <div class="ac-dropdown" id="hero-game-from-ac" role="listbox"></div>
+              </div>
+            </div>
+            <span class="duel-vs" aria-hidden="true">VS</span>
+            <div class="duel-side duel-side--to">
+              <span class="duel-avatar" id="hero-game-to-avatar" aria-hidden="true">?</span>
+              <div class="duel-field">
+                <label class="sr-only" for="hero-game-to-input">Reach</label>
+                <input class="duel-input" id="hero-game-to-input" type="text" autocomplete="off" placeholder="Reach…" />
+                <div class="ac-dropdown" id="hero-game-to-ac" role="listbox"></div>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="hero-game-start ui-btn ui-btn--primary" id="btn-hero-start-challenge">
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-game"/></svg>
+            <span>Start challenge</span>
+          </button>
+        </div>
       </div>
 
       <div class="auth-bar" id="auth-bar">
@@ -426,12 +522,6 @@
       <button class="rail-btn ui-btn ui-btn--ghost" id="btn-bubble-sets" data-tip="BubbleSets — soft cluster haze" aria-pressed="false">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-haze"/></svg><span class="rl">BubbleSets</span>
       </button>
-
-      <!-- [SF-GAME landing entry] The old #btn-game-mode rail button that
-           used to live here was removed — the game surface (#/game) is now
-           entered from the landing hero-mode-switch's "Game" tab (see
-           index.html's hero section, src/ui/path-panel.js's
-           setupHeroModeSwitch), not buried in the explorer canvas toolbar. -->
 
       <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
            visible on the canvas) — this was the rail's duplicate.
@@ -776,73 +866,364 @@
 
   </main>
 
-  <!-- [SF-GAME-01] "Connect" game surface — split layout shown only on the
-       #/game route (ui/router.js, SF-WEB-25): a live chain-graph on the left
-       (canvas, src/game/chain-graph.js) and a docked track panel on the right.
-       Pick a start + goal artist, then build the collaboration chain between
-       them one intermediate at a time. Controller: src/game/connect.js; chain
-       logic: connect-model.js. No validation/scoring yet (SF-GAME-14/15). -->
+  <!-- [SF-GAME-01] "Connect" game surface (#/game) — [design: reuse the
+       graph mockup] a real chain-graph canvas stage (nodes + curved
+       edges, same visual grammar as the explorer's own graph) with the
+       typed composer as the PRIMARY way to build the chain right under
+       it; clicking a node the graph already knows about is a secondary,
+       collapsed shortcut (.connect-browse below), not the main flow.
+       Hidden until the router switches to this surface (connect.js
+       toggles .show — see router.js's SURFACE_GAME). -->
+  <!-- [design: Split · Graph + Track] Left: the full clickable graph
+       explorer (a real vis.Network, chain-graph.js). Right: a docked
+       "Your line" panel — the chain the player has built, an autocomplete
+       to add the next collaborator, live score + Lock in. Nodes are chosen
+       either by clicking a collaborator on the graph OR by typing into the
+       panel; both drive the same commitHop() pipeline. -->
+  <!-- [design: routed game windows] Shared game nav — the same markup is
+       repeated on each game surface (#/game, #/game/leaderboard,
+       #/game/profile); game-windows.js marks the active link from the
+       router. Plain hash links, so the existing router (hashchange) swaps
+       surfaces with no extra JS. -->
   <section id="connect-surface" class="connect-surface" aria-label="Connect game" hidden>
-    <!-- Left: live chain visualization -->
-    <div class="connect-stage" id="connect-stage">
-      <canvas id="connect-canvas" role="img" aria-label="Current collaboration chain"></canvas>
-      <div class="connect-topline">
-        <button id="connect-back" class="ui-btn ui-btn--ghost connect-back" type="button">← Back to graph</button>
-        <span class="connect-wordmark">Connect<span class="cw-dot">.</span></span>
-      </div>
-    </div>
+    <nav class="game-rail" aria-label="Game navigation">
+      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
+      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
+      <span class="game-rail-spacer"></span>
+      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    </nav>
+    <div class="connect-split">
 
-    <!-- Right: docked track panel -->
-    <aside class="connect-dock" aria-label="Connect controls">
-      <header class="connect-dock-head">
-        <span class="connect-eyebrow">Build the line</span>
-        <p class="connect-sub">Link two artists through their collaborations — one hop at a time.</p>
-      </header>
+      <!-- ── LEFT: graph explorer ─────────────────────────────────────── -->
+      <div class="connect-graph-col">
+        <div class="connect-graph-overlay">
+          <!-- [design: показать, что это игра] A small "Game" flag on the
+               reused explorer graph — the one visual cue that separates this
+               from the plain Explore graph. -->
+          <span class="connect-game-flag" aria-hidden="true"><svg class="cgf-ico" viewBox="0 0 24 24"><use href="#icon-game"></use></svg>Game</span>
+          <!-- Quest target pill — click to change the start/goal (opens the
+               endpoint editor popover below). renderHead keeps the two
+               spans in sync; renderEndpoints toggles the popover. -->
+          <button type="button" id="connect-endpoints-summary" class="connect-quest-pill" title="Change start / goal">
+            <span class="cst-start" id="connect-title-start"></span>
+            <span class="cst-arrow" aria-hidden="true">→</span>
+            <span class="cst-goal" id="connect-title-goal"></span>
+          </button>
+          <span class="connect-par-pill" id="connect-par-pill" hidden><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-locate"></use></svg>PAR&nbsp;<b id="connect-par-value">—</b></span>
+          <span class="connect-timer-pill" title="Time"><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-clock"></use></svg><b id="connect-timer-value">0:00</b></span>
 
-      <div class="connect-endpoints">
-        <label class="connect-field">
-          <span class="connect-label">From</span>
-          <input id="connect-start-input" class="ui-input" type="text" autocomplete="off"
-                 placeholder="Start artist…" aria-label="Start artist" />
-          <div id="connect-start-ac" class="ac-dropdown" role="listbox"></div>
-        </label>
-        <label class="connect-field">
-          <span class="connect-label">To</span>
-          <input id="connect-goal-input" class="ui-input" type="text" autocomplete="off"
-                 placeholder="Goal artist…" aria-label="Goal artist" />
-          <div id="connect-goal-ac" class="ac-dropdown" role="listbox"></div>
-        </label>
-      </div>
-
-      <div id="connect-chain" class="connect-chain" aria-live="polite"></div>
-      <p id="connect-status" class="connect-status" aria-live="polite"></p>
-
-      <!-- [SF-GAME-15/03] Result screen — populated by connect.js's
-           renderResult() from State.connect.game.result (see
-           connect-model.js's applyResult/resultView). Hidden until a real
-           POST /api/v1/game/submit response has been applied; the ideal
-           (optimal path) only ever appears here, never before. -->
-      <div id="connect-result" class="connect-result" aria-live="polite" hidden></div>
-
-      <!-- [SF-GAME-17/04] Challenge leaderboard — populated by connect.js's
-           renderLeaderboard() from State.connect.game.leaderboard (see
-           connect-model.js's applyLeaderboard/leaderboardView). Shown
-           alongside the result screen after a submit. -->
-      <div id="connect-leaderboard" class="connect-leaderboard" aria-live="polite" hidden></div>
-
-      <div class="connect-builder">
-        <label class="connect-field connect-field--grow">
-          <span class="connect-label">Add artist</span>
-          <input id="connect-add-input" class="ui-input" type="text" autocomplete="off"
-                 placeholder="Next collaborator…" aria-label="Add intermediate artist" disabled />
-          <div id="connect-add-ac" class="ac-dropdown" role="listbox"></div>
-        </label>
-        <div class="connect-actions">
-          <button id="connect-undo" class="ui-btn ui-btn--ghost" type="button" disabled>Undo</button>
-          <button id="connect-reset" class="ui-btn ui-btn--ghost" type="button" disabled>Reset</button>
+          <!-- Endpoint editor — hidden until the quest pill is clicked. -->
+          <div class="connect-endpoints" id="connect-endpoints" hidden>
+            <label class="connect-field">
+              <span class="connect-label">From</span>
+              <input id="connect-start-input" class="ui-input" type="text" autocomplete="off"
+                     placeholder="Start artist…" aria-label="Start artist" />
+              <div id="connect-start-ac" class="ac-dropdown" role="listbox"></div>
+            </label>
+            <label class="connect-field">
+              <span class="connect-label">To</span>
+              <input id="connect-goal-input" class="ui-input" type="text" autocomplete="off"
+                     placeholder="Goal artist…" aria-label="Goal artist" />
+              <div id="connect-goal-ac" class="ac-dropdown" role="listbox"></div>
+            </label>
+          </div>
         </div>
+
+        <!-- Graph rail — zoom / fit, driving the live vis.Network. -->
+        <div class="connect-graph-rail">
+          <button type="button" id="connect-zoom-in" class="cgr-btn" aria-label="Zoom in"><svg class="cgr-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-plus"></use></svg></button>
+          <button type="button" id="connect-zoom-out" class="cgr-btn" aria-label="Zoom out"><svg class="cgr-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-minus"></use></svg></button>
+          <button type="button" id="connect-fit" class="cgr-btn" aria-label="Fit graph"><svg class="cgr-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-frame"></use></svg></button>
+        </div>
+
+        <!-- [design: граф должен быть кликабельным, как на странице графа]
+             A REAL vis.Network instance (same vendored vis-network the
+             Explorer uses — chain-graph.js): hover/zoom/drag all work. The
+             chain draws as circularImage nodes (photo, or the SAME
+             placeholderFor() avatar the graph page falls back to); the
+             current artist's REAL collaborators (game-graph.js's
+             fetchNeighbours, the same /api/v1/graph the Explorer calls)
+             render as clickable satellite nodes — clicking one adds that
+             hop. -->
+        <div id="connect-canvas" class="connect-canvas" role="img"
+             aria-label="Your collaboration line and the current artist's real collaborators"></div>
+        <p class="connect-stage-empty" id="connect-stage-empty">Pick a start and a goal to begin.</p>
       </div>
-    </aside>
+
+      <!-- ── RIGHT: "Your line" docked panel ──────────────────────────── -->
+      <aside class="connect-line-panel">
+        <header class="clp-head">
+          <h2 class="clp-title">Your line</h2>
+          <span class="clp-hops"><b id="connect-hops-value">0</b> hops</span>
+        </header>
+
+        <!-- "or pick a rival" banner — set when the player started this
+             challenge by chasing a specific leaderboard entry from the
+             landing panel. -->
+        <span class="clp-rival" id="connect-rival-pill" hidden><svg class="clp-rival-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span id="connect-rival-text"></span></span>
+
+        <div class="clp-add">
+          <input id="connect-add-input" class="clp-add-input" type="text" autocomplete="off"
+                 placeholder="Add next collaborator…" aria-label="Add the next collaborator" disabled />
+          <div id="connect-add-ac" class="ac-dropdown" role="listbox"></div>
+          <button type="button" id="connect-add-btn" class="clp-add-btn" aria-label="Add collaborator" disabled><svg class="clp-add-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-plus"></use></svg></button>
+        </div>
+
+        <!-- The player's own line, always visible (this is THEIR chain, not
+             the hidden ideal path). Populated by connect.js's renderLine. -->
+        <ol class="clp-line" id="connect-line-list" aria-live="polite"></ol>
+
+        <!-- SECONDARY — the tail's real collaborators, also shown live on the
+             graph; kept as a collapsed text list for keyboard/quick access. -->
+        <details class="connect-browse" id="connect-browse">
+          <summary class="connect-browse-summary">
+            <svg class="connect-browse-chev" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="connect-browse-label">Or browse real collaborators</span>
+          </summary>
+          <div class="connect-browse-chips" id="connect-browse-chips" aria-live="polite"></div>
+        </details>
+
+        <div class="connect-leaderboard" id="connect-leaderboard" aria-live="polite" hidden></div>
+
+        <!-- Status line (rejection reason / "gave up") + score breakdown. -->
+        <div class="clp-status" id="connect-finish-label"></div>
+        <p class="clp-detail" id="connect-finish-detail" hidden></p>
+
+        <footer class="clp-foot">
+          <div class="clp-score">
+            <span class="clp-score-label">Score</span>
+            <span class="clp-score-value" id="connect-finish-score">—</span>
+          </div>
+          <button type="button" id="connect-lockin" class="clp-lockin" disabled>Lock in</button>
+        </footer>
+
+        <div class="clp-actions">
+          <button id="connect-undo" class="connect-mini-btn" type="button" disabled>Undo</button>
+          <button id="connect-reset" class="connect-mini-btn" type="button" disabled>Reset</button>
+          <button id="connect-give-up" class="connect-mini-btn" type="button" disabled>Give up</button>
+          <button id="connect-share" class="connect-mini-btn" type="button" disabled>Share</button>
+          <a id="connect-back" class="connect-mini-btn connect-back" href="#/graph">← Back</a>
+        </div>
+      </aside>
+
+    </div>
+  </section>
+
+  <!-- [design: routed game windows] Leaderboard screen (#/game/leaderboard) —
+       real GET /api/v1/game/leaderboard, season rating + challenge-scoped
+       tabs. game-windows.js owns show/hide + data load. -->
+  <section id="game-leaderboard-surface" class="game-screen" aria-label="Leaderboard" hidden>
+    <nav class="game-rail" aria-label="Game navigation">
+      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
+      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
+      <span class="game-rail-spacer"></span>
+      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    </nav>
+    <div class="game-screen-body">
+      <header class="gs-head">
+        <h1 class="gs-title">Leaderboard</h1>
+        <div class="gs-tabs" id="lb-tabs" role="tablist">
+          <button type="button" class="gs-tab is-active" id="lb-tab-season" role="tab" data-scope="season">Season</button>
+          <button type="button" class="gs-tab" id="lb-tab-challenge" role="tab" data-scope="challenge">This challenge</button>
+        </div>
+      </header>
+      <p class="gs-sub" id="lb-scope-label"></p>
+      <ol class="lb-list" id="lb-list" aria-live="polite"></ol>
+      <p class="gs-empty" id="lb-empty" hidden>No scores yet.</p>
+    </div>
+  </section>
+
+  <!-- [design: routed game windows] Profile screen (#/game/profile) — real
+       GET /api/v1/game/profile (self) + ?user= for attempt history. -->
+  <section id="game-profile-surface" class="game-screen" aria-label="Profile" hidden>
+    <nav class="game-rail" aria-label="Game navigation">
+      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
+      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
+      <span class="game-rail-spacer"></span>
+      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    </nav>
+    <div class="game-screen-body">
+      <div id="profile-signed-out" class="gs-empty" hidden>
+        Sign in with your Genius to track your Elo, rank and badges.
+        <a class="gs-signin" href="/auth/login">Sign in</a>
+      </div>
+      <div id="profile-card" hidden>
+        <!-- [design: ЛК] Personal hero — avatar in an accent ring, editable
+             display name, rank chip, and quick actions. -->
+        <section class="cab-hero">
+          <span class="cab-avatar-ring">
+            <span class="pf-avatar" id="pf-avatar" aria-hidden="true">?</span>
+          </span>
+          <div class="cab-id">
+            <p class="cab-eyebrow">Your cabinet</p>
+            <div class="cab-name-row">
+              <h1 class="pf-name" id="pf-name">—</h1>
+              <button type="button" class="cab-edit" id="pf-edit-name" title="Change display name" aria-label="Change display name">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-pen"></use></svg>
+              </button>
+            </div>
+            <div class="cab-chips">
+              <span class="cab-chip cab-chip--rank" id="pf-rank"></span>
+            </div>
+          </div>
+          <div class="cab-cta">
+            <a class="ui-btn ui-btn--primary" href="#/game">Play daily</a>
+            <button type="button" class="ui-btn" id="pf-share">Share profile</button>
+          </div>
+        </section>
+
+        <!-- Stat tiles -->
+        <div class="cab-tiles">
+          <div class="cab-tile"><span class="cab-tile-v" id="pf-elo">—</span><span class="cab-tile-l">Elo</span></div>
+          <div class="cab-tile"><span class="cab-tile-v" id="pf-games">—</span><span class="cab-tile-l">Games</span></div>
+          <div class="cab-tile"><span class="cab-tile-v" id="pf-badges">—</span><span class="cab-tile-l">Badges</span></div>
+        </div>
+
+        <section class="cab-section">
+          <h2 class="cab-sec-title">Achievements</h2>
+          <div class="pf-badges" id="pf-badge-list"></div>
+          <p class="gs-empty" id="pf-badges-empty" hidden>No badges yet — play a round.</p>
+        </section>
+        <section class="cab-section">
+          <h2 class="cab-sec-title">Recent attempts</h2>
+          <ol class="pf-history" id="pf-history" aria-live="polite"></ol>
+          <p class="gs-empty" id="pf-history-empty" hidden>No attempts yet.</p>
+        </section>
+      </div>
+
+      <!-- [admin] Owner-only controls — revealed by game-windows.js only when
+           GET /api/v1/game/admin says the signed-in player is an admin (the
+           GAME_ADMIN_GENIUS_IDS allowlist). Publishes a daily challenge on
+           demand; leave both fields blank for a random pair. -->
+      <section id="admin-panel" class="admin-panel" hidden>
+        <header class="pf-head pf-head--admin">
+          <span class="admin-badge" aria-hidden="true">
+            <svg viewBox="0 0 24 24" class="admin-ico"><use href="#icon-locate"></use></svg>
+          </span>
+          <div class="pf-id">
+            <h2 class="pf-name pf-name--sm">Admin</h2>
+            <span class="pf-rank">Publish today's challenge on demand</span>
+          </div>
+        </header>
+        <div class="admin-publish">
+          <label class="admin-field">
+            <span class="admin-label">From (optional)</span>
+            <input id="admin-from-input" class="ui-input" type="text" autocomplete="off" placeholder="Pick an artist…" />
+            <div id="admin-from-ac" class="ac-dropdown" role="listbox"></div>
+          </label>
+          <label class="admin-field">
+            <span class="admin-label">To (optional)</span>
+            <input id="admin-to-input" class="ui-input" type="text" autocomplete="off" placeholder="Pick an artist…" />
+            <div id="admin-to-ac" class="ac-dropdown" role="listbox"></div>
+          </label>
+          <button id="admin-publish-daily" class="ui-btn ui-btn--primary admin-publish-btn" type="button">Publish daily</button>
+        </div>
+        <p id="admin-status" class="admin-status" aria-live="polite"></p>
+      </section>
+    </div>
+  </section>
+
+  <!-- [game #3] Challenge browser (#/game/challenges) — real GET
+       /api/v1/game/challenges, paginated cards you can start with one click. -->
+  <section id="game-challenges-surface" class="game-screen" aria-label="Challenges" hidden>
+    <nav class="game-rail" aria-label="Game navigation">
+      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
+      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
+      <span class="game-rail-spacer"></span>
+      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    </nav>
+    <div class="game-screen-body game-screen-body--wide">
+      <header class="gs-head">
+        <h1 class="gs-title">Challenges</h1>
+        <div class="gs-tabs" id="ch-tabs" role="tablist">
+          <button type="button" class="gs-tab is-active" id="ch-tab-all" role="tab" data-kind="">All</button>
+          <button type="button" class="gs-tab" id="ch-tab-daily" role="tab" data-kind="daily">Daily</button>
+          <button type="button" class="gs-tab" id="ch-tab-custom" role="tab" data-kind="custom">Custom</button>
+        </div>
+      </header>
+      <p class="gs-sub">Pick a pair and race to connect them. PAR is the shortest possible line.</p>
+      <div class="ch-grid" id="ch-grid" aria-live="polite"></div>
+      <p class="gs-empty" id="ch-empty" hidden>No challenges yet — play the daily to seed the board.</p>
+      <button type="button" class="ch-more ui-btn" id="ch-more" hidden>Load more</button>
+    </div>
+  </section>
+
+  <!-- [game #4] Season & Achievements hub (#/game/season) — real GET
+       /api/v1/game/season (season + podium + achievement catalog) merged
+       with the signed-in player's own earned badges from
+       /api/v1/game/profile. Glass hero + role-badge-style achievement wall,
+       matching the graph page's visual language. -->
+  <section id="game-season-surface" class="game-screen" aria-label="Season and achievements" hidden>
+    <nav class="game-rail" aria-label="Game navigation">
+      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
+      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
+      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
+      <span class="game-rail-spacer"></span>
+      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    </nav>
+    <div class="game-screen-body game-screen-body--wide">
+
+      <!-- Season hero — glass panel keyed to amber (the trophy/season tone). -->
+      <section class="sn-hero">
+        <span class="sn-hero-badge" aria-hidden="true">
+          <svg class="sn-hero-ico" viewBox="0 0 24 24"><use href="#icon-trophy"></use></svg>
+        </span>
+        <div class="sn-hero-main">
+          <p class="sn-eyebrow">Current season</p>
+          <h1 class="sn-title" id="sn-name">—</h1>
+          <div class="sn-meta">
+            <span class="sn-countdown" id="sn-countdown"></span>
+            <span class="sn-you" id="sn-you" hidden></span>
+          </div>
+          <div class="sn-progress" role="progressbar" aria-label="Season progress">
+            <span class="sn-progress-fill" id="sn-progress-fill"></span>
+          </div>
+          <p class="sn-dates" id="sn-dates"></p>
+        </div>
+      </section>
+
+      <!-- Podium — the season-scoped top few, links out to the full board. -->
+      <section class="sn-section">
+        <header class="gs-head">
+          <h2 class="gs-title gs-title--sm">Top of the season</h2>
+          <a class="sn-link" href="#/game/leaderboard" data-surface="game/leaderboard">Full leaderboard →</a>
+        </header>
+        <ol class="lb-list" id="sn-podium" aria-live="polite"></ol>
+        <p class="gs-empty" id="sn-podium-empty" hidden>No scores yet — be the first to post one.</p>
+      </section>
+
+      <!-- Achievements wall — every catalog badge, earned lit / locked dimmed. -->
+      <section class="sn-section">
+        <header class="gs-head">
+          <h2 class="gs-title gs-title--sm">Achievements</h2>
+          <span class="sn-ach-count" id="sn-ach-count"></span>
+        </header>
+        <p class="gs-sub sn-ach-hint" id="sn-ach-hint" hidden>
+          Sign in with your Genius to start earning badges.
+          <a class="gs-signin" href="/auth/login">Sign in</a>
+        </p>
+        <div class="ach-grid" id="sn-ach-grid" aria-live="polite"></div>
+      </section>
+    </div>
   </section>
 
   <div class="toast" id="toast" role="alert" aria-live="polite"></div>

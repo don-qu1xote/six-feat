@@ -1,5 +1,7 @@
 type: object
-description: HTTP client for six-feat's internal anti-cheat neighbours lookup (SF-GAME-13)
+description: >-
+    [SF-GAME-13] Anti-cheat client: verifies a claimed hop A→B via six-feat's
+    internal /internal/neighbours endpoint.
 additionalProperties: false
 properties:
     six-feat-base-url:
@@ -7,5 +9,5 @@ properties:
         description: Base URL of the six-feat service, e.g. http://six-feat:8080
     timeout-ms:
         type: integer
-        description: Per-request timeout for calls to POST /internal/neighbours
+        description: Per-request timeout for calls to six-feat's /internal/neighbours
         defaultDescription: '2000'

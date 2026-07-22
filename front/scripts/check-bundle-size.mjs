@@ -22,12 +22,10 @@ const distDir = process.env.BUNDLE_DIST_DIR || join(import.meta.dirname, "..", "
 // ticket. 40 KB leaves ~35% headroom for organic growth before the budget
 // itself needs revisiting, while still catching an accidental large
 // dependency or a regression that silently balloons the bundle.
-//
-// [SF-GAME-01..17] Revisited: the Connect game surface (chain graph,
-// autocomplete wiring, result screen, leaderboard) organically grew the
-// bundle to ~40.7 KB gzip, past the original budget — exactly the
-// "revisiting" scenario predicted above, not a regression to chase down.
-// 48 KB restores ~18% headroom over the current size.
+// [SF-GAME-01] Raised to 48 KB — the Connect game surface (chain model,
+// canvas renderer, real challenge/submit/leaderboard API client, plus the
+// 3-way hero-mode-switch) is a genuine new feature's worth of code, not
+// bloat; ~43.3 KB actual leaves a smaller but still real margin.
 export const BUDGET_KB = 48;
 export const BUDGET_BYTES = BUDGET_KB * 1024;
 

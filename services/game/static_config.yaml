@@ -126,7 +126,7 @@ components_manager:
     # nginx proxies /api/v1/game/* here, so the public path is the same.
     handler-game-profile:
       path: /api/v1/game/profile
-      method: GET, PATCH
+      method: GET,PATCH
       task_processor: *main_tp
 
     # [SF-GAME-14] Server-side anti-cheat: verifies every hop of a submitted
@@ -155,7 +155,7 @@ components_manager:
     # the same.
     handler-game-challenge:
       path: /api/v1/game/challenge
-      method: GET, POST
+      method: GET,POST
       task_processor: *main_tp
 
     # [SF-GAME-17] Top-N leaderboard for a challenge or a season — reads
@@ -166,6 +166,46 @@ components_manager:
       method: GET
       task_processor: *main_tp
       cache-ttl-ms: 15000
+
+    # [game #2] GET /api/v1/game/link?from=&to= — live per-hop connection
+    # check the branching-web front-end calls before letting a player type an
+    # unconnected artist onto their web. Open (no session), same posture as
+    # handler-game-challenge's GET; reuses NeighboursClient (six-feat's own
+    # /internal/neighbours), so no new dependency.
+    handler-game-link:
+      path: /api/v1/game/link
+      method: GET
+      task_processor: *main_tp
+
+    # [game #3] GET /api/v1/game/challenges — challenge-browser listing
+    # (recent playable challenges, keyset-paginated, endpoints resolved to
+    # names). Open (no session), same as handler-game-leaderboard; reads
+    # game_challenges + artists directly via GameStore.
+    handler-game-challenges:
+      path: /api/v1/game/challenges
+      method: GET
+      task_processor: *main_tp
+
+    # [game #4] GET /api/v1/game/season — season & achievements hub: the
+    # current season (created on first sight), its podium, and the achievement
+    # catalog, in one call. Open (no session), same as handler-game-leaderboard
+    # / handler-game-challenges.
+    handler-game-season:
+      path: /api/v1/game/season
+      method: GET
+      task_processor: *main_tp
+
+    # [admin] GET/POST /api/v1/game/admin — owner-gated. GET is a UI-gating
+    # status probe (is the caller an admin?); POST publishes a daily challenge
+    # on demand (same operation DailyChallengeTask runs once a day, triggered
+    # by hand). admin-user-ids is the owner allowlist, fed from the
+    # GAME_ADMIN_GENIUS_IDS env var via docker-entrypoint.sh's config_vars —
+    # empty (the default) means nobody is an admin and the panel never shows.
+    handler-game-admin:
+      path: /api/v1/game/admin
+      method: GET,POST
+      task_processor: *main_tp
+      admin-user-ids: $game_admin_genius_ids
 
     # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
     handler-server-monitor:

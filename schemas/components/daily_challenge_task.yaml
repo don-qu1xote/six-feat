@@ -1,20 +1,23 @@
 type: object
-description: Once-a-day background publisher for kind="daily" challenges (SF-GAME-16)
+description: >-
+    [SF-GAME-16] Once-a-day publisher for kind="daily" challenges — picks a
+    candidate artist pair from six-feat's own credits and upserts a challenge
+    for it.
 additionalProperties: false
 properties:
     interval-seconds:
         type: integer
-        description: How often the daily-challenge task runs (also runs once at startup)
+        description: How often the task runs
         defaultDescription: '86400'
     min-path-len:
         type: integer
-        description: Minimum BFS hop count for a candidate pair to count as "interesting"
+        description: Minimum acceptable BFS ideal length for a candidate pair to be published
         defaultDescription: '2'
     max-attempts:
         type: integer
-        description: How many random candidate pairs to try in one pass before giving up
+        description: Candidate pairs tried before giving up on a given run
         defaultDescription: '20'
     candidate-pool-size:
         type: integer
-        description: How many distinct L1-credited artist ids to draw candidate pairs from
+        description: Size of the random-artist-id pool a candidate pair is drawn from
         defaultDescription: '50'

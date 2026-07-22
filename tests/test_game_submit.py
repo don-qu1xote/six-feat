@@ -288,6 +288,24 @@ def test_exact_optimal_chain_scores_max_and_matches_expected_elo(direct_challeng
     assert body["elo_after"] == expected_new
 
 
+def test_first_perfect_submit_unlocks_achievements_once(direct_challenge_id: int):
+    # [SF-GAME-19] A brand-new player's first submit, solved exactly
+    # optimally, must unlock BOTH "first_win" (games_after == 1) and
+    # "perfect_solve" (score == max_score) — and never again on a repeat.
+    _, cookie = _fresh_cookie()
+    first = _post(cookie, {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]})
+    assert first.status_code == 200
+    unlocked = set(first.json().get("achievements_unlocked", []))
+    assert {"first_win", "perfect_solve"} <= unlocked
+
+    second = _post(cookie, {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]})
+    assert second.status_code == 200
+    # Not the FIRST win anymore, and this repeat's score is penalized (see
+    # test_prior_attempts_reduce_a_later_valid_submissions_score below) so
+    # it's not a perfect solve either — nothing new to unlock.
+    assert second.json().get("achievements_unlocked", []) == []
+
+
 def test_longer_valid_chain_applies_extra_hop_penalty(direct_challenge_id: int):
     _, cookie = _fresh_cookie()
     resp = _post(cookie, {"challenge_id": direct_challenge_id, "chain": [_A_ID, _Y_ID, _B_ID]})

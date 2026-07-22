@@ -20,15 +20,19 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#include "admin_handler.hpp"
 #include "challenge_handler.hpp"
+#include "challenges_handler.hpp"
 #include "core/rate_limit_store_component.hpp"
 #include "daily_challenge_task.hpp"
 #include "game_store.hpp"
 #include "http/health_handler.hpp"
 #include "internal_handlers.hpp"
 #include "leaderboard_handler.hpp"
+#include "link_handler.hpp"
 #include "neighbours_client.hpp"
 #include "profile_handler.hpp"
+#include "season_handler.hpp"
 #include "submit_handler.hpp"
 #include "validate_handler.hpp"
 
@@ -82,6 +86,20 @@ int main(int argc, char* argv[]) {
             // [SF-GAME-17] GET /api/v1/game/leaderboard — needs GameStore
             // (already appended above).
             .Append<six_feat::game::LeaderboardHandler>()
+            // [game #2] GET /api/v1/game/link — live per-hop connection check;
+            // needs NeighboursClient (already appended above).
+            .Append<six_feat::game::LinkHandler>()
+            // [game #3] GET /api/v1/game/challenges — challenge browser
+            // listing; needs GameStore (already appended above).
+            .Append<six_feat::game::ChallengesHandler>()
+            // [game #4] GET /api/v1/game/season — season & achievements hub
+            // (current season + podium + achievement catalog); needs
+            // GameStore (already appended above).
+            .Append<six_feat::game::SeasonHandler>()
+            // [admin] GET/POST /api/v1/game/admin — owner-gated status probe +
+            // on-demand daily-challenge publish; needs GameStore and
+            // NeighboursClient (already appended above).
+            .Append<six_feat::game::AdminHandler>()
             // [IDEA-27 pattern] Internal metrics endpoint — bound to
             // listener-monitor (see static_config.yaml), never the public
             // listener.

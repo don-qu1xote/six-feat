@@ -1,8 +1,11 @@
 type: object
-description: Challenge/season top-N leaderboard endpoint (SF-GAME-17)
+description: >-
+    GET /api/v1/game/leaderboard — top-N by challenge or season, one entry
+    per player. [SF-PERF-06] Page 1 of each distinct (scope, id, limit) is
+    cached in-process for cache-ttl-ms.
 additionalProperties: false
 properties:
     cache-ttl-ms:
         type: integer
-        description: How long a first-page (no cursor) leaderboard response is cached in-process
+        description: How long a cached page-1 leaderboard response stays fresh
         defaultDescription: '15000'

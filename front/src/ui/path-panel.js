@@ -13,7 +13,7 @@ import { showToast } from "./toast.js";
 import { isPathPanelOpen, openPathPanel, closePathPanel } from "./modals.js";
 import { attachNodeAutocomplete } from "./autocomplete.js";
 import { runServerPath } from "./path-result.js";
-import { navigateToSurface, SURFACE_GAME } from "./router.js";
+import { onSurfaceChange, getCurrentSurface, SURFACE_GAME } from "./router.js";
 
 // ════════════════════════════════════════════════════════════════════════════
 // TASK 4: PATH PANEL
@@ -107,47 +107,87 @@ export function setupHeroModeSwitch() {
   const switchEl     = els.heroModeSwitch;
   const tabExplore   = els.heroModeTabExplore;
   const tabConnect   = els.heroModeTabConnect;
+  const tabGame      = els.heroModeTabGame;
   const panelExplore = els.heroModePanelExplore;
   const panelConnect = els.heroModePanelConnect;
+  const panelGame    = els.heroModePanelGame;
   if (!switchEl || !tabExplore || !tabConnect || !panelExplore || !panelConnect) return;
 
+  const tabs = [tabExplore, tabConnect, tabGame].filter(Boolean);
+
+  // [design: challenge setup on the landing page] All three panels now
+  // crossfade the same shared grid cell (IDEA-41's original two-panel
+  // convention, extended) — Game stopped being a "navigates away
+  // immediately" special case; setting up a challenge is landing-native,
+  // same as picking a search term or a path pair. Only the Game panel's
+  // OWN "Start challenge" button (game/connect.js) actually leaves for
+  // #/game, once both sides are already filled in.
   function activate(mode) {
-    const toConnect = mode === "connect";
     State.heroMode = mode;
     switchEl.dataset.mode = mode;
 
-    tabExplore.setAttribute("aria-selected", String(!toConnect));
-    tabExplore.tabIndex = toConnect ? -1 : 0;
-    tabConnect.setAttribute("aria-selected", String(toConnect));
-    tabConnect.tabIndex = toConnect ? 0 : -1;
+    tabExplore.setAttribute("aria-selected", String(mode === "explore"));
+    tabExplore.tabIndex = mode === "explore" ? 0 : -1;
+    tabConnect.setAttribute("aria-selected", String(mode === "connect"));
+    tabConnect.tabIndex = mode === "connect" ? 0 : -1;
+    if (tabGame) {
+      tabGame.setAttribute("aria-selected", String(mode === "game"));
+      tabGame.tabIndex = mode === "game" ? 0 : -1;
+    }
 
-    panelExplore.classList.toggle("is-active", !toConnect);
-    panelConnect.classList.toggle("is-active", toConnect);
+    panelExplore.classList.toggle("is-active", mode === "explore");
+    panelConnect.classList.toggle("is-active", mode === "connect");
+    panelGame?.classList.toggle("is-active", mode === "game");
 
     // ТЗ: переход в Connect всегда переводит фокус на первое поле; при
     // возврате в Explore фокус закономерно возвращается на hero-инпут.
-    if (toConnect) els.heroPathFromInput?.focus();
-    else els.heroInput?.focus();
+    // [fix] Game's duel fields deliberately DON'T get this same auto-focus:
+    // unlike hero-path-from-input (attachNodeAutocomplete, no focus
+    // behavior of its own), the duel fields use attachGeniusAutocomplete,
+    // whose focus handler opens a "recent searches" dropdown on an empty
+    // field — auto-focusing here popped that dropdown open immediately on
+    // every switch to the Game tab, overlapping "Start challenge" right
+    // below it before the player had done anything.
+    if (mode === "connect") els.heroPathFromInput?.focus();
+    else if (mode === "explore") els.heroInput?.focus();
   }
 
   tabExplore.addEventListener("click", () => { if (State.heroMode !== "explore") activate("explore"); });
   tabConnect.addEventListener("click", () => { if (State.heroMode !== "connect") activate("connect"); });
+  tabGame?.addEventListener("click", () => { if (State.heroMode !== "game") activate("game"); });
+
+  // While actually ON #/game (past the landing setup step), the switch
+  // still shows Game selected without touching State.heroMode — leaving
+  // #/game (browser back, "← Back to graph") snaps the switch back to
+  // whichever of explore/connect was last active, same restore behavior
+  // this already had pre-redesign.
+  onSurfaceChange(surface => {
+    const onGame = surface === SURFACE_GAME;
+    switchEl.dataset.mode = onGame ? "game" : State.heroMode;
+    tabGame?.setAttribute("aria-selected", String(onGame));
+    tabExplore.setAttribute("aria-selected", String(!onGame && State.heroMode === "explore"));
+    tabConnect.setAttribute("aria-selected", String(!onGame && State.heroMode === "connect"));
+  });
+  if (getCurrentSurface() === SURFACE_GAME) {
+    switchEl.dataset.mode = "game";
+    tabGame?.setAttribute("aria-selected", "true");
+    tabExplore.setAttribute("aria-selected", "false");
+  }
 
   // Roving tabindex + arrow-key activation — standard WAI-ARIA tablist
-  // keyboard pattern (only two tabs, so Left/Right/Home/End all just swap).
+  // keyboard pattern, over three equal tabs.
   switchEl.addEventListener("keydown", e => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
     e.preventDefault();
-    const next = document.activeElement === tabConnect ? tabExplore : tabConnect;
+    const i = tabs.indexOf(document.activeElement);
+    let next;
+    if (e.key === "Home") next = tabs[0];
+    else if (e.key === "End") next = tabs[tabs.length - 1];
+    else if (e.key === "ArrowLeft") next = tabs[(i - 1 + tabs.length) % tabs.length];
+    else next = tabs[(i + 1) % tabs.length];
     next.focus();
-    activate(next === tabConnect ? "connect" : "explore");
+    activate(next === tabConnect ? "connect" : next === tabGame ? "game" : "explore");
   });
-
-  // [SF-GAME landing entry] Third tab, "Game" — replaces the old
-  // #btn-game-mode rail button. Unlike the two tabs above it doesn't
-  // toggle a local .hero-mode-panel; it's a full surface switch, wired the
-  // same way connect.js's own back button does it.
-  els.heroModeTabGame?.addEventListener("click", () => navigateToSurface(SURFACE_GAME));
 }
 
 // ────────────────────────────────────────────────────────────────────────────

@@ -51,8 +51,16 @@ export TO_ARTIST="${TO_ARTIST:-Kessler Vane}"
 # SEARCH_QUERY/SEARCH_QUERIES explicitly.
 export PROFILE="${PROFILE:-full}"
 
+SCENARIOS=(graph_warm path_cold search)
+# [SF-GAME-20] Opt-in — see README.md's scoping note: scripts/e2e_env.py
+# doesn't boot six-feat-game yet, so the k6-smoke-load CI job (which never
+# sets this) keeps running exactly the three scenarios it always has.
+if [ "${GAME_SCENARIO:-0}" = "1" ]; then
+  SCENARIOS+=(game)
+fi
+
 status=0
-for scenario in graph_warm path_cold search; do
+for scenario in "${SCENARIOS[@]}"; do
   echo "── k6 run loadtest/scenarios/${scenario}.js (PROFILE=${PROFILE}) ──"
   if ! k6 run "${REPO_ROOT}/loadtest/scenarios/${scenario}.js"; then
     echo "── ${scenario}: thresholds breached or run failed (advisory — see loadtest/.output/) ──"

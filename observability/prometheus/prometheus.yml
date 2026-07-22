@@ -62,8 +62,6 @@ scrape_configs:
         labels:
           service: six-feat-auth
 
-  # [SF-GAME-10] Fifth service — its internal monitor listener
-  # (listener-monitor: port 8089 in services/game/static_config.yaml).
   - job_name: six-feat-game
     metrics_path: /metrics
     params:

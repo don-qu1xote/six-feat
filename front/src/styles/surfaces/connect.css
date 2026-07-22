@@ -1,9 +1,13 @@
 /* ══════════════════════════════════════════════════════════════════════════
-   surfaces/connect.css — [SF-GAME-01] "Connect" game surface (#/game).
-   Split layout on the Observatory kit: a live chain-graph on the left, a
-   docked track panel on the right. Hidden until the router switches to the
-   game surface (connect.js toggles .show). Built on the existing design
-   tokens / ui-kit (ui-input, ui-btn), theme-aware via --ink/--paper.
+   surfaces/connect.css — [design: Split · Graph + Track] "Connect" game (#/game).
+
+   Two columns: LEFT is the full clickable graph explorer (a real vis.Network,
+   chain-graph.js — hover/zoom/drag, the same visual grammar as the Explorer's
+   own graph). RIGHT is a docked "Your line" panel: the chain the player has
+   built, an autocomplete to add the next collaborator, live score + Lock in.
+   Nodes are picked either by clicking the graph OR through the panel; both
+   drive the same commitHop() pipeline. Built on the existing tokens
+   (--signal = start, --amber = hop, --pulse = goal), no game-specific colors.
    ══════════════════════════════════════════════════════════════════════════ */
 
 .connect-surface {
@@ -11,155 +15,302 @@
   inset: 0;
   z-index: var(--z-surface, 20);
   display: none;
+  flex-direction: column;
   background: var(--ink);
+  background-image: radial-gradient(circle, rgba(var(--line-rgb), .5) 1px, transparent 1px);
+  background-size: 26px 26px;
 }
 .connect-surface.show { display: flex; }
 
-/* ── Left: chain-graph stage ─────────────────────────────────────────────── */
-.connect-stage {
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  background:
-    radial-gradient(900px 520px at 30% -10%, color-mix(in srgb, var(--pulse) 12%, transparent), transparent 60%),
-    radial-gradient(circle, color-mix(in srgb, var(--paper) 4%, transparent) 1px, transparent 1px);
-  background-size: auto, 22px 22px;
-}
-.connect-stage canvas { display: block; width: 100%; height: 100%; }
-
-.connect-topline {
-  position: absolute;
-  top: 16px; left: 16px; right: 16px;
-  display: flex; align-items: center; gap: 14px;
-  pointer-events: none;
-}
-.connect-topline .connect-back { pointer-events: auto; }
-.connect-wordmark {
-  font-family: "Syne", var(--font-display, sans-serif);
-  font-weight: 800; font-size: 20px; letter-spacing: -.02em; color: var(--paper);
-  margin-left: auto;
-}
-.connect-wordmark .cw-dot { color: var(--signal); }
-
-/* ── Right: docked track panel ───────────────────────────────────────────── */
-.connect-dock {
-  flex: 0 0 clamp(320px, 32vw, 420px);
-  display: flex;
-  flex-direction: column;
+.connect-split {
+  flex: 1; min-height: 0;
+  width: 100%;
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  box-sizing: border-box;
+  display: grid;
+  /* [design: расширь окно графа] Give the graph the lion's share — a wider
+     canvas for the dandelion of collaborators; the panel stays a fixed,
+     compact rail on the right. */
+  grid-template-columns: minmax(0, 1fr) 340px;
   gap: var(--space-4);
-  padding: var(--space-6) var(--space-5);
-  overflow-y: auto;
-  background: linear-gradient(180deg, var(--panel), var(--panel-2));
-  border-left: 1px solid var(--line);
-  box-shadow: var(--shadow);
 }
-.connect-dock-head { display: flex; flex-direction: column; gap: 4px; }
-.connect-eyebrow {
-  font-size: var(--text-xs); font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--mist);
-}
-.connect-sub { font-size: var(--text-sm); color: var(--mist); margin: 0; }
 
-.connect-endpoints { display: flex; flex-direction: column; gap: var(--space-3); }
+/* ── LEFT: graph explorer ─────────────────────────────────────────────── */
+.connect-graph-col {
+  position: relative;
+  min-width: 0; min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  /* [design: граф как на странице графа] The same ink dot-grid the Explorer's
+     canvas floats over — the vis nodes read on the identical backdrop instead
+     of a flat panel fill. */
+  background: var(--ink);
+  background-image: radial-gradient(circle, rgba(var(--line-rgb), .5) 1px, transparent 1px);
+  background-size: 26px 26px;
+  box-shadow: var(--glass-glow);
+  overflow: hidden;
+}
+.connect-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.connect-canvas canvas { display: block; width: 100%; height: 100%; }
+.connect-stage-empty {
+  position: absolute; inset: 0; margin: 0; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--mist); font-size: var(--text-sm);
+}
+.connect-stage-empty[hidden] { display: none; }
+
+/* Top-left overlay: quest pill + PAR + timer, floating over the graph. */
+.connect-graph-overlay {
+  position: absolute; top: var(--space-4); left: var(--space-4); z-index: 2;
+  display: flex; align-items: center; gap: var(--space-2);
+  flex-wrap: wrap; max-width: calc(100% - 96px);
+}
+.connect-quest-pill {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-family: var(--font-display); font-weight: 800; font-size: var(--text-base);
+  padding: 8px 14px; border-radius: 999px;
+  background: rgba(var(--panel-rgb), .82);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--line); color: var(--paper);
+  cursor: pointer; max-width: 100%;
+  transition: border-color var(--duration-base) var(--ease-standard);
+}
+.connect-quest-pill:hover { border-color: var(--signal); }
+.connect-quest-pill .cst-start { color: var(--signal); }
+.connect-quest-pill .cst-goal  { color: var(--pulse); }
+.connect-quest-pill .cst-arrow { color: var(--mist); font-weight: 400; }
+.connect-par-pill,
+.connect-timer-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 12px; border-radius: 999px;
+  background: rgba(var(--panel-rgb), .82);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--mist);
+}
+.connect-par-pill b,
+.connect-timer-pill b { color: var(--paper); font-weight: 700; font-variant-numeric: tabular-nums; }
+.connect-par-pill[hidden] { display: none; }
+
+/* Endpoint editor — opened by the quest pill; a small popover under it. */
+.connect-endpoints {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 3;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  width: 280px; max-width: 80vw; padding: var(--space-4);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
+}
+.connect-endpoints[hidden] { display: none; }
 .connect-field { position: relative; display: flex; flex-direction: column; gap: var(--space-1); }
-.connect-field--grow { flex: 1; }
 .connect-label {
   font-size: var(--text-xs); font-weight: 500; color: var(--mist);
   text-transform: uppercase; letter-spacing: .04em;
 }
 
-/* Chain as a track list */
-.connect-chain {
-  display: flex; flex-direction: column;
-  min-height: 60px;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--line); border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.02);
+/* Graph rail — zoom / fit. */
+.connect-graph-rail {
+  position: absolute; top: var(--space-4); right: var(--space-4); z-index: 2;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.connect-empty { color: var(--mist); font-size: var(--text-sm); margin: var(--space-2) 0; }
-.ct-row { position: relative; display: flex; align-items: center; gap: var(--space-3); padding: 7px 0; }
-.ct-row.ct-link::before {
-  content: ""; position: absolute; left: 15px; top: -9px; height: 18px; width: 2px; background: var(--line);
+.cgr-btn {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: grid; place-items: center;
+  background: rgba(var(--panel-rgb), .82);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  border: 1px solid var(--line); color: var(--paper);
+  line-height: 1; cursor: pointer;
+  transition: border-color var(--duration-base) var(--ease-standard),
+              color var(--duration-base) var(--ease-standard),
+              transform var(--duration-fast) var(--ease-standard);
 }
-.ct-node {
-  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
-  display: grid; place-items: center; font-size: 11px; font-weight: 800;
-  font-family: var(--font-mono, monospace);
-  color: var(--ink); background: transparent; border: 2px solid var(--line);
-}
-.ct-start .ct-node { border-color: var(--signal); color: var(--signal); }
-.ct-goal  .ct-node { border-color: var(--pulse);  color: var(--pulse); }
-.ct-hop   .ct-node { border-color: var(--amber);  color: var(--amber); }
-.ct-name { font-weight: 600; font-size: var(--text-sm); color: var(--paper); }
+.cgr-btn:hover { border-color: var(--signal); color: var(--signal); }
+.cgr-btn:active { transform: translateY(1px); }
+.cgr-ico { width: 18px; height: 18px; }
+/* Icons on the floating quest/PAR/timer/rival pills. */
+.cp-ico { width: 13px; height: 13px; flex-shrink: 0; }
+.connect-timer-pill .cp-ico { color: var(--mist); }
+.connect-par-pill .cp-ico { color: var(--signal); }
+.clp-rival-ico { width: 14px; height: 14px; flex-shrink: 0; color: var(--amber); }
+.clp-add-ico { width: 20px; height: 20px; }
 
-/* [SF-GAME-14/02] Server-verified hop state — modifier on the connecting
-   line (ct-link), since it's the transition into this row that was checked,
-   not the arriving artist's node. Set once State.connect.game.validation is
-   populated (connect-model.js's applyValidation/hopStatuses); absent
-   ("unknown") rows keep the plain --line connector above. */
-.ct-row.ct-hop-valid::before   { background: var(--signal); }
-.ct-row.ct-hop-invalid::before { background: var(--neon); }
-.ct-row.ct-hop-invalid .ct-node { border-color: var(--neon); color: var(--neon); }
-.ct-tag {
-  font-size: 9.5px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
-  padding: 2px 7px; border-radius: 999px; border: 1px solid currentColor; margin-left: 8px; vertical-align: middle;
+/* ── RIGHT: "Your line" panel ─────────────────────────────────────────── */
+.connect-line-panel {
+  min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-3);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  /* Glass docked panel — the same recipe as the graph's companion panel and
+     the season/profile heroes. */
+  background: var(--glass-fill);
+  box-shadow: var(--elevation-2), var(--glass-glow);
+  -webkit-backdrop-filter: blur(var(--blur-scrim)); backdrop-filter: blur(var(--blur-scrim));
+  padding: var(--space-5);
 }
-.ct-tag.ct-start { color: var(--signal); }
-.ct-tag.ct-goal  { color: var(--pulse); }
-
-.connect-status { font-size: var(--text-sm); color: var(--mist); margin: 0; min-height: 1.2em; }
-
-/* [SF-GAME-15/03] Result screen — populated by connect.js's renderResult()
-   from State.connect.game.result (connect-model.js's applyResult/
-   resultView). Hidden by default (index.html's [hidden] attribute); shown
-   only once a real submit response has been applied. */
-.connect-result {
-  display: flex; flex-direction: column; gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line); border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.02);
+.clp-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.clp-title { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--text-lg); color: var(--paper); }
+.clp-hops {
+  flex-shrink: 0; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--mist);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
 }
-.connect-result-status--rejected { color: var(--neon); font-size: var(--text-sm); margin: 0; }
-.connect-result-score {
-  font-family: "Syne", var(--font-display, sans-serif);
-  font-weight: 800; font-size: 28px; color: var(--signal); margin: 0;
-}
-.connect-result-score .cr-of { font-size: var(--text-sm); font-weight: 500; color: var(--mist); }
-.connect-result-elo { font-size: var(--text-sm); color: var(--paper); margin: 0; }
-.cr-delta--up   { color: var(--signal); }
-.cr-delta--down { color: var(--neon); }
-.connect-result-compare { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
-.cr-row { display: flex; justify-content: space-between; font-size: var(--text-sm); }
-.cr-label { color: var(--mist); }
-.cr-val { color: var(--paper); font-weight: 600; }
-.cr-row--ideal .cr-val { color: var(--pulse); }
+.clp-hops b { color: var(--paper); font-weight: 700; }
 
-/* [SF-GAME-17/04] Leaderboard — populated by connect.js's
-   renderLeaderboard() from State.connect.game.leaderboard (connect-model.js's
-   applyLeaderboard/leaderboardView). Hidden by default; shown alongside the
-   result screen once a leaderboard page has been applied. */
+.clp-rival { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--amber); }
+.clp-rival[hidden] { display: none; }
+
+.clp-add {
+  position: relative; display: flex; align-items: center; gap: var(--space-2);
+  background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 4px 4px 4px var(--space-3);
+  transition: border-color var(--duration-base) var(--ease-standard);
+}
+.clp-add:focus-within { border-color: var(--signal); }
+.clp-add-input {
+  flex: 1; min-width: 0; background: transparent; border: 0; outline: 0;
+  color: var(--paper); font: inherit; font-size: var(--text-sm); padding: var(--space-2) 0;
+}
+.clp-add-input::placeholder { color: var(--mist); }
+.clp-add-input:disabled { cursor: not-allowed; }
+.clp-add-btn {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; border: 0;
+  background: var(--signal); color: var(--on-accent);
+  font-size: 20px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+  transition: filter var(--duration-base) var(--ease-standard);
+}
+.clp-add-btn:hover:not(:disabled) { filter: brightness(1.06); }
+.clp-add-btn:disabled { opacity: .4; cursor: default; }
+.clp-add .ac-dropdown { top: calc(100% + 6px); left: 0; right: 0; }
+
+/* The current line — start→focus branch, each a ring-avatar + name + role.
+   [design: ветвящийся веб] Rows are clickable to re-focus that node. */
+.clp-line { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.clp-row {
+  position: relative; display: flex; align-items: center; gap: var(--space-3);
+  padding: 7px var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--duration-base) var(--ease-standard);
+}
+.clp-row:hover { background: var(--panel-2); }
+/* Vertical connector between consecutive avatars. */
+.clp-row + .clp-row::before {
+  content: ""; position: absolute; left: 16px; top: -6px; height: 12px;
+  width: 2px; background: var(--line);
+}
+/* The focused node — the branch point the next add attaches to. */
+.clp-row.is-focus { background: rgba(var(--signal-rgb), .08); }
+.clp-row.is-focus .clp-av { box-shadow: 0 0 0 2px var(--signal); }
+.clp-row.is-focus .clp-row-sub { color: var(--signal); }
+.clp-web-note {
+  list-style: none; margin-top: var(--space-2); padding: var(--space-2) var(--space-2) 0;
+  font-size: var(--text-xs); color: var(--mist); border-top: 1px dashed var(--line);
+}
+.clp-av {
+  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; object-fit: cover;
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 700; font-size: var(--text-sm);
+  border: 2px solid var(--line); background: var(--panel-2);
+}
+.clp-av--start { border-color: var(--signal); color: var(--signal); }
+.clp-av--hop   { border-color: var(--amber);  color: var(--amber); }
+.clp-av--goal  { border-color: var(--pulse);  color: var(--pulse); }
+.clp-row-main { display: flex; flex-direction: column; min-width: 0; }
+.clp-row-name {
+  font-weight: 700; color: var(--paper); font-size: var(--text-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.clp-row-sub { font-size: var(--text-xs); color: var(--mist); }
+
+/* Status + score breakdown. */
+.clp-status { font-size: var(--text-sm); color: var(--warn); }
+.clp-status:empty { display: none; }
+.clp-detail { margin: 0; font-size: var(--text-xs); color: var(--mist); }
+.clp-detail[hidden] { display: none; }
+
+/* Footer: SCORE + Lock in. */
+.clp-foot {
+  margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding-top: var(--space-4); border-top: 1px solid var(--line);
+}
+.clp-score { display: flex; flex-direction: column; }
+.clp-score-label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--mist); }
+.clp-score-value { font-family: var(--font-display); font-weight: 800; font-size: var(--text-2xl); color: var(--paper); font-variant-numeric: tabular-nums; }
+.clp-lockin {
+  flex-shrink: 0; border: 0; border-radius: var(--r-md);
+  padding: var(--space-3) var(--space-6); font: inherit; font-weight: 700; font-size: var(--text-sm);
+  color: var(--on-accent); cursor: pointer;
+  background: linear-gradient(120deg, var(--signal), var(--pulse));
+  transition: filter var(--duration-base) var(--ease-standard);
+}
+.clp-lockin:hover:not(:disabled) { filter: brightness(1.08); }
+.clp-lockin:disabled { opacity: .4; cursor: default; }
+
+.clp-actions { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; }
+
+/* ── Mini action buttons (Undo/Reset/Give up/Share/Back). ─────────────── */
+.connect-mini-btn {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--text-xs); font-weight: 600; color: var(--mist);
+  text-transform: uppercase; letter-spacing: .04em; text-decoration: none;
+  transition: color var(--duration-base) var(--ease-standard);
+}
+.connect-mini-btn:hover:not(:disabled) { color: var(--paper); }
+.connect-mini-btn:disabled { opacity: .4; cursor: default; }
+.connect-back { margin-left: auto; }
+
+/* ── SECONDARY: browse the tail's real collaborators (collapsed). ─────── */
+.connect-browse { margin: 0; }
+.connect-browse-summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-xs); font-weight: 600; color: var(--mist);
+  text-transform: uppercase; letter-spacing: .05em; padding: var(--space-1) 0;
+  transition: color var(--duration-base) var(--ease-standard);
+}
+.connect-browse-summary::-webkit-details-marker { display: none; }
+.connect-browse-chev { transition: transform var(--duration-base) var(--ease-standard); }
+.connect-browse[open] .connect-browse-chev { transform: rotate(90deg); }
+.connect-browse-summary:hover { color: var(--paper); }
+.connect-browse-chips {
+  display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3);
+  padding: var(--space-3); border: 1px dashed var(--line); border-radius: var(--r-md);
+}
+.connect-browse-loading,
+.connect-browse-empty { color: var(--mist); font-size: var(--text-sm); font-style: italic; margin: 0; }
+.cb-chip {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 11px 4px 4px; border: 1px solid var(--line); border-radius: 999px;
+  font-size: var(--text-sm); font-weight: 600; color: var(--paper); background: var(--panel-2);
+  cursor: pointer; transition: border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+}
+.cb-chip:hover { border-color: var(--amber); background: var(--hover-tint); }
+.cb-chip--goal { border-color: var(--pulse); color: var(--pulse); }
+.cb-chip--goal:hover { background: rgba(var(--pulse-rgb), .12); }
+.cb-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.cb-avatar--fallback {
+  display: grid; place-items: center; background: var(--line); color: var(--ink);
+  font-size: 9px; font-weight: 800; font-family: var(--font-mono);
+}
+.cb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+
+/* ── Leaderboard (inside the panel). ──────────────────────────────────── */
 .connect-leaderboard {
-  display: flex; flex-direction: column; gap: 4px;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--line); border-radius: var(--r-md);
-  background: rgba(255, 255, 255, 0.02);
+  padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel-2);
 }
+.connect-leaderboard[hidden] { display: none; }
 .connect-leaderboard-title {
-  margin: 0 0 4px; font-size: var(--text-sm); font-weight: 700; color: var(--mist);
-  text-transform: uppercase; letter-spacing: 0.04em;
+  margin: 0 0 var(--space-2); font-family: var(--font-display); font-weight: 700; font-size: var(--text-sm);
 }
-.cl-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.cl-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) 0; font-size: var(--text-sm); }
 .cl-rank { width: 1.5em; color: var(--mist); font-weight: 600; }
 .cl-name { flex: 1; color: var(--paper); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cl-score { color: var(--signal); font-weight: 700; }
+.cl-score { color: var(--signal); font-weight: 700; font-variant-numeric: tabular-nums; }
 
-.connect-builder { display: flex; flex-direction: column; gap: var(--space-3); margin-top: auto; }
-.connect-actions { display: flex; gap: var(--space-2); }
-.connect-actions .ui-btn { flex: 1; }
-
-@media (max-width: 720px) {
-  .connect-surface.show { flex-direction: column; }
-  .connect-stage { flex: 0 0 40vh; }
-  .connect-dock { flex: 1 1 auto; border-left: none; border-top: 1px solid var(--line); }
+/* ── Responsive: stack graph over panel on narrow screens. ────────────── */
+@media (max-width: 900px) {
+  .connect-split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 320px auto;
+    padding: var(--space-4) var(--space-4);
+    height: auto; min-height: 100%;
+  }
+  .connect-surface { overflow-y: auto; }
 }

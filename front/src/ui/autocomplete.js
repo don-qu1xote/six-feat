@@ -39,7 +39,8 @@ export function createGeniusAc() {
       if (!candidates.length) { closeDropdown(dropdownEl); return; }
 
       dropdownEl.innerHTML = candidates.slice(0, 6).map(c => `
-        <div class="ac-item" data-name="${escapeHtml(c.name)}" role="option">
+        <div class="ac-item" data-name="${escapeHtml(c.name)}" data-image="${escapeHtml(c.image || "")}"
+             data-id="${c.id != null ? escapeHtml(String(c.id)) : ""}" role="option">
           <img class="ac-avatar" src="${escapeHtml(c.image || placeholderFor(c.name, false))}"
               data-fallback="${escapeHtml(placeholderFor(c.name, false))}" alt="" />
           <div class="ac-info">
@@ -55,8 +56,17 @@ export function createGeniusAc() {
         item.addEventListener("mousedown", e => {
           e.preventDefault();
           const name = item.getAttribute("data-name");
+          // [design: real graph reuse] Second/third (optional) args — the
+          // real Genius photo URL and numeric artist id /api/v1/search
+          // already returns per candidate (search_handler.cpp's
+          // cb["id"]). Existing callers that only declare `name => …`
+          // simply never see them; onSelect(name) already worked and
+          // keeps working.
+          const image = item.getAttribute("data-image") || null;
+          const idAttr = item.getAttribute("data-id");
+          const id = idAttr ? Number(idAttr) : null;
           closeDropdown(dropdownEl);
-          onSelect(name);
+          onSelect(name, image, id);
         });
       });
     } catch (err) {
@@ -127,6 +137,13 @@ export function attachGeniusAutocomplete(inputEl, dropdownEl, onSelect, geniusAc
       const first = dropdownEl.querySelector(".ac-item");
       if (first) { first.classList.add("ac-active"); first.focus(); }
     }
+    // [design: typed entry is primary] Enter here means the caller is
+    // committing whatever was typed, not picking a suggestion (picking a
+    // suggestion moves focus into dropdownEl first — see ArrowDown above
+    // and dropdownEl's own keydown handler below). A still-pending debounced
+    // search must not reopen the dropdown after that commit already moved
+    // the UI on, so cancel it along with closing whatever's currently shown.
+    if (e.key === "Enter") { _ac.cancel?.(); closeDropdown(dropdownEl); }
   });
 
   dropdownEl.addEventListener("keydown", e => {

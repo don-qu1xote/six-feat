@@ -54,16 +54,19 @@ export const els = {
   heroFilterProducer: $("hero-filter-producer"),
   heroFilterWriter:   $("hero-filter-writer"),
 
-  // IDEA-41: segmented Explore/Connect mode switch above the hero search,
-  // replacing the old btnFindPathToggle/heroPathPanel toggle+panel.
+  // IDEA-41 + [design: 3-way switch]: segmented Explore/Connect/Game mode
+  // switch above the hero search, replacing the old btnFindPathToggle/
+  // heroPathPanel toggle+panel. [design: challenge setup on landing]
+  // Game now gets its own in-place panel too, same as Explore/Connect —
+  // navigation to #/game only happens once "Start challenge" is pressed
+  // inside it (see path-panel.js's setupHeroModeSwitch).
   heroModeSwitch:       $("hero-mode-switch"),
   heroModeTabExplore:   $("hero-mode-tab-explore"),
   heroModeTabConnect:   $("hero-mode-tab-connect"),
-  // [SF-GAME landing entry] Third tab — navigates to #/game, doesn't toggle
-  // a local panel, so it has no matching heroModePanelGame.
   heroModeTabGame:      $("hero-mode-tab-game"),
   heroModePanelExplore: $("hero-mode-panel-explore"),
   heroModePanelConnect: $("hero-mode-panel-connect"),
+  heroModePanelGame:    $("hero-mode-panel-game"),
 
   heroPathFromInput:  $("hero-path-from-input"),
   heroPathToInput:    $("hero-path-to-input"),
@@ -71,6 +74,29 @@ export const els = {
   btnHeroSwapPath:    $("btn-hero-swap-path"),
   btnHeroClearPath:   $("btn-hero-clear-path"),
   heroHopChain:       $("hero-hop-chain"),
+
+  // [design: challenge setup on landing] Game panel's own "vs" duel —
+  // see game/connect.js's setupGameLandingPanel.
+  heroGameFromInput:      $("hero-game-from-input"),
+  heroGameFromAc:         $("hero-game-from-ac"),
+  heroGameFromAvatar:     $("hero-game-from-avatar"),
+  heroGameToInput:        $("hero-game-to-input"),
+  heroGameToAc:           $("hero-game-to-ac"),
+  heroGameToAvatar:       $("hero-game-to-avatar"),
+  btnHeroStartChallenge:  $("btn-hero-start-challenge"),
+
+  // [design: Today's Challenge + or pick a rival] Real GET .../challenge?
+  // daily=1 + GET .../leaderboard?challenge_id= data — see
+  // game/connect.js's setupGameLandingPanel.
+  heroGameDaily:          $("hero-game-daily"),
+  heroGameDailyFromAvatar: $("hero-game-daily-from-avatar"),
+  heroGameDailyFromName:  $("hero-game-daily-from-name"),
+  heroGameDailyToAvatar:  $("hero-game-daily-to-avatar"),
+  heroGameDailyToName:    $("hero-game-daily-to-name"),
+  btnHeroPlayDaily:       $("btn-hero-play-daily"),
+  heroGameRivals:         $("hero-game-rivals"),
+  heroGameRivalsList:     $("hero-game-rivals-list"),
+  heroGameDivider:        $("hero-game-divider"),
 
   themeToggle: $("theme-toggle"),
 
@@ -171,24 +197,99 @@ export const els = {
   graphA11yNeighborsHeading: $("graph-a11y-neighbors-heading"),
 
   // [SF-GAME-01] "Connect" game surface (#/game) — see src/game/connect.js.
-  connectSurface:    $("connect-surface"),
-  connectStage:      $("connect-stage"),
-  connectCanvas:     $("connect-canvas"),
-  connectBack:       $("connect-back"),
-  connectStartInput: $("connect-start-input"),
-  connectStartAc:    $("connect-start-ac"),
-  connectGoalInput:  $("connect-goal-input"),
-  connectGoalAc:     $("connect-goal-ac"),
-  connectChain:      $("connect-chain"),
-  connectStatus:     $("connect-status"),
-  // [SF-GAME-15/03] Result screen — see src/game/connect-model.js's
-  // applyResult/resultView.
-  connectResult:     $("connect-result"),
-  // [SF-GAME-17/04] Leaderboard shown alongside the result screen — see
-  // src/game/connect-model.js's applyLeaderboard/leaderboardView.
-  connectLeaderboard: $("connect-leaderboard"),
-  connectAddInput:   $("connect-add-input"),
-  connectAddAc:      $("connect-add-ac"),
-  connectUndo:       $("connect-undo"),
-  connectReset:      $("connect-reset")
+  // [design: Split · Graph + Track] graph explorer (left) + "Your line" panel (right).
+  connectSurface:       $("connect-surface"),
+  connectTitleStart:       $("connect-title-start"),
+  connectTitleGoal:        $("connect-title-goal"),
+  connectParPill:          $("connect-par-pill"),
+  connectParValue:         $("connect-par-value"),
+  connectRivalPill:        $("connect-rival-pill"),
+  connectRivalText:        $("connect-rival-text"),
+  connectTimerValue:    $("connect-timer-value"),
+  connectHopsValue:     $("connect-hops-value"),
+  connectEndpoints:     $("connect-endpoints"),
+  connectEndpointsSummary: $("connect-endpoints-summary"),
+  connectStartInput:    $("connect-start-input"),
+  connectStartAc:       $("connect-start-ac"),
+  connectGoalInput:     $("connect-goal-input"),
+  connectGoalAc:        $("connect-goal-ac"),
+  connectCanvas:        $("connect-canvas"),
+  connectStageEmpty:    $("connect-stage-empty"),
+  connectZoomIn:        $("connect-zoom-in"),
+  connectZoomOut:       $("connect-zoom-out"),
+  connectFit:           $("connect-fit"),
+  connectAddInput:      $("connect-add-input"),
+  connectAddAc:         $("connect-add-ac"),
+  connectAddBtn:        $("connect-add-btn"),
+  connectLineList:      $("connect-line-list"),
+  connectBrowse:        $("connect-browse"),
+  connectBrowseLabel:   $("connect-browse-label"),
+  connectBrowseChips:   $("connect-browse-chips"),
+  connectUndo:          $("connect-undo"),
+  connectReset:         $("connect-reset"),
+  connectGiveUp:        $("connect-give-up"),
+  connectShare:         $("connect-share"),
+  connectBack:          $("connect-back"),
+  connectLockin:        $("connect-lockin"),
+  connectFinishLabel:   $("connect-finish-label"),
+  connectFinishScore:   $("connect-finish-score"),
+  connectFinishDetail:  $("connect-finish-detail"),
+  connectLeaderboard:   $("connect-leaderboard"),
+
+  // [design: routed game windows] Leaderboard + Profile screens — see
+  // src/game/game-windows.js.
+  gameLeaderboardSurface: $("game-leaderboard-surface"),
+  lbTabSeason:          $("lb-tab-season"),
+  lbTabChallenge:       $("lb-tab-challenge"),
+  lbScopeLabel:         $("lb-scope-label"),
+  lbList:               $("lb-list"),
+  lbEmpty:              $("lb-empty"),
+  gameProfileSurface:   $("game-profile-surface"),
+  profileSignedOut:     $("profile-signed-out"),
+  profileCard:          $("profile-card"),
+  pfAvatar:             $("pf-avatar"),
+  pfName:               $("pf-name"),
+  pfRank:               $("pf-rank"),
+  pfElo:                $("pf-elo"),
+  pfGames:              $("pf-games"),
+  pfBadges:             $("pf-badges"),
+  pfBadgeList:          $("pf-badge-list"),
+  pfBadgesEmpty:        $("pf-badges-empty"),
+  pfHistory:            $("pf-history"),
+  pfHistoryEmpty:       $("pf-history-empty"),
+  // [design: ЛК] Personal-cabinet actions — rename + share.
+  pfEditName:           $("pf-edit-name"),
+  pfShare:              $("pf-share"),
+
+  // [admin] Owner-only panel embedded in the Profile screen — see
+  // src/game/game-windows.js (revealed only when /api/v1/game/admin allows).
+  adminPanel:           $("admin-panel"),
+  adminFromInput:       $("admin-from-input"),
+  adminFromAc:          $("admin-from-ac"),
+  adminToInput:         $("admin-to-input"),
+  adminToAc:            $("admin-to-ac"),
+  adminPublishDaily:    $("admin-publish-daily"),
+  adminStatus:          $("admin-status"),
+
+  // [game #3] Challenge browser (#/game/challenges).
+  gameChallengesSurface: $("game-challenges-surface"),
+  chTabAll:             $("ch-tab-all"),
+  chTabDaily:           $("ch-tab-daily"),
+  chTabCustom:          $("ch-tab-custom"),
+  chGrid:               $("ch-grid"),
+  chEmpty:              $("ch-empty"),
+  chMore:               $("ch-more"),
+
+  // [game #4] Season & achievements hub (#/game/season).
+  gameSeasonSurface:    $("game-season-surface"),
+  snName:               $("sn-name"),
+  snCountdown:          $("sn-countdown"),
+  snYou:                $("sn-you"),
+  snProgressFill:       $("sn-progress-fill"),
+  snDates:              $("sn-dates"),
+  snPodium:             $("sn-podium"),
+  snPodiumEmpty:        $("sn-podium-empty"),
+  snAchCount:           $("sn-ach-count"),
+  snAchHint:            $("sn-ach-hint"),
+  snAchGrid:            $("sn-ach-grid")
 };

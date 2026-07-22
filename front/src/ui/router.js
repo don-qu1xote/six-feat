@@ -23,8 +23,28 @@ import { State } from "../state/state.js";
 
 export const SURFACE_GRAPH = "graph";
 export const SURFACE_GAME  = "game";
-const SURFACES = new Set([SURFACE_GRAPH, SURFACE_GAME]);
+// [design: routed game windows] The game is no longer one screen — Play,
+// Leaderboard and Profile are sibling routed surfaces under #/game/*, the
+// same URL-addressable-state model SURFACE_GAME already established (a
+// hashchange/popstate swaps which one shows). Each is a plain hash any
+// <a href> can link to (see game/game-shell.js's nav).
+export const SURFACE_GAME_LEADERBOARD = "game/leaderboard";
+export const SURFACE_GAME_PROFILE     = "game/profile";
+export const SURFACE_GAME_CHALLENGES  = "game/challenges";
+export const SURFACE_GAME_SEASON      = "game/season";
+const SURFACES = new Set([
+  SURFACE_GRAPH, SURFACE_GAME,
+  SURFACE_GAME_LEADERBOARD, SURFACE_GAME_PROFILE, SURFACE_GAME_CHALLENGES,
+  SURFACE_GAME_SEASON,
+]);
 export const DEFAULT_SURFACE = SURFACE_GRAPH;
+
+// True for any #/game or #/game/* surface — used by the game shell to stay
+// mounted (nav + chrome) across the game's own sub-screens while the graph
+// explorer stays hidden.
+export function isGameSurface(surface) {
+  return surface === SURFACE_GAME || String(surface || "").startsWith("game/");
+}
 
 const listeners = new Set();
 
@@ -74,5 +94,13 @@ export function restoreSurfaceFromUrl() {
   return navigateToSurface(raw, { replace: true });
 }
 
-// Back/forward between surfaces.
+// Back/forward between surfaces (popstate) AND any direct hash change that
+// ISN'T routed through navigateToSurface — a plain `<a href="#/graph">`
+// click (e.g. the game surface's own "← Back to graph" link) changes
+// window.location.hash and fires "hashchange", but browsers do NOT also
+// fire "popstate" for that (popstate is for back/forward traversal only).
+// Without this listener the URL updates but State.surface/the visible
+// surface never does, so the app looks stuck on whichever surface was
+// active before the click.
 window.addEventListener("popstate", () => setSurface(getCurrentSurface()));
+window.addEventListener("hashchange", () => setSurface(getCurrentSurface()));

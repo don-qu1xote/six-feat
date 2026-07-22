@@ -1,4 +1,4 @@
 type: object
-description: Server-side anti-cheat chain validation endpoint (SF-GAME-14)
+description: 'POST /api/v1/game/validate — server-side anti-cheat chain check'
 additionalProperties: false
 properties: {}

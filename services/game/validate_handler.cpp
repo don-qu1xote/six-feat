@@ -18,6 +18,7 @@
 #include <userver/formats/json/serialize.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/http/content_type.hpp>
+#include <userver/logging/log.hpp>
 #include <userver/server/http/http_request.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
@@ -94,6 +95,13 @@ std::string ValidateHandler::HandleRequestThrow(
             return formats::json::ToString(b.ExtractValue());
 
         case ChainValidationStatus::kUnavailable:
+            // [SF-GAME-20] Worth a log line, not just a 503: this means
+            // NeighboursClient couldn't reach six-feat's own
+            // /internal/neighbours (see chain_validator.hpp) — an
+            // operational signal distinct from a player's chain genuinely
+            // being invalid, which is expected/frequent and not logged.
+            LOG_WARNING() << "[ValidateHandler] chain verification "
+                             "unavailable for user_id=" << player->user_id;
             response.SetStatus(server::http::HttpStatus::kServiceUnavailable);
             return BuildProblemJson(
                 request, server::http::HttpStatus::kServiceUnavailable,

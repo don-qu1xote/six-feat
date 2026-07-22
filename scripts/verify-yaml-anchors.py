@@ -5,7 +5,8 @@ deduplication of task_processor in services/*/static_config.yaml
 (SF-SCH-02) left the effective config unchanged, and that
 docker-compose.yml's hardening block (SF-INF-01) — once it exists — is
 applied identically across six-feat/six-feat-enrichment/
-six-feat-genius-gateway/six-feat-auth and absent from postgres/nginx.
+six-feat-genius-gateway/six-feat-auth/six-feat-game and absent from
+postgres/nginx.
 
 Exits non-zero if any check fails.
 """
@@ -83,18 +84,16 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
-    # [SF-GAME-10..17] Fifth service — was never in this dict at all, so
-    # verify-yaml-anchors.py never checked services/game/static_config.yaml.
     "services/game/static_config.yaml": {
         "server.listener": MAIN_TP,
         "server.listener-monitor": MONITOR_TP,
-        "handler-healthz": MAIN_TP,
-        "handler-readyz": MAIN_TP,
         "handler-game-profile": MAIN_TP,
         "handler-game-validate": MAIN_TP,
         "handler-game-submit": MAIN_TP,
         "handler-game-challenge": MAIN_TP,
         "handler-game-leaderboard": MAIN_TP,
+        "handler-healthz": MAIN_TP,
+        "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
 }
@@ -108,8 +107,6 @@ HARDENED_SERVICES = (
     "six-feat-enrichment",
     "six-feat-genius-gateway",
     "six-feat-auth",
-    # [SF-GAME-10..17] Already applies the shared *hardening anchor in
-    # docker-compose.yml — was just never checked here.
     "six-feat-game",
 )
 UNHARDENED_SERVICES = ("postgres", "nginx")

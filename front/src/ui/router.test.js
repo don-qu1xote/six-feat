@@ -4,9 +4,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { State } from "../state/state.js";
 import {
-  SURFACE_GRAPH, SURFACE_GAME, DEFAULT_SURFACE,
+  SURFACE_GRAPH, SURFACE_GAME, SURFACE_GAME_SEASON, DEFAULT_SURFACE,
   parseSurfaceFromHash, getCurrentSurface, onSurfaceChange,
-  navigateToSurface, restoreSurfaceFromUrl,
+  navigateToSurface, restoreSurfaceFromUrl, isGameSurface,
 } from "./router.js";
 
 beforeEach(() => {
@@ -33,6 +33,12 @@ describe("parseSurfaceFromHash (pure)", () => {
 
   it("default surface is graph", () => {
     expect(DEFAULT_SURFACE).toBe(SURFACE_GRAPH);
+  });
+
+  it("[game #4] recognizes the routed season sub-surface", () => {
+    expect(parseSurfaceFromHash("#/game/season")).toBe(SURFACE_GAME_SEASON);
+    expect(SURFACE_GAME_SEASON).toBe("game/season");
+    expect(isGameSurface(SURFACE_GAME_SEASON)).toBe(true);
   });
 });
 
@@ -138,6 +144,26 @@ describe("popstate (browser back/forward)", () => {
 
     expect(State.surface).toBe(SURFACE_GAME);
     expect(fn).toHaveBeenCalledWith(SURFACE_GAME);
+    unsubscribe();
+  });
+});
+
+describe("hashchange (plain <a href=\"#/graph\"> links, e.g. the game surface's own 'Back to graph')", () => {
+  it("[fix] updates State.surface and notifies listeners on a direct hash change, not just popstate", () => {
+    // Same shape as a real <a href="#/graph"> click: the browser updates
+    // location.hash itself (no pushState/replaceState call, no popstate) and
+    // fires "hashchange" — pushState/replaceState alone would previously
+    // leave State.surface stale since only "popstate" was ever listened to.
+    const fn = vi.fn();
+    const unsubscribe = onSurfaceChange(fn);
+    navigateToSurface(SURFACE_GAME);
+    fn.mockClear();
+
+    window.location.hash = "#/graph";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+    expect(State.surface).toBe(SURFACE_GRAPH);
+    expect(fn).toHaveBeenCalledWith(SURFACE_GRAPH);
     unsubscribe();
   });
 });

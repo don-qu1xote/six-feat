@@ -21,6 +21,7 @@
 #include <userver/formats/json/serialize.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/http/content_type.hpp>
+#include <userver/logging/log.hpp>
 #include <userver/server/http/http_request.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 
@@ -87,6 +88,12 @@ std::string SubmitHandler::HandleRequestThrow(
     // string-keyed counter (see its own doc-comment), so it works here
     // unchanged.
     if (!rate_limit_.Allow(std::to_string(player->user_id))) {
+        // [SF-GAME-20] A tripped submit rate limit is either a player
+        // mashing retry or a scripted hammering loop — worth a log line to
+        // tell those apart from the traffic graph, same as any other
+        // anti-abuse signal in this service.
+        LOG_WARNING() << "[SubmitHandler] rate limit hit for user_id="
+                      << player->user_id;
         response.SetStatus(server::http::HttpStatus::kTooManyRequests);
         response.SetHeader(std::string{"Retry-After"}, std::string{"10"});
         return BuildProblemJson(request, server::http::HttpStatus::kTooManyRequests,
@@ -136,6 +143,11 @@ std::string SubmitHandler::HandleRequestThrow(
                                       challenge->role_mask);
 
     if (result.status == ChainValidationStatus::kUnavailable) {
+        // [SF-GAME-20] Same rationale as ValidateHandler's own log on this
+        // status — an anti-cheat infra signal, not a routine rejection.
+        LOG_WARNING() << "[SubmitHandler] chain verification unavailable "
+                         "for user_id=" << player->user_id
+                      << " challenge_id=" << challenge_id;
         response.SetStatus(server::http::HttpStatus::kServiceUnavailable);
         return BuildProblemJson(
             request, server::http::HttpStatus::kServiceUnavailable,
@@ -155,6 +167,12 @@ std::string SubmitHandler::HandleRequestThrow(
         player->user_id, challenge_id, chain, *challenge->optimal_len,
         elapsed_ms, challenge->season_id);
 
+    // [SF-GAME-19] Evaluated with THIS attempt's own outcome, right after
+    // it's persisted — see EvaluateAndAwardAchievements' own doc-comment for
+    // why "newly awarded" is exactly what's returned here, never a repeat.
+    const auto unlocked = store_.EvaluateAndAwardAchievements(
+        player->user_id, outcome, elapsed_ms);
+
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     b["valid"]       = true;
     b["player_len"]  = outcome.player_len;
@@ -167,6 +185,11 @@ std::string SubmitHandler::HandleRequestThrow(
     b["elo_before"]   = outcome.elo_before;
     b["elo_after"]    = outcome.elo_after;
     b["elo_delta"]    = outcome.elo_delta;
+    if (!unlocked.empty()) {
+        formats::json::ValueBuilder ach(formats::json::Type::kArray);
+        for (const auto& code : unlocked) ach.PushBack(code);
+        b["achievements_unlocked"] = std::move(ach);
+    }
     return formats::json::ToString(b.ExtractValue());
 }
 
