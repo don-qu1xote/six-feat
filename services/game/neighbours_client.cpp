@@ -45,6 +45,10 @@ NeighboursClient::NeighboursClient(
           "timeout-ms", config["timeout-ms"].As<int>(2000))})
 {}
 
+// artist_id/role_mask are distinct fields named at every call site (a
+// Genius artist id vs. a role bitmask); swapping them is not a realistic
+// mistake.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::optional<std::vector<std::int64_t>>
 NeighboursClient::Neighbours(std::int64_t artist_id, int role_mask) const {
     try {
@@ -76,6 +80,9 @@ NeighboursClient::Neighbours(std::int64_t artist_id, int role_mask) const {
     }
 }
 
+// from/to are distinct hop endpoints (chain step source/destination) named
+// at every call site; swapping them is not a realistic mistake.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool NeighboursClient::IsRealHop(std::int64_t from, std::int64_t to,
                                  int role_mask) const {
     const auto neighbours = Neighbours(from, role_mask);
