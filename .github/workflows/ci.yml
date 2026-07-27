@@ -73,7 +73,6 @@ jobs:
           find libs/six-feat-common/src services/six-feat/src -name '*.cpp' | xargs -r \
             clang-tidy -p build \
               --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
-              --warnings-as-errors='-*,bugprone-*,performance-*' \
               --header-filter='six-feat-common|services/six-feat' \
             2>&1 | tee clang-tidy-report.txt
 
@@ -84,9 +83,17 @@ jobs:
           find services/game -name '*.cpp' | xargs -r \
             clang-tidy -p build-game \
               --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
-              --warnings-as-errors='-*,bugprone-*,performance-*' \
               --header-filter='six-feat-common|services/game' \
             2>&1 | tee -a clang-tidy-report.txt
+
+      - name: Check clang-tidy report
+        if: always()
+        run: |
+          if grep -qE '(libs/six-feat-common/src/|services/six-feat/src/|services/game/).*warning:' clang-tidy-report.txt; then
+            echo "::error::clang-tidy found warnings in project code"
+            grep -E '(libs/six-feat-common/src/|services/six-feat/src/|services/game/).*warning:' clang-tidy-report.txt
+            exit 1
+          fi
 
       - name: Upload report
         if: always()
