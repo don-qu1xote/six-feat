@@ -25,7 +25,7 @@ std::string Base64UrlEncode(const unsigned char* data, std::size_t len) {
     out += kB64Chars[(b >> 18) & 0x3F];
     out += kB64Chars[(b >> 12) & 0x3F];
     if (i + 1 < len) out += kB64Chars[(b >> 6) & 0x3F];
-    if (i + 2 < len) out += kB64Chars[(b) & 0x3F];
+    if (i + 2 < len) out += kB64Chars[b & 0x3F];
   }
   return out;
 }
