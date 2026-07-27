@@ -40,9 +40,11 @@ runs:
       if: inputs.apt-packages != ''
       shell: bash
       run: |
-        apt-get update -q
-        apt-get install -y --no-install-recommends ${{ inputs.apt-packages }}
-        rm -rf /var/lib/apt/lists/*
+        SUDO=""
+        if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
+        $SUDO apt-get update -q
+        $SUDO apt-get install -y --no-install-recommends ${{ inputs.apt-packages }}
+        $SUDO rm -rf /var/lib/apt/lists/*
 
     # ── Node.js toolchain ────────────────────────────────────────────────────
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0

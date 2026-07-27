@@ -85,8 +85,10 @@ const std::vector<const char*> kGameMigrationV1 = {
         ts      BIGINT NOT NULL,
         PRIMARY KEY (user_id, code)
     ))SQL",
+    // clang-format off
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_challenge_score ON game_attempts(challenge_id, score DESC)",
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_season_score ON game_attempts(season_id, score DESC)",
+    // clang-format on
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts)",
 };
 

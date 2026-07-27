@@ -126,7 +126,7 @@ jobs:
           node-version: "20"
 
       - name: Install ruff
-        run: pip install ruff
+        run: pip install --user ruff
 
       - name: Check C++ formatting
         run: |
@@ -149,7 +149,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Install PyYAML
-        run: pip install pyyaml
+        run: pip install --user pyyaml
       - name: Verify YAML anchors
         run: python3 scripts/verify-yaml-anchors.py
 
@@ -167,7 +167,7 @@ jobs:
           curl -fsSL -o /tmp/prometheus.tar.gz \
             "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
           tar -xzf /tmp/prometheus.tar.gz -C /tmp
-          install -m 0755 "/tmp/prometheus-${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
+          sudo install -m 0755 "/tmp/prometheus-${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
       - name: Check rules
         run: promtool check rules observability/prometheus/rules/*.yml
       - name: Check config
@@ -1116,6 +1116,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: .
