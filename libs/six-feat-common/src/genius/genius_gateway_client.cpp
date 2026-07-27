@@ -85,6 +85,7 @@ formats::json::Value GeniusGatewayClient::PostInternal(const std::string& path,
   }
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::vector<Candidate> GeniusGatewayClient::ResolveCandidates(const std::string& query,
                                                               const std::string& user_token) const {
   formats::json::ValueBuilder body(formats::json::Type::kObject);
@@ -133,6 +134,7 @@ std::optional<ArtistRef> GeniusGatewayClient::FetchArtistById(std::int64_t id,
   }
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::vector<std::int64_t> GeniusGatewayClient::FetchSongList(std::int64_t artist_id,
                                                              int limit,
                                                              Lane lane,

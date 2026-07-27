@@ -28,6 +28,7 @@ using namespace userver;
 
 namespace {
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::string ErrorJson(const std::string& code, const std::string& msg) {
   formats::json::ValueBuilder b(formats::json::Type::kObject);
   b["type"] = std::string{"search"};

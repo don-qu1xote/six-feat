@@ -74,6 +74,7 @@ jobs:
             clang-tidy -p build \
               --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
               --warnings-as-errors='-*,bugprone-*,performance-*' \
+              --header-filter='six-feat-common|services/six-feat' \
             2>&1 | tee clang-tidy-report.txt
 
       - name: Run clang-tidy (game)
@@ -84,6 +85,7 @@ jobs:
             clang-tidy -p build-game \
               --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
               --warnings-as-errors='-*,bugprone-*,performance-*' \
+              --header-filter='six-feat-common|services/game' \
             2>&1 | tee -a clang-tidy-report.txt
 
       - name: Upload report
@@ -167,7 +169,7 @@ jobs:
           curl -fsSL -o /tmp/prometheus.tar.gz \
             "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
           tar -xzf /tmp/prometheus.tar.gz -C /tmp
-          sudo install -m 0755 "/tmp/prometheus-${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
+          sudo install -m 0755 "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
       - name: Check rules
         run: promtool check rules observability/prometheus/rules/*.yml
       - name: Check config
@@ -945,7 +947,7 @@ jobs:
           curl -fsSL -o /tmp/k6.tar.gz \
             "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/k6-v${K6_VERSION}-linux-amd64.tar.gz"
           tar -xzf /tmp/k6.tar.gz -C /tmp
-          install -m 0755 "/tmp/k6-v${K6_VERSION}/k6" /usr/local/bin/k6
+          install -m 0755 "/tmp/k6-v${K6_VERSION}-linux-amd64/k6" /usr/local/bin/k6
 
       - name: Install front/ dependencies
         working-directory: front

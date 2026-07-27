@@ -78,6 +78,7 @@ yaml_config::Schema EnrichmentClient::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<components::ComponentBase>(kEnrichmentClientComponentSchema);
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 bool EnrichmentClient::SendEnqueueRequest(std::int64_t artist_id,
                                           const std::string& name,
                                           const std::string& image,

@@ -50,6 +50,7 @@ bool CooldownGate::IsActive() const {
   return active_ && (Clock::now() < deadline_);
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 void RateLimiter::Update(int remaining, std::int64_t reset_unix) {
   std::unique_lock lock(mu_);
   const bool slots_increased = (remaining >= 0) && (remaining > available_slots_);
@@ -173,6 +174,7 @@ void CircuitBreaker::Reset() {
   LOG_INFO() << "[CB] request_id=" << CurrentRequestId() << " HalfOpen→Closed";
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 TokenBucket::TokenBucket(double tokens_per_sec, int burst_size)
     : refill_ns_(static_cast<long long>(1e9 / tokens_per_sec)),
       capacity_(burst_size),
@@ -266,6 +268,7 @@ ResiliencePipeline::Guard ResiliencePipeline::Acquire(Lane lane) {
   return Guard{std::move(sem_lock), rate_limiter_};
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 void ResiliencePipeline::OnResponse(Guard& guard,
                                     int status_code,
                                     int remaining,

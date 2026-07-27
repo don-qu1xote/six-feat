@@ -28,6 +28,7 @@ namespace {
 constexpr int kFullDepth = static_cast<int>(Depth::Full);
 constexpr std::chrono::seconds kPollInterval{2};
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::string MakeSseEvent(std::int64_t depth, int song_count, bool enriching) {
   formats::json::ValueBuilder b(formats::json::Type::kObject);
   b["depth"] = depth;
