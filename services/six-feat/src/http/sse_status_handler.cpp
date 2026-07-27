@@ -56,7 +56,6 @@ void SseStatusHandler::HandleStreamRequest(
     return;
   }
 
-  // ── Validate ?id= ──────────────────────────────────────────────────────
   const auto& id_str = request.GetArg("id");
   if (id_str.empty()) {
     response.SetStatus(server::http::HttpStatus::kBadRequest);

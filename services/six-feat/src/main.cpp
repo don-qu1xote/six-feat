@@ -24,7 +24,8 @@
 #include "enrichment/enrichment_client.hpp"
 
 #include <userver/clients/dns/component.hpp>
-#include <userver/clients/http/component_list.hpp>   #include <userver/components/minimal_server_component_list.hpp>
+#include <userver/clients/http/component_list.hpp>
+#include <userver/components/minimal_server_component_list.hpp>
 #include <userver/server/handlers/server_monitor.hpp>
 #include <userver/storages/postgres/component.hpp>
 #include <userver/testsuite/testsuite_support.hpp>

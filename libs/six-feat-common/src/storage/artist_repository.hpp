@@ -1,6 +1,8 @@
 #pragma once
 
-#include "storage/analytics.hpp" #include "domain/domain_types.hpp"
+#include "domain/domain_types.hpp"
+
+#include "storage/analytics.hpp"
 #include "storage/persistent_store.hpp"
 
 #include <cstdint>
