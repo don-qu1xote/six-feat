@@ -25,6 +25,7 @@ vi.mock("./game-api.js", () => ({
   submitChain: vi.fn(async () => null),
   fetchLeaderboard: vi.fn(async () => null),
   fetchDailyChallenge: vi.fn(async () => null),
+  fetchDailyChallengeState: vi.fn(async () => ({ status: "none", daily: null })),
   checkLink: vi.fn(async () => ({ linked: true })),
 }));
 
@@ -41,8 +42,21 @@ import { showToast } from "../ui/toast.js";
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
 import { apiFetch } from "../api/net.js";
 import { fetchNeighbours } from "./game-graph.js";
-import { createChallenge, submitChain, fetchLeaderboard, fetchDailyChallenge } from "./game-api.js";
+import { createChallenge, submitChain, fetchLeaderboard, fetchDailyChallenge, fetchDailyChallengeState } from "./game-api.js";
 import { navigateToSurface } from "../ui/router.js";
+
+// [SF-GAME-48] Реальный жест игрока на экране старта: выбрать оба конца и
+// нажать Start. Пик из автокомплита сам по себе партию БОЛЬШЕ НЕ начинает
+// (connect.js::pickEndpoint) — раньше начинал, и кнопка Start, ради которой
+// экран и делался, оказывалась мёртвой: она исчезала вместе с карточкой в тот
+// же момент, когда игрок выбирал второго артиста.
+function pickStart(name, id) { attachGeniusAutocomplete.mock.calls[0][2](name, null, id); }
+function pickGoal(name, id)  { attachGeniusAutocomplete.mock.calls[1][2](name, null, id); }
+function startPair(from = ["Drake", 100], to = ["Adele", 900]) {
+  pickStart(from[0], from[1]);
+  pickGoal(to[0], to[1]);
+  els.connectStartBtn.click();
+}
 
 function fixtureHtml() {
   return `
@@ -56,6 +70,7 @@ function fixtureHtml() {
       <div id="connect-endpoints" hidden>
         <input id="connect-start-input" /><div id="connect-start-ac"></div>
         <input id="connect-goal-input" /><div id="connect-goal-ac"></div>
+        <button id="connect-start-btn" disabled></button>
       </div>
       <button id="connect-zoom-in"></button>
       <button id="connect-zoom-out"></button>
@@ -80,7 +95,6 @@ function fixtureHtml() {
       <button id="connect-reset"></button>
       <button id="connect-give-up"></button>
       <button id="connect-share"></button>
-      <a id="connect-back"></a>
     </div>
   `;
 }
@@ -101,6 +115,7 @@ function bindEls() {
   els.connectStartAc = document.getElementById("connect-start-ac");
   els.connectGoalInput = document.getElementById("connect-goal-input");
   els.connectGoalAc = document.getElementById("connect-goal-ac");
+  els.connectStartBtn = document.getElementById("connect-start-btn");
   els.connectCanvas = document.getElementById("connect-canvas");
   els.connectStageEmpty = document.getElementById("connect-stage-empty");
   els.connectZoomIn = document.getElementById("connect-zoom-in");
@@ -117,7 +132,6 @@ function bindEls() {
   els.connectReset = document.getElementById("connect-reset");
   els.connectGiveUp = document.getElementById("connect-give-up");
   els.connectShare = document.getElementById("connect-share");
-  els.connectBack = document.getElementById("connect-back");
   els.connectLockin = document.getElementById("connect-lockin");
   els.connectFinishLabel = document.getElementById("connect-finish-label");
   els.connectFinishScore = document.getElementById("connect-finish-score");
@@ -125,10 +139,13 @@ function bindEls() {
   els.connectLeaderboard = document.getElementById("connect-leaderboard");
 }
 
+// [SF-GAME-34] Раньше здесь было три `await Promise.resolve()` — то есть
+// хелпер считал ВНУТРЕННЮЮ глубину промисов реализации, и любой лишний
+// async-хоп в продовом коде ронял тест, ничего не сломав по поведению.
+// Таймаут переводит нас через границу макротаска, полностью осушая очередь
+// микротасков, сколько бы уровней там ни было.
 async function flush() {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise(resolve => setTimeout(resolve, 0));
 }
 
 beforeEach(() => {
@@ -147,6 +164,8 @@ beforeEach(() => {
   fetchLeaderboard.mockImplementation(async () => null);
   fetchDailyChallenge.mockClear();
   fetchDailyChallenge.mockImplementation(async () => null);
+  fetchDailyChallengeState.mockClear();
+  fetchDailyChallengeState.mockImplementation(async () => ({ status: "none", daily: null }));
   checkLink.mockClear();
   checkLink.mockImplementation(async () => ({ linked: true }));
   State.connect = { startName: "", goalName: "", game: null, photos: {}, ids: {}, frontier: null, rivalBanner: null, par: null, submitted: false };
@@ -154,8 +173,10 @@ beforeEach(() => {
 });
 
 describe("empty state", () => {
-  it("shows the stage-empty placeholder and disables controls", () => {
-    expect(els.connectStageEmpty.hidden).toBe(false);
+  it("hands the stage to the setup screen and disables the in-game controls", () => {
+    // [SF-GAME-47] Подсказка «pick a start and a goal» больше не нужна: пока
+    // партии нет, по центру сцены стоит сам экран выбора пары.
+    expect(els.connectStageEmpty.hidden).toBe(true);
     expect(els.connectAddInput.disabled).toBe(true);
     expect(els.connectAddBtn.disabled).toBe(true);
     expect(els.connectUndo.disabled).toBe(true);
@@ -189,13 +210,35 @@ describe("setStartArtist / setGoalArtist", () => {
     setStartArtist("Drake");
     setGoalArtist("Adele");
     commitHop("Rihanna"); // focus follows to Rihanna; goal not on the line until reached
-    const rows = els.connectLineList.querySelectorAll(".clp-row");
-    expect(rows.length).toBe(2);
-    expect(rows[0].querySelector(".clp-row-name").textContent).toBe("Drake");
-    expect(rows[0].querySelector(".clp-row-sub").textContent).toBe("the origin");
-    expect(rows[1].querySelector(".clp-row-name").textContent).toBe("Rihanna");
-    expect(rows[1].querySelector(".clp-row-sub").textContent).toBe("branching from here");
-    expect(rows[1].classList.contains("is-focus")).toBe(true);
+    const walked = els.connectLineList.querySelectorAll(".clp-row:not(.is-ghost)");
+    expect(walked.length).toBe(2);
+    expect(walked[0].querySelector(".clp-row-name").textContent).toBe("Drake");
+    expect(walked[0].querySelector(".clp-row-sub").textContent).toBe("the origin");
+    expect(walked[1].querySelector(".clp-row-name").textContent).toBe("Rihanna");
+    expect(walked[1].querySelector(".clp-row-sub").textContent).toBe("branching from here");
+    expect(walked[1].classList.contains("is-focus")).toBe(true);
+  });
+
+  // [SF-GAME-54] Цель показывается последней строкой ещё ДО того, как до неё
+  // дошли — призраком. Панель раньше показывала только пройденное, и куда
+  // игрок вообще идёт, читалось лишь из пилюли над графом. Призрак — не часть
+  // линии: он без data-name, поэтому клик по нему не пере-фокусирует.
+  it("[SF-GAME-54] показывает цель призрачной строкой, пока до неё не дошли", () => {
+    setStartArtist("Drake");
+    setGoalArtist("Adele");
+    commitHop("Rihanna");
+    const ghost = els.connectLineList.querySelector(".clp-row.is-ghost");
+    expect(ghost).not.toBeNull();
+    expect(ghost.querySelector(".clp-row-name").textContent).toBe("Adele");
+    expect(ghost.querySelector(".clp-row-sub").textContent).toBe("the target");
+    expect(ghost.dataset.name).toBeUndefined();
+  });
+
+  it("[SF-GAME-54] призрака нет, когда цель уже достигнута", () => {
+    setStartArtist("Drake");
+    setGoalArtist("Adele");
+    commitHop("Adele");
+    expect(els.connectLineList.querySelector(".clp-row.is-ghost")).toBeNull();
   });
 
   it("[design: ветвящийся веб] shows the goal as 'reached' on the line once completed", () => {
@@ -220,10 +263,7 @@ describe("setStartArtist / setGoalArtist", () => {
 
   it("[design: PAR pill] shows the challenge's ideal length once the challenge resolves", async () => {
     createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 3 }));
-    const startCb = attachGeniusAutocomplete.mock.calls[0][2];
-    const goalCb  = attachGeniusAutocomplete.mock.calls[1][2];
-    startCb("Drake", null, 100);
-    goalCb("Adele", null, 900);
+    startPair(["Drake", 100], ["Adele", 900]);
     await flush();
     expect(els.connectParPill.hidden).toBe(false);
     expect(els.connectParValue.textContent).toBe("3");
@@ -270,22 +310,60 @@ describe("setStartArtist / setGoalArtist", () => {
   });
 });
 
+// [SF-GAME-48] Экран старта: партию начинает ИГРОК, а не автокомплит.
+// SF-GAME-47 уже вводил кнопку Start ровно за этим, но закрыл только ручной
+// ввод — пик из автокомплита звал setStartArtist/setGoalArtist напрямую и
+// стартовал партию мимо кнопки. Заодно это уносило с экрана саму карточку
+// (renderEndpoints прячет её, как только endpointsReady()), то есть кнопка
+// пропадала за миг до нажатия.
+describe("[SF-GAME-48] явный старт с экрана настройки", () => {
+  it("выбор обоих концов в автокомплите НЕ начинает партию", async () => {
+    pickStart("Drake", 100);
+    pickGoal("Adele", 900);
+    await flush();
+    expect(createChallenge).not.toHaveBeenCalled();
+    expect(_currentChain()).toBeNull();
+    // Карточка выбора осталась на экране — жать Start ещё есть куда.
+    expect(els.connectEndpoints.hidden).toBe(false);
+  });
+
+  it("Start начинает партию по тем же двум концам", async () => {
+    pickStart("Drake", 100);
+    pickGoal("Adele", 900);
+    els.connectStartBtn.click();
+    await flush();
+    expect(createChallenge).toHaveBeenCalledWith(100, 900, 0);
+    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake"]);
+  });
+
+  it("Start недоступен, пока не выбраны оба конца", () => {
+    expect(els.connectStartBtn.disabled).toBe(true);
+    pickStart("Drake", 100);
+    expect(els.connectStartBtn.disabled).toBe(true);
+    pickGoal("Adele", 900);
+    expect(els.connectStartBtn.disabled).toBe(false);
+  });
+
+  it("в роли поповера (партия уже идёт) пик коммитит сразу, без Start", async () => {
+    startPair(["Drake", 100], ["Adele", 900]);
+    await flush();
+    createChallenge.mockClear();
+    pickGoal("Rosalía", 700);
+    await flush();
+    expect(createChallenge).toHaveBeenCalledWith(100, 700, 0);
+  });
+});
+
 describe("challenge creation (design: real backend)", () => {
   it("attempts a challenge create once both endpoints have resolvable ids", async () => {
-    const startCb = attachGeniusAutocomplete.mock.calls[0][2];
-    const goalCb  = attachGeniusAutocomplete.mock.calls[1][2];
-    startCb("Drake", null, 100);
-    goalCb("Adele", null, 900);
+    startPair(["Drake", 100], ["Adele", 900]);
     await flush();
     expect(createChallenge).toHaveBeenCalledWith(100, 900, 0);
   });
 
   it("stores the returned challenge id on the model", async () => {
     createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 2 }));
-    const startCb = attachGeniusAutocomplete.mock.calls[0][2];
-    const goalCb  = attachGeniusAutocomplete.mock.calls[1][2];
-    startCb("Drake", null, 100);
-    goalCb("Adele", null, 900);
+    startPair(["Drake", 100], ["Adele", 900]);
     await flush();
     expect(_currentChain().challengeId).toBe(7);
   });
@@ -295,9 +373,9 @@ describe("challenge creation (design: real backend)", () => {
       ok: true,
       json: async () => ({ candidates: [{ id: 100, name: "Drake", image: null }] }),
     }));
-    setStartArtist("Drake"); // typed, no autocomplete pick — no id yet
-    const goalCb = attachGeniusAutocomplete.mock.calls[1][2];
-    goalCb("Adele", null, 900);
+    els.connectStartInput.value = "Drake"; // typed, no autocomplete pick — no id yet
+    pickGoal("Adele", 900);
+    els.connectStartBtn.click();
     await flush();
     expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/api/v1/search?q=Drake"));
     expect(createChallenge).toHaveBeenCalledWith(100, 900, 0);
@@ -306,10 +384,7 @@ describe("challenge creation (design: real backend)", () => {
 
 describe("commitHop", () => {
   beforeEach(() => {
-    const startCb = attachGeniusAutocomplete.mock.calls[0][2];
-    const goalCb  = attachGeniusAutocomplete.mock.calls[1][2];
-    startCb("Drake", null, 100);
-    goalCb("Adele", null, 900);
+    startPair(["Drake", 100], ["Adele", 900]);
   });
 
   it("adds an intermediate hop and updates the hop count", async () => {
@@ -344,10 +419,7 @@ describe("commitHop", () => {
 describe("reaching the goal + Lock in (design: real backend submit)", () => {
   beforeEach(async () => {
     createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 1 }));
-    const startCb = attachGeniusAutocomplete.mock.calls[0][2];
-    const goalCb  = attachGeniusAutocomplete.mock.calls[1][2];
-    startCb("Drake", null, 100);
-    goalCb("Adele", null, 900);
+    startPair(["Drake", 100], ["Adele", 900]);
     await flush();
   });
 
@@ -422,9 +494,9 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
 
   it("tells the player honestly when the challenge itself never resolved", async () => {
     createChallenge.mockImplementation(async () => null);
-    setStartArtist("Kendrick Lamar");
-    const goalCb = attachGeniusAutocomplete.mock.calls[1][2];
-    goalCb("SZA", null, 950);
+    els.connectStartInput.value = "Kendrick Lamar";
+    pickGoal("SZA", 950);
+    els.connectStartBtn.click();
     await flush();
     commitHop("SZA");
     lockIn();
@@ -437,10 +509,7 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
 describe("[game #2] commitTypedHop — live connection check", () => {
   beforeEach(async () => {
     createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 2 }));
-    const startCb = attachGeniusAutocomplete.mock.calls[0][2];
-    const goalCb  = attachGeniusAutocomplete.mock.calls[1][2];
-    startCb("Drake", null, 100); // focus is Drake, id 100
-    goalCb("Adele", null, 900);
+    startPair(["Drake", 100], ["Adele", 900]);
     await flush();
     checkLink.mockClear();
     showToast.mockClear();
@@ -714,9 +783,13 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
       <span id="hero-game-to-avatar"></span>
       <input id="hero-game-to-input" /><div id="hero-game-to-ac"></div>
       <button id="btn-hero-start-challenge"></button>
-      <div id="hero-game-daily" hidden>
+      <div id="hero-game-daily">
+        <div id="hero-game-daily-pair" hidden>
         <span id="hero-game-daily-from-avatar"></span><span id="hero-game-daily-from-name"></span>
         <span id="hero-game-daily-to-avatar"></span><span id="hero-game-daily-to-name"></span>
+        </div>
+        <span id="hero-game-daily-state"></span>
+        <button id="btn-hero-daily-retry" hidden></button>
         <button id="btn-hero-play-daily"></button>
       </div>
       <div id="hero-game-rivals" hidden><div id="hero-game-rivals-list"></div></div>
@@ -733,6 +806,9 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
     els.heroGameToAc       = document.getElementById("hero-game-to-ac");
     els.btnHeroStartChallenge = document.getElementById("btn-hero-start-challenge");
     els.heroGameDaily            = document.getElementById("hero-game-daily");
+    els.heroGameDailyPair        = document.getElementById("hero-game-daily-pair");
+    els.heroGameDailyState       = document.getElementById("hero-game-daily-state");
+    els.btnHeroDailyRetry        = document.getElementById("btn-hero-daily-retry");
     els.heroGameDailyFromAvatar  = document.getElementById("hero-game-daily-from-avatar");
     els.heroGameDailyFromName    = document.getElementById("hero-game-daily-from-name");
     els.heroGameDailyToAvatar    = document.getElementById("hero-game-daily-to-avatar");
@@ -803,27 +879,65 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
       from_name: "Drake", from_image: "https://example.test/drake.jpg", to_name: "Adele",
     };
 
+    // См. комментарий у внешнего flush() выше — та же причина.
     async function flush() {
-      await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    it("stays hidden when no daily challenge has been published (404 -> null)", async () => {
-      document.body.innerHTML = gameFixtureHtml();
-      bindGameEls();
-      setupGameLandingPanel();
-      await flush();
-      expect(els.heroGameDaily.hidden).toBe(true);
-      expect(els.heroGameRivals.hidden).toBe(true);
-      expect(els.heroGameDivider.hidden).toBe(true);
-    });
-
-    it("renders the real daily pair once fetchDailyChallenge resolves", async () => {
-      fetchDailyChallenge.mockImplementation(async () => DAILY);
+    // [SF-GAME-60] Слот дейли больше не исчезает молча ни в одном случае: он
+    // всегда на экране и объясняет, ЧТО именно произошло. Раньше 404 («на
+    // сегодня не опубликован») и 500 («сервис не ответил») схлопывались в
+    // один null и прятали блок одинаково — в логах прода видно оба случая.
+    it("[SF-GAME-60] 404 — слот виден и говорит, что дейли ещё не опубликован", async () => {
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "none", daily: null }));
       document.body.innerHTML = gameFixtureHtml();
       bindGameEls();
       setupGameLandingPanel();
       await flush();
       expect(els.heroGameDaily.hidden).toBe(false);
+      expect(els.heroGameDailyPair.hidden).toBe(true);
+      expect(els.heroGameDailyState.hidden).toBe(false);
+      expect(els.heroGameDailyState.textContent).toMatch(/not published|no challenge published/i);
+      expect(els.btnHeroDailyRetry.hidden).toBe(true);   // повторять нечего
+      expect(els.heroGameRivals.hidden).toBe(true);
+    });
+
+    it("[SF-GAME-60] сбой сервиса — другая формулировка и кнопка Retry", async () => {
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "unavailable", daily: null }));
+      document.body.innerHTML = gameFixtureHtml();
+      bindGameEls();
+      setupGameLandingPanel();
+      await flush();
+      expect(els.heroGameDaily.hidden).toBe(false);
+      expect(els.heroGameDailyPair.hidden).toBe(true);
+      expect(els.heroGameDailyState.textContent).toMatch(/couldn't reach/i);
+      expect(els.heroGameDailyState.classList.contains("is-error")).toBe(true);
+      expect(els.btnHeroDailyRetry.hidden).toBe(false);
+    });
+
+    it("[SF-GAME-60] Retry перезапрашивает дейли и показывает пару", async () => {
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "unavailable", daily: null }));
+      document.body.innerHTML = gameFixtureHtml();
+      bindGameEls();
+      setupGameLandingPanel();
+      await flush();
+
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "ok", daily: DAILY }));
+      els.btnHeroDailyRetry.click();
+      await flush();
+
+      expect(els.heroGameDailyPair.hidden).toBe(false);
+      expect(els.heroGameDailyFromName.textContent).toBe("Drake");
+      expect(els.btnHeroDailyRetry.hidden).toBe(true);
+    });
+
+    it("renders the real daily pair once the daily resolves", async () => {
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "ok", daily: DAILY }));
+      document.body.innerHTML = gameFixtureHtml();
+      bindGameEls();
+      setupGameLandingPanel();
+      await flush();
+      expect(els.heroGameDailyPair.hidden).toBe(false);
       expect(els.heroGameDailyFromName.textContent).toBe("Drake");
       expect(els.heroGameDailyToName.textContent).toBe("Adele");
       expect(els.heroGameDailyFromAvatar.innerHTML).toContain("img");
@@ -831,7 +945,7 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
     });
 
     it("Play sets both endpoints from the daily challenge and navigates, without a rival banner", async () => {
-      fetchDailyChallenge.mockImplementation(async () => DAILY);
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "ok", daily: DAILY }));
       document.body.innerHTML = gameFixtureHtml();
       bindGameEls();
       setupGameLandingPanel();
@@ -847,7 +961,7 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
     });
 
     it("renders rival chips from the daily challenge's own leaderboard", async () => {
-      fetchDailyChallenge.mockImplementation(async () => DAILY);
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "ok", daily: DAILY }));
       fetchLeaderboard.mockImplementation(async () => ({
         entries: [
           { user_id: 1, display_name: "Alice", score: 950, hops: 2, ts: 1 },
@@ -869,7 +983,7 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
     });
 
     it("picking a rival starts the SAME daily challenge and sets the rival banner", async () => {
-      fetchDailyChallenge.mockImplementation(async () => DAILY);
+      fetchDailyChallengeState.mockImplementation(async () => ({ status: "ok", daily: DAILY }));
       fetchLeaderboard.mockImplementation(async () => ({
         entries: [{ user_id: 1, display_name: "Alice", score: 950, hops: 2, ts: 1 }],
         next_cursor: null,

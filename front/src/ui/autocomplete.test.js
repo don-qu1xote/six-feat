@@ -53,3 +53,31 @@ describe("attachGeniusAutocomplete — history rows (SF-WEB-59)", () => {
     expect(item.querySelector(".ac-info .ac-name")).not.toBeNull();
   });
 });
+
+// [SF-GAME-51] Пустая история — не повод открывать дропдаун. Раньше фокус на
+// поле выкатывал панель во всю его ширину с единственной надписью «No recent
+// searches»: первым, что видел новый посетитель главной, был пустой блок,
+// сообщающий, что ничего нет. Он же перекрывал кнопку «Filters» под полем.
+describe("[SF-GAME-51] attachGeniusAutocomplete — пустая история", () => {
+  it("не открывает дропдаун, когда показывать нечего", () => {
+    State.history = [];
+    const { input, dd } = makeInputAndDropdown();
+    attachGeniusAutocomplete(input, dd, () => {});
+
+    input.dispatchEvent(new Event("focus"));
+
+    expect(dd.classList.contains("open")).toBe(false);
+    expect(dd.textContent).not.toMatch(/no recent searches/i);
+  });
+
+  it("непустая история дропдаун по-прежнему открывает", () => {
+    State.history = ["Gorillaz"];
+    const { input, dd } = makeInputAndDropdown();
+    attachGeniusAutocomplete(input, dd, () => {});
+
+    input.dispatchEvent(new Event("focus"));
+
+    expect(dd.classList.contains("open")).toBe(true);
+    expect(dd.querySelectorAll(".ac-history").length).toBe(1);
+  });
+});

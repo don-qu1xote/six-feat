@@ -156,3 +156,70 @@ def test_keyset_pagination_walks_distinct_pages(seeded: dict):
     assert len(page2["challenges"]) == 1
     assert page2["challenges"][0]["id"] != page1["challenges"][0]["id"]
     assert page2["challenges"][0]["id"] == seeded["cd"]
+
+
+# ── [SF-GAME-46] Поиск по артисту ─────────────────────────────────────────────
+# Фильтр применяется НА СЕРВЕРЕ, по обоим концам пары. Клиентская фильтрация
+# загруженной страницы была бы враньём: она не видит остальные страницы.
+
+
+def test_search_matches_the_from_endpoint(seeded: dict):
+    body = requests.get(CHALLENGES_URL, params={"q": "SFG21ChA", "limit": 60}, timeout=5).json()
+    ids = {c["id"] for c in body["challenges"]}
+    assert seeded["ab"] in ids          # A — старт этой пары
+    assert seeded["cd"] not in ids      # C-D к запросу отношения не имеет
+
+
+def test_search_matches_the_to_endpoint_too(seeded: dict):
+    """Игрок ищет «челлендж с этим артистом», не зная, старт он там или цель."""
+    body = requests.get(CHALLENGES_URL, params={"q": "SFG21ChB", "limit": 60}, timeout=5).json()
+    ids = {c["id"] for c in body["challenges"]}
+    assert seeded["ab"] in ids          # B — ЦЕЛЬ этой пары, а не старт
+
+
+def test_search_is_case_insensitive_and_substring(seeded: dict):
+    for term in ("sfg21cha", "SFG21CHA", "21ChA", "g21Ch"):
+        ids = {c["id"] for c in requests.get(
+            CHALLENGES_URL, params={"q": term, "limit": 60}, timeout=5).json()["challenges"]}
+        assert seeded["ab"] in ids, f"{term!r} should still find the A-B pair"
+
+
+def test_search_combines_with_the_kind_filter(seeded: dict):
+    """kind и q — независимые фильтры, а не альтернативы."""
+    ids = {c["id"] for c in requests.get(
+        CHALLENGES_URL, params={"q": "SFG21ChA", "kind": "custom", "limit": 60},
+        timeout=5).json()["challenges"]}
+    assert seeded["ab"] in ids
+
+    ids = {c["id"] for c in requests.get(
+        CHALLENGES_URL, params={"q": "SFG21ChA", "kind": "daily", "limit": 60},
+        timeout=5).json()["challenges"]}
+    assert seeded["ab"] not in ids
+
+
+def test_empty_query_is_the_same_as_no_filter(seeded: dict):
+    """Старые клиенты, не знающие про q, не должны ничего заметить."""
+    without = requests.get(CHALLENGES_URL, params={"kind": "custom", "limit": 60}, timeout=5).json()
+    with_empty = requests.get(CHALLENGES_URL, params={"kind": "custom", "q": "", "limit": 60}, timeout=5).json()
+    assert [c["id"] for c in without["challenges"]] == [c["id"] for c in with_empty["challenges"]]
+
+
+def test_no_match_returns_an_empty_page_not_an_error():
+    resp = requests.get(CHALLENGES_URL, params={"q": "NoSuchArtistZZZ", "limit": 60}, timeout=5)
+    assert resp.status_code == 200
+    assert resp.json()["challenges"] == []
+
+
+def test_like_wildcards_are_escaped_not_honoured(seeded: dict):
+    """'%' — это символ имени, а не «покажи всё»: незаэкранированный он
+    превратил бы поиск в полный листинг."""
+    body = requests.get(CHALLENGES_URL, params={"q": "%", "limit": 60}, timeout=5).json()
+    assert seeded["ab"] not in {c["id"] for c in body["challenges"]}
+
+    body = requests.get(CHALLENGES_URL, params={"q": "SFG21Ch_", "limit": 60}, timeout=5).json()
+    assert seeded["ab"] not in {c["id"] for c in body["challenges"]}, "'_' must not match any single char"
+
+
+def test_overlong_query_is_rejected():
+    assert requests.get(CHALLENGES_URL, params={"q": "x" * 81}, timeout=5).status_code == 400
+    assert requests.get(CHALLENGES_URL, params={"q": "x" * 80}, timeout=5).status_code == 200

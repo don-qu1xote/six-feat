@@ -16,6 +16,7 @@ import { stopCanvasDecorator } from "../dom/canvas-decorator.js";
 import { clearCanvasState } from "../ui/canvas-states.js";
 import { resetHoverState, invalidateColorCache } from "./highlight.js";
 import { attachNetworkEvents } from "./events.js";
+import { isGameModeActive } from "./game-mode.js";
 import { updateEdgeRenderMode, runFlyoutAnimation, pokeFastRenderMode, resetFastRenderMode } from "./physics.js";
 import { nodeVisual, edgeVisual, networkOptions, hexToRgba, LARGE_GRAPH_NODE_THRESHOLD, FAST_RENDER_EDGE_THRESHOLD } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
@@ -169,7 +170,16 @@ export function initNetwork(seedId, nameById) {
   State.network.setOptions({ physics: { enabled: false } });
   // [SF-WEB-47] Was its own literal (400) and never checked
   // prefers-reduced-motion — visAnimation(MOTION.flight) covers both.
-  State.network.fit({ animation: visAnimation(MOTION.flight) });
+  // [SF-GAME-56] В игре камерой распоряжается доска, а не этот конвейер.
+  // Каждый ход пересобирает граф через replaceGraph, а тот заканчивался
+  // анимированным fit'ом — то есть на КАЖДЫЙ ход камера уезжала и приезжала.
+  // Замер за один ход: 22 разных положения камеры и ТРИ разные раскладки
+  // узлов (третья — кадр, где узлы ещё стоят там, куда их положил конвейер
+  // Explorer'а, до того как applyLayout переставит их в коридор). Это и есть
+  // «граф дёргается при игре». Доска ставит координаты сама сразу после
+  // replaceGraph и фитит камеру осознанно — на старте партии и на финале.
+  if (!isGameModeActive()) State.network.fit({ animation: visAnimation(MOTION.flight) });
+
   clearTimeout(State.physicsTimer);
   State.physicsTimer = null;
 }
@@ -341,7 +351,9 @@ export function refreshNetwork(seedId, nameById, savedPositions) {
   // пересекается — никакого nudgePhysics/стабилизации как решателя. Просто
   // держим её выключенной и подгоняем камеру (как initNetwork).
   State.network.setOptions({ physics: { enabled: false } });
-  State.network.fit({ animation: visAnimation(MOTION.flight) });
+  // [SF-GAME-56] Тот же гейт, что в initNetwork: в игре камерой распоряжается
+  // доска. refreshNetwork — путь, по которому идёт КАЖДЫЙ ход партии.
+  if (!isGameModeActive()) State.network.fit({ animation: visAnimation(MOTION.flight) });
   clearTimeout(State.physicsTimer);
   State.physicsTimer = null;
 }

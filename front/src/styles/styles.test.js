@@ -332,6 +332,55 @@ describe("[SF-WEB-50] landing decorator — reduced-motion stops the drift", () 
   });
 });
 
+
+// [SF-GAME-54] `hidden` — это не «display:none», а всего лишь правило
+// UA-стилей, которое перебивает ЛЮБОЕ авторское `display`. Блок, объявленный
+// `display:flex`, остаётся видимым с выставленным hidden — и именно так на
+// главной висела надпись «or pick a rival» с пустотой под ней: JS честно
+// оставлял секцию скрытой, а CSS её показывал. Проверяем не конкретный баг, а
+// правило: если селектор объявляет display, у него обязан быть [hidden]-guard.
+describe("[SF-GAME-54] display:flex не должен перебивать атрибут hidden", () => {
+
+  const guarded = [".hero-game-daily", ".hero-game-rivals", ".hero-game-divider",
+                   ".connect-endpoints", ".clp-progress"];
+
+  for (const sel of guarded) {
+    it(`${sel} гасится своим [hidden]-правилом`, () => {
+      const base = rule(css, sel);
+      expect(base, `${sel}: правила нет вовсе`).toBeTruthy();
+      // Guard нужен только тем, кто сам объявляет display.
+      if (!/display:\s*(flex|grid|block|inline-flex)/.test(base)) return;
+      const re = new RegExp(`\\${sel}\\[hidden\\][^{]*\\{[^}]*display:\\s*none`);
+      expect(re.test(css), `${sel}: display объявлен, а [hidden]-guard'а нет`).toBe(true);
+    });
+  }
+});
+
+
+// [SF-GAME-59] Игровая панель на главной собрана из ТЕХ ЖЕ деталей, что
+// соседняя вкладка Connect, а не из своего набора. Раньше у неё были
+// собственные .duel-side (со своей коробкой — ровно тем боксингом, который из
+// Connect когда-то убрали специально), .duel-input, .duel-vs и
+// .hero-game-start со своими размерами. Тест держит именно это: свой набор не
+// должен вернуться, а общий контейнер обязан покрывать обе панели.
+describe("[SF-GAME-59] панель игры на главной стоит на общих деталях", () => {
+  const bespoke = [".hero-game-duel", ".duel-side", ".duel-input", ".duel-vs", ".hero-game-start"];
+
+  for (const sel of bespoke) {
+    it(`${sel} — своего правила больше нет`, () => {
+      expect(rule(css, sel), `${sel}: свой набор вернулся`).toBeNull();
+    });
+  }
+
+  it("общий контейнер hero-панели покрывает и Connect, и Game", () => {
+    const idx = css.indexOf(".hero-game-panel");
+    expect(idx, ".hero-game-panel не участвует ни в одном правиле").toBeGreaterThan(-1);
+    // Тот же блок, что и .hero-connect-panel — иначе поля снова ужмутся по
+    // содержимому (.hero-mode-panel центрирует детей).
+    expect(css).toMatch(/\.hero-connect-panel,\s*\n?\s*\.hero-game-panel\s*\{[^}]*width:\s*100%/);
+  });
+});
+
 function rule(css, selector) {
   const idx = css.indexOf(`${selector} {`);
   if (idx === -1) return null;

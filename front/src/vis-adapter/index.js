@@ -109,3 +109,13 @@ export {
   toggleCompareMode,
   setupCompareModeToggle,
 } from "./compare-mode.js";
+
+export {
+  // ── game-mode.js (SF-GAME-31 / ADR-0008) ──────────────────────────────
+  // Ограниченный игровой режим ОДНОГО И ТОГО ЖЕ движка: вход/выход владеет
+  // переездом #network и роутингом клика, игра эти детали больше не знает.
+  isGameModeActive,
+  enterGameMode,
+  exitGameMode,
+  handleGameModeNodeClick,
+} from "./game-mode.js";

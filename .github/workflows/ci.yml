@@ -305,6 +305,18 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
+      # [SF-CI-04] services/game has its OWN build tree — its sources aren't
+      # part of six-feat's, so they were invisible to the lint above. That made
+      # the single largest new C++ surface in the repo (11 handlers + the game
+      # store) the only one skipping the check that blocks every other merge.
+      # Same generator flags; a separate -B so the two compile_commands.json
+      # don't overwrite each other.
+      - name: Configure CMake for services/game (SF-CI-04)
+        run: |
+          cmake -S services/game -B build-game \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
       - name: Run clang-tidy
         shell: bash  # Add this line
         run: |
@@ -315,6 +327,20 @@ jobs:
               --warnings-as-errors='-*,bugprone-*,performance-*' \
             2>&1 | tee clang-tidy-report.txt
           echo "clang-tidy finished; see clang-tidy-report.txt for findings."
+
+      # [SF-CI-04] Same checks, same warnings-as-errors posture, against
+      # services/game's own build tree. Appended to the same report file so the
+      # uploaded artifact stays a single place to read findings.
+      - name: Run clang-tidy on services/game (SF-CI-04)
+        shell: bash
+        run: |
+          set -o pipefail
+          find services/game -name '*.cpp' | xargs -r \
+            clang-tidy -p build-game \
+              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
+              --warnings-as-errors='-*,bugprone-*,performance-*' \
+            2>&1 | tee -a clang-tidy-report.txt
+          echo "clang-tidy (services/game) finished; see clang-tidy-report.txt for findings."
 
       - name: Upload clang-tidy report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

@@ -83,6 +83,7 @@ export const els = {
   heroGameToInput:        $("hero-game-to-input"),
   heroGameToAc:           $("hero-game-to-ac"),
   heroGameToAvatar:       $("hero-game-to-avatar"),
+  btnHeroGameSwap:      $("btn-hero-game-swap"),   // [SF-GAME-59]
   btnHeroStartChallenge:  $("btn-hero-start-challenge"),
 
   // [design: Today's Challenge + or pick a rival] Real GET .../challenge?
@@ -93,6 +94,9 @@ export const els = {
   heroGameDailyFromName:  $("hero-game-daily-from-name"),
   heroGameDailyToAvatar:  $("hero-game-daily-to-avatar"),
   heroGameDailyToName:    $("hero-game-daily-to-name"),
+  heroGameDailyPair:    $("hero-game-daily-pair"),   // [SF-GAME-60]
+  heroGameDailyState:   $("hero-game-daily-state"),
+  btnHeroDailyRetry:    $("btn-hero-daily-retry"),
   btnHeroPlayDaily:       $("btn-hero-play-daily"),
   heroGameRivals:         $("hero-game-rivals"),
   heroGameRivalsList:     $("hero-game-rivals-list"),
@@ -207,8 +211,16 @@ export const els = {
   connectRivalText:        $("connect-rival-text"),
   connectTimerValue:    $("connect-timer-value"),
   connectHopsValue:     $("connect-hops-value"),
+  connectPoleFrom:      $("connect-pole-from"),      // [SF-GAME-55]
+  connectPoleFromName:  $("connect-pole-from-name"),
+  connectPoleTo:        $("connect-pole-to"),
+  connectPoleToName:    $("connect-pole-to-name"),
+  connectProgress:      $("connect-progress"),      // [SF-GAME-54]
+  connectPips:          $("connect-pips"),
+  connectProgressLabel: $("connect-progress-label"),
   connectEndpoints:     $("connect-endpoints"),
   connectEndpointsSummary: $("connect-endpoints-summary"),
+  connectStartBtn:      $("connect-start-btn"),   // [SF-GAME-47]
   connectStartInput:    $("connect-start-input"),
   connectStartAc:       $("connect-start-ac"),
   connectGoalInput:     $("connect-goal-input"),
@@ -229,7 +241,6 @@ export const els = {
   connectReset:         $("connect-reset"),
   connectGiveUp:        $("connect-give-up"),
   connectShare:         $("connect-share"),
-  connectBack:          $("connect-back"),
   connectLockin:        $("connect-lockin"),
   connectFinishLabel:   $("connect-finish-label"),
   connectFinishScore:   $("connect-finish-score"),
@@ -279,6 +290,9 @@ export const els = {
   chGrid:               $("ch-grid"),
   chEmpty:              $("ch-empty"),
   chMore:               $("ch-more"),
+  // [SF-GAME-46] Поиск челленджа по артисту.
+  chSearchInput:        $("ch-search-input"),
+  chSearchClear:        $("ch-search-clear"),
 
   // [game #4] Season & achievements hub (#/game/season).
   gameSeasonSurface:    $("game-season-surface"),

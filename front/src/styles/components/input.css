@@ -1,0 +1,37 @@
+/* ============================================================
+   ui-input — SF-WEB-11 kit.
+
+   [ИСПРАВЛЕНО] Класс .ui-input использовался в разметке (эндпоинты игры,
+   поля админки, поиск челленджей — 5 мест), но НИКОГДА НЕ БЫЛ ОПРЕДЕЛЁН ни
+   в одном стайлшите. Браузер рисовал их дефолтным нативным полем: белый
+   прямоугольник посреди тёмной поверхности. Именно так «поиск артистов в
+   игре» и выглядел сломанным — дело было не в логике, а в отсутствующем
+   стиле.
+
+   Рецепт тот же, что у остальных контролов кита (.ui-btn/.ui-chip): фон и
+   рамка из токенов, общий focus-ring, переходы по motion-шкале.
+   ============================================================ */
+.ui-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--paper);
+  background: rgba(var(--ink2-rgb), .85);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--space-2) var(--space-3);
+  transition: border-color var(--duration-base) var(--ease-standard),
+              background var(--duration-base) var(--ease-standard),
+              box-shadow var(--duration-base) var(--ease-standard);
+}
+.ui-input::placeholder { color: var(--mist); }
+.ui-input:hover { border-color: var(--mist); }
+.ui-input:focus,
+.ui-input:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  background: rgba(var(--ink2-rgb), 1);
+  box-shadow: var(--focus-ring);
+}
+.ui-input:disabled { opacity: .55; cursor: not-allowed; }

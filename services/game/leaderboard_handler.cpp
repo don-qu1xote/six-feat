@@ -50,6 +50,11 @@ std::string PageJson(const LeaderboardPage& page) {
         eb["score"]        = e.score;
         eb["hops"]         = e.hops;
         eb["ts"]           = e.ts;
+        // [SF-GAME-53] Сезонная доска ранжируется по elo (см. GetLeaderboard),
+        // поэтому рейтинг обязан доехать до клиента — иначе список пришёл бы
+        // отсортированным по числу, которого в нём не видно.
+        eb["elo"]          = e.elo;
+        eb["games"]        = e.games;
         entries.PushBack(eb.ExtractValue());
     }
     b["entries"] = std::move(entries);

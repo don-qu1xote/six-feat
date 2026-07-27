@@ -77,6 +77,26 @@ export function fetchDailyChallenge() {
   return getJson("/api/v1/game/challenge?daily=1");
 }
 
+// [SF-GAME-60] То же самое, но С ПРИЧИНОЙ. getJson по соглашению отдаёт null на
+// любой неуспех, и для дейли это соглашение теряет ровно ту информацию, ради
+// которой лендинг и existsует: 404 («на сегодня челлендж ещё не опубликован»)
+// и 500/сеть («сервис не ответил») — разные новости для игрока, а приходили
+// одинаковым null. В логах прода видно оба случая: семь 200 и один 500 с
+// таймаутом Postgres — и во втором случае блок молча исчезал с главной, без
+// единого слова почему.
+//
+// Возвращает { status: "ok" | "none" | "unavailable", daily }.
+export async function fetchDailyChallengeState() {
+  try {
+    const res = await apiFetch("/api/v1/game/challenge?daily=1");
+    if (res.status === 404) return { status: "none", daily: null };
+    if (!res.ok) return { status: "unavailable", daily: null };
+    return { status: "ok", daily: await res.json() };
+  } catch {
+    return { status: "unavailable", daily: null };
+  }
+}
+
 // GET /api/v1/game/challenge?id= — resume one challenge by id (no endpoint
 // names, just the numeric shape). Used by deep-link/challenge-browser flows.
 export function fetchChallenge(id) {
@@ -86,9 +106,12 @@ export function fetchChallenge(id) {
 // GET /api/v1/game/challenges — the challenge-browser listing (game-windows.js).
 // `kind` filters daily/custom (empty = all); `cursor` is a previous page's
 // next_cursor. → { challenges: [...], next_cursor: string|null } or null.
-export function fetchChallenges({ kind = "", cursor = "", limit } = {}) {
+// [SF-GAME-46] `query` — поиск по имени артиста на ЛЮБОМ конце пары. Пусто =
+// без фильтра, поэтому старое поведение не меняется.
+export function fetchChallenges({ kind = "", query = "", cursor = "", limit } = {}) {
   const p = new URLSearchParams();
   if (kind) p.set("kind", kind);
+  if (query) p.set("q", query);
   if (cursor) p.set("cursor", cursor);
   if (limit) p.set("limit", String(limit));
   const qs = p.toString();

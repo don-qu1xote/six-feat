@@ -136,6 +136,8 @@ function _fallbackAngle(seed) {
 // while-до-сходимости) — солвер физически не может зависнуть. Экспортируется,
 // чтобы тест мог проверить завершение в пределах капа.
 export const SOLVER_ITERS = 8;
+// см. использование ниже: запас на асимптотику релаксатора, визуально ноль.
+const SOLVER_EPS = 0.01;
 
 // [SF-WEB-51] resolveCollisions — глобальный детерминированный солвер
 // расстояния: та гарантия, которой независимая раскладка одуванчиков/линз
@@ -154,7 +156,39 @@ export const SOLVER_ITERS = 8;
 // @param {Map<id,{x,y}>} [extraPinned] — доп. приколотые коллайдеры, которых
 //        нет в targets (сид: его (0,0) владеет mergeNetwork/initNetwork, не
 //        этот Map) — участвуют в столкновениях, но не пишутся обратно.
-export function resolveCollisions(targets, pinnedIds, extraPinned) {
+// [SF-WEB-75] Дополнительный зазор между узлами РАЗНЫХ секторов.
+//
+// Измерено, а не предположено. Гипотеза была «полигоны оболочек пересекаются»;
+// строгая проверка (теорема о разделяющей оси) на 9 конфигурациях — до шести
+// полюсов по 20 листьев, с одуванчиком сида и асимметричными — показала, что
+// САМИ ПОЛИГОНЫ не пересекались никогда: кольцевая раскладка разводила полюса
+// достаточно. Проблема в другом, и она реальная: контур рисуется с
+// blur(BLUR_PX = 16px) (bubble-contours.js::_fillPaths), то есть ВИДИМАЯ дымка
+// выходит за полигон на 16px в каждую сторону. Два геометрически раздельных
+// сектора ближе ~32px сливаются на экране — это и есть «боками налезают».
+//
+// Солвер про всё это не знал вовсе: он разводил КРУЖКИ узлов на MIN_SEP, и ни
+// падинг оболочки, ни размытие в этот бюджет не входили. Раздельность оболочек
+// была следствием геометрии колец — то есть везением, а не гарантией.
+//
+// Арифметика зазора: узлы разных секторов расходятся на MIN_SEP + CLUSTER_GAP
+// = 78 + 68 = 146px между центрами; оболочка съедает HULL_PADDING = 34px с
+// каждой стороны → 78px между краями полигонов; размытие берёт по 16px →
+// ~46px видимого просвета. Запас сознательный: он должен пережить и то, что
+// игрок таскает узлы руками уже после раскладки.
+//
+// HULL_PADDING определён в bubble-contours.js как NODE_GAP; импортировать его
+// сюда нельзя — тот модуль сам импортирует NODE_GAP отсюда, вышел бы цикл.
+// Поэтому зазор выражен через тот же NODE_GAP, а тест «зазор покрывает падинг
+// оболочки» падает, если эти двое когда-нибудь разойдутся.
+export const CLUSTER_GAP = 2 * NODE_GAP;
+
+// @param {Map<id,Set<sectorId>>} [sectorOf] — [SF-WEB-75] к каким секторам
+//        принадлежит узел. Узлы РАЗНЫХ секторов разводятся на
+//        MIN_SEP + CLUSTER_GAP, чтобы не пересеклись их оболочки; узлы одного
+//        сектора и узлы без сектора — на прежний MIN_SEP. Не передан =
+//        поведение ровно как раньше.
+export function resolveCollisions(targets, pinnedIds, extraPinned, sectorOf) {
   const ids = [...targets.keys()];
   const px = [], py = [], pin = [];
   for (const id of ids) {
@@ -163,16 +197,33 @@ export function resolveCollisions(targets, pinnedIds, extraPinned) {
   }
   const emitCount = ids.length;
   if (extraPinned) {
-    for (const p of extraPinned.values()) { px.push(p.x); py.push(p.y); pin.push(1); }
+    // [SF-WEB-75] Ключи нужны наравне со значениями: приколотый сид — тоже
+    // полноправный сектор (см. sectorMembers в placeExpandedNodes), и его
+    // оболочка обязана участвовать в разведении, а не только его кружок.
+    for (const [id, p] of extraPinned) { ids.push(id); px.push(p.x); py.push(p.y); pin.push(1); }
   }
 
   const N = px.length;
   if (N < 2) return;
 
-  const MIN2 = MIN_SEP * MIN_SEP;
-  const inv  = 1 / MIN_SEP;
+  // Требуемое расстояние для пары: базовое, либо расширенное, если узлы не
+  // делят ни одного сектора (тогда между ними встанут две оболочки).
+  const sectors = sectorOf ? ids.map(id => sectorOf.get(id) || null) : null;
+  const disjoint = (a, b) => {
+    if (!a || !b) return false;              // узел без сектора оболочки не имеет
+    for (const s of a) if (b.has(s)) return false;
+    return true;
+  };
+  const MAX_SEP = sectorOf ? MIN_SEP + CLUSTER_GAP : MIN_SEP;
 
-  for (let iter = 0; iter < SOLVER_ITERS; iter++) {
+  const MIN2 = MIN_SEP * MIN_SEP;
+  // Сетка обязана быть НЕ МЕЛЬЧЕ максимального радиуса взаимодействия, иначе
+  // обход 8 смежных ячеек перестанет находить пары, которым нужен расширенный
+  // зазор, и разведение молча не сработает именно там, где оно и нужно.
+  const inv  = 1 / MAX_SEP;
+
+  const iters = sectorOf ? SOLVER_ITERS * 3 : SOLVER_ITERS;
+  for (let iter = 0; iter < iters; iter++) {
     // (Пере)раскладка по сетке каждый проход — дёшево O(N), и держит поиск
     // соседей корректным по мере того, как точки расслабляются.
     const grid = new Map();
@@ -193,9 +244,13 @@ export function resolveCollisions(targets, pinnedIds, extraPinned) {
           for (const j of cell) {
             if (j <= i) continue;             // каждая неупорядоченная пара один раз
             if (pin[i] && pin[j]) continue;   // две приколотые — расслабить нечем
+            // [SF-WEB-75] Порог у пары свой: узлы разных секторов должны
+            // разойтись настолько, чтобы их РАЗДУТЫЕ оболочки не пересеклись.
+            const sep  = (sectors && disjoint(sectors[i], sectors[j])) ? MIN_SEP + CLUSTER_GAP : MIN_SEP;
+            const sep2 = sep === MIN_SEP ? MIN2 : sep * sep;
             let dx = px[j] - px[i], dy = py[j] - py[i];
             const d2 = dx * dx + dy * dy;
-            if (d2 >= MIN2) continue;
+            if (d2 >= sep2) continue;
             let d = Math.sqrt(d2);
             if (d < 1e-9) {
               // Строго совпали — детерминированная ось по индексам (без
@@ -203,7 +258,12 @@ export function resolveCollisions(targets, pinnedIds, extraPinned) {
               const a = i * 12.9898 + j * 78.233;
               dx = Math.cos(a); dy = Math.sin(a); d = 1;
             } else { dx /= d; dy /= d; }
-            const pen = MIN_SEP - d;
+            // Микро-запас: коррекция «ровно на проникновение» для пары
+            // подвижных точек делит поправку пополам, поэтому при конкурирующих
+            // ограничениях расстояние подходит к цели АСИМПТОТИЧЕСКИ СНИЗУ и в
+            // конечном числе проходов её не достигает. Доли пикселя не видны,
+            // но гарантия «≥ sep» должна выполняться, а не почти выполняться.
+            const pen = sep - d + SOLVER_EPS;
             moved = true;
             if (pin[i])      { px[j] += dx * pen; py[j] += dy * pen; }
             else if (pin[j]) { px[i] -= dx * pen; py[i] -= dy * pen; }
@@ -1128,8 +1188,23 @@ export function placeExpandedNodes(savedPositions) {
   // до попарного ≥ MIN_SEP. На типичном (уже почти-решённом) входе это
   // no-op или пара микро-сдвигов; на плотном графе со скриншота —
   // гарантированно разводит остаточные наложения без опоры на физику.
+  // [SF-WEB-75] Солвер теперь разводит не только КРУЖКИ узлов, но и «бока» —
+  // оболочки секторов (одуванчики полюсов, линзы Эйлера, собственный
+  // одуванчик сида). Раньше гарантия была только попарная по узлам, а
+  // оболочка раздувается на HULL_PADDING наружу, поэтому соседние сектора
+  // визуально налезали друг на друга даже на идеально разведённых узлах.
+  // Инвертируем sectorMembers (сектор→узлы) в узел→сектора: узлам, не
+  // делящим ни одного сектора, нужен зазор шире на CLUSTER_GAP.
+  const sectorsByNode = new Map();
+  for (const [sectorId, members] of sectorMembers) {
+    for (const memberId of members) {
+      let owners = sectorsByNode.get(memberId);
+      if (!owners) sectorsByNode.set(memberId, owners = new Set());
+      owners.add(sectorId);
+    }
+  }
   const pinnedIds = new Set(poles);
-  resolveCollisions(targets, pinnedIds, new Map([[seedId, { x: 0, y: 0 }]]));
+  resolveCollisions(targets, pinnedIds, new Map([[seedId, { x: 0, y: 0 }]]), sectorsByNode);
 
   // ── 7. [SF-WEB-55] Классификация рёбер для собственного слоя отрисовки ────
   // (vis-adapter/edge-render.js) — геометрию узлов выше НЕ меняет, только

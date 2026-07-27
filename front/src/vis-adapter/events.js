@@ -14,6 +14,7 @@ import {
 } from "./highlight.js";
 import { nudgePhysics, pokeFastRenderMode } from "./physics.js";
 import { isCompareModeActive, handleCompareModeNodeClick, exitCompareMode } from "./compare-mode.js";
+import { isGameModeActive, handleGameModeNodeClick } from "./game-mode.js";
 import { nearestEdgeAt } from "./edge-render.js";
 import { isEdgeHoverSuppressedByZoom } from "./visuals.js";
 import { buildEdgeTooltip } from "./tooltips.js";
@@ -117,6 +118,12 @@ function _flushHoverEdgeFrame() {
   _hoverEdgeFrameScheduled = false;
   const domPointer = _pendingHoverDomPointer;
   if (!domPointer || isSelectionActive() || State._isDragging || !els.network) return;
+  // [SF-GAME-49] Ховер рёбер — тоже конвейер Explorer'а (подсветка пары +
+  // тултип «кто с кем и в какой роли»). На игровой доске рёбер два вида, и
+  // оба не объекты для изучения: линия игрока и лучи одуванчика. Тултип по
+  // ним не несёт ничего нового, а highlightEdgePair так же перекрашивает
+  // узлы на концах — то самое мигание, см. hoverNode ниже.
+  if (isGameModeActive()) return;
   // [SF-WEB-74] На сильном zoom-out большого графа render.js сам выключает
   // нативный interaction.hover (см. _attachZoomThrottle) — это глушит
   // hoverNode/blurNode бесплатно, но с SF-WEB-73 hoverEdge больше НЕ ходит
@@ -202,13 +209,14 @@ export function attachNetworkEvents(nameById) {
   _currentNameById = nameById || {};
 
   net.on("click", function(params) {
-    // [design: граф игры = граф эксплорера с ограничениями] While the game
-    // owns the graph (State.graphGameMode), every node click is a GAME move,
-    // not an Explorer expand/select — game-board.js's handler adds a hop,
-    // re-focuses, or reaches the goal. The Explorer's whole click pipeline
-    // below (compare, ctrl-seed-switch, select/expand) is out of scope here.
-    if (State.graphGameMode) {
-      if (State.gameClick) State.gameClick(params);
+    // [SF-GAME-31 / ADR-0008] Пока графом владеет игра, каждый клик по узлу —
+    // это игровой ход, а не Explorer-expand/select: игровой роутер добавляет
+    // хоп, переносит фокус или доводит до цели. Весь клик-конвейер ниже
+    // (compare, ctrl-смена seed, select/expand) в этом режиме вне области.
+    // Единственный шов, где Explorer знает про игру; сам режим живёт в
+    // vis-adapter/game-mode.js — ровно как Compare рядом.
+    if (isGameModeActive()) {
+      handleGameModeNodeClick(params);
       return;
     }
     // [SF-WEB-47] Compare mode fully takes over click semantics while
@@ -293,6 +301,20 @@ export function attachNetworkEvents(nameById) {
 
   net.on("hoverNode", function(params) {
     els.network.style.cursor = "pointer";
+    // [SF-GAME-49 / ADR-0008] В игровом режиме ограничен не только клик, но и
+    // ховер. highlightNeighborhood — конвейер Explorer'а: он переписывает у
+    // КАЖДОГО узла shape/image/color/borderWidth/shadow. На игровой доске это
+    // давало ровно то «дёрганье при движении мышки», на которое жаловались:
+    // (1) borderWidth скачет 1.5→5 и узлы физически меняют размер под
+    // курсором; (2) перезапись image заставляет vis перезагружать аватарку —
+    // тот же класс мигания, что описан в visuals.js; (3) парный
+    // clearHoverHighlight возвращает узлы к ДЕФОЛТУ EXPLORER'А, стирая
+    // раскраску ролей (цель = pulse, хоп = amber, фокус = белое кольцо) до
+    // следующего renderBoard. Замер на живой странице: 8 полных перекрасок
+    // DataSet за один проход мыши через веер.
+    // Игре хватает своего языка — кольца и прицел рисуются на оверлее
+    // (ringHook), без единой записи в DataSet, поэтому не мигают вообще.
+    if (isGameModeActive()) return;
     if (!isSelectionActive() && !State._isDragging) highlightNeighborhood(params.node);
   });
   // [SF-WEB-73] hoverEdge/blurEdge REMOVED — те же нативные события, что и
@@ -322,6 +344,7 @@ export function attachNetworkEvents(nameById) {
     // "не там, где курсор"). Фикс: передаём params.node дальше и откатываем
     // только если он всё ещё совпадает с _hoveredNodeId — иначе это
     // устаревший blur для уже вытесненной ноды, трогать нечего.
+    if (isGameModeActive()) return;   // [SF-GAME-49] см. hoverNode выше
     if (!isSelectionActive() && !State._isDragging) clearHoverHighlight(params.node);
   });
 

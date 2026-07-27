@@ -6,7 +6,10 @@
     "version": "1.0.0"
   },
   "servers": [
-    { "url": "/", "description": "Same origin as the serving six-feat instance" }
+    {
+      "url": "/",
+      "description": "Same origin as the serving six-feat instance"
+    }
   ],
   "components": {
     "securitySchemes": {
@@ -20,71 +23,375 @@
     "schemas": {
       "ArtistRef": {
         "type": "object",
-        "required": ["id", "name"],
+        "required": [
+          "id",
+          "name"
+        ],
         "properties": {
-          "id": { "type": "integer", "format": "int64" },
-          "name": { "type": "string" },
-          "image": { "type": "string", "description": "Omitted when empty (default Genius avatar normalised away, see SF-API-07)" },
-          "url": { "type": "string", "description": "Omitted when empty" }
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string",
+            "description": "Omitted when empty (default Genius avatar normalised away, see SF-API-07)"
+          },
+          "url": {
+            "type": "string",
+            "description": "Omitted when empty"
+          }
         }
       },
       "LegacyErrorBody": {
         "type": "object",
         "description": "Bespoke error shape used by the five pre-SF-API-11 handlers (graph, graph/path, search, status, status/stream) — NOT unified problem+json, pinned byte-for-byte by tests/test_api_auth_headers.py. Exact keys vary per handler (see each path's own responses below).",
         "properties": {
-          "error": { "type": "string" },
-          "request_id": { "type": "string", "description": "Present on every error body, absent on success bodies (SF-API-06)" }
+          "error": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Present on every error body, absent on success bodies (SF-API-06)"
+          }
         }
       },
       "ProblemJson": {
         "type": "object",
         "description": "RFC 7807 application/problem+json envelope, used by handlers introduced from SF-API-11 onward (currently just /api/v1/artist).",
-        "required": ["type", "title", "status", "detail", "request_id"],
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "request_id"
+        ],
         "properties": {
-          "type": { "type": "string", "description": "Always \"about:blank\" — no dedicated per-error-code doc URI exists yet" },
-          "title": { "type": "string", "description": "Stable per HTTP status (e.g. \"Not Found\")" },
-          "status": { "type": "integer" },
-          "detail": { "type": "string" },
-          "request_id": { "type": "string" }
+          "type": {
+            "type": "string",
+            "description": "Always \"about:blank\" — no dedicated per-error-code doc URI exists yet"
+          },
+          "title": {
+            "type": "string",
+            "description": "Stable per HTTP status (e.g. \"Not Found\")"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          }
+        }
+      },
+      "GameAchievement": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable achievement code (e.g. first_win)"
+          },
+          "title": {
+            "type": "string"
+          },
+          "descr": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix seconds when the player earned it; absent in the catalog listing"
+          }
+        }
+      },
+      "GameAttempt": {
+        "type": "object",
+        "description": "One row of a player's attempt history.",
+        "properties": {
+          "challenge_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "score": {
+            "type": "integer"
+          },
+          "hops": {
+            "type": "integer"
+          },
+          "ts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "GameProfile": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Stable FNV-1a hash of the Genius username — NOT the numeric Genius id"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true
+          },
+          "elo": {
+            "type": "integer",
+            "description": "Rating; new profiles start at 1200"
+          },
+          "games": {
+            "type": "integer",
+            "description": "RANKED games — a replayed challenge does not increment it (SF-GAME-36)"
+          },
+          "rank": {
+            "type": "integer",
+            "nullable": true,
+            "description": "1-based leaderboard position, null when unranked"
+          },
+          "achievements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameAchievement"
+            }
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GameAttempt"
+            }
+          }
+        }
+      },
+      "LeaderboardEntry": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer"
+          },
+          "hops": {
+            "type": "integer"
+          },
+          "ts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "GameChallenge": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "from": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Genius artist id of the start"
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Genius artist id of the goal"
+          },
+          "from_name": {
+            "type": "string"
+          },
+          "to_name": {
+            "type": "string"
+          },
+          "from_image": {
+            "type": "string",
+            "nullable": true
+          },
+          "to_image": {
+            "type": "string",
+            "nullable": true
+          },
+          "role_mask": {
+            "type": "integer",
+            "description": "Bitmask of collaboration roles the chain may use"
+          },
+          "kind": {
+            "type": "string",
+            "description": "\"daily\" or \"custom\""
+          },
+          "optimal_len": {
+            "type": "integer",
+            "nullable": true,
+            "description": "BFS ideal hop count (the challenge's PAR); null until computed"
+          },
+          "season_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          }
+        }
+      },
+      "GameSeason": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "starts_ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ends_ts": {
+            "type": "integer",
+            "format": "int64"
+          }
         }
       }
     }
   },
-  "security": [ { "cookieAuth": [] } ],
+  "security": [
+    {
+      "cookieAuth": []
+    }
+  ],
   "paths": {
     "/api/v1/graph": {
       "get": {
         "summary": "Build the collaboration graph around a seed artist",
         "description": "Resolves the seed (by name or numeric id), triggers on-demand foreground enrichment if not already known, and returns the current adjacency graph from L1/L2. Supports conditional GET via ETag.",
         "parameters": [
-          { "name": "artist", "in": "query", "schema": { "type": "string" }, "description": "Seed artist name — mutually exclusive with id" },
-          { "name": "id", "in": "query", "schema": { "type": "integer", "format": "int64" }, "description": "Seed artist Genius id — mutually exclusive with artist" },
-          { "name": "roles", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated credit role filter (primary,featured,writer,producer); default is all roles" },
-          { "name": "limit", "in": "query", "schema": { "type": "integer" }, "description": "Max neighbour nodes returned" },
-          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" }, "description": "Weak ETag from a prior response" }
+          {
+            "name": "artist",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Seed artist name — mutually exclusive with id"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Seed artist Genius id — mutually exclusive with artist"
+          },
+          {
+            "name": "roles",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated credit role filter (primary,featured,writer,producer); default is all roles"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Max neighbour nodes returned"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Weak ETag from a prior response"
+          }
         ],
         "responses": {
           "200": {
             "description": "Graph built/loaded successfully",
-            "headers": { "ETag": { "schema": { "type": "string" } } },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "type": { "const": "graph" },
-                    "nodes": { "type": "array", "items": { "type": "object" } },
-                    "edges": { "type": "array", "items": { "type": "object" } }
+                    "type": {
+                      "const": "graph"
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "304": { "description": "Not modified — matches If-None-Match" },
-          "400": { "description": "Missing/invalid artist or id parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "429": { "description": "Rate limited (SF-SEC-04)" },
-          "502": { "description": "Could not reach Genius / genius-gateway", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } }
+          "304": {
+            "description": "Not modified — matches If-None-Match"
+          },
+          "400": {
+            "description": "Missing/invalid artist or id parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited (SF-SEC-04)"
+          },
+          "502": {
+            "description": "Could not reach Genius / genius-gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -93,38 +400,129 @@
         "summary": "Shortest collaboration path between two artists",
         "description": "BFS over L1/L2 (falls back to on-demand enrichment for unknown endpoints) between two seed artists.",
         "parameters": [
-          { "name": "from", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Source artist name or numeric id" },
-          { "name": "to", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Target artist name or numeric id" },
-          { "name": "roles", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated credit role filter" },
-          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" } }
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Source artist name or numeric id"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Target artist name or numeric id"
+          },
+          {
+            "name": "roles",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated credit role filter"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Path found (or hops=0 / empty path if none exists)",
-            "headers": { "ETag": { "schema": { "type": "string" } } },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "type": { "const": "path" },
-                    "hops": { "type": "integer" },
-                    "from": { "$ref": "#/components/schemas/ArtistRef" },
-                    "to": { "$ref": "#/components/schemas/ArtistRef" },
-                    "path": { "type": "array", "items": { "type": "object" } },
-                    "nodes": { "type": "array", "items": { "type": "object" } },
-                    "edges": { "type": "array", "items": { "type": "object" } }
+                    "type": {
+                      "const": "path"
+                    },
+                    "hops": {
+                      "type": "integer"
+                    },
+                    "from": {
+                      "$ref": "#/components/schemas/ArtistRef"
+                    },
+                    "to": {
+                      "$ref": "#/components/schemas/ArtistRef"
+                    },
+                    "path": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "304": { "description": "Not modified — matches If-None-Match" },
-          "400": { "description": "Missing from/to parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "404": { "description": "One or both endpoints could not be resolved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "429": { "description": "Rate limited (SF-SEC-04)" },
-          "502": { "description": "Could not reach Genius / genius-gateway" }
+          "304": {
+            "description": "Not modified — matches If-None-Match"
+          },
+          "400": {
+            "description": "Missing from/to parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "One or both endpoints could not be resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited (SF-SEC-04)"
+          },
+          "502": {
+            "description": "Could not reach Genius / genius-gateway"
+          }
         }
       }
     },
@@ -133,25 +531,56 @@
         "summary": "Autocomplete artist search",
         "description": "Candidate resolve only (no graph build, no background enrichment).",
         "parameters": [
-          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Search query" },
-          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" } }
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search query"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Candidate list",
-            "headers": { "ETag": { "schema": { "type": "string" } } },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "type": { "const": "search" },
+                    "type": {
+                      "const": "search"
+                    },
                     "candidates": {
                       "type": "array",
                       "items": {
                         "allOf": [
-                          { "$ref": "#/components/schemas/ArtistRef" },
-                          { "type": "object", "properties": { "score": { "type": "number" } } }
+                          {
+                            "$ref": "#/components/schemas/ArtistRef"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "score": {
+                                "type": "number"
+                              }
+                            }
+                          }
                         ]
                       }
                     }
@@ -160,11 +589,35 @@
               }
             }
           },
-          "304": { "description": "Not modified — matches If-None-Match" },
-          "400": { "description": "Missing q parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "429": { "description": "Rate limited (SF-SEC-04)" },
-          "502": { "description": "Could not reach Genius / genius-gateway" }
+          "304": {
+            "description": "Not modified — matches If-None-Match"
+          },
+          "400": {
+            "description": "Missing q parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited (SF-SEC-04)"
+          },
+          "502": {
+            "description": "Could not reach Genius / genius-gateway"
+          }
         }
       }
     },
@@ -173,7 +626,16 @@
         "summary": "Enrichment status for a previously-requested artist",
         "description": "Reports current fetch depth/song_count/enriching state — never triggers any fetch itself.",
         "parameters": [
-          { "name": "id", "in": "query", "required": true, "schema": { "type": "integer", "format": "int64" }, "description": "Strict integer artist id — trailing garbage (\"123abc\") is rejected" }
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Strict integer artist id — trailing garbage (\"123abc\") is rejected"
+          }
         ],
         "responses": {
           "200": {
@@ -183,18 +645,49 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "artist_id": { "type": "integer", "format": "int64" },
-                    "depth": { "type": "integer", "description": "0=None, 1=Foreground, 2=Full" },
-                    "song_count": { "type": "integer" },
-                    "last_fetch_ts": { "type": "integer", "format": "int64" },
-                    "enriching": { "type": "boolean" }
+                    "artist_id": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "depth": {
+                      "type": "integer",
+                      "description": "0=None, 1=Foreground, 2=Full"
+                    },
+                    "song_count": {
+                      "type": "integer"
+                    },
+                    "last_fetch_ts": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "enriching": {
+                      "type": "boolean"
+                    }
                   }
                 }
               }
             }
           },
-          "400": { "description": "Missing or non-strict-integer id parameter", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } },
-          "401": { "description": "No valid session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LegacyErrorBody" } } } }
+          "400": {
+            "description": "Missing or non-strict-integer id parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -203,27 +696,63 @@
         "summary": "Artist metadata + fetch_state (SF-API-03)",
         "description": "Returns everything already known about an artist from L1/L2 only — never triggers a new Genius fetch. 404 if the artist has never been requested. Introduced by SF-API-03; error bodies use the unified problem+json envelope (SF-API-11), unlike the four legacy endpoints above.",
         "parameters": [
-          { "name": "id", "in": "query", "required": true, "schema": { "type": "integer", "format": "int64" }, "description": "Strict integer artist id — trailing garbage (\"123abc\") or a float (\"1.5\") is rejected" },
-          { "name": "If-None-Match", "in": "header", "schema": { "type": "string" } }
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Strict integer artist id — trailing garbage (\"123abc\") or a float (\"1.5\") is rejected"
+          },
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Known artist",
-            "headers": { "ETag": { "schema": { "type": "string" } }, "Cache-Control": { "schema": { "type": "string" } } },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "allOf": [
-                    { "$ref": "#/components/schemas/ArtistRef" },
+                    {
+                      "$ref": "#/components/schemas/ArtistRef"
+                    },
                     {
                       "type": "object",
                       "properties": {
                         "fetch_state": {
                           "type": "object",
                           "properties": {
-                            "depth": { "type": "integer", "description": "0=None, 1=Foreground, 2=Full" },
-                            "song_count": { "type": "integer" },
-                            "last_fetch_ts": { "type": "integer", "format": "int64" }
+                            "depth": {
+                              "type": "integer",
+                              "description": "0=None, 1=Foreground, 2=Full"
+                            },
+                            "song_count": {
+                              "type": "integer"
+                            },
+                            "last_fetch_ts": {
+                              "type": "integer",
+                              "format": "int64"
+                            }
                           }
                         }
                       }
@@ -233,10 +762,922 @@
               }
             }
           },
-          "304": { "description": "Not modified — matches If-None-Match" },
-          "400": { "description": "Missing or non-strict-integer id parameter", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemJson" } } } },
-          "401": { "description": "No valid session", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemJson" } } } },
-          "404": { "description": "Artist not known in L1/L2 yet", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/ProblemJson" } } } }
+          "304": {
+            "description": "Not modified — matches If-None-Match"
+          },
+          "400": {
+            "description": "Missing or non-strict-integer id parameter",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artist not known in L1/L2 yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/profile": {
+      "get": {
+        "summary": "Player profile (SF-GAME-12)",
+        "description": "Own profile when called with a session and no ?user; a public profile when ?user= is given. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "parameters": [
+          {
+            "name": "user",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Another player's user_id — public view, no session required"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No/invalid session and no ?user given",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such player",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Rename the signed-in player (SF-GAME-12)",
+        "description": "Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "display_name"
+                ],
+                "properties": {
+                  "display_name": {
+                    "type": "string",
+                    "description": "1..40 chars after trimming"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/blank/too-long display_name",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No/invalid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/challenge": {
+      "get": {
+        "summary": "Read one challenge, or today's daily (SF-GAME-16)",
+        "description": "?id= reads a specific challenge; ?daily=1 returns the currently published daily one. optimal_path is never exposed — only its length. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "daily",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1
+              ]
+            },
+            "description": "Mutually exclusive with id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Challenge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Neither id nor daily given",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such challenge / no daily published yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create-or-get a challenge for a pair (SF-GAME-16)",
+        "description": "Idempotent by (from, to, role_mask, kind): the same pair always returns the same challenge. Computes and caches the BFS ideal on first sight. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "properties": {
+                  "from": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "to": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "role_mask": {
+                    "type": "integer",
+                    "description": "0 = all roles"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created or existing challenge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameChallenge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/non-integer from or to, or from == to",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "One of the two artists is unknown",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No path exists between the pair",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/challenges": {
+      "get": {
+        "summary": "Challenge browser listing (game #3)",
+        "description": "Recent playable challenges, keyset-paginated, endpoints resolved to names/images. Public, no session. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "daily",
+                "custom"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "description": "[SF-GAME-46] Substring search on the artist name at EITHER end of the pair (case-insensitive). Omit or leave empty for no filter."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "next_cursor from the previous page"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "challenges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "optimal_len": {
+                            "type": "integer",
+                            "nullable": true
+                          },
+                          "created_ts": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "from": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "integer",
+                                "format": "int64"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "image": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            }
+                          },
+                          "to": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "integer",
+                                "format": "int64"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "image": {
+                                "type": "string",
+                                "nullable": true
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Absent/null on the last page"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad cursor or out-of-range limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/validate": {
+      "post": {
+        "summary": "Server-side anti-cheat chain check (SF-GAME-14)",
+        "description": "Verifies every hop of a submitted chain against six-feat's internal /internal/neighbours. Never trusts the client. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "chain"
+                ],
+                "properties": {
+                  "chain": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  },
+                  "role_mask": {
+                    "type": "integer"
+                  },
+                  "from": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "to": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "invalid_hop_index": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "0-based index of the first hop that isn't a real collaboration"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body or a chain shorter than 2",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No/invalid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Couldn't reach six-feat to verify",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/submit": {
+      "post": {
+        "summary": "Score a finished chain and update Elo (SF-GAME-15)",
+        "description": "Validates the chain, scores it against the challenge's own BFS ideal, and rates the player. [SF-GAME-36] Only the FIRST valid attempt at a given challenge is ranked: a replay is still scored (with the prior-attempts penalty) but never moves elo or the games count. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "challenge_id",
+                  "chain"
+                ],
+                "properties": {
+                  "challenge_id": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "chain": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "int64"
+                    }
+                  },
+                  "elapsed_ms": {
+                    "type": "integer",
+                    "format": "int64"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scored attempt (or an honest invalid verdict)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "invalid_hop_index": {
+                      "type": "integer",
+                      "nullable": true
+                    },
+                    "reason": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "score": {
+                      "type": "integer"
+                    },
+                    "max_score": {
+                      "type": "integer"
+                    },
+                    "player_len": {
+                      "type": "integer"
+                    },
+                    "optimal_len": {
+                      "type": "integer"
+                    },
+                    "optimal_path": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "elo_before": {
+                      "type": "integer"
+                    },
+                    "elo_after": {
+                      "type": "integer"
+                    },
+                    "elo_delta": {
+                      "type": "integer",
+                      "description": "0 on a replay — see the anti-abuse note above"
+                    },
+                    "achievements_unlocked": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GameAchievement"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body or a chain shorter than 2",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No/invalid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown challenge_id",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The challenge's ideal hasn't been computed yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-player submit rate limit (SF-GAME-17)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/leaderboard": {
+      "get": {
+        "summary": "Top-N for a challenge or a season (SF-GAME-17)",
+        "description": "Read straight off game_attempts/game_profiles — there is no separate leaderboard table. Public, no session. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "parameters": [
+          {
+            "name": "challenge_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "season_id",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Mutually exclusive with challenge_id"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "entries": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LeaderboardEntry"
+                      }
+                    },
+                    "next_cursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Neither challenge_id nor season_id given, or both",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/season": {
+      "get": {
+        "summary": "Season & achievements hub (game #4)",
+        "description": "Current season (created on first sight), its podium and the achievement catalog, in one call. Public, no session. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "responses": {
+          "200": {
+            "description": "Season hub",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "season": {
+                      "$ref": "#/components/schemas/GameSeason"
+                    },
+                    "podium": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LeaderboardEntry"
+                      }
+                    },
+                    "achievements": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GameAchievement"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/link": {
+      "get": {
+        "summary": "Live per-hop connection check (game #2)",
+        "description": "Is `to` a real one-hop collaborator of `from`? Used by the client before letting a player add an artist to their web. Public, no session. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "linked": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/non-integer from or to",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Couldn't reach six-feat to check",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/game/admin": {
+      "get": {
+        "summary": "Is the caller a game admin? (owner-gated)",
+        "description": "UI-gating probe. The allowlist comes from GAME_ADMIN_GENIUS_IDS; empty (the default) means nobody is an admin and the panel never shows. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "responses": {
+          "200": {
+            "description": "Probe result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "admin": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No/invalid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Publish a daily challenge now (owner-gated)",
+        "description": "Same operation DailyChallengeTask runs once a day, triggered by hand. Omit from/to (or send 0) to let the server pick the pair. Served by six-feat-game (ADR-0007); nginx proxies /api/v1/game/* to it. Error bodies use the unified problem+json envelope.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "0/absent = server picks"
+                  },
+                  "to": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "0/absent = server picks"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The published daily challenge",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameChallenge"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No/invalid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller is not on the admin allowlist",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The requested pair isn't connected in the graph",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
         }
       }
     }

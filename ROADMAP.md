@@ -204,6 +204,28 @@
 | ID | Спринт·шаг | Тип | Приоритет | Статус | Файлы | Тест |
 |---|---|---|---|---|---|---|
 | SF-DOC-02 | S7 · 6/6 | docs | P2 | done | `ROADMAP.md` (новый), `README.md`, `DEVELOPMENT.md` | — (документация, регресс-теста не требует) |
+| SF-DOC-07 | — | docs | P2 | done | `DEVELOPMENT.md` (пятый сервис в таблице + раскладка исходников SF-GAME-35), `ROADMAP.md`, `docs/adr/README.md` | — (документация) |
+
+### SF-GAME — игровой режим
+
+Бэкенд игры (`SF-GAME-10`…`SF-GAME-17`) и первый заход фронта делались до
+введения этого раздела и живут в истории коммитов. Ниже — сброс геймификации:
+приведение её к тем же стандартам, что и остальной сервис (аудит и план —
+`docs/adr/0008`, `docs/adr/0009`).
+
+| ID | Спринт·шаг | Тип | Приоритет | Статус | Файлы | Тест |
+|---|---|---|---|---|---|---|
+| SF-GAME-30 | Ф1 | refactor | P1 | done | `front/src/state/state.js` | `game-board.test.js`, `game-mode.test.js` |
+| SF-GAME-31 | Ф1 | refactor | P1 | done | `front/src/vis-adapter/game-mode.js` (новый), `events.js`, `index.js`, `game/game-board.js` | `front/src/vis-adapter/game-mode.test.js` |
+| SF-GAME-32 | Ф1 | refactor | P1 | done | `front/src/game/connect{,-store,-view,-actions}.js` | `connect-store.test.js`, `connect-view.test.js`, `connect.test.js` |
+| SF-GAME-33 | Ф1 | ui | P2 | done | `front/src/styles/surfaces/game-screens.css`, `front/index.html`, `game-windows.js` | `connect-view.test.js` (ui-chip), `styles.test.js` |
+| SF-GAME-34 | Ф2 | fix | P1 | done | `connect-store.js`, `game-board.js`, `connect-view.js`, `game-windows.js` | `connect-store.test.js`, `game-board.test.js`, `connect-view.test.js`, `game-windows.test.js` |
+| SF-CI-04 | Ф3 | ci | P1 | done | `.github/workflows/ci.yml` | — (сам гейт CI) |
+| SF-GAME-35 | Ф3 | docs | P3 | done | `DEVELOPMENT.md` («Раскладка исходников сервиса») | — (решение зафиксировано, не код) |
+| SF-GAME-36 | Ф3 | test | P1 | done | `tests/test_game_submit.py`, `postgresql/migrations/game/V2__seed_achievements.sql` (недостающая копия) | `test_game_submit.py` (3 теста анти-абуза), `test_game_migrations.py` |
+| SF-API-11 | Ф4 | api | P2 | done | `schemas/openapi/openapi.json` (9 game-путей, 6 схем) | `tests/test_openapi.py` |
+| SF-GAME-37 | Ф4 | ui | P2 | done | `front/src/game/game-windows.js` (пусто ≠ недоступно) | `game-windows.test.js` |
+| SF-GAME-38 | Ф4 | qa | P2 | **open** | — | Только вживую: физика/лэйаут/z-index графа не рендерятся в headless, нужен визуальный проход |
 
 ---
 
@@ -265,4 +287,4 @@
 
 ---
 
-*Последнее обновление реестра: `SF-DOC-02`, спринт S7 шаг 6/6.*
+*Последнее обновление реестра: `SF-DOC-07` — сброс геймификации, фазы Ф0–Ф4.*

@@ -434,17 +434,34 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id, std::int64_t ch
         "SELECT elo FROM game_profiles WHERE user_id = $1 FOR UPDATE", user_id);
     const int elo_before = elo_res.IsEmpty() ? 1200 : elo_res.Front()[0].As<int>();
 
-    const auto elo = UpdateElo(elo_before, optimal_len, score, kMaxScore);
+    // [fix: анти-абуз повторного челленджа] Only the player's FIRST valid
+    // attempt at a challenge moves their Elo / games count. Replaying the same
+    // challenge still records the attempt (the leaderboard already keeps a
+    // player's single best score, so a repeat can't inflate it either) but
+    // never farms Elo — without this a player could re-submit the same optimal
+    // line indefinitely and climb forever.
+    const bool ranked = (prior_attempts == 0);
+    const int elo_after = ranked
+        ? UpdateElo(elo_before, optimal_len, score, kMaxScore).new_rating
+        : elo_before;
 
     trx.Execute(
         "INSERT INTO game_attempts (challenge_id, user_id, season_id, chain, valid, hops, score, ts) "
         "VALUES ($1, $2, $3, $4, true, $5, $6, $7)",
         challenge_id, user_id, season_id, chain, player_len, score, NowUnix());
 
-    const auto games_res = trx.Execute(
-        "UPDATE game_profiles SET elo = $2, games = games + 1 "
-        "WHERE user_id = $1 RETURNING games",
-        user_id, elo.new_rating);
+    int games_after = 0;
+    if (ranked) {
+        const auto games_res = trx.Execute(
+            "UPDATE game_profiles SET elo = $2, games = games + 1 "
+            "WHERE user_id = $1 RETURNING games",
+            user_id, elo_after);
+        games_after = games_res.Front()[0].As<int>();
+    } else {
+        const auto games_res = trx.Execute(
+            "SELECT games FROM game_profiles WHERE user_id = $1", user_id);
+        games_after = games_res.IsEmpty() ? 0 : games_res.Front()[0].As<int>();
+    }
 
     trx.Commit();
 
@@ -453,9 +470,9 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id, std::int64_t ch
     r.score        = score;
     r.max_score    = kMaxScore;
     r.elo_before   = elo_before;
-    r.elo_after    = elo.new_rating;
-    r.elo_delta    = elo.new_rating - elo_before;
-    r.games_after  = games_res.Front()[0].As<int>();
+    r.elo_after    = elo_after;
+    r.elo_delta    = elo_after - elo_before;
+    r.games_after  = games_after;
     return r;
 }
 
@@ -682,6 +699,7 @@ std::optional<DailyChallengeView> GameStore::GetLatestDailyChallenge() const {
 
 std::vector<ChallengeListItem> GameStore::ListChallenges(
     const std::string& kind,
+    const std::string& query,
     std::optional<std::pair<std::int64_t, std::int64_t>> cursor,
     int limit) const {
     // Keyset pagination on (created_ts, id) DESC. Both the kind filter and the
@@ -692,6 +710,16 @@ std::vector<ChallengeListItem> GameStore::ListChallenges(
     // listed — an un-solved pair isn't a playable browser entry yet.
     const std::optional<std::int64_t> cur_ts = cursor ? std::optional<std::int64_t>(cursor->first)  : std::nullopt;
     const std::optional<std::int64_t> cur_id = cursor ? std::optional<std::int64_t>(cursor->second) : std::nullopt;
+    // Подстрока, а не префикс: "west" должен находить и Kanye West. Спецсимволы
+    // LIKE экранируем — иначе введённый игроком '%' превратился бы в
+    // "любой челлендж", а '_' тихо разъезжался бы на один символ.
+    std::string escaped;
+    escaped.reserve(query.size());
+    for (char c : query) {
+        if (c == '%' || c == '_' || c == '\\') escaped.push_back('\\');
+        escaped.push_back(c);
+    }
+    const std::string pattern = escaped.empty() ? std::string{} : "%" + escaped + "%";
     auto res = impl_->cluster->Execute(
         storages::postgres::ClusterHostType::kMaster,
         "SELECT c.id, c.from_artist_id, c.to_artist_id, c.role_mask, c.kind, "
@@ -702,11 +730,19 @@ std::vector<ChallengeListItem> GameStore::ListChallenges(
         "JOIN artists ta ON ta.id = c.to_artist_id "
         "WHERE c.optimal_len IS NOT NULL "
         "  AND ($1 = '' OR c.kind = $1) "
+        // [SF-GAME-46] Поиск по артисту на ЛЮБОМ из двух концов: игрок ищет
+        // "челлендж с Дрейком", не зная и не желая знать, откуда он — старт
+        // или цель. ILIKE по уже приджойненным artists (обе таблицы в запросе
+        // с самого начала — новых join'ов не появилось). Пустой $5 отключает
+        // фильтр целиком, тем же "$n = '' OR ..." приёмом, что и kind выше,
+        // так что одно подготовленное выражение по-прежнему обслуживает все
+        // комбинации фильтров и страниц.
+        "  AND ($5 = '' OR fa.name ILIKE $5 OR ta.name ILIKE $5) "
         "  AND ($2::bigint IS NULL OR c.created_ts < $2 "
         "       OR (c.created_ts = $2 AND c.id < $3)) "
         "ORDER BY c.created_ts DESC, c.id DESC "
         "LIMIT $4",
-        kind, cur_ts, cur_id, limit);
+        kind, cur_ts, cur_id, limit, pattern);
 
     std::vector<ChallengeListItem> out;
     out.reserve(res.Size());
@@ -756,6 +792,71 @@ std::optional<std::pair<int, std::int64_t>> ParseLeaderboardCursor(
     }
 }
 
+// [SF-GAME-53] Сезонная доска: один ряд на игрока, ключ — рейтинг.
+//
+// Читается прямо из game_profiles, а не из game_attempts: рейтинг — это
+// состояние игрока, а не свойство какой-то одной попытки, и DISTINCT ON по
+// попыткам тут просто нечего делать. Keyset — (elo, user_id): elo не уникален,
+// поэтому в ключ добавлен user_id, иначе страница могла бы зациклиться на
+// группе игроков с одинаковым рейтингом. Тот же приём и тот же формат курсора
+// "<int>:<int64>", что и у доски челленджа, поэтому ParseLeaderboardCursor
+// разбирает оба без изменений.
+//
+// games > 0 — в таблице лежит и тот, кто просто залогинился: показывать в
+// сезонной таблице людей с дефолтными 1200 и нулём партий значило бы, что
+// половина доски никогда не играла.
+LeaderboardPage SeasonEloBoard(const storages::postgres::ClusterPtr& cluster,
+                               const std::optional<std::string>& cursor,
+                               int limit) {
+    const auto parsed = ParseLeaderboardCursor(cursor);
+    const std::optional<int>          cur_elo = parsed ? std::optional<int>(parsed->first) : std::nullopt;
+    const std::optional<std::int64_t> cur_uid = parsed ? std::optional<std::int64_t>(parsed->second) : std::nullopt;
+
+    auto res = cluster->Execute(
+        storages::postgres::ClusterHostType::kSlave,
+        "SELECT user_id, display_name, elo, games "
+        "FROM game_profiles "
+        "WHERE games > 0 "
+        "  AND ($1::int IS NULL OR (elo, user_id) < ($1::int, $2::bigint)) "
+        "ORDER BY elo DESC, user_id DESC "
+        "LIMIT $3",
+        cur_elo, cur_uid, limit + 1);
+
+    struct Row {
+        std::int64_t user_id;
+        std::string  display_name;
+        int          elo;
+        int          games;
+    };
+    std::vector<Row> rows;
+    rows.reserve(res.Size());
+    for (const auto& row : res) {
+        rows.push_back(Row{
+            row[0].As<std::int64_t>(),
+            row[1].As<std::optional<std::string>>().value_or(""),
+            row[2].As<int>(),
+            row[3].As<int>(),
+        });
+    }
+
+    LeaderboardPage page;
+    const std::size_t take = std::min<std::size_t>(rows.size(), static_cast<std::size_t>(limit));
+    page.entries.reserve(take);
+    for (std::size_t i = 0; i < take; ++i) {
+        // score/hops/ts у сезонной строки смысла не имеют — это не одна
+        // попытка, а состояние игрока за сезон.
+        page.entries.push_back(LeaderboardEntry{
+            rows[i].user_id, rows[i].display_name, 0, 0, 0,
+            rows[i].elo, rows[i].games,
+        });
+    }
+    if (rows.size() > take) {
+        page.next_cursor = std::to_string(rows[take - 1].elo) + ":" +
+                           std::to_string(rows[take - 1].user_id);
+    }
+    return page;
+}
+
 } // namespace
 
 LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t scope_id,
@@ -765,12 +866,27 @@ LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t s
     const std::optional<int>          cursor_score = parsed ? std::optional<int>(parsed->first) : std::nullopt;
     const std::optional<std::int64_t> cursor_id    = parsed ? std::optional<std::int64_t>(parsed->second) : std::nullopt;
 
+    // [SF-GAME-53] Сезонная доска — это доска РЕЙТИНГА, а не одной удачной
+    // попытки.
+    //
+    // Раньше оба скоупа считались одинаково: «лучший score игрока в скоупе».
+    // Для челленджа это правильно (там и правда сравнивают линии на одной
+    // паре), а для сезона — нет, и это ломалось прямо в глазах игрока: на
+    // экране Season подиум строился по score, а строчка «You: Elo … · Rank #N»
+    // рядом — по RankFor(), то есть по elo. Два числа на одном экране про одно
+    // и то же место в таблице, посчитанные по разным ключам, могли расходиться
+    // сколь угодно сильно. Прогрессия во всём остальном приложении (кабинет,
+    // ачивка elo_1500, RankFor) ведётся по elo — сезонная доска обязана
+    // отвечать тем же ключом.
+    if (scope == LeaderboardScope::kSeason) {
+        return SeasonEloBoard(impl_->cluster, cursor, limit);
+    }
+
     // `scope_column` is one of two hardcoded literals chosen by the enum
     // above — never derived from request input — so splicing it into the
     // SQL text (rather than as a bind parameter, which can't parametrize a
     // column name anyway) carries no injection risk.
-    const char* scope_column =
-        scope == LeaderboardScope::kChallenge ? "challenge_id" : "season_id";
+    const char* scope_column = "challenge_id";
 
     // Best-per-player subquery (DISTINCT ON — one row per user_id, their
     // own highest score in scope), then keyset-paginated by
@@ -779,7 +895,7 @@ LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t s
     // COUNT(*) round-trip.
     const std::string sql =
         std::string("SELECT best.user_id, p.display_name, best.score, best.hops, "
-                    "best.ts, best.id "
+                    "best.ts, best.id, p.elo "
                     "FROM ( "
                     "  SELECT DISTINCT ON (a.user_id) a.user_id, a.score, a.hops, a.ts, a.id "
                     "  FROM game_attempts a "
@@ -802,6 +918,7 @@ LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t s
         int          hops;
         std::int64_t ts;
         std::int64_t attempt_id;
+        int          elo;
     };
     std::vector<Row> rows;
     rows.reserve(res.Size());
@@ -813,6 +930,7 @@ LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t s
             row[3].As<int>(),
             row[4].As<std::int64_t>(),
             row[5].As<std::int64_t>(),
+            row[6].As<int>(),
         });
     }
 
@@ -822,7 +940,7 @@ LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t s
     for (std::size_t i = 0; i < take; ++i) {
         page.entries.push_back(LeaderboardEntry{
             rows[i].user_id, rows[i].display_name, rows[i].score,
-            rows[i].hops, rows[i].ts,
+            rows[i].hops, rows[i].ts, rows[i].elo, 0,
         });
     }
     if (rows.size() > take) {

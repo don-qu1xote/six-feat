@@ -352,6 +352,44 @@ const interactionSlice = {
   bubbleSetsEnabled: false,
 };
 
+// game — [SF-GAME-30 / ADR-0008] Игровой режим. Раньше это жило двумя
+// свойствами, которые дописывались на State в рантайме из game-board.js
+// (`State.graphGameMode`/`State.gameClick`) и читались в горячем пути клика
+// в vis-adapter/events.js, минуя декларацию слайсов и bridge() — то есть
+// связность Explorer↔Game держалась на мутабельном глобале, которого нет ни
+// в одном списке полей. Теперь это обычный слайс, как compareMode рядом.
+const gameSlice = {
+  // Включён ли ограниченный игровой режим движка графа. Владелец перехода —
+  // vis-adapter/game-mode.js (enterGameMode/exitGameMode), не игровой модуль.
+  mode: false,
+
+  // Роутер кликов, который game-mode.js ставит на время режима: пока mode
+  // включён, events.js отдаёт сюда каждый клик по узлу вместо собственного
+  // expand/select. null вне режима.
+  clickRouter: null,
+
+  // Где живёт #network вне игры (#app-canvas). Запоминается на входе в
+  // режим, чтобы выход вернул узел ровно туда же.
+  homeParent: null,
+
+  // Состояние текущего раунда Connect. Раньше создавалось ad-hoc внутри
+  // connect.js::slice() как State.connect = {...} при первом обращении —
+  // тот же класс «поля нет в state.js, но оно есть». Форма не изменилась,
+  // поэтому все существующие обращения к State.connect работают как были
+  // (см. bridge("connect", ...) ниже).
+  connect: {
+    startName: "", goalName: "", game: null,
+    photos: {}, ids: {}, frontier: null,
+    rivalBanner: null, par: null, seasonId: null, submitted: false,
+    // [SF-GAME-34 / ADR-0009] Имена, которые НЕ удалось разрешить в реальный
+    // Genius id (map name→true). Раньше такое имя молча получало
+    // синтетический отрицательный id и рисовалось как полноценный узел —
+    // отсюда «набрано, но не выбрано» и случайная пара в админке. Теперь
+    // нерешённое имя не рисуется вовсе, а вью показывает честное состояние.
+    unresolved: {},
+  },
+};
+
 // netFetch — in-flight graph/path requests, their AbortControllers, pollers.
 const netFetchSlice = {
   inFlight:      false,
@@ -387,6 +425,7 @@ const animSlice = {
 export const State = {
   graph:       graphSlice,
   interaction: interactionSlice,
+  game:        gameSlice,
   netFetch:    netFetchSlice,
   cache:       cacheSlice,
   anim:        animSlice,
@@ -435,6 +474,13 @@ bridge("theme",          interactionSlice);
 bridge("surface",        interactionSlice);
 bridge("bubbleSetsEnabled", interactionSlice);
 
+// [SF-GAME-30] State.connect keeps working unchanged at every existing call
+// site (game/connect*.js) — it's just a declared field now, not one invented
+// at runtime. graphGameMode/gameClick deliberately get NO bridge: they were
+// never a public contract, and their only two readers (events.js, game-board
+// .js) now go through vis-adapter/game-mode.js instead (ADR-0008).
+bridge("connect", gameSlice);
+
 bridge("inFlight",             netFetchSlice);
 bridge("pendingExpand",        netFetchSlice);
 bridge("pathInFlight",         netFetchSlice);
@@ -474,6 +520,19 @@ export function setNodes(nodes) {
 
 export function setEdges(edges) {
   graphSlice.edges = edges;
+}
+
+// [SF-GAME-30 / ADR-0008] Игровой режим движка: три поля, которые обязаны
+// двигаться вместе (включён / кто роутит клики / куда вернуть #network) —
+// ровно тот случай, ради которого в этом файле вообще есть мутаторы. Пишется
+// только из vis-adapter/game-mode.js; всё остальное читает State.game.mode
+// через isGameModeActive().
+export function setGameMode(on, { clickRouter = null, homeParent = null } = {}) {
+  gameSlice.mode = !!on;
+  gameSlice.clickRouter = on ? clickRouter : null;
+  // homeParent переживает выход из режима только пока идёт сам выход —
+  // game-mode.js читает его, чтобы вернуть узел, и сразу обнуляет.
+  if (on || homeParent === null) gameSlice.homeParent = on ? homeParent : null;
 }
 
 // IDEA-50: mirrors a graph response's truncation fields into State so

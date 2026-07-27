@@ -398,16 +398,33 @@
                the empty-space complaint the first mockup drew. Hidden until
                setupGameLandingPanel's fetch actually resolves; no
                placeholder/skeleton state guessed at. -->
-          <div class="hero-game-daily" id="hero-game-daily" hidden>
-            <span class="daily-eyebrow" title="Auto-picked once a day from real, connected collaborators — a background job, not a curated/manual pick.">Today's Challenge</span>
-            <div class="daily-pair">
+          <!-- [SF-GAME-60] Слот дейли-челленджа ВСЕГДА на экране, и всегда
+               говорит правду о своём состоянии. Раньше блок был hidden по
+               умолчанию и показывался только на успешный ответ: любой сбой —
+               и он молча исчезал с главной, без единого слова почему. В логах
+               прода ровно это и видно: семь ответов 200 и один 500 (таймаут
+               Postgres), и на этом одном загрузка главной оставалась без
+               дейли, как будто его не существует.
+               Состояния разводит renderDailyState (connect.js): грузится /
+               есть челлендж / сегодня не опубликован / сервис не ответил. Та
+               же конвенция «пусто ≠ недоступно», что уже принята на игровых
+               экранах (game-windows.js::setEmpty, SF-GAME-37). -->
+          <div class="ui-tile hero-game-daily" id="hero-game-daily">
+            <span class="daily-eyebrow" title="Auto-picked once a day from real, connected collaborators — a background job, not a curated/manual pick.">Today's challenge</span>
+
+            <!-- Наполненное состояние: пара + Play. -->
+            <div class="daily-pair" id="hero-game-daily-pair" hidden>
               <span class="duel-avatar duel-avatar--sm" id="hero-game-daily-from-avatar" aria-hidden="true">?</span>
               <span class="daily-name" id="hero-game-daily-from-name"></span>
               <span class="daily-arrow" aria-hidden="true">→</span>
               <span class="duel-avatar duel-avatar--sm" id="hero-game-daily-to-avatar" aria-hidden="true">?</span>
               <span class="daily-name" id="hero-game-daily-to-name"></span>
             </div>
-            <button type="button" class="daily-play ui-btn ui-btn--primary" id="btn-hero-play-daily">Play</button>
+            <button type="button" class="daily-play ui-btn ui-btn--primary" id="btn-hero-play-daily" hidden>Play</button>
+
+            <!-- Все остальные состояния — одной честной строкой. -->
+            <span class="daily-state" id="hero-game-daily-state">Loading today's challenge…</span>
+            <button type="button" class="dock-btn daily-retry" id="btn-hero-daily-retry" hidden>Retry</button>
           </div>
 
           <!-- "or pick a rival" — real GET /api/v1/game/leaderboard?
@@ -422,29 +439,55 @@
 
           <div class="hero-game-divider" id="hero-game-divider" hidden><span>or set your own</span></div>
 
-          <div class="hero-game-duel">
-            <div class="duel-side duel-side--from">
-              <span class="duel-avatar" id="hero-game-from-avatar" aria-hidden="true">?</span>
-              <div class="duel-field">
-                <label class="sr-only" for="hero-game-from-input">Start with</label>
-                <input class="duel-input" id="hero-game-from-input" type="text" autocomplete="off" placeholder="Start with…" />
+          <!-- [SF-GAME-59] Панель собрана из ТЕХ ЖЕ деталей, что соседняя
+               вкладка Connect: .hero-connect-row с рельсой маршрута,
+               .path-input-wrap/.path-input для полей, .hero-connect-actions
+               с одной первичной .ui-btn--primary и вторичными .dock-btn.
+
+               Раньше здесь был свой набор: .duel-side с СОБСТВЕННОЙ
+               коробкой (background + border), .duel-input, .duel-vs,
+               .hero-game-start со своими размерами. Причём боксинг —
+               ровно то, что из соседней Connect-панели когда-то убрали
+               специально: «единственная hero-панель, завёрнутая в свою
+               карточку… снята, чтобы обе читались как одно и то же»
+               (см. комментарий выше у .hero-connect-panel). Игровая
+               панель завела его заново, только на каждое поле.
+
+               Рельса вместо «VS» с аватарами прямо в точках маршрута:
+               точка старта и точка цели — это и есть выбранные артисты,
+               поэтому renderDuelAvatar рисует их туда же, где Connect
+               рисует ● и ◎. Одна метафора «из А в Б» на обеих вкладках
+               вместо двух разных ответов на один вопрос. -->
+          <div class="hero-connect-row">
+            <div class="hero-route-rail">
+              <span class="hero-route-dot hero-route-dot--from hero-game-dot" id="hero-game-from-avatar" aria-hidden="true">?</span>
+              <span class="hero-route-track" aria-hidden="true"></span>
+              <span class="hero-route-dot hero-route-dot--to hero-game-dot" id="hero-game-to-avatar" aria-hidden="true">?</span>
+            </div>
+            <div class="hero-connect-fields">
+              <div class="path-input-wrap">
+                <label class="sr-only" for="hero-game-from-input">Start artist</label>
+                <input class="path-input" id="hero-game-from-input" type="text" autocomplete="off" placeholder="Start artist…" />
                 <div class="ac-dropdown" id="hero-game-from-ac" role="listbox"></div>
               </div>
-            </div>
-            <span class="duel-vs" aria-hidden="true">VS</span>
-            <div class="duel-side duel-side--to">
-              <span class="duel-avatar" id="hero-game-to-avatar" aria-hidden="true">?</span>
-              <div class="duel-field">
-                <label class="sr-only" for="hero-game-to-input">Reach</label>
-                <input class="duel-input" id="hero-game-to-input" type="text" autocomplete="off" placeholder="Reach…" />
+              <div class="path-input-wrap">
+                <label class="sr-only" for="hero-game-to-input">Goal artist</label>
+                <input class="path-input" id="hero-game-to-input" type="text" autocomplete="off" placeholder="Goal artist…" />
                 <div class="ac-dropdown" id="hero-game-to-ac" role="listbox"></div>
               </div>
             </div>
           </div>
-          <button type="button" class="hero-game-start ui-btn ui-btn--primary" id="btn-hero-start-challenge">
-            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-game"/></svg>
-            <span>Start challenge</span>
-          </button>
+
+          <div class="hero-connect-actions">
+            <button type="button" class="hero-connect-run ui-btn ui-btn--primary" id="btn-hero-start-challenge">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-game"/></svg>
+              <span>Start challenge</span>
+            </button>
+            <button type="button" class="dock-btn" id="btn-hero-game-swap" title="Swap start and goal" aria-label="Swap start and goal">
+              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-swap"/></svg><span>Swap</span>
+            </button>
+            <a class="dock-btn" href="#/game/challenges">Browse</a>
+          </div>
         </div>
       </div>
 
@@ -490,7 +533,7 @@
       <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sun"/></svg>
     </button>
 
-    <nav class="rail">
+    <nav class="rail rail-shell">
       <button class="brand" id="brand" type="button" title="Six Feet — back to start">
         <span class="dotmark"></span>
         <span class="rl">Six Feet</span>
@@ -886,50 +929,83 @@
        router. Plain hash links, so the existing router (hashchange) swaps
        surfaces with no extra JS. -->
   <section id="connect-surface" class="connect-surface" aria-label="Connect game" hidden>
-    <nav class="game-rail" aria-label="Game navigation">
-      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
-      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
-      <span class="game-rail-spacer"></span>
-      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    <nav class="game-rail rail-shell" aria-label="Game navigation">
+      <a class="game-rail-brand brand" href="/" title="Six Feet — back to start"><span class="dotmark"></span><span class="rl">Six Feet</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game" data-surface="game" data-tip="Play"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="rl">Play</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg><span class="rl">Challenges</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="rl">Leaderboard</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="rl">Season</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="rl">Cabinet</span></a>
     </nav>
     <div class="connect-split">
 
       <!-- ── LEFT: graph explorer ─────────────────────────────────────── -->
       <div class="connect-graph-col">
-        <div class="connect-graph-overlay">
-          <!-- [design: показать, что это игра] A small "Game" flag on the
-               reused explorer graph — the one visual cue that separates this
-               from the plain Explore graph. -->
-          <span class="connect-game-flag" aria-hidden="true"><svg class="cgf-ico" viewBox="0 0 24 24"><use href="#icon-game"></use></svg>Game</span>
-          <!-- Quest target pill — click to change the start/goal (opens the
-               endpoint editor popover below). renderHead keeps the two
-               spans in sync; renderEndpoints toggles the popover. -->
-          <button type="button" id="connect-endpoints-summary" class="connect-quest-pill" title="Change start / goal">
-            <span class="cst-start" id="connect-title-start"></span>
-            <span class="cst-arrow" aria-hidden="true">→</span>
-            <span class="cst-goal" id="connect-title-goal"></span>
-          </button>
-          <span class="connect-par-pill" id="connect-par-pill" hidden><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-locate"></use></svg>PAR&nbsp;<b id="connect-par-value">—</b></span>
-          <span class="connect-timer-pill" title="Time"><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-clock"></use></svg><b id="connect-timer-value">0:00</b></span>
+        <!-- [SF-GAME-48] Один слой над сценой в двух композициях, а не два
+             разных блока. Пока партии нет — слой растянут на всю сцену и
+             центрирует стартовую карточку (выбор пары — ГЛАВНОЕ действие
+             игры, ему нужен весь экран). Как только партия пошла — слой
+             сжимается в угол, становится HUD-полосой, а та же карточка
+             превращается в поповер ПОД ней. Поповер позиционируется потоком
+             (gap колонки), а не магическим top: — высота HUD-полосы больше не
+             зашита в CSS. -->
+        <div class="connect-stage-layer">
+          <!-- [design: показать, что это игра] HUD-полоса поверх переиспользо-
+               ванного графа: флаг «Game», квест, PAR и таймер жили тремя
+               отдельными пилюлями и переносились на вторую строку — теперь это
+               одна стеклянная полоса. -->
+          <div class="connect-hud">
+            <span class="connect-game-flag" aria-hidden="true"><svg class="cgf-ico" viewBox="0 0 24 24"><use href="#icon-game"></use></svg>Game</span>
+            <!-- Quest target pill — click to change the start/goal (opens the
+                 endpoint editor popover below). renderHead keeps the two
+                 spans in sync; renderEndpoints toggles the popover. -->
+            <button type="button" id="connect-endpoints-summary" class="connect-quest-pill" title="Change start / goal">
+              <span class="cst-start" id="connect-title-start"></span>
+              <span class="cst-arrow" aria-hidden="true">→</span>
+              <span class="cst-goal" id="connect-title-goal"></span>
+            </button>
+            <span class="connect-hud-sep" aria-hidden="true"></span>
+            <span class="connect-par-pill" id="connect-par-pill" hidden><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-locate"></use></svg>PAR&nbsp;<b id="connect-par-value">—</b></span>
+            <span class="connect-timer-pill" title="Time"><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-clock"></use></svg><b id="connect-timer-value">0:00</b></span>
+          </div>
 
-          <!-- Endpoint editor — hidden until the quest pill is clicked. -->
+          <!-- [SF-GAME-47] Выбор пары. Один и тот же блок в двух ролях, а не
+               два разных: пока партии нет — это ГЛАВНЫЙ экран старта по центру
+               сцены (главное действие игры не должно жить за крошечной
+               пилюлей), после старта — компактный поповер «сменить», который
+               открывает та же пилюля. Инпуты одни и те же, поэтому проводка
+               автокомплита не раздваивается. -->
           <div class="connect-endpoints" id="connect-endpoints" hidden>
-            <label class="connect-field">
-              <span class="connect-label">From</span>
-              <input id="connect-start-input" class="ui-input" type="text" autocomplete="off"
-                     placeholder="Start artist…" aria-label="Start artist" />
-              <div id="connect-start-ac" class="ac-dropdown" role="listbox"></div>
-            </label>
-            <label class="connect-field">
-              <span class="connect-label">To</span>
-              <input id="connect-goal-input" class="ui-input" type="text" autocomplete="off"
-                     placeholder="Goal artist…" aria-label="Goal artist" />
-              <div id="connect-goal-ac" class="ac-dropdown" role="listbox"></div>
-            </label>
+            <div class="connect-setup-head">
+              <span class="connect-setup-kicker"><svg class="cgf-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg>Connect</span>
+              <h2 class="connect-setup-title">Who do you want to connect?</h2>
+              <p class="connect-setup-sub">Pick two artists — then find the shortest line of collaborations between them.</p>
+            </div>
+            <!-- [SF-GAME-48] Два полюса. Та же грамматика цвета, что и на
+                 графе (--signal = старт, --pulse = цель), и тот же жест
+                 «слева направо», что задаёт коридор лэйаута. В роли поповера
+                 сетка схлопывается в одну колонку (см. game-screens.css). -->
+            <div class="connect-setup-poles">
+              <label class="connect-field connect-field--start">
+                <span class="connect-label">From</span>
+                <input id="connect-start-input" class="ui-input" type="text" autocomplete="off"
+                       placeholder="Start artist…" aria-label="Start artist" />
+                <div id="connect-start-ac" class="ac-dropdown" role="listbox"></div>
+              </label>
+              <span class="connect-setup-link" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><use href="#icon-arrow-left"></use></svg>
+              </span>
+              <label class="connect-field connect-field--goal">
+                <span class="connect-label">To</span>
+                <input id="connect-goal-input" class="ui-input" type="text" autocomplete="off"
+                       placeholder="Goal artist…" aria-label="Goal artist" />
+                <div id="connect-goal-ac" class="ac-dropdown" role="listbox"></div>
+              </label>
+            </div>
+            <div class="connect-setup-actions">
+              <button type="button" id="connect-start-btn" class="ui-btn ui-btn--primary" disabled>Start</button>
+              <a class="ui-btn" href="#/game/challenges">Browse challenges</a>
+            </div>
           </div>
         </div>
 
@@ -955,10 +1031,35 @@
       </div>
 
       <!-- ── RIGHT: "Your line" docked panel ──────────────────────────── -->
-      <aside class="connect-line-panel">
-        <header class="clp-head">
-          <h2 class="clp-title">Your line</h2>
-          <span class="clp-hops"><b id="connect-hops-value">0</b> hops</span>
+      <!-- [SF-GAME-49] Панель живёт по правилам .companion-panel Explorer'а:
+           оболочка карточки — кит (.ui-panel), а не своя копия того же
+           стекла; заголовки секций — mono/uppercase/xs, как .path-title;
+           строки и действия — та же hover-грамматика, что у .dock-btn. -->
+      <aside class="connect-line-panel ui-panel">
+        <!-- [SF-GAME-55] Шапка панели — это КВЕСТ, а не подпись «Your line».
+             Раньше сверху стояли микро-заголовок и чип «N hops»: заголовок
+             называл очевидное, чип давал число без точки отсчёта, а куда игрок
+             идёт, приходилось искать в HUD над графом. Теперь тут два полюса
+             (те же, что рисует коридор), под ними — прогресс против идеала. -->
+        <header class="clp-quest">
+          <div class="clp-poles">
+            <span class="clp-pole clp-pole--start">
+              <span class="clp-pole-av" id="connect-pole-from" aria-hidden="true">?</span>
+              <span class="clp-pole-name" id="connect-pole-from-name">—</span>
+            </span>
+            <span class="clp-pole-link" aria-hidden="true"><b id="connect-hops-value">0</b></span>
+            <span class="clp-pole clp-pole--goal">
+              <span class="clp-pole-av" id="connect-pole-to" aria-hidden="true">?</span>
+              <span class="clp-pole-name" id="connect-pole-to-name">—</span>
+            </span>
+          </div>
+
+          <!-- Прогресс против PAR: пипсы заполняются по числу хопов, перебор
+               идеала подсвечивается своим цветом, а не молча. -->
+          <div class="clp-progress" id="connect-progress" hidden>
+            <div class="clp-pips" id="connect-pips" aria-hidden="true"></div>
+            <span class="clp-progress-label" id="connect-progress-label"></span>
+          </div>
         </header>
 
         <!-- "or pick a rival" banner — set when the player started this
@@ -966,26 +1067,36 @@
              landing panel. -->
         <span class="clp-rival" id="connect-rival-pill" hidden><svg class="clp-rival-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span id="connect-rival-text"></span></span>
 
-        <div class="clp-add">
-          <input id="connect-add-input" class="clp-add-input" type="text" autocomplete="off"
-                 placeholder="Add next collaborator…" aria-label="Add the next collaborator" disabled />
-          <div id="connect-add-ac" class="ac-dropdown" role="listbox"></div>
-          <button type="button" id="connect-add-btn" class="clp-add-btn" aria-label="Add collaborator" disabled><svg class="clp-add-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-plus"></use></svg></button>
-        </div>
-
         <!-- The player's own line, always visible (this is THEIR chain, not
              the hidden ideal path). Populated by connect.js's renderLine. -->
         <ol class="clp-line" id="connect-line-list" aria-live="polite"></ol>
 
-        <!-- SECONDARY — the tail's real collaborators, also shown live on the
-             graph; kept as a collapsed text list for keyboard/quick access. -->
-        <details class="connect-browse" id="connect-browse">
-          <summary class="connect-browse-summary">
-            <svg class="connect-browse-chev" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span id="connect-browse-label">Or browse real collaborators</span>
-          </summary>
+        <!-- [SF-GAME-54] Поле «следующий хоп» переехало ПОД линию: оно
+             продолжает её, а не предваряет. Раньше оно стояло первым и было
+             самым заметным элементом панели — хотя содержимое панели это сама
+             линия, а поле лишь один из двух способов её удлинить (второй —
+             клик по узлу на графе). -->
+        <!-- [SF-GAME-57] СЛЕДУЮЩИЙ ХОД — главное содержимое панели.
+             Раньше панель на 80% состояла из «что я уже сделал» (вертикальный
+             список пройденной линии) — то есть текстовой копии картинки,
+             которая и так стоит слева. А сам выбор — то единственное, что
+             игрок здесь делает — ютился в одном узком поле «Add next» плюс
+             СВЁРНУТЫЙ список «or browse». Два списка одного и того же,
+             причём главный был спрятан под треугольником.
+             Теперь это один блок: поиск сверху, живой список кандидатов под
+             ним. Поле фильтрует тот же список, клик по строке — тот же ход,
+             что клик по узлу на графе. -->
+        <div class="clp-add">
+          <input id="connect-add-input" class="clp-add-input" type="text" autocomplete="off"
+                 placeholder="Search a collaborator…" aria-label="Add the next collaborator" disabled />
+          <div id="connect-add-ac" class="ac-dropdown" role="listbox"></div>
+          <button type="button" id="connect-add-btn" class="clp-add-btn" aria-label="Add collaborator" disabled><svg class="clp-add-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-plus"></use></svg></button>
+        </div>
+
+        <section class="connect-browse" id="connect-browse" hidden>
+          <span class="connect-browse-summary" id="connect-browse-label">Or browse real collaborators</span>
           <div class="connect-browse-chips" id="connect-browse-chips" aria-live="polite"></div>
-        </details>
+        </section>
 
         <div class="connect-leaderboard" id="connect-leaderboard" aria-live="polite" hidden></div>
 
@@ -1001,12 +1112,16 @@
           <button type="button" id="connect-lockin" class="clp-lockin" disabled>Lock in</button>
         </footer>
 
+        <!-- [SF-GAME-49] Действия партии — .dock-btn, тот же контрол, что в
+             доке графа: рамка + иконка + подпись вместо микроскопической
+             капсовой надписи без габаритов. Ссылки «← Back» здесь больше нет:
+             она вела на #/graph, ровно туда же, куда ведёт Explore в рейле
+             слева, и была вторым выходом с поверхности в одном экране. -->
         <div class="clp-actions">
-          <button id="connect-undo" class="connect-mini-btn" type="button" disabled>Undo</button>
-          <button id="connect-reset" class="connect-mini-btn" type="button" disabled>Reset</button>
-          <button id="connect-give-up" class="connect-mini-btn" type="button" disabled>Give up</button>
-          <button id="connect-share" class="connect-mini-btn" type="button" disabled>Share</button>
-          <a id="connect-back" class="connect-mini-btn connect-back" href="#/graph">← Back</a>
+          <button id="connect-undo" class="dock-btn" type="button" disabled><span class="ri"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg></span>Undo</button>
+          <button id="connect-reset" class="dock-btn" type="button" disabled><span class="ri"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg></span>Reset</button>
+          <button id="connect-give-up" class="dock-btn" type="button" disabled><span class="ri"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-close"></use></svg></span>Give up</button>
+          <button id="connect-share" class="dock-btn" type="button" disabled><span class="ri"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-link"></use></svg></span>Share</button>
         </div>
       </aside>
 
@@ -1017,15 +1132,13 @@
        real GET /api/v1/game/leaderboard, season rating + challenge-scoped
        tabs. game-windows.js owns show/hide + data load. -->
   <section id="game-leaderboard-surface" class="game-screen" aria-label="Leaderboard" hidden>
-    <nav class="game-rail" aria-label="Game navigation">
-      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
-      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
-      <span class="game-rail-spacer"></span>
-      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    <nav class="game-rail rail-shell" aria-label="Game navigation">
+      <a class="game-rail-brand brand" href="/" title="Six Feet — back to start"><span class="dotmark"></span><span class="rl">Six Feet</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game" data-surface="game" data-tip="Play"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="rl">Play</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg><span class="rl">Challenges</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="rl">Leaderboard</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="rl">Season</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="rl">Cabinet</span></a>
     </nav>
     <div class="game-screen-body">
       <header class="gs-head">
@@ -1044,15 +1157,13 @@
   <!-- [design: routed game windows] Profile screen (#/game/profile) — real
        GET /api/v1/game/profile (self) + ?user= for attempt history. -->
   <section id="game-profile-surface" class="game-screen" aria-label="Profile" hidden>
-    <nav class="game-rail" aria-label="Game navigation">
-      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
-      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
-      <span class="game-rail-spacer"></span>
-      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    <nav class="game-rail rail-shell" aria-label="Game navigation">
+      <a class="game-rail-brand brand" href="/" title="Six Feet — back to start"><span class="dotmark"></span><span class="rl">Six Feet</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game" data-surface="game" data-tip="Play"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="rl">Play</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg><span class="rl">Challenges</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="rl">Leaderboard</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="rl">Season</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="rl">Cabinet</span></a>
     </nav>
     <div class="game-screen-body">
       <div id="profile-signed-out" class="gs-empty" hidden>
@@ -1062,7 +1173,7 @@
       <div id="profile-card" hidden>
         <!-- [design: ЛК] Personal hero — avatar in an accent ring, editable
              display name, rank chip, and quick actions. -->
-        <section class="cab-hero">
+        <section class="ui-panel cab-hero">
           <span class="cab-avatar-ring">
             <span class="pf-avatar" id="pf-avatar" aria-hidden="true">?</span>
           </span>
@@ -1070,12 +1181,12 @@
             <p class="cab-eyebrow">Your cabinet</p>
             <div class="cab-name-row">
               <h1 class="pf-name" id="pf-name">—</h1>
-              <button type="button" class="cab-edit" id="pf-edit-name" title="Change display name" aria-label="Change display name">
+              <button type="button" class="ui-btn ui-btn--icon cab-edit" id="pf-edit-name" title="Change display name" aria-label="Change display name">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-pen"></use></svg>
               </button>
             </div>
             <div class="cab-chips">
-              <span class="cab-chip cab-chip--rank" id="pf-rank"></span>
+              <span class="ui-chip cab-chip cab-chip--rank" id="pf-rank"></span>
             </div>
           </div>
           <div class="cab-cta">
@@ -1086,9 +1197,9 @@
 
         <!-- Stat tiles -->
         <div class="cab-tiles">
-          <div class="cab-tile"><span class="cab-tile-v" id="pf-elo">—</span><span class="cab-tile-l">Elo</span></div>
-          <div class="cab-tile"><span class="cab-tile-v" id="pf-games">—</span><span class="cab-tile-l">Games</span></div>
-          <div class="cab-tile"><span class="cab-tile-v" id="pf-badges">—</span><span class="cab-tile-l">Badges</span></div>
+          <div class="ui-tile cab-tile"><span class="cab-tile-v" id="pf-elo">—</span><span class="cab-tile-l">Elo</span></div>
+          <div class="ui-tile cab-tile"><span class="cab-tile-v" id="pf-games">—</span><span class="cab-tile-l">Games</span></div>
+          <div class="ui-tile cab-tile"><span class="cab-tile-v" id="pf-badges">—</span><span class="cab-tile-l">Badges</span></div>
         </div>
 
         <section class="cab-section">
@@ -1107,7 +1218,7 @@
            GET /api/v1/game/admin says the signed-in player is an admin (the
            GAME_ADMIN_GENIUS_IDS allowlist). Publishes a daily challenge on
            demand; leave both fields blank for a random pair. -->
-      <section id="admin-panel" class="admin-panel" hidden>
+      <section id="admin-panel" class="ui-panel admin-panel" hidden>
         <header class="pf-head pf-head--admin">
           <span class="admin-badge" aria-hidden="true">
             <svg viewBox="0 0 24 24" class="admin-ico"><use href="#icon-locate"></use></svg>
@@ -1138,15 +1249,13 @@
   <!-- [game #3] Challenge browser (#/game/challenges) — real GET
        /api/v1/game/challenges, paginated cards you can start with one click. -->
   <section id="game-challenges-surface" class="game-screen" aria-label="Challenges" hidden>
-    <nav class="game-rail" aria-label="Game navigation">
-      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
-      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
-      <span class="game-rail-spacer"></span>
-      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    <nav class="game-rail rail-shell" aria-label="Game navigation">
+      <a class="game-rail-brand brand" href="/" title="Six Feet — back to start"><span class="dotmark"></span><span class="rl">Six Feet</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game" data-surface="game" data-tip="Play"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="rl">Play</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg><span class="rl">Challenges</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="rl">Leaderboard</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="rl">Season</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="rl">Cabinet</span></a>
     </nav>
     <div class="game-screen-body game-screen-body--wide">
       <header class="gs-head">
@@ -1158,6 +1267,18 @@
         </div>
       </header>
       <p class="gs-sub">Pick a pair and race to connect them. PAR is the shortest possible line.</p>
+      <!-- [SF-GAME-46] Поиск по артисту. Раньше найти челлендж с конкретным
+           артистом было нельзя вообще — только три вкладки и «Load more».
+           Ищет по ОБОИМ концам пары: игроку неважно, старт это или цель. -->
+      <div class="ch-search">
+        <svg class="ch-search-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-search"></use></svg>
+        <input id="ch-search-input" class="ui-input ch-search-input" type="search"
+               autocomplete="off" placeholder="Find a challenge by artist…"
+               aria-label="Find a challenge by artist" />
+        <button type="button" id="ch-search-clear" class="ui-btn ui-btn--icon ch-search-clear" aria-label="Clear search" hidden>
+          <span class="ri"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-close"></use></svg></span>
+        </button>
+      </div>
       <div class="ch-grid" id="ch-grid" aria-live="polite"></div>
       <p class="gs-empty" id="ch-empty" hidden>No challenges yet — play the daily to seed the board.</p>
       <button type="button" class="ch-more ui-btn" id="ch-more" hidden>Load more</button>
@@ -1170,20 +1291,18 @@
        /api/v1/game/profile. Glass hero + role-badge-style achievement wall,
        matching the graph page's visual language. -->
   <section id="game-season-surface" class="game-screen" aria-label="Season and achievements" hidden>
-    <nav class="game-rail" aria-label="Game navigation">
-      <span class="game-rail-brand"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-game"></use></svg><b>Connect</b></span>
-      <a class="game-nav-link game-rail-link" href="#/game" data-surface="game" data-tip="Play"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="grl-lab">Play</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-shuffle"></use></svg><span class="grl-lab">Challenges</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="grl-lab">Leaderboard</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="grl-lab">Season</span></a>
-      <a class="game-nav-link game-rail-link" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="grl-lab">Cabinet</span></a>
-      <span class="game-rail-spacer"></span>
-      <a class="game-rail-link game-rail-back" href="#/graph" data-tip="Back to Explore"><svg class="grl-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-arrow-left"></use></svg><span class="grl-lab">Explore</span></a>
+    <nav class="game-rail rail-shell" aria-label="Game navigation">
+      <a class="game-rail-brand brand" href="/" title="Six Feet — back to start"><span class="dotmark"></span><span class="rl">Six Feet</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game" data-surface="game" data-tip="Play"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-target"></use></svg><span class="rl">Play</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/challenges" data-surface="game/challenges" data-tip="Challenges"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg><span class="rl">Challenges</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/leaderboard" data-surface="game/leaderboard" data-tip="Leaderboard"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-trophy"></use></svg><span class="rl">Leaderboard</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/season" data-surface="game/season" data-tip="Season"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-flame"></use></svg><span class="rl">Season</span></a>
+      <a class="game-nav-link rail-btn ui-btn ui-btn--ghost" href="#/game/profile" data-surface="game/profile" data-tip="Cabinet"><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-medal"></use></svg><span class="rl">Cabinet</span></a>
     </nav>
     <div class="game-screen-body game-screen-body--wide">
 
       <!-- Season hero — glass panel keyed to amber (the trophy/season tone). -->
-      <section class="sn-hero">
+      <section class="ui-panel sn-hero">
         <span class="sn-hero-badge" aria-hidden="true">
           <svg class="sn-hero-ico" viewBox="0 0 24 24"><use href="#icon-trophy"></use></svg>
         </span>

@@ -7,7 +7,7 @@
 // involved, same style as highlight.test.js's DataSet stubs.
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { State } from "../state/state.js";
+import { State, setGameMode } from "../state/state.js";
 
 const showArtistSidebar = vi.fn();
 const showEdgeSidebar   = vi.fn();
@@ -24,11 +24,12 @@ vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
 const highlightNeighborhood = vi.fn();
 const highlightEdgePair     = vi.fn();
+const clearHoverHighlight   = vi.fn();
 vi.mock("./highlight.js", () => ({
   highlightNeighborhood: (...a) => highlightNeighborhood(...a),
   highlightEdgePair:     (...a) => highlightEdgePair(...a),
   restoreDefaultColors:  vi.fn(),
-  clearHoverHighlight:   vi.fn(),
+  clearHoverHighlight:   (...a) => clearHoverHighlight(...a),
   cancelPendingHover:    vi.fn(),
   clearSelectedNode:     vi.fn(),
   clearSelectedEdge:     vi.fn(),
@@ -168,6 +169,42 @@ describe("attachNetworkEvents doubleClick — Compare mode (SF-WEB-74)", () => {
 
     expect(exitCompareMode).not.toHaveBeenCalled();
     expect(searchArtist).toHaveBeenCalledWith("Alpha", true, true);
+  });
+});
+
+// [SF-GAME-49] Игровой режим ограничивает не только клик, но и ХОВЕР.
+// highlightNeighborhood переписывает у каждого узла shape/image/color/
+// borderWidth/shadow — на игровой доске это и читалось как «граф дёргается
+// при движении мышки»: узлы меняли размер под курсором, аватарки мигали от
+// перезаписи image, а парный clearHoverHighlight стирал раскраску ролей до
+// следующего renderBoard. Замер на живой странице: 8 полных перекрасок
+// DataSet за один проход мыши через веер.
+describe("attachNetworkEvents hover — game mode (SF-GAME-49)", () => {
+  afterEach(() => { setGameMode(false); });
+
+  it("не запускает конвейер подсветки Explorer'а, пока режим включён", () => {
+    const net = makeNet();
+    State.network = net;
+    attachNetworkEvents({});
+    setGameMode(true, { clickRouter: null, homeParent: null });
+
+    net._handlers.hoverNode({ node: 1 });
+    net._handlers.blurNode({ node: 1 });
+
+    expect(highlightNeighborhood).not.toHaveBeenCalled();
+    expect(clearHoverHighlight).not.toHaveBeenCalled();
+    // Курсор — единственное, что ховер меняет в игре напрямую; кольцо
+    // рисует game-board.js на оверлее, без записей в DataSet.
+    expect(els.network.style.cursor).toBe("default");
+  });
+
+  it("вне игрового режима подсветка работает как раньше", () => {
+    const net = makeNet();
+    State.network = net;
+    attachNetworkEvents({});
+
+    net._handlers.hoverNode({ node: 1 });
+    expect(highlightNeighborhood).toHaveBeenCalledWith(1);
   });
 });
 

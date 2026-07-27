@@ -26,7 +26,18 @@ const distDir = process.env.BUNDLE_DIST_DIR || join(import.meta.dirname, "..", "
 // canvas renderer, real challenge/submit/leaderboard API client, plus the
 // 3-way hero-mode-switch) is a genuine new feature's worth of code, not
 // bloat; ~43.3 KB actual leaves a smaller but still real margin.
-export const BUDGET_KB = 48;
+// [SF-GAME-33] Raised to 56 KB. The 48 KB above was set against a ~43.3 KB
+// bundle, but the game surface FINISHED bigger than that estimate: the routed
+// windows (leaderboard/profile/challenges/season), the admin panel and the
+// game-screens chrome all landed after it, and the bundle has actually been
+// ~49.2 KB — i.e. this gate has been failing on the pushed tree, not just
+// tight. Measured, not guessed: 49.4 KB after the SF-GAME-30..33 refactor,
+// which is +0.2 KB net (the connect.js split adds module boundaries; moving
+// game screens onto the kit gives most of it back). 56 KB restores ~13%
+// headroom over the real number. If the next raise is again "because it grew",
+// the answer should be code-splitting the game surface off the Explorer's
+// entry bundle instead of another bump.
+export const BUDGET_KB = 56;
 export const BUDGET_BYTES = BUDGET_KB * 1024;
 
 export function gzipSize(buffer) {

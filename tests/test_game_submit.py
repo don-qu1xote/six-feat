@@ -33,6 +33,10 @@ Scenarios (per the ticket):
      penalty ("невалид снижают").
   8. two valid submissions by the same player on the same challenge -> the
      second one's score/Elo reflect prior_attempts=1.
+  9. [SF-GAME-36] anti-abuse: a REPEAT submission of the same challenge is
+     still scored, but never re-rates — Elo and the games count both stay put,
+     however many times it's replayed. The gate is per (player, challenge), so
+     a different challenge still rates normally.
 """
 
 from __future__ import annotations
@@ -218,6 +222,17 @@ def direct_challenge_id() -> int:
 
 
 @pytest.fixture(scope="module")
+def second_challenge_id(direct_challenge_id: int) -> int:
+    """[SF-GAME-36] A genuinely DIFFERENT challenge (A->Y, also a real direct
+    hop seeded by direct_challenge_id above), so the anti-abuse rule can be
+    shown to be per (player, challenge) rather than "only your first game ever
+    counts". Depends on direct_challenge_id purely for its collaboration
+    seeding."""
+    return _seed_challenge(_A_ID, _Y_ID, 15, "sf-game-36-second",
+                           optimal_len=1, optimal_path=[_A_ID, _Y_ID])
+
+
+@pytest.fixture(scope="module")
 def unscored_challenge_id() -> int:
     """A challenge whose ideal hasn't been computed yet (optimal_len IS
     NULL) — simulates a row SF-GAME-16 hasn't finished processing."""
@@ -357,3 +372,87 @@ def test_invalid_attempt_counts_toward_prior_attempts_too(direct_challenge_id: i
     expected_score = _expected_score(optimal_len=1, player_len=1, prior_attempts=1)
     assert expected_score == MAX_SCORE - ATTEMPT_PENALTY_PER_PRIOR
     assert valid["score"] == expected_score
+
+
+# ── [SF-GAME-36] Anti-abuse: only the FIRST valid attempt is ranked ───────────
+# The two tests above pin the SCORE side of a repeat (each prior attempt costs
+# ATTEMPT_PENALTY_PER_PRIOR). They do NOT pin the anti-abuse property itself:
+# that a repeat submission moves neither the player's Elo nor their games
+# count. Without that, re-submitting the same optimal line would let a player
+# farm rating forever — the score decay alone doesn't stop it, since a decayed
+# score can still be an Elo gain. See game_store.cpp's `ranked` flag.
+
+
+def _profile_row(name: str) -> tuple[int, int]:
+    """(elo, games) straight from game_profiles for this player, keyed by the
+    same FNV-1a hash of the Genius name that game_session.hpp's StableUserId
+    computes — an independent Python reimplementation, same "two sources of
+    truth" posture as _expected_score/_expected_elo above."""
+    h = 1469598103934665603
+    for byte in name.encode():
+        h ^= byte
+        h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    user_id = h & 0x7FFFFFFFFFFFFFFF
+
+    conn = psycopg2.connect(**DB_CONN_PARAMS)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT elo, games FROM game_profiles WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+            return (row[0], row[1]) if row else (0, 0)
+    finally:
+        conn.close()
+
+
+def test_repeat_submission_never_moves_elo(direct_challenge_id: int):
+    """A replayed challenge is scored (and shown) but never re-rates."""
+    _, cookie = _fresh_cookie()
+    body = {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]}
+
+    first = _post(cookie, body).json()
+    assert first["elo_delta"] != 0, "the first valid attempt must actually rate"
+    settled = first["elo_after"]
+
+    second = _post(cookie, body).json()
+    assert second["valid"] is True          # still a real, accepted chain
+    assert second["score"] > 0              # still scored (decayed, see test above)
+    assert second["elo_delta"] == 0         # ...but never rated again
+    assert second["elo_before"] == settled
+    assert second["elo_after"] == settled
+
+    third = _post(cookie, body).json()
+    assert third["elo_after"] == settled, "Elo must not drift on further replays"
+
+
+def test_repeat_submission_never_increments_games(direct_challenge_id: int):
+    """games counts RANKED attempts, so a replay leaves it where it was."""
+    name, cookie = _fresh_cookie()
+    body = {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]}
+
+    _post(cookie, body)
+    elo_after_first, games_after_first = _profile_row(name)
+    assert games_after_first == 1
+
+    _post(cookie, body)
+    _post(cookie, body)
+    elo_now, games_now = _profile_row(name)
+    assert games_now == 1, "replays must not inflate the games count"
+    assert elo_now == elo_after_first, "replays must not inflate Elo"
+
+
+def test_a_different_challenge_still_rates_normally(direct_challenge_id: int,
+                                                    second_challenge_id: int):
+    """The gate is per (player, challenge) — a NEW challenge still rates, so
+    the anti-abuse rule can't be mistaken for 'only your first game ever
+    counts'."""
+    name, cookie = _fresh_cookie()
+
+    first = _post(cookie, {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]}).json()
+    assert first["elo_delta"] != 0
+
+    other = _post(cookie, {"challenge_id": second_challenge_id, "chain": [_A_ID, _Y_ID]}).json()
+    assert other["valid"] is True
+    assert other["elo_delta"] != 0, "a different challenge is a fresh ranked game"
+
+    _, games = _profile_row(name)
+    assert games == 2

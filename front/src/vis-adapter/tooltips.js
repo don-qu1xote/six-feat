@@ -125,11 +125,23 @@ export function buildNodeTooltip(node) {
     ? `<div class="tt-meta" style="color:var(--signal)">expanded ✓</div>` : "";
   // [SF-WEB-59] Централити убрана снова — SF-WEB-58 A её вернула, это была
   // регрессия (не нужна при текущем состоянии графа).
+  // [SF-GAME-49 / ADR-0008] Подсказка описывает жесты EXPLORER'а, а в игровом
+  // режиме не работает ни один из них: клик — это ход (добавить хоп / сменить
+  // фокус / дойти до цели), двойной клик не разворачивает соседей, ctrl+клик
+  // не назначает сид. Показывать её в игре — прямо инструктировать игрока
+  // делать то, чего экран не умеет; вместо неё — жест, который тут реально
+  // есть. Про «expanded ✓» то же самое: разворачивать в игре нечего.
+  // Флаг режима читаем со State напрямую, а не через game-mode.js: tooltips
+  // тянут render/visuals, а game-mode тянет compare-mode — импорт отсюда
+  // замкнул бы граф модулей vis-adapter в цикл. Это то же самое поле, которое
+  // проверяет и сам isGameModeActive().
+  const inGame = State.game?.mode === true;
+  const hint = inGame ? "click → play this hop" : "click → details · dbl-click → expand · ctrl+click → set as seed";
   el.innerHTML =
     `<div class="tt-name">${escapeHtml(node.name)}${seedBadge}</div>` +
     (node.totalWeight ? `<div class="tt-meta">${node.totalWeight} collab${node.totalWeight === 1 ? "" : "s"}</div>` : "") +
-    isExpanded +
-    `<div class="tt-hint">click → details · dbl-click → expand · ctrl+click → set as seed</div>`;
+    (inGame ? "" : isExpanded) +
+    `<div class="tt-hint">${hint}</div>`;
   return el;
 }
 

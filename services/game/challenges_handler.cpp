@@ -6,6 +6,7 @@
 #include "core/security_headers.hpp"
 #include "schemas/handlers/game/challenges_handler_schema.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -27,6 +28,10 @@ namespace {
 
 constexpr int kDefaultLimit = 24;
 constexpr int kMaxLimit     = 60;
+// [SF-GAME-46] Потолок длины поисковой строки. Не защита (ILIKE-паттерн
+// экранирован в сторе), а отсечка бессмысленного ввода: имён такой длины не
+// бывает, а тащить килобайты в LIKE незачем.
+constexpr std::size_t kMaxQueryLen = 80;
 
 // Same "unset image is OMITTED, never null" convention as challenge_handler's
 // DailyChallengeJson and artist_handler's own "image" field.
@@ -108,6 +113,16 @@ std::string ChallengesHandler::HandleRequestThrow(
     }
 
     bool malformed = false;
+    // [SF-GAME-46] q — поиск по артисту на любом конце пары. Пусто = без
+    // фильтра, поэтому отсутствие параметра ничего не меняет для старых
+    // клиентов.
+    const auto& query = request.GetArg("q");
+    if (query.size() > kMaxQueryLen) {
+        response.SetStatus(server::http::HttpStatus::kBadRequest);
+        return BuildProblemJson(request, server::http::HttpStatus::kBadRequest,
+                                "q must be at most " + std::to_string(kMaxQueryLen) + " characters");
+    }
+
     const auto cursor = ParseCursor(request.GetArg("cursor"), malformed);
     if (malformed) {
         response.SetStatus(server::http::HttpStatus::kBadRequest);
@@ -115,7 +130,7 @@ std::string ChallengesHandler::HandleRequestThrow(
                                 "cursor is malformed");
     }
 
-    const auto items = store_.ListChallenges(kind, cursor, limit);
+    const auto items = store_.ListChallenges(kind, query, cursor, limit);
 
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     formats::json::ValueBuilder arr(formats::json::Type::kArray);

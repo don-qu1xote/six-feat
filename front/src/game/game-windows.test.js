@@ -6,7 +6,7 @@
 // toast are all mocked, so these drive the real render/route logic off a jsdom
 // fixture with no network or vis.Network.
 // ════════════════════════════════════════════════════════════════════════════
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../ui/router.js", () => ({
   onSurfaceChange: vi.fn(),
@@ -19,6 +19,7 @@ vi.mock("../ui/router.js", () => ({
 vi.mock("../ui/autocomplete.js", () => ({ attachGeniusAutocomplete: vi.fn() }));
 vi.mock("../ui/toast.js", () => ({ showToast: vi.fn() }));
 vi.mock("./connect.js", () => ({ startChallengeByRefs: vi.fn() }));
+vi.mock("./connect-store.js", () => ({ resolveArtistId: vi.fn(async () => null) }));
 vi.mock("./game-api.js", () => ({
   fetchProfile: vi.fn(async () => null),
   fetchPublicProfile: vi.fn(async () => null),
@@ -34,6 +35,7 @@ import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { onSurfaceChange } from "../ui/router.js";
 import { startChallengeByRefs } from "./connect.js";
+import { resolveArtistId } from "./connect-store.js";
 import { showToast } from "../ui/toast.js";
 import {
   fetchProfile, fetchPublicProfile, fetchChallenges, fetchSeason,
@@ -41,7 +43,9 @@ import {
 } from "./game-api.js";
 import { setupGameWindows } from "./game-windows.js";
 
-const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+// Слив очереди через границу макротаска, а не счётчик микротасков: считать
+// внутреннюю глубину промисов реализации — хрупко (см. connect.test.js).
+const flush = async () => { await new Promise(resolve => setTimeout(resolve, 0)); };
 
 const NAV = `<nav><a class="game-nav-link" data-surface="game/leaderboard"></a>
   <a class="game-nav-link" data-surface="game/profile"></a></nav>`;
@@ -77,6 +81,8 @@ function fixture() {
       <button id="ch-tab-custom"></button>
       <div id="ch-grid"></div>
       <p id="ch-empty" hidden></p>
+      <input id="ch-search-input" type="search" />
+      <button id="ch-search-clear" hidden></button>
       <button id="ch-more" hidden></button>
     </section>
     <section id="game-season-surface" class="game-screen" hidden>
@@ -98,6 +104,7 @@ function bind() {
     pfHistory: "pf-history", pfHistoryEmpty: "pf-history-empty",
     gameChallengesSurface: "game-challenges-surface", chTabAll: "ch-tab-all", chTabDaily: "ch-tab-daily",
     chTabCustom: "ch-tab-custom", chGrid: "ch-grid", chEmpty: "ch-empty", chMore: "ch-more",
+    chSearchInput: "ch-search-input", chSearchClear: "ch-search-clear",
     gameSeasonSurface: "game-season-surface", snName: "sn-name", snCountdown: "sn-countdown", snYou: "sn-you",
     snProgressFill: "sn-progress-fill", snDates: "sn-dates", snPodium: "sn-podium", snPodiumEmpty: "sn-podium-empty",
     snAchCount: "sn-ach-count", snAchHint: "sn-ach-hint", snAchGrid: "sn-ach-grid",
@@ -275,7 +282,72 @@ describe("challenges browser", () => {
     fetchChallenges.mockResolvedValue({ challenges: [], next_cursor: null });
     els.chTabDaily.click();
     await flush();
-    expect(fetchChallenges).toHaveBeenLastCalledWith({ kind: "daily", cursor: "", limit: 24 });
+    expect(fetchChallenges).toHaveBeenLastCalledWith({ kind: "daily", query: "", cursor: "", limit: 24 });
+  });
+});
+
+describe("[SF-GAME-46] поиск челленджа по артисту", () => {
+  beforeEach(() => {
+    fetchChallenges.mockResolvedValue({ challenges: [], next_cursor: null });
+    els.chSearchInput.value = "";
+    els.chTabAll.click();          // сбрасываем kind, оставленный соседями
+  });
+
+  // _chQuery — модульное состояние контроллера, оно переживает beforeEach и
+  // утекло бы в соседние блоки (пустой каталог начал бы объясняться как
+  // «ничего не нашлось»). Убираем за собой явно.
+  afterEach(async () => {
+    els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flush();
+  });
+
+  it("шлёт запрос на бэк, а не фильтрует загруженную страницу", async () => {
+    els.chSearchInput.value = "Drake";
+    els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(fetchChallenges).toHaveBeenLastCalledWith(
+      expect.objectContaining({ query: "Drake", cursor: "" }));
+  });
+
+  it("сохраняет вкладку: поиск и kind — независимые фильтры", async () => {
+    els.chTabDaily.click();
+    await flush();
+    els.chSearchInput.value = "Adele";
+    els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(fetchChallenges).toHaveBeenLastCalledWith(
+      expect.objectContaining({ kind: "daily", query: "Adele" }));
+  });
+
+  it("Esc и кнопка сброса очищают поиск", async () => {
+    els.chSearchInput.value = "Drake";
+    els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(els.chSearchClear.hidden).toBe(false);
+
+    els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flush();
+    expect(els.chSearchInput.value).toBe("");
+    expect(els.chSearchClear.hidden).toBe(true);
+    expect(fetchChallenges).toHaveBeenLastCalledWith(expect.objectContaining({ query: "" }));
+  });
+
+  it("пустой результат поиска объясняется иначе, чем пустой каталог", async () => {
+    els.chSearchInput.value = "Nobody";
+    els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(els.chEmpty.textContent).toContain("Nobody");
+    expect(els.chEmpty.textContent).not.toMatch(/No challenges published yet/i);
+  });
+
+  it("сбрасывает пагинацию — иначе вторая страница пришла бы от прошлого запроса", async () => {
+    fetchChallenges.mockResolvedValue({ challenges: [{ id: 1, kind: "daily", from: {}, to: {} }], next_cursor: "c1" });
+    els.chTabAll.click();
+    await flush();
+    els.chSearchInput.value = "Drake";
+    els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+    expect(fetchChallenges).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "" }));
   });
 });
 
@@ -310,5 +382,85 @@ describe("season hub", () => {
     applySurface("game/season");
     await flush();
     expect(els.snPodiumEmpty.hidden).toBe(false);
+  });
+});
+
+describe("[SF-GAME-34] admin publish resolves what's actually typed", () => {
+  it("resolves a typed (not picked) name to a REAL id instead of sending 0", async () => {
+    resolveArtistId.mockResolvedValue(777);
+    publishDaily.mockResolvedValue({ id: 9, optimal_len: 2 });
+    els.adminFromInput.value = "Drake";      // набрано, но не выбрано из списка
+    els.adminToInput.value = "";             // пусто = пусть выберет сервер
+    els.adminPublishDaily.click();
+    await flush();
+    expect(resolveArtistId).toHaveBeenCalledWith("Drake");
+    expect(publishDaily).toHaveBeenCalledWith({ from: 777, to: 0 });
+  });
+
+  it("refuses to publish an unresolvable name and says which one", async () => {
+    resolveArtistId.mockResolvedValue(null);
+    els.adminFromInput.value = "Not An Artist";
+    els.adminPublishDaily.click();
+    await flush();
+    expect(publishDaily).not.toHaveBeenCalled();   // никакой случайной пары
+    expect(els.adminStatus.textContent).toContain("Not An Artist");
+    expect(els.adminPublishDaily.disabled).toBe(false);
+  });
+
+  it("sends 0/0 when both fields are blank — that's 'server picks', not an error", async () => {
+    publishDaily.mockResolvedValue({ id: 9, optimal_len: 2 });
+    els.adminFromInput.value = "";
+    els.adminToInput.value = "";
+    els.adminPublishDaily.click();
+    await flush();
+    expect(resolveArtistId).not.toHaveBeenCalled();
+    expect(publishDaily).toHaveBeenCalledWith({ from: 0, to: 0 });
+  });
+});
+
+describe("[SF-GAME-37] empty vs unavailable", () => {
+  // Явно обнуляем то, что могли оставить соседние блоки: закэшированный
+  // seasonId в слайсе заставил бы loadLeaderboard пропустить fetchSeason, и
+  // тест проверял бы не тот путь.
+  beforeEach(() => {
+    // Соседний блок обнуляет весь слайс (bridge это позволяет, а прод читает
+    // его через ?.) — восстанавливаем ровно то, что нужно этому тесту.
+    if (!State.connect) State.connect = {};
+    State.connect.seasonId = null;
+    fetchSeasonLeaderboard.mockResolvedValue(null);
+    fetchChallenges.mockResolvedValue(null);
+    // Область лидерборда — тоже модульное состояние, которое мог переключить
+    // соседний блок; возвращаем на "season", иначе проверялась бы не та ветка.
+    els.lbTabSeason?.click();
+  });
+
+  it("says the leaderboard isn't LOADED when the service is unreachable", async () => {
+    fetchSeason.mockResolvedValue(null);          // сервис не ответил
+    onSurfaceChange.mock.calls[0][0]("game/leaderboard");
+    await flush();
+    expect(els.lbEmpty.hidden).toBe(false);
+    expect(els.lbEmpty.textContent).toMatch(/Couldn't reach/i);
+  });
+
+  it("says the leaderboard is genuinely EMPTY when the service answers with nothing", async () => {
+    fetchSeason.mockResolvedValue({ season: { id: 1 } });
+    fetchSeasonLeaderboard.mockResolvedValue({ entries: [] });
+    onSurfaceChange.mock.calls[0][0]("game/leaderboard");
+    await flush();
+    expect(els.lbEmpty.hidden).toBe(false);
+    expect(els.lbEmpty.textContent).toMatch(/be the first/i);
+    expect(els.lbEmpty.textContent).not.toMatch(/Couldn't reach/i);
+  });
+
+  it("draws the same distinction for the challenge browser", async () => {
+    fetchChallenges.mockResolvedValue(null);
+    onSurfaceChange.mock.calls[0][0]("game/challenges");
+    await flush();
+    expect(els.chEmpty.textContent).toMatch(/Couldn't reach/i);
+
+    fetchChallenges.mockResolvedValue({ challenges: [], next_cursor: "" });
+    onSurfaceChange.mock.calls[0][0]("game/challenges");
+    await flush();
+    expect(els.chEmpty.textContent).toMatch(/No challenges published yet/i);
   });
 });

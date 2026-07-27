@@ -12,7 +12,8 @@ import {
   zoomIn, zoomOut, focusSeed,
   setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
   renderChips, exportGraphPng, exportGraphJson, setupThemeToggle, setupDockedPanels,
-  restoreSurfaceFromUrl, setupBubbleSetsToggle, getCurrentSurface, isGameSurface
+  restoreSurfaceFromUrl, setupBubbleSetsToggle, getCurrentSurface, isGameSurface,
+  closeAllDropdowns, onSurfaceChange
 } from "./ui/index.js";
 import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
@@ -41,6 +42,13 @@ export function init() {
   // unrecognized hash resolves to the "graph" default, same as before this
   // ticket existed.
   restoreSurfaceFromUrl();
+
+  // [SF-GAME-51] Плавающие слои переживают смену поверхности, потому что
+  // живут в общем #overlay-root, а не внутри поверхности (см.
+  // ui/overlay-root.js::closeAllDropdowns). Гасим их ОДИН раз здесь, на
+  // уровне приложения, а не в каждом onSurfaceChange-подписчике: поверхностей
+  // уже шесть, и каждая новая иначе приносила бы этот баг заново.
+  onSurfaceChange(closeAllDropdowns);
 
   loadHistory();
   renderChips();

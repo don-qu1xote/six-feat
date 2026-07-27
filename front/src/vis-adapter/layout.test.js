@@ -12,7 +12,7 @@
 // (Euler zone) must land between its two owning poles, not off to one side.
 // ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, beforeEach } from "vitest";
-import { placePathNodes, placeExpandedNodes, resolveCollisions, NODE_W, MIN_SEP, SOLVER_ITERS } from "./layout.js";
+import { placePathNodes, placeExpandedNodes, resolveCollisions, NODE_W, MIN_SEP, SOLVER_ITERS, CLUSTER_GAP, NODE_GAP } from "./layout.js";
 import { State } from "../state/state.js";
 
 function xs(targets, path) {
@@ -866,6 +866,83 @@ describe("[SF-WEB-51] resolveCollisions — deterministic grid solver", () => {
     expect(Math.hypot(...Object.values(targets.get(2)))).toBeGreaterThanOrEqual(MIN_SEP - 1e-6);
   });
 
+  // ── [SF-WEB-75] Кластер-осведомлённое разведение ──────────────────────────
+  // Узлы разводились по КРУЖКАМ (MIN_SEP), а оболочка сектора
+  // (bubble-contours.js) раздувается наружу на HULL_PADDING — поэтому «бока»
+  // соседних секторов налезали друг на друга даже на идеально разведённых
+  // узлах. Ниже — контракт нового поведения.
+
+  const dist = (t, a, b) => Math.hypot(t.get(a).x - t.get(b).x, t.get(a).y - t.get(b).y);
+
+  it("зазор между секторами покрывает падинг оболочки с обеих сторон", () => {
+    // Если HULL_PADDING (= NODE_GAP) когда-нибудь разойдётся с этим
+    // выражением, тест упадёт — и это правильно: оболочки снова начнут
+    // пересекаться, а солвер об этом знать не будет.
+    expect(CLUSTER_GAP).toBe(2 * NODE_GAP);
+  });
+
+  it("разводит узлы РАЗНЫХ секторов шире, чем просто MIN_SEP", () => {
+    const targets = new Map([[1, { x: 0, y: 0 }], [2, { x: 10, y: 0 }]]);
+    const sectors = new Map([[1, new Set(["A"])], [2, new Set(["B"])]]);
+    resolveCollisions(targets, new Set(), null, sectors);
+    expect(dist(targets, 1, 2)).toBeGreaterThanOrEqual(MIN_SEP + CLUSTER_GAP - 1e-6);
+  });
+
+  it("НЕ раздвигает узлы одного сектора — оболочка обнимает их обоих", () => {
+    const targets = new Map([[1, { x: 0, y: 0 }], [2, { x: 10, y: 0 }]]);
+    const sectors = new Map([[1, new Set(["A"])], [2, new Set(["A"])]]);
+    resolveCollisions(targets, new Set(), null, sectors);
+    const d = dist(targets, 1, 2);
+    expect(d).toBeGreaterThanOrEqual(MIN_SEP - 1e-6);
+    expect(d).toBeLessThan(MIN_SEP + CLUSTER_GAP);
+  });
+
+  it("узлы линзы Эйлера (общий сектор) считаются своими для обоих владельцев", () => {
+    // Общий лист принадлежит двум секторам сразу — он не должен отталкиваться
+    // ни от одного из них, иначе линза разорвёт собственные оболочки.
+    const targets = new Map([[1, { x: 0, y: 0 }], [2, { x: 10, y: 0 }], [3, { x: 20, y: 0 }]]);
+    const sectors = new Map([
+      [1, new Set(["A"])],
+      [2, new Set(["A", "B"])],   // общий лист
+      [3, new Set(["B"])],
+    ]);
+    resolveCollisions(targets, new Set(), null, sectors);
+    expect(dist(targets, 1, 2)).toBeLessThan(MIN_SEP + CLUSTER_GAP);
+    expect(dist(targets, 2, 3)).toBeLessThan(MIN_SEP + CLUSTER_GAP);
+    expect(dist(targets, 1, 3)).toBeGreaterThanOrEqual(MIN_SEP + CLUSTER_GAP - 1e-6);
+  });
+
+  it("узел без сектора оболочки не имеет и лишнего зазора не требует", () => {
+    const targets = new Map([[1, { x: 0, y: 0 }], [2, { x: 10, y: 0 }]]);
+    const sectors = new Map([[1, new Set(["A"])]]);   // у 2 сектора нет
+    resolveCollisions(targets, new Set(), null, sectors);
+    expect(dist(targets, 1, 2)).toBeLessThan(MIN_SEP + CLUSTER_GAP);
+  });
+
+  it("приколотый сид тоже участвует своим сектором (extraPinned с ключом)", () => {
+    const targets = new Map([[2, { x: 10, y: 0 }]]);
+    const sectors = new Map([[1, new Set(["SEED"])], [2, new Set(["B"])]]);
+    resolveCollisions(targets, new Set(), new Map([[1, { x: 0, y: 0 }]]), sectors);
+    expect(Math.hypot(targets.get(2).x, targets.get(2).y))
+      .toBeGreaterThanOrEqual(MIN_SEP + CLUSTER_GAP - 1e-6);
+  });
+
+  it("без карты секторов поведение ровно прежнее", () => {
+    const mk = () => new Map([[1, { x: 0, y: 0 }], [2, { x: 10, y: 0 }]]);
+    const a = mk(); resolveCollisions(a, new Set(), null);
+    const b = mk(); resolveCollisions(b, new Set(), null, undefined);
+    expect([...b]).toEqual([...a]);
+    expect(dist(a, 1, 2)).toBeLessThan(MIN_SEP + CLUSTER_GAP);
+  });
+
+  it("остаётся детерминированным: один вход → один выход", () => {
+    const mk = () => new Map([[1, { x: 0, y: 0 }], [2, { x: 3, y: 4 }], [3, { x: 1, y: 1 }]]);
+    const sectors = new Map([[1, new Set(["A"])], [2, new Set(["B"])], [3, new Set(["C"])]]);
+    const a = mk(); resolveCollisions(a, new Set(), null, sectors);
+    const b = mk(); resolveCollisions(b, new Set(), null, sectors);
+    expect([...b]).toEqual([...a]);
+  });
+
   it("has a hard, finite iteration cap (cannot hang)", () => {
     expect(Number.isInteger(SOLVER_ITERS)).toBe(true);
     expect(SOLVER_ITERS).toBeGreaterThan(0);
@@ -1387,6 +1464,87 @@ describe("[SF-WEB-56] cluster gap scales with shared-member count", () => {
     const rShared = Math.hypot(targetsShared.get(poleA).x, targetsShared.get(poleA).y);
 
     expect(rShared).toBeGreaterThan(rNoShare);
+  });
+
+  // [SF-WEB-75] Главное свойство целиком, а не по частям: берём РЕАЛЬНЫЕ
+  // оболочки (computeSectorPolygon — та самая функция, которой рисуются
+  // линзы) от позиций, которые вернула раскладка, и проверяем, что оболочки
+  // ЭКСКЛЮЗИВНЫХ частей разных секторов не пересекаются. Раньше проверялись
+  // только кружки узлов, и «бока» налезали именно потому, что их никто не
+  // мерил.
+  // [SF-WEB-75] Проверяем ТО, ЧТО ВИДНО, а не то, что в полигонах. Замер
+  // показал: сами полигоны оболочек не пересекались и до правки — их разводила
+  // геометрия колец. Но контур рисуется с blur(16px) на сторону, поэтому
+  // сливаются на экране уже те сектора, между краями которых меньше ~32px.
+  // Значит и мерить надо просвет между краями оболочек, а не факт пересечения.
+  const CONTOUR_BLUR_PX = 16;   // = BLUR_PX в bubble-contours.js
+  it("между краями оболочек разных секторов остаётся просвет шире размытия", async () => {
+    const { computeSectorPolygon } = await import("./bubble-contours.js");
+    const seedId = 1, poleA = 2, poleB = 3;
+    buildTwoPoleGraph(seedId, poleA, poleB, 0);   // без общих листьев: сектора непересекающиеся
+    const { targets, sectorMembers } = placeExpandedNodes({});
+
+    const posOf = id => targets.get(id) || (id === seedId ? { x: 0, y: 0 } : null);
+    const hullOf = sid => computeSectorPolygon([...sectorMembers.get(sid)].map(posOf).filter(Boolean));
+    const hullA = hullOf(poleA), hullB = hullOf(poleB);
+    expect(hullA.length).toBeGreaterThan(2);
+    expect(hullB.length).toBeGreaterThan(2);
+
+    // Минимальное расстояние вершина-вершина — нижняя оценка просвета между
+    // выпуклыми оболочками, её достаточно как регрессионного порога.
+    let gap = Infinity;
+    for (const p of hullA) for (const q of hullB) gap = Math.min(gap, Math.hypot(p.x - q.x, p.y - q.y));
+    expect(gap).toBeGreaterThan(2 * CONTOUR_BLUR_PX);
+  });
+
+  // [SF-WEB-75] Регрессия на ПЛОТНОМ графе с линзами — единственная
+  // конфигурация из полутора десятка перебранных, где просвет реально
+  // подходил к порогу слияния: 4 полюса по 10 своих листьев + 16 общих между
+  // двумя из них давали 38.3px между краями оболочек при 32px размытия. То
+  // есть до правки раздельность держалась на волоске и зависела от везения
+  // геометрии колец. С кластер-осведомлённым солвером — 98.1px.
+  it("держит просвет между оболочками на плотном графе с линзами Эйлера", async () => {
+    const { computeSectorPolygon } = await import("./bubble-contours.js");
+    const seedId = 1, poles = [2, 3, 4, 5];
+    const nodes = [{ id: seedId, isSeed: true }, ...poles.map(id => ({ id }))];
+    const edges = poles.map(id => ({ id: `s_${id}`, from: seedId, to: id, weight: 1 }));
+    poles.forEach((p, pi) => {
+      for (let k = 0; k < 10; k++) {
+        const leaf = 1000 * (pi + 1) + k;
+        nodes.push({ id: leaf });
+        edges.push({ id: `p${pi}_${leaf}`, from: p, to: leaf, weight: 1 });
+      }
+    });
+    for (let k = 0; k < 16; k++) {            // линза между полюсами 2 и 3
+      const leaf = 90000 + k;
+      nodes.push({ id: leaf });
+      edges.push({ id: `a_${leaf}`, from: poles[0], to: leaf, weight: 1 });
+      edges.push({ id: `b_${leaf}`, from: poles[1], to: leaf, weight: 1 });
+    }
+    State.graphNodes = nodes; State.graphEdges = edges;
+    State.currentSeedId = seedId; State.expandedNodes = new Set(poles);
+
+    const { targets, sectorMembers } = placeExpandedNodes({});
+    const posOf = id => targets.get(id) || (id === seedId ? { x: 0, y: 0 } : null);
+    const hulls = new Map();
+    for (const [sid, members] of sectorMembers) {
+      const pts = [...members].map(posOf).filter(Boolean);
+      if (pts.length >= 3) hulls.set(sid, computeSectorPolygon(pts));
+    }
+
+    const ids = [...hulls.keys()];
+    let worst = Infinity;
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+      const a = sectorMembers.get(ids[i]), b = sectorMembers.get(ids[j]);
+      let shares = false; for (const m of a) if (b.has(m)) { shares = true; break; }
+      if (shares) continue;                   // общие члены — пересечение законно
+      for (const p of hulls.get(ids[i])) for (const q of hulls.get(ids[j])) {
+        worst = Math.min(worst, Math.hypot(p.x - q.x, p.y - q.y));
+      }
+    }
+    // Порог заметно выше диаметра размытия (2×16=32px): он падает, если
+    // кластер-осведомлённость выключить — тогда здесь снова будет ~38px.
+    expect(worst).toBeGreaterThan(64);
   });
 
   it("keeps the SF-WEB-51 no-overlap guarantee under heavy sharing", () => {

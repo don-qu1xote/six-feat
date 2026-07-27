@@ -16,7 +16,7 @@
 // attribute together, so the screen is both visually and accessibly gone when
 // it isn't the active surface.
 // ════════════════════════════════════════════════════════════════════════════
-import { State } from "../state/state.js";
+import { State, MOTION } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { escapeHtml, initialOf } from "../state/helpers.js";
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
@@ -32,6 +32,9 @@ import {
   fetchAdminStatus, publishDaily, updateDisplayName,
 } from "./game-api.js";
 import { startChallengeByRefs } from "./connect.js";
+// [SF-GAME-34 / ADR-0009] Админская публикация тоже обязана работать на
+// реальных id — тот же резолвер, что и партия, но без её кэшей.
+import { resolveArtistId } from "./connect-store.js";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,24 +57,54 @@ function daysLeft(endTs) {
   return ms <= 0 ? 0 : Math.ceil(ms / (24 * 60 * 60 * 1000));
 }
 
+// ── [SF-GAME-37] Пусто ≠ недоступно ──────────────────────────────────────────
+// Клиенты game-api.js по соглашению отдают null на любой сбой (не-ok статус или
+// транспорт) — а рендеры ниже разворачивали это в `|| []` и показывали «пока
+// пусто». То есть при лежащем сервисе экран уверенно врал, что играть ещё никто
+// не начинал. Теперь у пустоты две причины, и текст у них разный: «ещё нет» —
+// это правда о данных, «не смогли загрузить» — правда о связи.
+function setEmpty(el, { unavailable, emptyText }) {
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = unavailable
+    ? "Couldn't reach the game service — this list isn't loaded, not empty. Try again in a moment."
+    : emptyText;
+}
+
 // ── Leaderboard (#/game/leaderboard) ──────────────────────────────────────────
 
 let _lbScope = "season"; // "season" | "challenge"
 let _lbToken = 0;
 
-function renderLbList(entries) {
+// [SF-GAME-53] Две доски отвечают на разные вопросы, поэтому и колонки у них
+// разные. Челлендж: «чья линия на этой паре лучше» → hops + score. Сезон: «кто
+// сильнее по рейтингу» → games + Elo, потому что сезонная доска теперь
+// сортируется бэкендом ИМЕННО по elo (game_store.cpp::SeasonEloBoard). Раньше
+// обе рисовались как score, и на экране Season подиум по score стоял рядом со
+// строкой «You: Elo … · Rank #N», посчитанной по elo — два числа про одно и то
+// же место, способные разойтись сколь угодно далеко.
+function renderLbList(entries, { unavailable = false, scope = "season" } = {}) {
   if (!els.lbList) return;
   if (!entries || !entries.length) {
     els.lbList.innerHTML = "";
-    if (els.lbEmpty) els.lbEmpty.hidden = false;
+    setEmpty(els.lbEmpty, { unavailable,
+      emptyText: scope === "challenge"
+        ? "No scored lines here yet — be the first to lock one in."
+        : "No ranked players this season yet — be the first to lock in a line." });
     return;
   }
   if (els.lbEmpty) els.lbEmpty.hidden = true;
-  els.lbList.innerHTML = entries.map((e, i) =>
-    `<li class="lb-row"><span class="lb-rank">${i + 1}</span>` +
-    `<a class="lb-name" href="#/game/profile?user=${encodeURIComponent(e.user_id)}">${escapeHtml(e.display_name || "—")}</a>` +
-    `<span class="lb-hops">${e.hops} hop${e.hops === 1 ? "" : "s"}</span>` +
-    `<span class="lb-score">${e.score}</span></li>`).join("");
+  const byElo = scope === "season";
+  els.lbList.innerHTML = entries.map((e, i) => {
+    const meta = byElo
+      ? `${e.games ?? 0} game${e.games === 1 ? "" : "s"}`
+      : `${e.hops} hop${e.hops === 1 ? "" : "s"}`;
+    const value = byElo ? (e.elo ?? "—") : e.score;
+    return `<li class="ui-tile lb-row"><span class="lb-rank">${i + 1}</span>` +
+      `<a class="lb-name" href="#/game/profile?user=${encodeURIComponent(e.user_id)}">${escapeHtml(e.display_name || "—")}</a>` +
+      `<span class="lb-hops">${meta}</span>` +
+      `<span class="lb-score">${value}</span></li>`;
+  }).join("");
 }
 
 async function loadLeaderboard() {
@@ -86,23 +119,28 @@ async function loadLeaderboard() {
         ? "This challenge — best line per player."
         : "Start a challenge on the Play screen to see its board.";
     }
-    if (!challengeId) { renderLbList([]); return; }
+    if (!challengeId) { renderLbList([], { scope: "challenge" }); return; }
     const page = await fetchLeaderboard(challengeId, { limit: 50 });
     if (token !== _lbToken) return;
-    renderLbList(page?.entries || []);
+    renderLbList(page?.entries || [], { unavailable: page == null, scope: "challenge" });
     return;
   }
 
   // Season scope — resolve the current season's id, then its board.
-  if (els.lbScopeLabel) els.lbScopeLabel.textContent = "This season — best line per player, all challenges.";
-  const season = State.connect?.seasonId
-    ? { id: State.connect.seasonId }
-    : (await fetchSeason())?.season;
+  if (els.lbScopeLabel) els.lbScopeLabel.textContent = "This season — players by Elo rating.";
+  let seasonUnavailable = false;
+  let season = State.connect?.seasonId ? { id: State.connect.seasonId } : null;
+  if (!season) {
+    const view = await fetchSeason();
+    seasonUnavailable = view == null;
+    season = view?.season || null;
+  }
   if (token !== _lbToken) return;
-  if (!season?.id) { renderLbList([]); return; }
+  // Нет сезона — это либо «сервис не ответил», либо «сезон ещё не заведён».
+  if (!season?.id) { renderLbList([], { unavailable: seasonUnavailable, scope: "season" }); return; }
   const page = await fetchSeasonLeaderboard(season.id, { limit: 50 });
   if (token !== _lbToken) return;
-  renderLbList(page?.entries || []);
+  renderLbList(page?.entries || [], { unavailable: page == null, scope: "season" });
 }
 
 function setLbScope(scope) {
@@ -126,9 +164,22 @@ function renderBadges(list) {
   }
   if (els.pfBadgesEmpty) els.pfBadgesEmpty.hidden = true;
   els.pfBadgeList.innerHTML = list.map(a =>
-    `<span class="pf-badge" title="${escapeHtml(a.descr || "")}">` +
-    `<b class="pf-badge-title">${escapeHtml(a.title || a.code)}</b>` +
-    `<span class="pf-badge-descr">${escapeHtml(a.descr || "")}</span></span>`).join("");
+    `<span class="ui-tile pf-badge" title="${escapeHtml(a.descr || "")}">` +
+    `<span class="pf-badge-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#${achIcon(a.code)}"></use></svg></span>` +
+    `<span class="pf-badge-body"><b class="pf-badge-title">${escapeHtml(a.title || a.code)}</b>` +
+    `<span class="pf-badge-descr">${escapeHtml(a.descr || "")}</span></span></span>`).join("");
+}
+
+// [design: иконки ачивок] Pick an icon for an achievement by a keyword in its
+// code — falls back to a medal. Every id exists in index.html's sprite.
+function achIcon(code) {
+  const c = String(code || "").toLowerCase();
+  if (/first|blood|debut/.test(c)) return "icon-star";
+  if (/win|champ|podium|beat|rival/.test(c)) return "icon-trophy";
+  if (/streak|flame|fire|daily/.test(c)) return "icon-flame";
+  if (/elo|rising|rank|master/.test(c)) return "icon-bolt";
+  if (/speed|blitz|fast/.test(c)) return "icon-target";
+  return "icon-medal";
 }
 
 function renderHistory(history) {
@@ -140,7 +191,7 @@ function renderHistory(history) {
   }
   if (els.pfHistoryEmpty) els.pfHistoryEmpty.hidden = true;
   els.pfHistory.innerHTML = history.map(h =>
-    `<li class="pf-attempt pf-attempt--${h.valid ? "ok" : "bad"}">` +
+    `<li class="ui-tile pf-attempt pf-attempt--${h.valid ? "ok" : "bad"}">` +
     `<span class="pf-attempt-score">${h.valid ? h.score : "—"}</span>` +
     `<span class="pf-attempt-meta">${h.valid ? `${h.hops} hop${h.hops === 1 ? "" : "s"}` : "invalid line"}</span>` +
     `<span class="pf-attempt-date">${formatDate(h.ts)}</span></li>`).join("");
@@ -196,14 +247,31 @@ async function onEditName() {
   showToast("✅ Name updated.", 2200, true);
 }
 
+// [ИСПРАВЛЕНО: «кнопка share profile не работает»] Здесь было две поломки
+// сразу. Первая: `navigator.clipboard?.writeText(...)` — опциональная цепочка
+// защищает только ЧТЕНИЕ свойства; если clipboard недоступен (не-secure
+// контекст, отказ в разрешении), выражение даёт undefined, и следующий же
+// `.then()` роняет обработчик TypeError'ом — кнопка не делала вообще ничего и
+// молча. Вторая: без загруженного профиля был тихий `return`, то есть у
+// нажатия не было никакого исхода. Теперь у каждой ветки есть видимый ответ.
 function onShareProfile() {
-  if (!_profile) return;
+  if (!_profile) {
+    showToast("Sign in to share your profile.", 3000);
+    return;
+  }
   const url = new URL(window.location.href);
   url.hash = "#/game/profile";
   url.search = `?user=${encodeURIComponent(_profile.user_id)}`;
-  navigator.clipboard?.writeText(url.toString())
-    .then(() => showToast("🔗 Profile link copied!", 2000, true))
-    .catch(() => showToast(`Copy: ${url.toString()}`, 5000));
+  const link = url.toString();
+
+  const write = navigator.clipboard?.writeText?.(link);
+  if (!write || typeof write.then !== "function") {
+    // Буфера нет — показываем ссылку, чтобы её можно было скопировать руками.
+    showToast(`Copy: ${link}`, 6000);
+    return;
+  }
+  write.then(() => showToast("🔗 Profile link copied!", 2000, true))
+       .catch(() => showToast(`Copy: ${link}`, 6000));
 }
 
 function setupProfileActions() {
@@ -216,10 +284,40 @@ function setupProfileActions() {
 let _adminFromId = 0;
 let _adminToId = 0;
 
+// [SF-GAME-34 / ADR-0009] Разрешить то, что реально стоит в поле, в РЕАЛЬНЫЙ
+// Genius id. Раньше id брался только из колбэка автокомплита, и имя, которое
+// набрали, но не выбрали из списка, оставляло id=0 — сервер получал пару
+// (0, 0) и публиковал СЛУЧАЙНУЮ пару, а UI показывал «Couldn't publish». Это
+// и есть корень бага P1. Ноль больше не считается идентификатором: если поле
+// пустое — это «на ваш выбор» (сервер подберёт пару сам), если непустое —
+// оно ОБЯЗАНО разрешиться, иначе публикации не будет.
+async function resolveAdminField(inputEl, pickedId) {
+  const typed = (inputEl?.value || "").trim();
+  if (!typed) return { ok: true, id: 0 };            // пусто = пусть выберет сервер
+  if (pickedId) return { ok: true, id: pickedId };   // выбрано из автокомплита
+  const id = await resolveArtistId(typed);
+  return id != null ? { ok: true, id } : { ok: false, name: typed };
+}
+
 async function onPublishDaily() {
   if (els.adminPublishDaily) els.adminPublishDaily.disabled = true;
   if (els.adminStatus) els.adminStatus.textContent = "Publishing…";
-  const res = await publishDaily({ from: _adminFromId, to: _adminToId });
+
+  const [from, to] = await Promise.all([
+    resolveAdminField(els.adminFromInput, _adminFromId),
+    resolveAdminField(els.adminToInput, _adminToId),
+  ]);
+  const bad = [from, to].filter(r => !r.ok).map(r => `“${r.name}”`);
+  if (bad.length) {
+    if (els.adminPublishDaily) els.adminPublishDaily.disabled = false;
+    if (els.adminStatus) {
+      els.adminStatus.textContent =
+        `Couldn't find ${bad.join(" or ")} on Genius. Pick the artist from the suggestions, or clear the field to let the server choose.`;
+    }
+    return;
+  }
+
+  const res = await publishDaily({ from: from.id, to: to.id });
   if (els.adminPublishDaily) els.adminPublishDaily.disabled = false;
   if (!res || !res.id) {
     if (els.adminStatus) {
@@ -236,13 +334,19 @@ async function onPublishDaily() {
 
 function setupAdminPanel() {
   if (!els.adminPanel) return;
+  // [SF-GAME-34] Пик из автокомплита даёт id; НАБОР руками его сбрасывает —
+  // иначе id от прошлого выбора «залипал» бы на новом, другом тексте, и
+  // публиковалась бы пара, которой админ не выбирал (тот же класс бага, что
+  // id=0 → случайная пара, только тише).
   if (els.adminFromInput) {
     attachGeniusAutocomplete(els.adminFromInput, els.adminFromAc,
       (name, image, id) => { els.adminFromInput.value = name; _adminFromId = id || 0; });
+    els.adminFromInput.addEventListener("input", () => { _adminFromId = 0; });
   }
   if (els.adminToInput) {
     attachGeniusAutocomplete(els.adminToInput, els.adminToAc,
       (name, image, id) => { els.adminToInput.value = name; _adminToId = id || 0; });
+    els.adminToInput.addEventListener("input", () => { _adminToId = 0; });
   }
   els.adminPublishDaily?.addEventListener("click", onPublishDaily);
 }
@@ -250,14 +354,16 @@ function setupAdminPanel() {
 // ── Challenges (#/game/challenges) ────────────────────────────────────────────
 
 let _chKind = "";
+let _chQuery = "";        // [SF-GAME-46] поиск по артисту (оба конца пары)
 let _chCursor = "";
 let _chToken = 0;
 let _chItems = [];
+let _chDebounce = null;
 
 function challengeCardHtml(c, i) {
   const from = c.from || {}, to = c.to || {};
   const par = c.optimal_len != null ? `PAR ${c.optimal_len}` : "";
-  return `<button type="button" class="ch-card" data-idx="${i}">` +
+  return `<button type="button" class="ui-panel ch-card" data-idx="${i}">` +
     `<span class="ch-card-kind ch-card-kind--${escapeHtml(c.kind || "custom")}">${escapeHtml(c.kind || "custom")}</span>` +
     `<span class="ch-card-pair">` +
       avatarHtml(from.name, from.image, "ch-av") +
@@ -268,11 +374,16 @@ function challengeCardHtml(c, i) {
     `<span class="ch-card-meta">${par}</span></button>`;
 }
 
-function renderChallenges(reset) {
+function renderChallenges(reset, { unavailable = false } = {}) {
   if (!els.chGrid) return;
   if (reset) els.chGrid.innerHTML = "";
   if (!_chItems.length) {
-    if (els.chEmpty) els.chEmpty.hidden = false;
+    setEmpty(els.chEmpty, { unavailable,
+      // Пустой результат поиска и пустой каталог — разные вещи, и советы у них
+      // разные: в первом случае надо менять запрос, во втором — сыграть.
+      emptyText: _chQuery
+        ? `Nothing matches “${_chQuery}”. Try another artist, or clear the search.`
+        : "No challenges published yet — start one from the Play screen and it shows up here." });
     if (els.chMore) els.chMore.hidden = true;
     return;
   }
@@ -283,12 +394,12 @@ function renderChallenges(reset) {
 
 async function loadChallenges({ append = false } = {}) {
   const token = ++_chToken;
-  const page = await fetchChallenges({ kind: _chKind, cursor: append ? _chCursor : "", limit: 24 });
+  const page = await fetchChallenges({ kind: _chKind, query: _chQuery, cursor: append ? _chCursor : "", limit: 24 });
   if (token !== _chToken) return;
   const items = page?.challenges || [];
   _chItems = append ? _chItems.concat(items) : items;
   _chCursor = page?.next_cursor || "";
-  renderChallenges(!append);
+  renderChallenges(!append, { unavailable: page == null });
 }
 
 function setChKind(kind) {
@@ -299,6 +410,25 @@ function setChKind(kind) {
   _chItems = [];
   _chCursor = "";
   loadChallenges({ append: false });
+}
+
+// [SF-GAME-46] Ввод дебаунсится: игрок печатает имя посимвольно, и запрос на
+// каждый символ был бы N лишних round-trip'ов. --duration-slow как порог «уже
+// не печатает» — та же шкала, что у всей остальной анимации, вместо
+// очередного магического числа.
+function setChQuery(raw) {
+  const q = String(raw || "").trim();
+  if (els.chSearchClear) els.chSearchClear.hidden = !q;
+  if (q === _chQuery) return;
+  _chQuery = q;
+  _chItems = [];
+  _chCursor = "";
+  loadChallenges({ append: false });
+}
+
+function onChSearchInput(raw) {
+  if (_chDebounce) clearTimeout(_chDebounce);
+  _chDebounce = setTimeout(() => setChQuery(raw), MOTION.slow);
 }
 
 function startChallengeFromCard(idx) {
@@ -316,18 +446,23 @@ function startChallengeFromCard(idx) {
 
 let _snToken = 0;
 
-function renderPodium(entries) {
+function renderPodium(entries, { unavailable = false } = {}) {
   if (!els.snPodium) return;
   if (!entries || !entries.length) {
     els.snPodium.innerHTML = "";
-    if (els.snPodiumEmpty) els.snPodiumEmpty.hidden = false;
+    setEmpty(els.snPodiumEmpty, { unavailable,
+      emptyText: "Nobody on the podium yet — this season is still wide open." });
     return;
   }
   if (els.snPodiumEmpty) els.snPodiumEmpty.hidden = true;
+  // [SF-GAME-53] Подиум сезона — та же сезонная доска, значит тот же ключ:
+  // Elo. Именно здесь расхождение и было заметнее всего — подиум по score
+  // стоял в двух сантиметрах от строки «You: Elo … · Rank #N» по elo.
   els.snPodium.innerHTML = entries.slice(0, 5).map((e, i) =>
-    `<li class="lb-row"><span class="lb-rank">${i + 1}</span>` +
+    `<li class="ui-tile lb-row"><span class="lb-rank">${i + 1}</span>` +
     `<span class="lb-name">${escapeHtml(e.display_name || "—")}</span>` +
-    `<span class="lb-score">${e.score}</span></li>`).join("");
+    `<span class="lb-hops">${e.games ?? 0} game${e.games === 1 ? "" : "s"}</span>` +
+    `<span class="lb-score">${e.elo ?? "—"}</span></li>`).join("");
 }
 
 function renderAchievements(catalog, earnedCodes) {
@@ -341,9 +476,10 @@ function renderAchievements(catalog, earnedCodes) {
   }
   els.snAchGrid.innerHTML = list.map(a => {
     const got = earnedCodes.has(a.code);
-    return `<div class="sn-ach${got ? " is-earned" : ""}" title="${escapeHtml(a.descr || "")}">` +
-      `<b class="sn-ach-title">${escapeHtml(a.title || a.code)}</b>` +
-      `<span class="sn-ach-descr">${escapeHtml(a.descr || "")}</span></div>`;
+    return `<div class="ui-tile sn-ach${got ? " is-earned" : ""}" title="${escapeHtml(a.descr || "")}">` +
+      `<span class="sn-ach-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#${achIcon(a.code)}"></use></svg></span>` +
+      `<span class="sn-ach-body"><b class="sn-ach-title">${escapeHtml(a.title || a.code)}</b>` +
+      `<span class="sn-ach-descr">${escapeHtml(a.descr || "")}</span></span></div>`;
   }).join("");
 }
 
@@ -373,7 +509,7 @@ async function loadSeason() {
     if (rank) els.snYou.textContent = `You: Elo ${profile.elo} · Rank #${rank}`;
   }
 
-  renderPodium(view?.podium || []);
+  renderPodium(view?.podium || [], { unavailable: view == null });
   const earned = new Set((profile?.achievements || []).map(a => a.code));
   renderAchievements(view?.achievements || [], earned);
 }
@@ -433,6 +569,18 @@ export function setupGameWindows() {
   els.chTabDaily?.addEventListener("click", () => setChKind("daily"));
   els.chTabCustom?.addEventListener("click", () => setChKind("custom"));
   els.chMore?.addEventListener("click", () => loadChallenges({ append: true }));
+  // [SF-GAME-46] Поиск по артисту. Enter ищет немедленно (не ждём дебаунс —
+  // игрок уже сказал, что закончил), Esc сбрасывает.
+  els.chSearchInput?.addEventListener("input", e => onChSearchInput(e.target.value));
+  els.chSearchInput?.addEventListener("keydown", e => {
+    if (e.key === "Enter")  { e.preventDefault(); setChQuery(e.target.value); }
+    if (e.key === "Escape") { e.preventDefault(); e.target.value = ""; setChQuery(""); }
+  });
+  els.chSearchClear?.addEventListener("click", () => {
+    if (els.chSearchInput) els.chSearchInput.value = "";
+    setChQuery("");
+    els.chSearchInput?.focus();
+  });
   els.chGrid?.addEventListener("click", e => {
     const card = e.target.closest(".ch-card");
     if (card) startChallengeFromCard(Number(card.dataset.idx));

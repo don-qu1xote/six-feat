@@ -162,6 +162,12 @@ struct LeaderboardEntry {
     int          score{0};
     int          hops{0};
     std::int64_t ts{0};
+    // [SF-GAME-53] Рейтинг игрока. У сезонной доски он и есть ключ сортировки
+    // (см. GetLeaderboard), у доски челленджа — просто справка «кто это».
+    int          elo{0};
+    // Сыгранных партий. Осмысленно только у сезонной строки: у строки
+    // челленджа это одна конкретная попытка, считать там нечего.
+    int          games{0};
 };
 
 struct LeaderboardPage {
@@ -362,8 +368,12 @@ public:
     // pagination on (created_ts, id) DESC: pass the last item's created_ts +
     // id as the cursor to get the next page; nullopt cursor starts from the
     // newest. `limit` is clamped by the caller (challenges_handler.cpp).
+    // [SF-GAME-46] `query` — подстрочный поиск по имени артиста на ЛЮБОМ конце
+    // пары (пусто = без фильтра). Игрок ищет «челлендж с Дрейком», не зная,
+    // старт он там или цель.
     std::vector<ChallengeListItem> ListChallenges(
         const std::string& kind,
+        const std::string& query,
         std::optional<std::pair<std::int64_t, std::int64_t>> cursor,
         int limit) const;
 

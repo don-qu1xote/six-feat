@@ -64,7 +64,7 @@ export {
 // [SF-WEB-41] Портал плавающих слоёв + помощники открытия/закрытия дропдаунов
 // (для не-автокомплитных мест, которые тоже гасят дропдаун — см. main.js).
 export {
-  overlayRoot, openDropdown, closeDropdown
+  overlayRoot, openDropdown, closeDropdown, closeAllDropdowns
 } from "./overlay-root.js";
 
 export {

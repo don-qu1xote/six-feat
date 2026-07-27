@@ -53,7 +53,10 @@
   overflow: hidden;
 }
 .connect-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.connect-canvas canvas { display: block; width: 100%; height: 100%; }
+/* [SF-GAME-55] Курсор ставит CSS, а не hoverNode-обработчик: нативный ховер
+   в игре выключен (см. game-mode.js), а «сюда можно кликнуть» здесь верно для
+   всего нарисованного — узлы это и есть ходы. */
+.connect-canvas canvas { display: block; width: 100%; height: 100%; cursor: pointer; }
 .connect-stage-empty {
   position: absolute; inset: 0; margin: 0; pointer-events: none;
   display: flex; align-items: center; justify-content: center;
@@ -61,44 +64,60 @@
 }
 .connect-stage-empty[hidden] { display: none; }
 
-/* Top-left overlay: quest pill + PAR + timer, floating over the graph. */
-.connect-graph-overlay {
+/* [SF-GAME-48] Слой над сценой. Держит HUD-полосу и карточку выбора пары в
+   одной колонке — поповер встаёт под HUD потоком, без магического top:.
+   Композиция «пока партии нет» переопределяет этот же слой в game-screens.css
+   (растягивает на всю сцену и центрирует карточку). Слой не ловит мышь: граф
+   под ним должен оставаться перетаскиваемым, кликабельны только сами дети. */
+.connect-stage-layer {
   position: absolute; top: var(--space-4); left: var(--space-4); z-index: 2;
-  display: flex; align-items: center; gap: var(--space-2);
-  flex-wrap: wrap; max-width: calc(100% - 96px);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2);
+  max-width: calc(100% - 96px);
+  pointer-events: none;
 }
+.connect-stage-layer > * { pointer-events: auto; }
+
+/* HUD-полоса: флаг + квест + PAR + таймер одной стеклянной строкой. */
+.connect-hud {
+  display: flex; align-items: center; gap: var(--space-2);
+  max-width: 100%; padding: 5px 5px 5px 6px; border-radius: 999px;
+  background: rgba(var(--panel-rgb), .82);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+}
+.connect-hud-sep { width: 1px; align-self: stretch; margin: 3px 2px; background: var(--line); }
 .connect-quest-pill {
   display: inline-flex; align-items: center; gap: var(--space-2);
   font-family: var(--font-display); font-weight: 800; font-size: var(--text-base);
-  padding: 8px 14px; border-radius: 999px;
-  background: rgba(var(--panel-rgb), .82);
-  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-  border: 1px solid var(--line); color: var(--paper);
-  cursor: pointer; max-width: 100%;
-  transition: border-color var(--duration-base) var(--ease-standard);
+  padding: 4px 10px; border-radius: 999px;
+  background: transparent; border: 1px solid transparent; color: var(--paper);
+  cursor: pointer; min-width: 0;
+  transition: border-color var(--duration-base) var(--ease-standard),
+              background var(--duration-base) var(--ease-standard);
 }
-.connect-quest-pill:hover { border-color: var(--signal); }
+.connect-quest-pill:hover { border-color: var(--signal); background: var(--hover-tint); }
 .connect-quest-pill .cst-start { color: var(--signal); }
 .connect-quest-pill .cst-goal  { color: var(--pulse); }
 .connect-quest-pill .cst-arrow { color: var(--mist); font-weight: 400; }
+.connect-quest-pill .cst-start,
+.connect-quest-pill .cst-goal {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 15ch;
+}
 .connect-par-pill,
 .connect-timer-pill {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 7px 12px; border-radius: 999px;
-  background: rgba(var(--panel-rgb), .82);
-  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-  border: 1px solid var(--line);
+  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--ink-2); border: 1px solid transparent;
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--mist);
 }
 .connect-par-pill b,
 .connect-timer-pill b { color: var(--paper); font-weight: 700; font-variant-numeric: tabular-nums; }
 .connect-par-pill[hidden] { display: none; }
 
-/* Endpoint editor — opened by the quest pill; a small popover under it. */
+/* Endpoint editor — opened by the quest pill; a popover under the HUD. */
 .connect-endpoints {
-  position: absolute; top: calc(100% + 8px); left: 0; z-index: 3;
   display: flex; flex-direction: column; gap: var(--space-3);
-  width: 280px; max-width: 80vw; padding: var(--space-4);
+  width: 300px; max-width: 100%; padding: var(--space-4);
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
   box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
 }
@@ -136,19 +155,60 @@
 .clp-add-ico { width: 20px; height: 20px; }
 
 /* ── RIGHT: "Your line" panel ─────────────────────────────────────────── */
+/* [SF-GAME-49] Оболочка карточки — .ui-panel из кита (см. класс в разметке).
+   Раньше здесь лежала ПОБУКВЕННАЯ копия его рецепта (--glass-fill +
+   --elevation-2/--glass-glow + blur(--blur-scrim) + --r-lg + --line): ровно
+   то, от чего кит и заводили. Здесь остаётся только то, чего у кита нет и
+   быть не должно — раскладка колонки и её три зоны. */
 .connect-line-panel {
-  min-height: 0; overflow-y: auto;
+  /* [SF-GAME-48] Три зоны, а не один длинный скролл: шапка и поле «добавить»
+     приколоты сверху, счёт и действия — снизу, а всё лишнее место забирает
+     сама линия (она же и скроллится). Раньше скроллилась вся панель, а
+     .clp-foot с margin-top:auto оставлял посередине дыру в пол-экрана. */
+  min-height: 0; overflow: hidden;
   display: flex; flex-direction: column; gap: var(--space-3);
-  border: 1px solid var(--line); border-radius: var(--r-lg);
-  /* Glass docked panel — the same recipe as the graph's companion panel and
-     the season/profile heroes. */
-  background: var(--glass-fill);
-  box-shadow: var(--elevation-2), var(--glass-glow);
-  -webkit-backdrop-filter: blur(var(--blur-scrim)); backdrop-filter: blur(var(--blur-scrim));
   padding: var(--space-5);
 }
-.clp-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
-.clp-title { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: var(--text-lg); color: var(--paper); }
+/* ── [SF-GAME-55] Шапка-квест ─────────────────────────────────────────────
+   Два полюса и прогресс вместо микро-заголовка «Your line» и голого чипа
+   «N hops». Панель начинается с того же, с чего начинается партия. */
+.clp-quest { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.clp-poles { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: var(--space-2); }
+.clp-pole { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.clp-pole-av {
+  width: 40px; height: 40px; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center;
+  font-family: var(--font-display); font-weight: 700; font-size: var(--text-sm);
+  border: 2px solid var(--line); background: var(--panel-2); color: var(--mist);
+}
+.clp-pole-av img { width: 100%; height: 100%; object-fit: cover; }
+.clp-pole--start .clp-pole-av { border-color: var(--signal); color: var(--signal); box-shadow: 0 0 12px -3px rgba(var(--signal-rgb), .6); }
+.clp-pole--goal  .clp-pole-av { border-color: var(--pulse);  color: var(--pulse);  box-shadow: 0 0 12px -3px rgba(var(--pulse-rgb), .6); }
+.clp-pole-name {
+  font-size: var(--text-xs); font-weight: 700; color: var(--paper);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Счётчик хопов живёт МЕЖДУ полюсами — там, где он и означает «сколько шагов
+   я уже прошёл по этой дороге», а не абстрактным чипом в углу. */
+.clp-pole-link {
+  position: relative; display: grid; place-items: center;
+  min-width: 34px; padding: 0 var(--space-2);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--mist);
+}
+.clp-pole-link b { color: var(--paper); font-weight: 700; font-variant-numeric: tabular-nums; }
+.clp-pole-link::before {
+  content: ""; position: absolute; left: -2px; right: -2px; top: 19px; z-index: -1;
+  border-top: 2px dashed var(--line);
+}
+
+.clp-head { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+/* [SF-GAME-49] Та же микро-подпись секции, что у .path-title в companion-
+   панели графа: mono/uppercase/xs/--mist. Заголовок в докнутой панели —
+   ярлык содержимого, а не герой экрана; вес отдан самой линии. */
+.clp-title {
+  margin: 0; font-family: var(--font-mono); font-weight: 600; font-size: var(--text-xs);
+  letter-spacing: .12em; text-transform: uppercase; color: var(--mist);
+}
 .clp-hops {
   flex-shrink: 0; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--mist);
   border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
@@ -159,7 +219,7 @@
 .clp-rival[hidden] { display: none; }
 
 .clp-add {
-  position: relative; display: flex; align-items: center; gap: var(--space-2);
+  position: relative; flex-shrink: 0; display: flex; align-items: center; gap: var(--space-2);
   background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--r-md);
   padding: 4px 4px 4px var(--space-3);
   transition: border-color var(--duration-base) var(--ease-standard);
@@ -183,42 +243,88 @@
 
 /* The current line — start→focus branch, each a ring-avatar + name + role.
    [design: ветвящийся веб] Rows are clickable to re-focus that node. */
-.clp-line { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.clp-row {
-  position: relative; display: flex; align-items: center; gap: var(--space-3);
-  padding: 7px var(--space-2); margin: 0 calc(-1 * var(--space-2)); border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: background var(--duration-base) var(--ease-standard);
+/* [SF-GAME-57] Линия — компактная ГОРИЗОНТАЛЬНАЯ дорожка, а не колонка на
+   пол-панели. Пройденный путь во всех подробностях уже нарисован слева,
+   коридором; панели достаточно ответить «где я сейчас», и освободившееся
+   место отдать выбору следующего хода. Горизонтальный трек с маской по краям
+   — тот же приём, что у .hop-chain в companion-панели графа. */
+.clp-line {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: row;
+  align-items: stretch; gap: var(--space-3);
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%);
+  /* [SF-GAME-54] Линия больше НЕ растягивается на всё свободное место. С полем
+     «добавить» под ней (см. разметку) растянутая линия отрывала это поле от
+     своего же хвоста и подвешивала его посреди панели. Теперь линия ровно по
+     содержимому и скроллится по достижении потолка, а свободное место
+     собирается внизу, над счётом (.clp-foot margin-top:auto). */
+  flex: 0 0 auto;
 }
-.clp-row:hover { background: var(--panel-2); }
+.clp-line::-webkit-scrollbar { display: none; }
+/* [SF-GAME-58] Карточка шага: 74px резали имя до «Palmdr…», «ЗАМАЙ…» —
+   то есть дорожка перестала отвечать на свой единственный вопрос «кто это».
+   96px + перенос на две строки читают большинство имён целиком, а рамка
+   теперь есть у КАЖДОЙ карточки (прозрачная в покое): раньше её получали
+   только фокус и призрак, и в ряду одни шаги стояли в коробочках, другие
+   без — выглядело как случайность, а не как состояние. */
+.clp-row {
+  position: relative; flex: 0 0 auto; width: 96px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 6px; padding: var(--space-2) 6px; border-radius: var(--r-md);
+  border: 1px solid var(--line); background: rgba(var(--panel-rgb), .35);
+  cursor: pointer;
+  transition: background var(--duration-base) var(--ease-standard),
+              border-color var(--duration-base) var(--ease-standard);
+}
+/* [SF-GAME-49] Та же hover/active-грамматика, что у .dock-btn в доке графа:
+   --hover-tint + --pulse на наведении, --active-tint + --signal на активном.
+   Раньше строка на hover красилась плоским --panel-2, а активная — своей
+   собственной rgba(--signal-rgb,.08): три разных рецепта одного состояния
+   на трёх поверхностях. */
+.clp-row:hover { background: var(--hover-tint); border-color: var(--pulse); }
 /* Vertical connector between consecutive avatars. */
-.clp-row + .clp-row::before {
-  content: ""; position: absolute; left: 16px; top: -6px; height: 12px;
-  width: 2px; background: var(--line);
+.clp-line > .clp-row + .clp-row::before {
+  content: ""; position: absolute; left: -11px; top: 25px; width: 10px;
+  height: 2px; background: var(--line);
 }
 /* The focused node — the branch point the next add attaches to. */
-.clp-row.is-focus { background: rgba(var(--signal-rgb), .08); }
-.clp-row.is-focus .clp-av { box-shadow: 0 0 0 2px var(--signal); }
+.clp-row.is-focus { background: var(--active-tint); border-color: var(--signal); }
+.clp-row.is-focus .clp-av { box-shadow: 0 0 0 2px var(--signal), 0 0 12px -2px rgba(var(--signal-rgb), .6); }
 .clp-row.is-focus .clp-row-sub { color: var(--signal); }
 .clp-web-note {
-  list-style: none; margin-top: var(--space-2); padding: var(--space-2) var(--space-2) 0;
-  font-size: var(--text-xs); color: var(--mist); border-top: 1px dashed var(--line);
+  list-style: none; flex: 0 0 auto; align-self: center;
+  padding: 0 var(--space-2); max-width: 90px;
+  font-size: var(--text-xs); color: var(--mist);
 }
+/* [SF-GAME-49] «Созвездие» — тот же halo, что у .hop-avatar/.path-node-avatar
+   в панели графа (SF-WEB-44): аватар читается как звезда, а не как плоский
+   кружок с рамкой. Здесь ореол берёт цвет роли, а не всегда --signal, потому
+   что роль — единственное, что эти три аватара и различает. */
 .clp-av {
-  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; object-fit: cover;
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; object-fit: cover;
   display: grid; place-items: center;
   font-family: var(--font-display); font-weight: 700; font-size: var(--text-sm);
   border: 2px solid var(--line); background: var(--panel-2);
+  box-shadow: 0 0 8px -2px rgba(var(--signal-rgb), .35);
 }
-.clp-av--start { border-color: var(--signal); color: var(--signal); }
-.clp-av--hop   { border-color: var(--amber);  color: var(--amber); }
-.clp-av--goal  { border-color: var(--pulse);  color: var(--pulse); }
-.clp-row-main { display: flex; flex-direction: column; min-width: 0; }
+.clp-av--start { border-color: var(--signal); color: var(--signal); box-shadow: 0 0 9px -2px rgba(var(--signal-rgb), .55); }
+.clp-av--hop   { border-color: var(--amber);  color: var(--amber);  box-shadow: 0 0 9px -2px rgba(var(--amber-rgb),  .5); }
+.clp-av--goal  { border-color: var(--pulse);  color: var(--pulse);  box-shadow: 0 0 9px -2px rgba(var(--pulse-rgb),  .55); }
+.clp-row-main { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
 .clp-row-name {
-  font-weight: 700; color: var(--paper); font-size: var(--text-sm);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 700; color: var(--paper); font-size: var(--text-xs); line-height: 1.25;
+  /* Две строки вместо жёсткого обрезания в одну: имена артистов почти всегда
+     двусоставные, и «Слава КПСС» на двух строках читается, а «Слава …» нет. */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere;
 }
-.clp-row-sub { font-size: var(--text-xs); color: var(--mist); }
+/* Подпись роли на узкой карточке не помещается и не нужна — роль читается
+   цветом кольца. Оставлена в разметке для скринридера. */
+.clp-row-sub {
+  font-size: var(--text-xs); color: var(--mist);
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
 
 /* Status + score breakdown. */
 .clp-status { font-size: var(--text-sm); color: var(--warn); }
@@ -228,7 +334,8 @@
 
 /* Footer: SCORE + Lock in. */
 .clp-foot {
-  margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  margin-top: auto;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
   padding-top: var(--space-4); border-top: 1px solid var(--line);
 }
 .clp-score { display: flex; flex-direction: column; }
@@ -244,52 +351,67 @@
 .clp-lockin:hover:not(:disabled) { filter: brightness(1.08); }
 .clp-lockin:disabled { opacity: .4; cursor: default; }
 
-.clp-actions { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; }
-
-/* ── Mini action buttons (Undo/Reset/Give up/Share/Back). ─────────────── */
-.connect-mini-btn {
-  border: 0; background: transparent; padding: 0; cursor: pointer;
-  font: inherit; font-size: var(--text-xs); font-weight: 600; color: var(--mist);
-  text-transform: uppercase; letter-spacing: .04em; text-decoration: none;
-  transition: color var(--duration-base) var(--ease-standard);
+/* [SF-GAME-49] Сетка 2×2, а не flex-wrap: четыре кнопки в колонку 340px всё
+   равно не встают в строку, и перенос давал рваный хвост (три + одна). Сетка
+   даёт тот же перенос осознанно и одинаковой шириной. */
+.clp-actions {
+  flex-shrink: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
 }
-.connect-mini-btn:hover:not(:disabled) { color: var(--paper); }
-.connect-mini-btn:disabled { opacity: .4; cursor: default; }
-.connect-back { margin-left: auto; }
+.clp-actions .dock-btn { justify-content: center; padding: var(--space-2) var(--space-2); }
 
-/* ── SECONDARY: browse the tail's real collaborators (collapsed). ─────── */
-.connect-browse { margin: 0; }
+/* ── [SF-GAME-49] Действия партии ─────────────────────────────────────────
+   Разметка перешла на .dock-btn (canvas-controls.css) — тот же контрол, что
+   в доке графа. Свой .connect-mini-btn (капсовый текст без габаритов, свой
+   hover, своя трактовка disabled) удалён: пятый рецепт кнопки на пятой
+   поверхности. Здесь остаётся только disabled, которого у .dock-btn нет. */
+.clp-actions .dock-btn .ri { width: 13px; height: 13px; display: flex; flex-shrink: 0; }
+.clp-actions .dock-btn .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.clp-actions .dock-btn:disabled { opacity: .4; cursor: default; }
+.clp-actions .dock-btn:disabled:hover { color: var(--mist); border-color: var(--line); background: rgba(var(--panel-rgb), .80); }
+
+/* ── [SF-GAME-57] PRIMARY: следующий ход ──────────────────────────────────
+   Больше не «вторичный свёрнутый список», а главное содержимое панели: это
+   единственное решение, которое игрок здесь принимает. Раскрывать нечего —
+   блок открыт всегда, пока партия идёт. */
+.connect-browse {
+  margin: 0; display: flex; flex-direction: column; gap: var(--space-2);
+  flex: 1 1 auto; min-height: 0;
+}
+.connect-browse[hidden] { display: none; }
 .connect-browse-summary {
-  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
-  font-size: var(--text-xs); font-weight: 600; color: var(--mist);
-  text-transform: uppercase; letter-spacing: .05em; padding: var(--space-1) 0;
-  transition: color var(--duration-base) var(--ease-standard);
+  flex-shrink: 0;
+  font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600;
+  color: var(--mist); text-transform: uppercase; letter-spacing: .12em;
 }
-.connect-browse-summary::-webkit-details-marker { display: none; }
-.connect-browse-chev { transition: transform var(--duration-base) var(--ease-standard); }
-.connect-browse[open] .connect-browse-chev { transform: rotate(90deg); }
-.connect-browse-summary:hover { color: var(--paper); }
+/* Список, а не облако чипов: имена разной длины в облаке рвут строки и
+   читаются как теги, тогда как это ВАРИАНТЫ ХОДА — их сравнивают глазами
+   сверху вниз. Одна колонка, ровные строки, скролл внутри. */
 .connect-browse-chips {
-  display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3);
-  padding: var(--space-3); border: 1px dashed var(--line); border-radius: var(--r-md);
+  display: flex; flex-direction: column; gap: 3px;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  margin: 0; padding: 0; border: 0;
 }
 .connect-browse-loading,
 .connect-browse-empty { color: var(--mist); font-size: var(--text-sm); font-style: italic; margin: 0; }
 .cb-chip {
-  display: flex; align-items: center; gap: 7px;
-  padding: 4px 11px 4px 4px; border: 1px solid var(--line); border-radius: 999px;
-  font-size: var(--text-sm); font-weight: 600; color: var(--paper); background: var(--panel-2);
-  cursor: pointer; transition: border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
+  display: flex; align-items: center; gap: var(--space-3); width: 100%;
+  padding: 6px var(--space-3) 6px 6px; border: 1px solid transparent; border-radius: var(--r-sm);
+  font-size: var(--text-sm); font-weight: 600; color: var(--paper); background: transparent;
+  text-align: left; cursor: pointer;
+  transition: border-color var(--duration-base) var(--ease-standard), background var(--duration-base) var(--ease-standard);
 }
-.cb-chip:hover { border-color: var(--amber); background: var(--hover-tint); }
-.cb-chip--goal { border-color: var(--pulse); color: var(--pulse); }
-.cb-chip--goal:hover { background: rgba(var(--pulse-rgb), .12); }
-.cb-avatar { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.cb-chip:hover { border-color: var(--pulse); background: var(--hover-tint); }
+/* Цель среди кандидатов — это выигрышный ход, и он обязан выделяться из
+   списка, а не отличаться оттенком рамки. */
+.cb-chip--goal { border-color: var(--pulse); background: rgba(var(--pulse-rgb), .10); color: var(--pulse); }
+.cb-chip--goal:hover { background: rgba(var(--pulse-rgb), .18); }
+.cb-avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .cb-avatar--fallback {
   display: grid; place-items: center; background: var(--line); color: var(--ink);
   font-size: 9px; font-weight: 800; font-family: var(--font-mono);
 }
-.cb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+.cb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Leaderboard (inside the panel). ──────────────────────────────────── */
 .connect-leaderboard {
@@ -313,4 +435,116 @@
     height: auto; min-height: 100%;
   }
   .connect-surface { overflow-y: auto; }
+  /* На узком экране скроллится страница, а не панель: три зоны схлопываются
+     обратно в один поток, иначе линия скроллилась бы внутри 320px-обрубка. */
+  .connect-line-panel { overflow: visible; }
+  .clp-line { max-height: none; overflow-y: visible; }
+  .clp-foot { margin-top: var(--space-3); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   [SF-GAME-50] Движение игровой поверхности.
+
+   До этого на игре двигалась ровно одна вещь — камера графа (visAnimation по
+   MOTION.camera). Всё остальное СНАПАЛОСЬ: поверхность появлялась мгновенным
+   display:flex, стартовая карточка возникала из ниоткуда, новый хоп просто
+   дописывался в список, счёт менялся с «—» на число без единого кадра
+   перехода. Для экрана, который весь про «сделал ход — что-то произошло»,
+   это и читалось как «неживой».
+
+   Правила те же, что у остального приложения: длительности только из шкалы
+   --duration-*, кривые только --ease-*, и весь блок целиком выключается по
+   prefers-reduced-motion (в самом низу) — как это уже сделано для
+   .hero-mode-panel и .decor-dot.
+   ══════════════════════════════════════════════════════════════════════════ */
+@keyframes connect-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes connect-slide-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes connect-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+/* Вход на поверхность: сцена и панель приезжают вместе, панель с задержкой в
+   один шаг шкалы — тот же приём, что у .hero-mode-panel (--stagger-2). */
+.connect-surface.show .connect-graph-col {
+  animation: connect-rise var(--duration-slow) var(--ease-emphasized) both;
+}
+.connect-surface.show .connect-line-panel {
+  animation: connect-rise var(--duration-slow) var(--ease-emphasized) var(--stagger-2) both;
+}
+/* Стартовая карточка и HUD — свои входы, потому что появляются не вместе с
+   поверхностью, а на смене состояния партии. */
+.connect-endpoints:not([hidden]) {
+  animation: connect-rise var(--duration-med) var(--ease-emphasized) both;
+}
+.connect-surface.has-game .connect-hud {
+  animation: connect-rise var(--duration-med) var(--ease-emphasized) both;
+}
+
+/* [SF-GAME-50] Новый хоп. renderLine перерисовывает ВЕСЬ список одним
+   innerHTML, поэтому анимация на .clp-row проигрывалась бы у всех строк
+   разом на каждый кадр — вью помечает .is-new только реально добавившуюся
+   строку (см. connect-view.js::renderLine). */
+.clp-row.is-new {
+  animation: connect-slide-in var(--duration-med) var(--ease-emphasized) both;
+}
+/* Счёт — единственное число, ради которого партия и игралась: показываем, что
+   оно изменилось, а не просто подменяем текст. */
+.clp-score-value.is-bumped {
+  animation: connect-pop var(--duration-slower) var(--ease-emphasized);
+}
+/* Lock in — главная кнопка экрана, ей положен отклик под пальцем. */
+.clp-lockin { transition: filter var(--duration-base) var(--ease-standard),
+                          transform var(--duration-fast) var(--ease-standard); }
+.clp-lockin:active:not(:disabled) { transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .connect-surface.show .connect-graph-col,
+  .connect-surface.show .connect-line-panel,
+  .connect-endpoints:not([hidden]),
+  .connect-surface.has-game .connect-hud,
+  .clp-row.is-new,
+  .clp-score-value.is-bumped { animation: none; }
+  .clp-lockin:active:not(:disabled) { transform: none; }
+}
+
+/* ── [SF-GAME-54] Прогресс против PAR ─────────────────────────────────────── */
+.clp-progress { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+.clp-progress[hidden] { display: none; }
+.clp-pips { display: flex; gap: 4px; }
+.clp-pip {
+  flex: 1 1 0; height: 4px; border-radius: 999px;
+  background: var(--line);
+  transition: background var(--duration-base) var(--ease-standard);
+}
+.clp-pip.is-done { background: var(--signal); }
+/* Перебор идеала — свой цвет, а не «ещё один зелёный»: это не прогресс, это
+   цена. Тот же --warn, которым панель уже говорит про отклонённую линию. */
+.clp-pip.is-over { background: var(--warn); }
+.clp-progress-label {
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--mist);
+  font-variant-numeric: tabular-nums;
+}
+.clp-progress-label.is-over { color: var(--warn); }
+
+/* ── [SF-GAME-54] Призрачная строка цели ──────────────────────────────────── */
+/* Цель, до которой ещё не дошли: та же строка, но приглушённая и некликабельная
+   — она показывает КУДА идём, а не то, что уже сделано. */
+.clp-row.is-ghost {
+  cursor: default; opacity: .62;
+  border-style: dashed; border-color: var(--line);
+}
+.clp-row.is-ghost:hover { background: transparent; border-color: var(--line); }
+/* Пунктирный «остаток пути» вместо сплошного коннектора между сделанными. */
+.clp-line > .clp-row.is-ghost::before {
+  content: ""; position: absolute; left: -11px; top: 25px; width: 10px;
+  height: 2px;
+  background: repeating-linear-gradient(to right, var(--line) 0 2px, transparent 2px 4px);
 }

@@ -27,6 +27,11 @@
   background: rgba(var(--panel-rgb),.8); color: var(--mist);
   padding: var(--space-2) var(--space-4);
   cursor: pointer; white-space: nowrap;
+  /* [SF-GAME-48] Кит применяется и к <a> (rail-ссылки, «Browse challenges»).
+     Каждый такой случай до сих пор гасил подчёркивание своим правилом; там,
+     где собственного правила не было, ghost-кнопка-ссылка выезжала
+     подчёркнутым текстом вместо кнопки. Гасим один раз здесь. */
+  text-decoration: none;
   transition: color var(--duration-fast) var(--ease-standard),
               border-color var(--duration-fast) var(--ease-standard),
               background var(--duration-fast) var(--ease-standard),

@@ -82,11 +82,14 @@ export function attachGeniusAutocomplete(inputEl, dropdownEl, onSelect, geniusAc
 
   function showHistoryDropdown() {
     const items = State.history.slice(0, 5);
-    if (!items.length) {
-      dropdownEl.innerHTML = `<div class="ac-spinner">No recent searches</div>`;
-      openDropdown(dropdownEl);
-      return;
-    }
+    // [SF-GAME-51] Пустая история — НЕ повод открывать дропдаун. Раньше при
+    // фокусе на поле выезжала панель во всю его ширину с единственной
+    // надписью «No recent searches»: у любого, кто зашёл впервые, первым
+    // впечатлением от главной был пустой блок под поиском, сообщающий, что
+    // ничего нет. Нечего показать — ничего и не показываем; поле остаётся
+    // тем, чем и было, с плейсхолдером-подсказкой и чипсами «Try one of
+    // these» ниже.
+    if (!items.length) { closeDropdown(dropdownEl); return; }
     // [SF-WEB-59] History rows previously skipped the .ac-avatar image
     // entirely — with .ac-item's flex layout (avatar + gap + info), that
     // made history rows visibly narrower/misaligned next to live

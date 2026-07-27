@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import {
-  overlayRoot, anchorDropdown, openDropdown, closeDropdown, _resetOverlayRoot
+  overlayRoot, anchorDropdown, openDropdown, closeDropdown, closeAllDropdowns, _resetOverlayRoot
 } from "./overlay-root.js";
 
 const _here = dirname(fileURLToPath(import.meta.url));
@@ -287,5 +287,44 @@ describe("[SF-WEB-41] общий слой-менеджер: эксклюзивн
     const mod = await import("./docked-panel.js");
     expect(mod.registerDockedPanel).toBe(mod.registerLayer);
     expect(mod.closeOtherDockedPanels).toBe(mod.closeOtherLayers);
+  });
+});
+// [SF-GAME-51] Плавающие слои переживают смену поверхности, потому что живут в
+// #overlay-root, а не внутри поверхности. Воспроизведено вживую: на главной
+// фокусируется hero-поиск, его дропдаун уезжает в overlay-root, игрок уходит
+// на #/game (смена хеша, не перезагрузка) — и дропдаун остаётся висеть поверх
+// стартовой карточки игры, перехватывая клики по её собственным полям.
+// main.js вешает closeAllDropdowns на onSurfaceChange; здесь — сам примитив.
+describe("[SF-GAME-51] closeAllDropdowns — слои не переживают смену поверхности", () => {
+  function anchored(cls = "ac-dropdown") {
+    const container = document.createElement("div");
+    const input = document.createElement("input");
+    const dd = document.createElement("div");
+    dd.className = cls;
+    container.append(input, dd);
+    document.body.append(container);
+    anchorDropdown(dd, input);
+    return { dd, container };
+  }
+
+  it("закрывает и возвращает на место ВСЁ, что сейчас в overlay-root", () => {
+    const a = anchored(), b = anchored();
+    openDropdown(a.dd);
+    openDropdown(b.dd);
+    expect(a.dd.parentElement).toBe(overlayRoot());
+    expect(b.dd.parentElement).toBe(overlayRoot());
+
+    closeAllDropdowns();
+
+    expect(a.dd.classList.contains("open")).toBe(false);
+    expect(b.dd.classList.contains("open")).toBe(false);
+    expect(a.dd.parentElement).toBe(a.container);
+    expect(b.dd.parentElement).toBe(b.container);
+    expect(overlayRoot().children.length).toBe(0);
+  });
+
+  it("не падает и не создаёт корень, когда закрывать нечего", () => {
+    expect(() => closeAllDropdowns()).not.toThrow();
+    expect(document.getElementById("overlay-root")).toBeNull();
   });
 });

@@ -62,9 +62,10 @@
 (и по каждому сервису отдельно: [ADR-0002](./docs/adr/0002-enrichment-standalone-service.md)
 для enrichment, [ADR-0003](./docs/adr/0003-genius-gateway-centralizes-rate-limiting.md)
 для genius-gateway, [ADR-0004](./docs/adr/0004-auth-service-local-session-verification.md)
-для auth). Здесь — только таблица портов/ответственности.
+для auth, [ADR-0007](./docs/adr/0007-game-mode-as-separate-service.md) для game).
+Здесь — только таблица портов/ответственности.
 
-Проект — не один процесс, а четыре независимых userver-сервиса из одного
+Проект — не один процесс, а пять независимых userver-сервисов из одного
 репозитория (`docker-compose.yml` поднимает их все, каждый — свой Dockerfile
 `target`):
 
@@ -74,6 +75,24 @@
 | **six-feat-enrichment** (`services/enrichment/`) | 8081 | Фоновый глубокий скан коллабораций (IDEA-25/26) | да (тот же кластер) |
 | **six-feat-genius-gateway** (`services/genius-gateway/`) | 8082 | Весь исходящий трафик к Genius API — CircuitBreaker + FG/BG rate-limiting централизованы здесь (IDEA-45/46) | нет |
 | **six-feat-auth** (`services/auth/`) | 8083 | Весь OAuth 2.0 Authorization Code Flow: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` (IDEA-53) | нет |
+| **six-feat-game** (`services/game/`) | 8084 | Игровой режим «собери цепочку»: `/api/v1/game/{profile,challenge,challenges,validate,submit,leaderboard,season,link,admin}`. Сессия читается **локально** (как в six-feat), анти-чит ходит в six-feat через internal-mesh `/internal/neighbours` (ADR-0007) | да (тот же кластер, свой реестр миграций `postgresql/migrations/game/`) |
+
+### Раскладка исходников сервиса (SF-GAME-35)
+
+`services/six-feat/` разложен по слоям (`src/{http,core,auth,enrichment,genius}/`),
+остальные четыре — плоские: файлы лежат прямо в корне сервиса. Это **осознанно, а
+не недосмотр**. Слои у six-feat появились потому, что там несколько разных
+подсистем (HTTP-хендлеры, доменный сервис коллабораций, клиенты к трём соседям) и
+без них корень стал нечитаемым. У auth/enrichment/genius-gateway файлов единицы,
+у game — около тридцати, но все они одного рода: хендлер + его заголовок, плюс
+несколько header-only модулей (`scoring.hpp`, `ideal_finder.hpp`,
+`chain_validator.hpp`). Слои там дали бы каталоги на два-три файла и лишний уровень
+вложенности, а не навигацию.
+
+Правило для будущего: **плоско — норма, пока сервис остаётся одного рода**. Повод
+разложить по слоям — появление второй подсистемы (например, если у game заведётся
+собственный доменный слой поверх стора или свои клиенты к нескольким сервисам), а
+не просто рост числа файлов.
 
 ### OAuth: выдача сессии (six-feat-auth) vs проверка сессии (six-feat)
 

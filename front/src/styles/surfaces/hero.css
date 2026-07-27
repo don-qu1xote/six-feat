@@ -166,7 +166,11 @@
    font-size bumped from --text-sm/--space-3 to --text-base/--space-4-5
    to match .search input/.search button's scale too — was visibly
    smaller than "Map it" next to it, not just boxed differently. */
-.hero-connect-panel { width: 100%; text-align: left; align-items: stretch; }
+/* [SF-GAME-59] Игровая панель — тот же контейнер, что и Connect. Без него
+   .hero-mode-panel центрирует детей (align-items:center), и поля ужимались
+   до содержимого: ряд кнопок выходил шире полей, к которым он относится. */
+.hero-connect-panel,
+.hero-game-panel { width: 100%; text-align: left; align-items: stretch; }
 .hero-connect-row { display: flex; gap: var(--space-4); }
 .hero-route-rail {
   display: flex; flex-direction: column; align-items: center;
@@ -222,57 +226,68 @@
    colors) + inline input, no separate label row, no big empty card —
    the whole panel is exactly as tall as the two rows it needs. ─ */
 .hero-game-panel { display: flex; flex-direction: column; gap: var(--space-4); }
-.hero-game-duel { display: flex; align-items: center; gap: var(--space-3); }
-.duel-side {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-3);
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
-  padding: var(--space-3) var(--space-4);
-  transition: border-color var(--duration-med) var(--ease-standard), box-shadow var(--duration-med) var(--ease-standard), background var(--duration-med) var(--ease-standard);
+/* [SF-GAME-59] Собственный набор игровой панели (.hero-game-duel /
+   .duel-side / .duel-input / .duel-vs / .duel-label / .hero-game-start)
+   удалён: панель теперь собрана из деталей соседней вкладки Connect —
+   .hero-connect-row, .hero-route-rail, .path-input-wrap,
+   .hero-connect-actions, .hero-connect-run (все выше в этом файле).
+
+   Боксинг полей, который тут был, — ровно то, что из Connect-панели когда-то
+   убрали специально («единственная hero-панель, завёрнутая в свою карточку…
+   снята, чтобы обе читались как одно и то же»). Игровая панель завела его
+   заново, только на каждое поле по отдельности.
+
+   Здесь остаются ТОЛЬКО игровые дельты: аватар внутри точки маршрута и
+   компактная точка для строки Today's Challenge. */
+
+/* Точка маршрута с аватаром выбранного артиста. У Connect в этих точках
+   стоят глифы ● / ◎ — у игры пара конкретная, поэтому показываем, КОГО
+   выбрали. Цвет рамки наследуется от .hero-route-dot--from/--to. */
+.hero-game-dot {
+  width: 30px; height: 30px; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; box-sizing: border-box;
+  font-family: var(--font-display); font-weight: 700; font-size: var(--text-xs);
+  background: var(--panel-2); border: 2px solid currentColor;
 }
-.duel-side--from:focus-within { background: var(--panel-2); border-color: var(--signal); box-shadow: 0 0 0 4px rgba(var(--signal-rgb),.14); }
-.duel-side--to:focus-within   { background: var(--panel-2); border-color: var(--pulse);  box-shadow: 0 0 0 4px rgba(var(--pulse-rgb),.14); }
+.hero-game-dot img { width: 100%; height: 100%; object-fit: cover; }
+.hero-game-panel .hero-route-rail { width: 30px; padding: var(--space-3) 0; }
+
+/* Аватары в строке Today's Challenge — не точки маршрута, своя мелкая форма. */
 .duel-avatar {
-  flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
   display: grid; place-items: center; overflow: hidden;
-  font-family: "Syne", sans-serif; font-weight: 700; font-size: var(--text-sm);
-  background: transparent;
+  font-family: var(--font-display); font-weight: 700; font-size: var(--text-xs);
+  background: var(--panel-2);
 }
 .duel-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.duel-side--from .duel-avatar { border: 2px solid var(--signal); color: var(--signal); }
-.duel-side--to   .duel-avatar { border: 2px solid var(--pulse);  color: var(--pulse); }
-.duel-field { flex: 1; min-width: 0; position: relative; }
-.duel-input {
-  width: 100%; background: transparent; border: 0; outline: 0;
-  color: var(--paper); font: inherit; font-size: var(--text-base); padding: var(--space-1) 0;
-}
-.duel-input::placeholder { color: var(--mist); }
-.duel-vs {
-  flex-shrink: 0; font-family: "Space Mono", monospace; font-weight: 700; font-size: var(--text-xs);
-  color: var(--mist); letter-spacing: .08em;
-}
-.hero-game-start {
-  width: 100%; padding: var(--space-4) var(--space-6); font-size: var(--text-base); font-weight: 700;
-}
-.hero-game-start .ri { width: 18px; height: 18px; display: flex; flex-shrink: 0; }
-.hero-game-start .ri svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-@media (max-width: 640px) {
-  .hero-game-duel { flex-direction: column; align-items: stretch; }
-  .duel-vs { align-self: center; }
-}
 
 /* ─ [design: Today's Challenge + or pick a rival] Both real-data rows sit
    ABOVE the divider, each ONE compact line — the first mockup's "large
    amount of empty space" complaint was a tall vertical card; this is
    exactly as tall as its own content, same posture as .hero-game-duel
    above. ─ */
+/* [SF-GAME-60] Плитка кита (.ui-tile в разметке) вместо своей копии
+   panel+line+r-md, как у строк лидерборда и истории. Слот всегда на экране,
+   поэтому [hidden]-guard ему больше не нужен — прячутся только внутренние
+   состояния. */
 .hero-game-daily {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3);
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  border: 1px solid var(--line);
   padding: var(--space-3) var(--space-4);
 }
+.hero-game-daily .daily-pair[hidden],
+.hero-game-daily .daily-play[hidden],
+.hero-game-daily .daily-state[hidden],
+.hero-game-daily .daily-retry[hidden] { display: none; }
+/* Честная строка состояния: «грузится» и «сегодня нет» — обычным мистом,
+   «сервис не ответил» — предупреждающим цветом, потому что это не про игру,
+   а про поломку. */
+.daily-state { flex: 1; min-width: 0; color: var(--mist); font-size: var(--text-sm); }
+.daily-state.is-error { color: var(--warn); }
+.daily-retry { flex-shrink: 0; }
 .daily-eyebrow {
-  flex-shrink: 0; font-family: "Space Mono", monospace; font-weight: 700;
-  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
+  flex-shrink: 0; font-family: var(--font-mono); font-weight: 700;
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .12em;
   color: var(--amber);
 }
 .daily-pair { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1; }
@@ -288,8 +303,8 @@
 
 .hero-game-rivals { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
 .rivals-eyebrow {
-  flex-shrink: 0; font-family: "Space Mono", monospace; font-weight: 700;
-  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
+  flex-shrink: 0; font-family: var(--font-mono); font-weight: 700;
+  font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .12em;
   color: var(--mist);
 }
 .rivals-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
@@ -309,6 +324,17 @@
   color: var(--mist); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em;
 }
 .hero-game-divider::before, .hero-game-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* [SF-GAME-54] `hidden` у этих трёх блоков НЕ РАБОТАЛ. Атрибут прячет элемент
+   правилом UA-стилей `display:none`, но любое авторское `display:flex` его
+   перебивает — а все три объявлены именно flex'ом. Отсюда на главной и
+   висела надпись «or pick a rival» с пустотой под ней, сразу над «or set your
+   own»: JS честно оставлял секцию hidden (renderRivals выходит раньше, когда
+   соперников нет), а CSS её всё равно показывал. Ровно тот же guard, что
+   .connect-endpoints[hidden] и .connect-par-pill[hidden] в connect.css. */
+.hero-game-daily[hidden],
+.hero-game-rivals[hidden],
+.hero-game-divider[hidden] { display: none; }
 
 .auth-bar {
   display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
