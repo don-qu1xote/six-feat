@@ -146,7 +146,7 @@ std::string LeaderboardHandler::HandleRequestThrow(
         }
 
         const auto page = store_.GetLeaderboard(scope, *scope_id, std::nullopt, limit);
-        auto body = PageJson(page);
+        const auto body = PageJson(page);
 
         std::unique_lock lock(cache_mu_);
         cache_[cache_key] = CacheEntry{body, std::chrono::steady_clock::now() + cache_ttl_};

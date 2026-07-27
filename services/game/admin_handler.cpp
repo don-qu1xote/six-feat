@@ -64,9 +64,6 @@ std::vector<std::string> ParseAdminIds(const std::string& raw) {
     return out;
 }
 
-// id/from/to/role_mask are distinct fields named at every call site (never
-// positionally reordered); swapping them is not a realistic mistake.
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::string DailyPublishedJson(std::int64_t id, std::int64_t from, std::int64_t to,
                                int role_mask, const std::optional<int>& optimal_len) {
     formats::json::ValueBuilder b(formats::json::Type::kObject);

@@ -30,9 +30,6 @@ namespace {
 
 // Same convention artist_handler.hpp's "image"/"url" fields use: an
 // unset/unknown value is OMITTED from the body, never emitted as null.
-// id/from/to/role_mask are distinct fields named at every call site (never
-// positionally reordered); swapping them is not a realistic mistake.
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::string ChallengeJson(std::int64_t id, std::int64_t from, std::int64_t to,
                           int role_mask, const std::string& kind,
                           const std::optional<int>& optimal_len,

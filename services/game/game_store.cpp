@@ -566,7 +566,7 @@ std::vector<Achievement> GameStore::ListAchievements(std::int64_t user_id) const
 // two concurrent callers gets to INSERT it, never a disagreement about what
 // the window IS.
 constexpr std::int64_t kSeasonEpoch = 1704067200;
-constexpr std::int64_t kSeasonLenSeconds = std::int64_t{30} * 24 * 3600;
+constexpr std::int64_t kSeasonLenSeconds = 30 * 24 * 3600;
 
 Season GameStore::EnsureCurrentSeason() const {
     const auto now = NowUnix();
@@ -697,10 +697,6 @@ std::optional<DailyChallengeView> GameStore::GetLatestDailyChallenge() const {
     return view;
 }
 
-// kind/query are distinct filters named at every call site (a challenge
-// kind enum string vs. a free-text search query); swapping them is not a
-// realistic mistake.
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::vector<ChallengeListItem> GameStore::ListChallenges(
     const std::string& kind,
     const std::string& query,

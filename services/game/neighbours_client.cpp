@@ -48,8 +48,10 @@ NeighboursClient::NeighboursClient(
 // artist_id/role_mask are distinct fields named at every call site (a
 // Genius artist id vs. a role bitmask); swapping them is not a realistic
 // mistake.
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 std::optional<std::vector<std::int64_t>>
+// clang-tidy anchors the diagnostic on the qualified-name line below (not
+// the return-type line above), so NOLINTNEXTLINE must sit directly above it.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 NeighboursClient::Neighbours(std::int64_t artist_id, int role_mask) const {
     try {
         formats::json::ValueBuilder b(formats::json::Type::kObject);
