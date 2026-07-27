@@ -14,4 +14,3 @@ front/node_modules/
 front/dist/
 /loadtest/.output/
 .DS_Store
-*.orig
