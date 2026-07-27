@@ -1,16 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// compare-panel.test.js — [SF-WEB-20] unit tests for the companion panel's
-// compare section (ui/compare-panel.js): the pure intersection helper and
-// the panel render (pair header + trace + list + click-to-focus).
-// [SF-WEB-47] The pair (and the path between them) is now picked/computed
-// graph-natively (vis-adapter/compare-mode.js) — see compare-mode.test.js
-// for the "click two nodes" flow; this file only covers showComparePanel's
-// own rendering once it's given a pair (+ optional path), which
-// compare-mode.js calls straight into. renderHopChain (path-result.js) is
-// mocked here — its own rendering is covered by path-result.test.js; this
-// file only asserts showComparePanel calls it correctly / falls back
-// correctly when no path is given.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./modals.js", () => ({ closePathPanel: vi.fn() }));
@@ -26,13 +13,18 @@ vi.mock("./path-result.js", () => ({
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import {
-  neighboursOf, computeCommonCollaborators,
-  showComparePanel, closeComparePanel, isComparePanelOpen,
+  neighboursOf,
+  computeCommonCollaborators,
+  showComparePanel,
+  closeComparePanel,
+  isComparePanelOpen,
 } from "./compare-panel.js";
 import { closePathPanel } from "./modals.js";
 import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
 
-function freshEl(tag = "div") { return document.createElement(tag); }
+function freshEl(tag = "div") {
+  return document.createElement(tag);
+}
 
 function mockNode(id, name, overrides = {}) {
   return { id, name, imageUrl: "", isSeed: false, ...overrides };
@@ -45,23 +37,21 @@ beforeEach(() => {
   State.network = null;
 
   els.companionPanel = freshEl();
-  els.comparePanel   = freshEl();
+  els.comparePanel = freshEl();
   els.comparePanelClose = freshEl("button");
-  els.compareTitle   = freshEl();
-  els.comparePair    = freshEl();
+  els.compareTitle = freshEl();
+  els.comparePair = freshEl();
   els.compareHopChain = freshEl();
-  els.compareList    = freshEl();
+  els.compareList = freshEl();
 });
 
-// Two mock neighbourhoods, per the ticket's own test spec: A shares 2 and 4
-// with B, and each also has a collaborator the other doesn't.
 const EDGES = [
-  { from: 1, to: 2 }, // A–2 (shared)
-  { from: 1, to: 3 }, // A–3 (only A)
-  { from: 1, to: 4 }, // A–4 (shared)
-  { from: 5, to: 2 }, // B–2 (shared)
-  { from: 5, to: 4 }, // B–4 (shared)
-  { from: 5, to: 6 }, // B–6 (only B)
+  { from: 1, to: 2 },
+  { from: 1, to: 3 },
+  { from: 1, to: 4 },
+  { from: 5, to: 2 },
+  { from: 5, to: 4 },
+  { from: 5, to: 6 },
 ];
 
 describe("neighboursOf", () => {
@@ -77,12 +67,19 @@ describe("computeCommonCollaborators", () => {
   });
 
   it("excludes the two compared artists from their own intersection", () => {
-    const edges = [{ from: 1, to: 5 }, { from: 1, to: 2 }, { from: 5, to: 2 }];
+    const edges = [
+      { from: 1, to: 5 },
+      { from: 1, to: 2 },
+      { from: 5, to: 2 },
+    ];
     expect(computeCommonCollaborators(1, 5, edges)).toEqual([2]);
   });
 
   it("returns an empty array when neighbourhoods don't overlap", () => {
-    const edges = [{ from: 1, to: 3 }, { from: 5, to: 6 }];
+    const edges = [
+      { from: 1, to: 3 },
+      { from: 5, to: 6 },
+    ];
     expect(computeCommonCollaborators(1, 5, edges)).toEqual([]);
   });
 });
@@ -90,9 +87,12 @@ describe("computeCommonCollaborators", () => {
 describe("showComparePanel", () => {
   beforeEach(() => {
     State.graphNodes = [
-      mockNode(1, "Artist A"), mockNode(5, "Artist B"),
-      mockNode(2, "Common One"), mockNode(4, "Common Two"),
-      mockNode(3, "Only A"), mockNode(6, "Only B"),
+      mockNode(1, "Artist A"),
+      mockNode(5, "Artist B"),
+      mockNode(2, "Common One"),
+      mockNode(4, "Common Two"),
+      mockNode(3, "Only A"),
+      mockNode(6, "Only B"),
     ];
     State.graphEdges = EDGES;
   });
@@ -120,7 +120,10 @@ describe("showComparePanel", () => {
   });
 
   it("renders a no-overlap message when there is nothing in common", () => {
-    State.graphEdges = [{ from: 1, to: 3 }, { from: 5, to: 6 }];
+    State.graphEdges = [
+      { from: 1, to: 3 },
+      { from: 5, to: 6 },
+    ];
     showComparePanel(1, 5);
 
     expect(els.compareList.querySelectorAll(".compare-item").length).toBe(0);
@@ -143,8 +146,6 @@ describe("showComparePanel", () => {
     expect(els.comparePanel.classList.contains("show")).toBe(false);
   });
 
-  // [fix] Reported as missing entirely — only the "A × B" text title
-  // existed, no visual trace of which two artists are being compared.
   it("shows both compared artists (avatar + name) in the pair header", () => {
     showComparePanel(1, 5);
 
@@ -167,22 +168,20 @@ describe("showComparePanel", () => {
     expect(showArtistSidebar).toHaveBeenCalledWith(5);
   });
 
-  // [fix] Reported as confusing — the panel only ever showed "No shared
-  // collaborators" with no trace at all connecting the two artists, even
-  // though a path (via the seed or otherwise) may well exist.
   it("renders the trace via renderHopChain (reused from the six-degrees path result) when a path is given", () => {
     showComparePanel(1, 5, [1, 3, 5]);
 
     expect(renderHopChain).toHaveBeenCalledWith(
-      [1, 3, 5], [], [],
+      [1, 3, 5],
+      [],
+      [],
       expect.objectContaining({ 1: "Artist A", 5: "Artist B" }),
       els.compareHopChain,
     );
   });
 
   it("shows a no-connection fallback instead of calling renderHopChain when no path is given", () => {
-    showComparePanel(1, 5); // no 3rd arg — no path found
-
+    showComparePanel(1, 5);
     expect(renderHopChain).not.toHaveBeenCalled();
     expect(els.compareHopChain.textContent).toContain("No connecting path");
   });
@@ -199,4 +198,3 @@ describe("closeComparePanel", () => {
     expect(els.companionPanel.classList.contains("show")).toBe(false);
   });
 });
-

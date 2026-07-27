@@ -24,10 +24,6 @@ def _dispatch_search(state: _MockState, query: str):
     return state.dispatch("/search", {"q": [query]})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Regression: multiple resolve() calls must not clobber each other
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestMultipleResolveCallsDoNotClobber:
     """
     Regression test for a real bug: GeniusMock.resolve() used to register a
@@ -97,10 +93,6 @@ class TestMultipleResolveCallsDoNotClobber:
         ghost_status, ghost_body = _dispatch_search(state, "GhostArtist")
         real_status, real_body = _dispatch_search(state, "RealArtist")
 
-        # The key assertion: GhostArtist must resolve to a graceful 200 with
-        # empty hits (so the service treats it as "not found" -> 404
-        # resolve_failed), NOT an unregistered-path 404 (which the real
-        # service maps to 502 genius_error instead).
         assert ghost_status == 200
         assert ghost_body["response"]["hits"] == []
         assert real_status == 200
@@ -119,10 +111,6 @@ class TestMultipleResolveCallsDoNotClobber:
         assert ghost_status == 200
         assert real_status == 200
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# resolve() / resolve_empty() basics
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestResolveBasics:
     def test_unregistered_query_returns_404(self):
@@ -181,10 +169,6 @@ class TestResolveBasics:
         assert ids == {10, 11}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# search_error() — blanket override semantics
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSearchError:
     def test_search_error_overrides_all_queries(self):
         """Unlike resolve(), search_error() is a deliberate blanket failure
@@ -214,10 +198,6 @@ class TestSearchError:
         assert status == 429
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Independence across separate GeniusMock instances sharing one _MockState
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSharedStateAcrossInstances:
     def test_second_instance_registration_does_not_see_first_instances_queries(self):
         """Known limitation, not a guarantee: each GeniusMock instance owns
@@ -243,8 +223,6 @@ class TestSharedStateAcrossInstances:
         mock2 = GeniusMock(state)
         mock2.resolve("Second", [{"id": 2, "name": "Second", "score": 0.9}])
 
-        # mock2's registration wins outright for the shared "/search" path —
-        # mock1's "First" is no longer reachable.
         first_status, _ = _dispatch_search(state, "First")
         assert first_status == 404
 

@@ -42,9 +42,7 @@ def _row_counts(song_ids: list) -> dict:
     conn = psycopg2.connect(**DB_CONN_PARAMS)
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM credits WHERE song_id = ANY(%s)", (song_ids,)
-            )
+            cur.execute("SELECT COUNT(*) FROM credits WHERE song_id = ANY(%s)", (song_ids,))
             credits = cur.fetchone()[0]
             cur.execute(
                 "SELECT COUNT(DISTINCT artist_id) FROM credits WHERE song_id = ANY(%s)",
@@ -56,9 +54,7 @@ def _row_counts(song_ids: list) -> dict:
                 (song_ids,),
             )
             distinct_roles = cur.fetchone()[0]
-            cur.execute(
-                "SELECT COUNT(*) FROM songs WHERE id = ANY(%s)", (song_ids,)
-            )
+            cur.execute("SELECT COUNT(*) FROM songs WHERE id = ANY(%s)", (song_ids,))
             songs = cur.fetchone()[0]
             return {
                 "credits": credits,
@@ -88,7 +84,10 @@ class TestUpsertBatchingDedup:
             genius_mock.song_detail(
                 sid,
                 _build_song_detail(
-                    sid, title, seed_id, "BatchSeed",
+                    sid,
+                    title,
+                    seed_id,
+                    "BatchSeed",
                     collaborators=[_collab(collab_id, "SharedCollab", role="featured")],
                 ),
             )
@@ -100,24 +99,21 @@ class TestUpsertBatchingDedup:
 
         edges = [e for e in data["edges"] if {e["from"], e["to"]} == {seed_id, collab_id}]
         assert len(edges) == 1
-        assert edges[0]["weight"] == 2  # shared on 2 songs
+        assert edges[0]["weight"] == 2
 
-        # credits: (song_a,seed,primary) (song_a,collab,featured)
-        #          (song_b,seed,primary) (song_b,collab,featured)
         counts = _row_counts([song_a, song_b])
         assert counts["songs"] == 2
         assert counts["credits"] == 4
-        assert counts["distinct_credit_artists"] == 2  # seed + collab, de-duped
-        assert counts["distinct_roles"] == 2  # primary + featured
+        assert counts["distinct_credit_artists"] == 2
+        assert counts["distinct_roles"] == 2
 
         role_filtered = client.get(
             GRAPH_URL, params={"id": str(seed_id), "roles": "primary"}
         ).json()
         filtered_edges = [
-            e for e in role_filtered["edges"]
-            if {e["from"], e["to"]} == {seed_id, collab_id}
+            e for e in role_filtered["edges"] if {e["from"], e["to"]} == {seed_id, collab_id}
         ]
-        assert filtered_edges == []  # collab only holds a "featured" credit
+        assert filtered_edges == []
 
 
 class TestUpsertBatchingIdempotency:
@@ -138,7 +134,10 @@ class TestUpsertBatchingIdempotency:
             genius_mock.song_detail(
                 sid,
                 _build_song_detail(
-                    sid, title, seed_id, "IdemSeed",
+                    sid,
+                    title,
+                    seed_id,
+                    "IdemSeed",
                     collaborators=[_collab(collab_id, "SharedCollab", role="featured")],
                 ),
             )
@@ -146,23 +145,13 @@ class TestUpsertBatchingIdempotency:
         first = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
         before = _row_counts([song_a, song_b])
 
-        # [IDEA-22] ?limit= forces CollabService.BuildRadialGraph to refetch
-        # from (mocked) Genius and re-run UpsertArtistSongs even though the
-        # seed is already cached — the only way, from this HTTP-only test
-        # surface, to make the exact same payload hit UpsertImpl a second
-        # time and actually exercise ON CONFLICT DO NOTHING on the batched
-        # inserts rather than just hitting the L1 cache.
-        second = client.get(
-            GRAPH_URL, params={"id": str(seed_id), "limit": "2"}
-        ).json()
+        second = client.get(GRAPH_URL, params={"id": str(seed_id), "limit": "2"}).json()
         after = _row_counts([song_a, song_b])
 
         assert after == before
 
         assert {n["id"] for n in second["nodes"]} == {n["id"] for n in first["nodes"]}
-        first_edge = next(
-            e for e in first["edges"] if {e["from"], e["to"]} == {seed_id, collab_id}
-        )
+        first_edge = next(e for e in first["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
         second_edge = next(
             e for e in second["edges"] if {e["from"], e["to"]} == {seed_id, collab_id}
         )

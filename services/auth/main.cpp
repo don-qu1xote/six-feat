@@ -1,3 +1,7 @@
+#include "http/health_handler.hpp"
+
+#include "auth/oauth_handler.hpp"
+
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
@@ -5,37 +9,24 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
-#include "auth/oauth_handler.hpp"
-#include "http/health_handler.hpp"
 #include "internal_handlers.hpp"
 
 using namespace userver;
 
 int main(int argc, char* argv[]) {
-    const auto component_list =
-        components::MinimalServerComponentList()
-            .Append<clients::dns::Component>()
-            .AppendComponentList(clients::http::ComponentList())
-            .Append<components::TestsuiteSupport>()
-            .Append<six_feat::auth::OAuthConfig>()
-            .Append<six_feat::auth::LoginHandler>()
-            .Append<six_feat::auth::CallbackHandler>()
-            .Append<six_feat::auth::LogoutHandler>()
-            .Append<six_feat::auth::MeHandler>()
-            .Append<six_feat::HealthHandler>()
-            // [SF-INF-03] Unified readiness contract — see
-            // internal_handlers.hpp's ReadinessHandler doc-comment for why
-            // this service's checks{} is always empty.
-            .Append<six_feat::auth::ReadinessHandler>()
-            // [SF-SEC-01] Internal, secret-gated endpoint publishing a
-            // non-invertible fingerprint of this process's APP_SECRET, so
-            // six-feat's AppSecretParityChecker can detect a mismatch
-            // instead of every session silently 401-ing.
-            .Append<six_feat::auth::KeyFingerprintHandler>()
-            // [IDEA-27 pattern] Internal metrics endpoint — bound to
-            // listener-monitor (see static_config.yaml), never on the
-            // public listener.
-            .Append<server::handlers::ServerMonitor>();
+  const auto component_list = components::MinimalServerComponentList()
+                                  .Append<clients::dns::Component>()
+                                  .AppendComponentList(clients::http::ComponentList())
+                                  .Append<components::TestsuiteSupport>()
+                                  .Append<six_feat::auth::OAuthConfig>()
+                                  .Append<six_feat::auth::LoginHandler>()
+                                  .Append<six_feat::auth::CallbackHandler>()
+                                  .Append<six_feat::auth::LogoutHandler>()
+                                  .Append<six_feat::auth::MeHandler>()
+                                  .Append<six_feat::HealthHandler>()
+                                  .Append<six_feat::auth::ReadinessHandler>()
+                                  .Append<six_feat::auth::KeyFingerprintHandler>()
+                                  .Append<server::handlers::ServerMonitor>();
 
-    return utils::DaemonMain(argc, argv, component_list);
+  return utils::DaemonMain(argc, argv, component_list);
 }

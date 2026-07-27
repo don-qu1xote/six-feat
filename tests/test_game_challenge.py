@@ -38,7 +38,7 @@ import requests
 
 import session_crypto
 
-TEST_APP_SECRET = "f" * 64  # same as tests/conftest.py's TEST_APP_SECRET
+TEST_APP_SECRET = "f" * 64
 ORIGIN = os.environ.get("GAME_SERVICE_ORIGIN", "http://localhost:8080")
 CHALLENGE_URL = f"{ORIGIN}/api/v1/game/challenge"
 
@@ -52,12 +52,9 @@ DB_CONN_PARAMS = dict(
     password=os.environ.get("DB_PASSWORD", "six_feat_test_password"),
 )
 
-# Role encoding — matches persistent_store.cpp's RoleToInt/kMigrationV1.
 ROLE_PRIMARY = 1
 ROLE_FEATURED = 2
 
-# A dedicated, SF-GAME-16-themed id block, disjoint from every other
-# test_game_*.py file's own range (140_00x/150_00x).
 _A_ID, _B_ID = 160_001, 160_002
 
 
@@ -89,8 +86,10 @@ def _seed_collaboration(song_id: int, title: str, members: list[tuple[int, str, 
 def _fresh_cookie() -> str:
     name = f"SFGAME16Player-{time.time_ns()}"
     return session_crypto.make_cookie(
-        TEST_APP_SECRET, access_token="test-genius-access-token",
-        ttl_seconds=3600, name=name,
+        TEST_APP_SECRET,
+        access_token="test-genius-access-token",
+        ttl_seconds=3600,
+        name=name,
     )
 
 
@@ -117,7 +116,8 @@ def _seed_l1() -> None:
     (optimal_len=1), so a freshly-created challenge for this pair always has
     an immediately-computable ideal."""
     _seed_collaboration(
-        160_101, "SF-GAME-16 Direct Collab",
+        160_101,
+        "SF-GAME-16 Direct Collab",
         [(_A_ID, "SFGAME16ArtistA", ROLE_PRIMARY), (_B_ID, "SFGAME16ArtistB", ROLE_FEATURED)],
     )
 
@@ -165,31 +165,26 @@ def test_create_computes_ideal_and_is_idempotent_by_pair():
     assert first_body["to"] == _B_ID
     assert first_body["role_mask"] == 15
     assert first_body["kind"] == "custom"
-    assert first_body["optimal_len"] == 1  # direct A-B collab, seeded above
-    assert "optimal_path" not in first_body  # never revealed before a submit
+    assert first_body["optimal_len"] == 1
+    assert "optimal_path" not in first_body
 
     second = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15})
     assert second.status_code == 200
     second_body = second.json()
-    assert second_body["id"] == first_body["id"]          # same id, per the ticket
+    assert second_body["id"] == first_body["id"]
     assert second_body["optimal_len"] == first_body["optimal_len"]
 
-    # A third caller, no relation to the first two — still the same row.
     third = _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15})
     assert third.json()["id"] == first_body["id"]
 
 
 def test_create_stamps_a_season_and_leaderboard_accepts_it():
-    # [SF-GAME-18] A fresh challenge is stamped with the current season, and
-    # that season_id is a real, usable scope for GET .../leaderboard — the
-    # same endpoint that's answered ?challenge_id= since SF-GAME-17.
+
     cookie = _fresh_cookie()
     created = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
     assert isinstance(created.get("season_id"), int)
     assert created["season_id"] > 0
 
-    # Idempotent create against the SAME pair keeps the SAME season_id —
-    # UpsertChallenge never rewrites it on conflict.
     again = _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
     assert again["season_id"] == created["season_id"]
 
@@ -222,10 +217,6 @@ def test_get_does_not_require_a_session():
     resp = requests.get(CHALLENGE_URL, params={"id": created["id"]}, timeout=5)
     assert resp.status_code == 200
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Daily-challenge background task
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _daily_challenge_row():
     """Best-effort direct read of any kind='daily' row with a computed
@@ -268,7 +259,7 @@ def test_daily_query_param_404s_before_any_daily_challenge_exists_or_200s_with_n
     assert body["kind"] == "daily"
     assert isinstance(body["from_name"], str) and body["from_name"]
     assert isinstance(body["to_name"], str) and body["to_name"]
-    assert "optimal_path" not in body  # never revealed before a submit, same as the plain GET
+    assert "optimal_path" not in body
 
 
 def test_daily_challenge_task_publishes_a_valid_non_empty_ideal_if_it_has_run():
@@ -295,7 +286,6 @@ def test_daily_challenge_task_publishes_a_valid_non_empty_ideal_if_it_has_run():
     assert optimal_path[0] == from_id
     assert optimal_path[-1] == to_id
 
-    # And the published challenge is reachable through the real API too.
     resp = _get(challenge_id)
     assert resp.status_code == 200
     body = resp.json()

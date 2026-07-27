@@ -43,11 +43,6 @@ import requests
 
 from conftest import SERVICE_BASE, TEST_ENRICHMENT_INTERNAL_SECRET, GeniusMock, _build_song_detail
 
-# [SF-GAME-13] Same header internal_neighbours_handler.cpp checks on every
-# inbound call and neighbours_client.cpp sets on every outbound one
-# (internal_auth::kSecretHeader) — reusing ENRICHMENT_INTERNAL_SECRET as the
-# whole internal mesh's shared secret, same convention genius-gateway's own
-# internal API already established.
 INTERNAL_SECRET_HEADER = "X-Internal-Secret"
 
 NEIGHBOURS_URL = f"{SERVICE_BASE}/internal/neighbours"
@@ -68,10 +63,6 @@ def _post(
         headers[INTERNAL_SECRET_HEADER] = secret
     return requests.post(NEIGHBOURS_URL, json=body, headers=headers, timeout=5.0)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Contract: POST /internal/neighbours — NeighboursClient::Neighbours
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestNeighboursContract:
     def test_unknown_artist_returns_empty_list(self, service_proc):
@@ -128,10 +119,6 @@ class TestNeighboursContract:
         assert resp.status_code == 400
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Behavior: known collaboration appears, isolated artist does not
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestNeighboursReflectsL1:
     _A_ID = 130_001
     _B_ID = 130_002
@@ -147,14 +134,14 @@ class TestNeighboursReflectsL1:
         genius_mock.song_detail(
             130_101,
             _build_song_detail(
-                130_101, "SF-GAME-13 Collab Song", self._A_ID, "SFGAME13ArtistA",
+                130_101,
+                "SF-GAME-13 Collab Song",
+                self._A_ID,
+                "SFGAME13ArtistA",
                 collaborators=[_collab(self._B_ID, "SFGAME13ArtistB")],
             ),
         )
 
-        # Writes A/B and their collaboration into L1 — the same lazy-fetch
-        # path CollabService::FindPath itself relies on. Nothing below this
-        # point touches genius_mock again.
         graph_resp = client.get(GRAPH_URL, params={"artist": "SFGAME13ArtistA"})
         assert graph_resp.status_code == 200
 

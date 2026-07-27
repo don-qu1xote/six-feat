@@ -31,26 +31,25 @@ _REQUIRED_PATH_NODE_FIELDS = {"id", "betweenness", "betweenness_normalised", "is
 _REQUIRED_PATH_EDGE_FIELDS = {"from", "to", "weight", "dominant_role", "songs"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared setup helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _setup_direct_path(genius_mock: GeniusMock) -> None:
     """
     A (id=100) → B (id=101) via song 1001.
     A and B are both high-score single-candidate resolves.
     """
-    # Resolve both by name
+
     genius_mock.resolve("ArtistA", [{"id": 100, "name": "ArtistA", "score": 0.98}])
     genius_mock.resolve("ArtistB", [{"id": 101, "name": "ArtistB", "score": 0.98}])
-    # A's song list
+
     genius_mock.songs(100, [1001])
     genius_mock.songs(101, [1001])
-    # Song detail: both on the same track
+
     genius_mock.song_detail(
         1001,
         _build_song_detail(
-            1001, "Collab Track", 100, "ArtistA",
+            1001,
+            "Collab Track",
+            100,
+            "ArtistA",
             collaborators=[{"id": 101, "name": "ArtistB", "role": "featured"}],
         ),
     )
@@ -63,45 +62,43 @@ def _setup_two_hop_path(genius_mock: GeniusMock) -> None:
     """
     genius_mock.resolve("ArtistA2", [{"id": 200, "name": "ArtistA2", "score": 0.98}])
     genius_mock.resolve("ArtistC2", [{"id": 202, "name": "ArtistC2", "score": 0.98}])
-    # A's songs (A–B collab)
+
     genius_mock.songs(200, [2001])
     genius_mock.song_detail(
         2001,
         _build_song_detail(
-            2001, "A-B Track", 200, "ArtistA2",
+            2001,
+            "A-B Track",
+            200,
+            "ArtistA2",
             collaborators=[{"id": 201, "name": "ArtistB2", "role": "featured"}],
         ),
     )
-    # B's songs (B–C collab)
+
     genius_mock.songs(201, [2002])
     genius_mock.song_detail(
         2002,
         _build_song_detail(
-            2002, "B-C Track", 201, "ArtistB2",
+            2002,
+            "B-C Track",
+            201,
+            "ArtistB2",
             collaborators=[{"id": 202, "name": "ArtistC2", "role": "featured"}],
         ),
     )
-    # C's songs (only B–C; needed if service fetches C's neighbour list)
+
     genius_mock.songs(202, [2002])
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. Direct path (1 hop)
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Diagnostic: Check if /api/v1/graph/path endpoint exists
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _check_path_endpoint_exists(client: requests.Session) -> bool:
     """Quick check: does the service have the path endpoint?"""
     try:
         resp = client.get(f"{PATH_URL}?from=a&to=b", timeout=2)
-        # 404 means endpoint doesn't exist
-        # 400/502/200/error are all fine — means endpoint exists
+
         return resp.status_code != 404
     except Exception:
-        return True  # assume it exists if we can't check
+        return True
+
 
 @pytest.fixture(scope="module", autouse=True)
 def _path_endpoint_available(client: requests.Session):
@@ -114,10 +111,6 @@ def _path_endpoint_available(client: requests.Session):
             "and rebuild with: cmake --build build"
         )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 0. [ТЗ-6] Anonymous access is rejected
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestPathRequiresAuth:
     """PathHandler calls auth::ExtractToken() the same way GraphHandler
@@ -202,10 +195,6 @@ class TestDirectPath:
         assert len(edge["songs"]) >= 1
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Indirect path (2 hops A–B–C)
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestTwoHopPath:
     def test_hops_is_two(self, client: requests.Session, genius_mock: GeniusMock):
         _setup_two_hop_path(genius_mock)
@@ -220,23 +209,21 @@ class TestTwoHopPath:
     def test_intermediate_node_in_path(self, client: requests.Session, genius_mock: GeniusMock):
         _setup_two_hop_path(genius_mock)
         data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
-        assert 201 in data["path"]  # ArtistB2 is the bridge
+        assert 201 in data["path"]
 
     def test_two_edges_in_response(self, client: requests.Session, genius_mock: GeniusMock):
         _setup_two_hop_path(genius_mock)
         data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
         assert len(data["edges"]) == 2
 
-    def test_nodes_include_all_path_members(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_nodes_include_all_path_members(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         _setup_two_hop_path(genius_mock)
         data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
         node_ids = {n["id"] for n in data["nodes"]}
         assert {200, 201, 202}.issubset(node_ids)
 
-    # [SF-API-08] The direct (1-hop) case fills edge_songs via CheckDirectPath;
-    # multi-hop edges are instead filled by AppendAdjFromL1's BFS-expansion
-    # code path — a distinct code path that needs its own regression coverage
-    # so both A-B and B-C edges carry the connecting track, not just an icon.
     def test_all_edges_have_nonempty_songs(self, client: requests.Session, genius_mock: GeniusMock):
         _setup_two_hop_path(genius_mock)
         data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
@@ -245,17 +232,17 @@ class TestTwoHopPath:
             assert isinstance(edge["songs"], list)
             assert len(edge["songs"]) >= 1, f"edge {edge['from']}-{edge['to']} has empty songs[]"
 
-    def test_edge_songs_match_connecting_tracks(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_edge_songs_match_connecting_tracks(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         _setup_two_hop_path(genius_mock)
         data = client.get(PATH_URL, params={"from": "ArtistA2", "to": "ArtistC2"}).json()
-        by_pair = {(min(e["from"], e["to"]), max(e["from"], e["to"])): e["songs"] for e in data["edges"]}
+        by_pair = {
+            (min(e["from"], e["to"]), max(e["from"], e["to"])): e["songs"] for e in data["edges"]
+        }
         assert by_pair[(200, 201)] == ["A-B Track"]
         assert by_pair[(201, 202)] == ["B-C Track"]
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. No path exists
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestNoPath:
     def _setup_isolated_artists(self, genius_mock: GeniusMock) -> None:
@@ -281,23 +268,22 @@ class TestNoPath:
     def test_no_path_error_code(self, client: requests.Session, genius_mock: GeniusMock):
         self._setup_isolated_artists(genius_mock)
         data = client.get(PATH_URL, params={"from": "IslandA", "to": "IslandB"}).json()
-        # Either no_path or deadline_exceeded is acceptable
+
         assert data["error"] in ("no_path", "deadline_exceeded")
 
     def test_no_path_status_code(self, client: requests.Session, genius_mock: GeniusMock):
         self._setup_isolated_artists(genius_mock)
         resp = client.get(PATH_URL, params={"from": "IslandA", "to": "IslandB"})
-        # no_path → 200; deadline_exceeded → 503; both are valid
+
         assert resp.status_code in (200, 503)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Both artists already cached — mock should not see artist-song requests
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestCachedArtists:
     def test_no_extra_requests_when_cached(
-        self, client: requests.Session, genius_mock: GeniusMock, mock_server  # type: ignore
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        mock_server,  # type: ignore
     ):
         """
         After a successful graph request for ArtistA (populates L1),
@@ -307,7 +293,7 @@ class TestCachedArtists:
         This is a best-effort check: if the service is smarter than our mock
         in timing, it might not call the endpoint at all, which is fine too.
         """
-        # First call to populate cache
+
         genius_mock.resolve("CachedA", [{"id": 400, "name": "CachedA", "score": 0.99}])
         genius_mock.resolve("CachedB", [{"id": 401, "name": "CachedB", "score": 0.99}])
         genius_mock.songs(400, [4001])
@@ -315,38 +301,37 @@ class TestCachedArtists:
         genius_mock.song_detail(
             4001,
             _build_song_detail(
-                4001, "Together", 400, "CachedA",
+                4001,
+                "Together",
+                400,
+                "CachedA",
                 collaborators=[{"id": 401, "name": "CachedB", "role": "featured"}],
             ),
         )
 
-        # Warm the cache via a graph request
         client.get(f"{SERVICE_BASE}/api/v1/graph", params={"artist": "CachedA"})
 
         calls_before = len(mock_server.calls)
 
-        # Now do the path request
         client.get(PATH_URL, params={"from": "CachedA", "to": "CachedB"})
 
         calls_after = len(mock_server.calls)
 
-        # We simply assert it completed — the exact call count is an implementation
-        # detail; the key is it doesn't error out due to stale data.
-        assert calls_after >= calls_before  # trivially true, ensures no exception
+        assert calls_after >= calls_before
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. Unknown artist → 404 with resolve_failed
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestUnknownArtist:
-    def test_unknown_from_artist_returns_404(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_unknown_from_artist_returns_404(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.resolve_empty("GhostArtist")
         genius_mock.resolve("RealArtist", [{"id": 500, "name": "RealArtist", "score": 0.99}])
         resp = client.get(PATH_URL, params={"from": "GhostArtist", "to": "RealArtist"})
         assert resp.status_code == 404
 
-    def test_unknown_returns_resolve_failed_error(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_unknown_returns_resolve_failed_error(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.resolve_empty("GhostArtist")
         genius_mock.resolve("RealArtist", [{"id": 500, "name": "RealArtist", "score": 0.99}])
         data = client.get(PATH_URL, params={"from": "GhostArtist", "to": "RealArtist"}).json()
@@ -358,10 +343,6 @@ class TestUnknownArtist:
         resp = client.get(PATH_URL, params={"from": "RealArtist", "to": "GhostArtist2"})
         assert resp.status_code == 404
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Role filter on path edges
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestPathRoleFilter:
     def _setup(self, genius_mock: GeniusMock) -> None:
@@ -376,14 +357,19 @@ class TestPathRoleFilter:
         genius_mock.song_detail(
             6001,
             _build_song_detail(
-                6001, "Produced Together", 600, "FilterA",
+                6001,
+                "Produced Together",
+                600,
+                "FilterA",
                 collaborators=[{"id": 601, "name": "FilterB", "role": "producer"}],
             ),
         )
 
     def test_producer_filter_finds_path(self, client: requests.Session, genius_mock: GeniusMock):
         self._setup(genius_mock)
-        resp = client.get(PATH_URL, params={"from": "FilterA", "to": "FilterB", "roles": "producer"})
+        resp = client.get(
+            PATH_URL, params={"from": "FilterA", "to": "FilterB", "roles": "producer"}
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "error" not in data
@@ -399,10 +385,6 @@ class TestPathRoleFilter:
         assert data["error"] in ("no_path", "deadline_exceeded")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. Same artist from/to → trivial zero-hop response
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSameArtistPath:
     def test_same_artist_hops_zero(self, client: requests.Session, genius_mock: GeniusMock):
         genius_mock.resolve("SoloArtist", [{"id": 700, "name": "SoloArtist", "score": 0.99}])
@@ -416,12 +398,10 @@ class TestSameArtistPath:
         assert data["path"][0] == 700
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 8. Missing parameters
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestPathMissingParams:
-    def test_missing_both_params_returns_400(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_missing_both_params_returns_400(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         resp = client.get(PATH_URL)
         assert resp.status_code == 400
 
@@ -433,15 +413,13 @@ class TestPathMissingParams:
         resp = client.get(PATH_URL, params={"to": "SomeArtist"})
         assert resp.status_code == 400
 
-    def test_bad_request_has_json_error_body(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_bad_request_has_json_error_body(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         resp = client.get(PATH_URL)
         data = resp.json()
         assert "error" in data
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 9. Upstream 503 during resolution
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestPathUpstreamError:
     def test_genius_503_on_resolve_returns_503_or_404(
@@ -459,12 +437,10 @@ class TestPathUpstreamError:
         assert "error" in data
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 10. Full path response schema validation
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestPathResponseSchema:
-    def test_from_and_to_fields_are_objects(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_from_and_to_fields_are_objects(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         _setup_direct_path(genius_mock)
         data = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"}).json()
         assert isinstance(data["from"], dict)
@@ -495,10 +471,6 @@ class TestPathResponseSchema:
         data = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"}).json()
         assert "request_id" not in data
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 11. [SF-API-04] ETag / Cache-Control / If-None-Match on the path response
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestPathETag:
     def test_success_response_has_etag_and_cache_control(
@@ -537,9 +509,7 @@ class TestPathETag:
         assert resp.status_code == 200
         assert resp.json()["type"] == "path"
 
-    def test_etag_changes_with_role_filter(
-        self, client: requests.Session, genius_mock: GeniusMock
-    ):
+    def test_etag_changes_with_role_filter(self, client: requests.Session, genius_mock: GeniusMock):
         """[SF-API-04] The role mask is folded into the ETag key, so a
         roles-only change must invalidate any previously cached response even
         though from/to and the underlying data are unchanged."""

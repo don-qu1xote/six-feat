@@ -1,34 +1,4 @@
-// ════════════════════════════════════════════════════════════════════════════
-// vis-adapter/index.js — public barrel re-export.
-//
-// vis-adapter.js was split into submodules by responsibility:
-//   visuals.js   — node/edge visual-object builders (nodeVisual/edgeVisual),
-//                  sizing, vis.Network options
-//   tooltips.js  — tooltip HTML builders + viewport-collision guard
-//   render.js    — vis.Network lifecycle (init/refresh/destroy), Genius
-//                  page link, canvas↔graph scene transition
-//   physics.js   — expand/path layout placement (dandelion/euler), physics
-//                  timing helpers (freeze/nudge), flyout animation, mergeNetwork
-//   highlight.js — applyDimState and the hover/edge/path/default dim state
-//                  machine (DIM_LEVELS / PATH_HIGHLIGHT_LEVELS from state.js)
-//   events.js    — attachNetworkEvents (click/dblclick/hover/drag handlers),
-//                  setFocus/clearFocus
-//   compare-mode.js — [SF-WEB-47] graph-native Compare mode toggle:
-//                  click-to-pick two artists, reusing showComparePanel/bfsPath
-//
-
-// This file re-exports the exact same public names the old flat
-// vis-adapter.js exposed, so existing imports elsewhere (api.js imports
-// restoreDefaultColors, graph.js imports computeNodeSizes/initNetwork/etc,
-// ui/*.js imports a dozen of these, main.js imports clearFocus) keep working
-// unchanged — only `from "./vis-adapter.js"` → `from "./vis-adapter/index.js"`
-// (or just "./vis-adapter", since bundlers/Node both resolve the directory
-// index) needs to change at the call sites, and nothing about the exported
-// function signatures does.
-// ════════════════════════════════════════════════════════════════════════════
-
 export {
-  // ── visuals.js ─────────────────────────────────────────────────────────
   FIXED_NODE_RADIUS,
   EXPIRED_NODE_RADIUS,
   computeNodeSizes,
@@ -39,15 +9,9 @@ export {
   networkOptions,
 } from "./visuals.js";
 
-export {
-  // ── tooltips.js ────────────────────────────────────────────────────────
-  ensureTooltipCollisionGuard,
-  buildNodeTooltip,
-  buildEdgeTooltip,
-} from "./tooltips.js";
+export { ensureTooltipCollisionGuard, buildNodeTooltip, buildEdgeTooltip } from "./tooltips.js";
 
 export {
-  // ── render.js ──────────────────────────────────────────────────────────
   initNetwork,
   initPathNetwork,
   _attachZoomThrottle,
@@ -59,7 +23,6 @@ export {
 } from "./render.js";
 
 export {
-  // ── physics.js ─────────────────────────────────────────────────────────
   scheduleFreeze,
   updateEdgeRenderMode,
   nudgePhysics,
@@ -68,14 +31,9 @@ export {
   runFlyoutAnimation,
 } from "./physics.js";
 
-export {
-  // ── layout.js ──────────────────────────────────────────────────────────
-  placeExpandedNodes,
-  placePathNodes,
-} from "./layout.js";
+export { placeExpandedNodes, placePathNodes } from "./layout.js";
 
 export {
-  // ── highlight.js ───────────────────────────────────────────────────────
   invalidateColorCache,
   buildDefaultColorCache,
   resetHoverState,
@@ -92,17 +50,9 @@ export {
   recolorInPlace,
 } from "./highlight.js";
 
-export {
-  // ── events.js ──────────────────────────────────────────────────────────
-  attachNetworkEvents,
-  setFocus,
-  clearFocus,
-  // [SF-WEB-28] The one entry point for node/edge selection.
-  selectObject,
-} from "./events.js";
+export { attachNetworkEvents, setFocus, clearFocus, selectObject } from "./events.js";
 
 export {
-  // ── compare-mode.js (SF-WEB-47) ───────────────────────────────────────
   isCompareModeActive,
   enterCompareMode,
   exitCompareMode,
@@ -111,9 +61,6 @@ export {
 } from "./compare-mode.js";
 
 export {
-  // ── game-mode.js (SF-GAME-31 / ADR-0008) ──────────────────────────────
-  // Ограниченный игровой режим ОДНОГО И ТОГО ЖЕ движка: вход/выход владеет
-  // переездом #network и роутингом клика, игра эти детали больше не знает.
   isGameModeActive,
   enterGameMode,
   exitGameMode,

@@ -57,9 +57,6 @@ from conftest import (
     _build_song_detail,
 )
 
-# [IDEA-46] Same header genius_gateway_client.cpp's PostInternal() sets on
-# every outbound call (internal_auth::kSecretHeader) and internal_handlers.cpp
-# checks on every inbound one (SecretMatches).
 INTERNAL_SECRET_HEADER = "X-Internal-Secret"
 
 
@@ -72,14 +69,8 @@ def _post(
     headers = {"Content-Type": "application/json"}
     if secret is not None:
         headers[INTERNAL_SECRET_HEADER] = secret
-    return requests.post(
-        f"{GENIUS_GATEWAY_BASE}{path}", json=body, headers=headers, timeout=5.0
-    )
+    return requests.post(f"{GENIUS_GATEWAY_BASE}{path}", json=body, headers=headers, timeout=5.0)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /internal/genius/artist — GeniusGatewayClient::FetchArtistById
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestArtistContract:
     def test_request_shape_is_accepted_and_response_matches_client_parsing(
@@ -87,8 +78,12 @@ class TestArtistContract:
     ):
         genius_mock.artist(
             555,
-            {"id": 555, "name": "Contract Artist", "image": "http://img.example/a.jpg",
-             "url": "http://genius.com/artists/555"},
+            {
+                "id": 555,
+                "name": "Contract Artist",
+                "image": "http://img.example/a.jpg",
+                "url": "http://genius.com/artists/555",
+            },
         )
 
         resp = _post(
@@ -98,8 +93,7 @@ class TestArtistContract:
 
         assert resp.status_code == 200
         body = resp.json()
-        # Exactly the four fields FetchArtistById reads via json["..."] —
-        # a rename of any of these on either side breaks this assertion.
+
         assert body == {
             "found": True,
             "id": 555,
@@ -123,8 +117,7 @@ class TestArtistContract:
             {"id": 9_999_999, "lane": "foreground", "user_token": "tok"},
         )
         assert resp.status_code == 200
-        # FetchArtistById treats any body without found==true as "no match" —
-        # pinning the exact shape catches an accidental extra/renamed field.
+
         assert resp.json() == {"found": False}
 
     def test_missing_user_token_is_bad_request(self, genius_gateway_proc):
@@ -169,10 +162,6 @@ class TestArtistContract:
         assert resp.status_code == 400
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /internal/genius/song-list — GeniusGatewayClient::FetchSongList
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSongListContract:
     def test_request_shape_is_accepted_and_response_matches_client_parsing(
         self, genius_gateway_proc, genius_mock
@@ -185,7 +174,7 @@ class TestSongListContract:
         )
 
         assert resp.status_code == 200
-        # song_ids is the exact (and only) key FetchSongList reads.
+
         assert resp.json() == {"song_ids": [201, 202, 203]}
 
     def test_positive_limit_field_is_accepted(self, genius_gateway_proc, genius_mock):
@@ -203,7 +192,9 @@ class TestSongListContract:
         assert resp.status_code == 200
         assert resp.json() == {"song_ids": [301, 302, 303]}
 
-    def test_omitted_limit_field_falls_back_without_erroring(self, genius_gateway_proc, genius_mock):
+    def test_omitted_limit_field_falls_back_without_erroring(
+        self, genius_gateway_proc, genius_mock
+    ):
         """limit<=0 (including omitted, which parses to 0) falls back to the
         gateway's own songs-limit-fg/bg config (see SongListHandler) instead
         of being a required client-side field — must not 400."""
@@ -231,10 +222,6 @@ class TestSongListContract:
         assert resp.status_code == 401
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /internal/genius/song — GeniusGatewayClient::FetchSongDetail
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSongContract:
     def test_request_shape_is_accepted_and_response_matches_client_parsing(
         self, genius_gateway_proc, genius_mock
@@ -242,7 +229,10 @@ class TestSongContract:
         genius_mock.song_detail(
             401,
             _build_song_detail(
-                401, "Contract Song", 1, "Primary Artist",
+                401,
+                "Contract Song",
+                1,
+                "Primary Artist",
                 collaborators=[{"id": 2, "name": "Featured Artist", "role": "featured"}],
                 popularity=42,
             ),
@@ -257,8 +247,7 @@ class TestSongContract:
         body = resp.json()
         assert body["found"] is True
         song = body["song"]
-        # Exactly the keys FetchSongDetail reads: id/title/popularity/credits,
-        # each credit an {artist: {id,name,image,url}, role} pair.
+
         assert song["id"] == 401
         assert song["title"] == "Contract Song"
         assert song["popularity"] == 42
@@ -276,9 +265,7 @@ class TestSongContract:
         assert resp.json() == {"found": False}
 
     def test_missing_song_id_is_bad_request(self, genius_gateway_proc):
-        resp = _post(
-            "/internal/genius/song", {"lane": "foreground", "user_token": "tok"}
-        )
+        resp = _post("/internal/genius/song", {"lane": "foreground", "user_token": "tok"})
         assert resp.status_code == 400
 
     def test_wrong_secret_is_unauthorized(self, genius_gateway_proc):
@@ -290,23 +277,21 @@ class TestSongContract:
         assert resp.status_code == 401
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# POST /internal/genius/candidates — GeniusGatewayClient::ResolveCandidates
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestCandidatesContract:
     def test_request_shape_is_accepted_and_response_matches_client_parsing(
         self, genius_gateway_proc, genius_mock
     ):
-        # ResolveCandidates computes `score` itself (Similarity(query, name) —
-        # see genius_gateway.cpp) rather than forwarding any score the mock
-        # is given, so the query is made to exactly equal the candidate name
-        # here: Similarity(x, x) == 1.0 exactly, the one score value this
-        # test can assert without re-implementing the similarity algorithm.
+
         genius_mock.resolve(
             "Match One",
-            [{"id": 1, "name": "Match One", "image": "http://img/1.jpg",
-              "url": "http://genius.com/1"}],
+            [
+                {
+                    "id": 1,
+                    "name": "Match One",
+                    "image": "http://img/1.jpg",
+                    "url": "http://genius.com/1",
+                }
+            ],
         )
 
         resp = _post(
@@ -315,12 +300,16 @@ class TestCandidatesContract:
         )
 
         assert resp.status_code == 200
-        # candidates is the only key ResolveCandidates reads, each entry
-        # exactly {id, name, image, url, score}.
+
         assert resp.json() == {
             "candidates": [
-                {"id": 1, "name": "Match One", "image": "http://img/1.jpg",
-                 "url": "http://genius.com/1", "score": 1.0}
+                {
+                    "id": 1,
+                    "name": "Match One",
+                    "image": "http://img/1.jpg",
+                    "url": "http://genius.com/1",
+                    "score": 1.0,
+                }
             ]
         }
 

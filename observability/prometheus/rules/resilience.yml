@@ -1,22 +1,8 @@
-# observability/prometheus/rules/resilience.yml — SF-OBS-04
-#
-# Resilience alerts: genius-gateway's circuit breaker stuck open, the
-# enrichment worker's job queue backing up, and any scrape target simply
-# being unreachable. Metric names match observability/grafana/dashboards/
-# six-feat-overview.json (see IDEA-27's ExtendStatistics() in
-# libs/six-feat-common/src/genius/genius_gateway.cpp and
-# libs/six-feat-common/src/enrichment/enrichment_worker.cpp for where these
-# are actually written).
+
 groups:
   - name: six-feat-resilience
     rules:
-      # ── Genius-gateway circuit breaker stuck open ────────────────────────
-      # `_open` is a 0/1 gauge (see genius_gateway.cpp's ExtendStatistics) —
-      # `== 1` + `for:` requires it to STAY open across the whole window,
-      # not just trip momentarily. cb-open-seconds (services/genius-gateway/
-      # static_config.yaml) defaults to 30s before the breaker tries
-      # half-open on its own — alerting at 60s means it's had a full cycle
-      # to recover and didn't, not just "briefly tripped".
+
       - alert: SixFeatGeniusGatewayCircuitBreakerOpen
         expr: genius_gateway_circuit_breaker_open{job="six-feat-genius-gateway"} == 1
         for: 60s
@@ -31,11 +17,6 @@ groups:
             failing fast instead of reaching Genius. See the "Circuit
             breaker state" panel on the six-feat-overview dashboard.
 
-      # ── Enrichment queue backing up ───────────────────────────────────────
-      # queue-capacity defaults to 1024 (services/enrichment/
-      # static_config.yaml) — 800 is ~80% of that, i.e. "building up faster
-      # than the worker can drain it", well before EnrichmentQueue actually
-      # starts rejecting new jobs at capacity.
       - alert: SixFeatEnrichmentQueueDepthHigh
         expr: enrichment_worker_queue_size{job="six-feat-enrichment"} > 800
         for: 5m
@@ -51,12 +32,6 @@ groups:
             the "Enrichment queue depth" panel on the six-feat-overview
             dashboard.
 
-      # ── Any scrape target unreachable ────────────────────────────────────
-      # `up` is Prometheus's own built-in per-target metric (1 = last scrape
-      # succeeded, 0 = it didn't) — no service-side instrumentation needed.
-      # Covers all 4 jobs in prometheus.yml (six-feat/six-feat-enrichment/
-      # six-feat-genius-gateway/six-feat-auth) via the job regex, so this
-      # one rule doesn't need updating when SF-GAME-10 adds a 5th job.
       - alert: SixFeatTargetDown
         expr: up{job=~"six-feat.*"} == 0
         for: 1m

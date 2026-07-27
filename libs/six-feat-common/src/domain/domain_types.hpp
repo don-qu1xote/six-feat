@@ -1,100 +1,63 @@
 #pragma once
 
-// ════════════════════════════════════════════════════════════════════════════
-// domain_types.hpp  —  iteration 6
-//
-// Single source of truth for all domain types shared across layers.
-// Zero userver dependencies — included by every layer without pulling
-// in framework headers.
-//
-// Depth enum: monotonically increasing scan coverage for an artist.
-//   None       — no data in L1 yet.
-//   Foreground — top-N songs (songs-limit-fg, fast path).
-//   Full       — deep scan (songs-limit-bg, background worker).
-// ════════════════════════════════════════════════════════════════════════════
-
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace six_feat {
 
-// ── Artist node ─────────────────────────────────────────────────────────────
-
 struct ArtistRef {
-    std::int64_t id{0};
-    std::string  name;
-    std::string  image;
-    std::string  url;
+  std::int64_t id{0};
+  std::string name;
+  std::string image;
+  std::string url;
 };
-
-// ── Credit on a track ───────────────────────────────────────────────────────
 
 struct TrackCredit {
-    ArtistRef   artist;
-    std::string role;   // "primary" | "featured" | "producer" | "writer"
+  ArtistRef artist;
+  std::string role;
 };
-
-// ── Song with its full credit list ──────────────────────────────────────────
 
 struct SongRecord {
-    std::int64_t             id{0};    // Genius song id
-    std::string              title;
-    std::vector<TrackCredit> credits;
-    // Genius popularity signal (stats.pageviews from the song-detail
-    // response). 0 when the upstream response doesn't carry it.
-    std::int64_t             popularity{0};
+  std::int64_t id{0};
+  std::string title;
+  std::vector<TrackCredit> credits;
+  std::int64_t popularity{0};
 };
-
-// ── All songs for one seed artist ───────────────────────────────────────────
 
 struct ArtistSongs {
-    ArtistRef               seed;
-    std::vector<SongRecord> songs;
+  ArtistRef seed;
+  std::vector<SongRecord> songs;
 };
-
-// ── Search candidate (fuzzy name resolution) ────────────────────────────────
 
 struct Candidate {
-    std::int64_t id{0};
-    std::string  name;
-    std::string  image;
-    std::string  url;
-    double       score{0.0};
+  std::int64_t id{0};
+  std::string name;
+  std::string image;
+  std::string url;
+  double score{0.0};
 };
-
-// ── Role filter bitmask ─────────────────────────────────────────────────────
 
 struct RoleMask {
-    bool primary{true};
-    bool producer{true};
-    bool writer{true};
-    bool featured{true};
+  bool primary{true};
+  bool producer{true};
+  bool writer{true};
+  bool featured{true};
 };
-
-// ── L1 persistence depth (monotonically increasing) ─────────────────────────
 
 enum class Depth : int {
-    None       = 0,   // no data in persistent store
-    Foreground = 1,   // top songs-limit-fg songs stored
-    Full       = 2,   // deep scan (songs-limit-bg) stored
+  None = 0,
+  Foreground = 1,
+  Full = 2,
 };
-
-// ── Background enrichment job ────────────────────────────────────────────────
 
 struct EnrichmentJob {
-    std::int64_t artist_id{0};
-    Depth        target{Depth::Full};
-    // populated from node_info so the worker can call FetchSongList without
-    // a separate artist lookup
-    std::string  name;
-    std::string  image;
-    std::string  url;
-    // [ТЗ-6] No more server-level fallback token — the worker borrows the
-    // token of whichever user's foreground request triggered this deep scan.
-    // If that user's session has since expired/been revoked, the job simply
-    // fails with a 401 and is dropped (see EnrichmentWorker::WorkerLoop).
-    std::string  user_token;
+  std::int64_t artist_id{0};
+  Depth target{Depth::Full};
+  std::string name;
+  std::string image;
+  std::string url;
+  std::string user_token;
 };
 
-} // namespace six_feat
+}  // namespace six_feat

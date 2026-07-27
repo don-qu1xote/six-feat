@@ -45,7 +45,4 @@ for (const { key, file } of assets) {
   console.log(`[hash-build] ${hashedName} (sha256:${hash})`);
 }
 
-writeFileSync(
-  join(distDir, "manifest.json"),
-  JSON.stringify(manifest, null, 2) + "\n",
-);
+writeFileSync(join(distDir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

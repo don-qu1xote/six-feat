@@ -43,10 +43,7 @@ class TestTraceIdPropagation:
         request_id = resp.headers.get("X-Request-Id")
         assert request_id, "six-feat did not echo an X-Request-Id response header"
 
-        artist_calls = [
-            c for c in mock_server.calls
-            if c["path"] == f"/artists/{unique_artist_id}"
-        ]
+        artist_calls = [c for c in mock_server.calls if c["path"] == f"/artists/{unique_artist_id}"]
         assert artist_calls, "genius-gateway never reached the surrogate Genius server"
 
         forwarded_id = artist_calls[-1]["request_id"]

@@ -441,6 +441,50 @@ jobs:
         run: npm audit --audit-level=high
 
   # ══════════════════════════════════════════════════════════════════════════
+  # Stage 2 — Code formatting checks (clang-format, prettier, ruff)
+  # ══════════════════════════════════════════════════════════════════════════
+  check-format:
+    name: "Stage 2 — Code formatting"
+    runs-on: ubuntu-22.04
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: clang-format python3-pip python3-venv
+          node-version: "20"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Check C++ formatting (clang-format)
+        run: |
+          find libs services -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror 2>&1 | tee clang-format-report.txt
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "::error::C++ files are not formatted. Run: find libs services -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i"
+            exit 1
+          fi
+
+      - name: Check Python formatting (ruff)
+        run: |
+          ruff format --check tests/ 2>&1 | tee ruff-report.txt
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "::error::Python files are not formatted. Run: ruff format tests/"
+            exit 1
+          fi
+
+      - name: Check JS formatting (prettier)
+        working-directory: front
+        run: |
+          npm ci
+          npx prettier --check "src/**/*.js" 2>&1 | tee ../prettier-report.txt
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "::error::JS files are not formatted. Run: cd front && npx prettier --write 'src/**/*.js'"
+            exit 1
+          fi
+
+  # ══════════════════════════════════════════════════════════════════════════
   # Stage 2 — [SF-WEB-08] Bundle size budget for front/'s esbuild output.
   # Lightweight (no Docker): npm ci + npm run build + a gzip-size check
   # against a fixed KB budget (scripts/check-bundle-size.mjs) — same shape
@@ -877,6 +921,7 @@ jobs:
       - verify-yaml-anchors
       - promtool-check-rules
       - eslint
+      - check-format
       - bundle-size
       - frontend-coverage
       - docker-build-and-scan
@@ -939,6 +984,7 @@ jobs:
       - verify-yaml-anchors
       - promtool-check-rules
       - eslint
+      - check-format
       - bundle-size
       - frontend-coverage
       - docker-build-and-scan

@@ -1,13 +1,12 @@
 #include "game_store.hpp"
-#include "scoring.hpp"
+
+#include "schemas/components/game_store_schema.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <optional>
 #include <stdexcept>
 #include <string>
-#include <vector>
-
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
 #include <userver/engine/sleep.hpp>
@@ -17,40 +16,21 @@
 #include <userver/storages/postgres/transaction.hpp>
 #include <userver/utils/async.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
+#include <vector>
 
-#include "schemas/components/game_store_schema.hpp"
+#include "scoring.hpp"
 
 namespace six_feat::game {
 
 using namespace userver;
 
-// ════════════════════════════════════════════════════════════════════════════
-// Schema migrations — [SF-GAME-11]
-//
-// Same shape as libs/six-feat-common/src/storage/persistent_store.cpp's
-// kMigrations: forward-only DDL blocks, one statement per array element (the
-// extended query protocol rejects multiple commands per prepared statement),
-// applied in order inside a single transaction from the DB's current version
-// up to kGameTargetSchemaVersion. Version state lives in a DEDICATED
-// `game_schema_version` table so it never collides with six-feat's own
-// `schema_version` in the same database. Registering a migration is just
-// appending to game_migrations.
-//
-// Kept in sync with postgresql/migrations/game/V*.sql — the code here is the
-// source of truth; tests/test_game_migrations.py (SF-DB-05 pattern) fails the
-// build if the two ever drift.
-// ════════════════════════════════════════════════════════════════════════════
-
 namespace {
 
 struct Migration {
-    int                      version;
-    std::vector<const char*> statements;
+  int version;
+  std::vector<const char*> statements;
 };
 
-// v1: baseline game schema. Tables are created in FK dependency order
-// (seasons before challenges, challenges before attempts, achievements before
-// user_achievements). All CREATE ... IF NOT EXISTS, so re-running is a no-op.
 const std::vector<const char*> kGameMigrationV1 = {
     R"SQL(CREATE TABLE IF NOT EXISTS game_profiles (
         user_id      BIGINT PRIMARY KEY,
@@ -106,8 +86,10 @@ const std::vector<const char*> kGameMigrationV1 = {
         PRIMARY KEY (user_id, code)
     ))SQL",
     // Top-N leaderboard indexes (per-challenge, per-season, per-user history).
-    "CREATE INDEX IF NOT EXISTS idx_game_attempts_challenge_score ON game_attempts(challenge_id, score DESC)",
-    "CREATE INDEX IF NOT EXISTS idx_game_attempts_season_score ON game_attempts(season_id, score DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_game_attempts_challenge_score ON game_attempts(challenge_id, "
+    "score DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_game_attempts_season_score ON game_attempts(season_id, score "
+    "DESC)",
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts)",
 };
 
@@ -139,35 +121,32 @@ constexpr int kGameTargetSchemaVersion = 2;
 // EXCLUSIVE lock on game_schema_version serializes racing instances (the
 // second one blocks, then observes the bumped version and no-ops). Idempotent.
 void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
-    cluster->Execute(storages::postgres::ClusterHostType::kMaster,
-                     "CREATE TABLE IF NOT EXISTS game_schema_version ("
-                     "  version SMALLINT PRIMARY KEY"
-                     ")");
+  cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                   "CREATE TABLE IF NOT EXISTS game_schema_version ("
+                   "  version SMALLINT PRIMARY KEY"
+                   ")");
 
-    auto trx = cluster->Begin(storages::postgres::ClusterHostType::kMaster,
-                              storages::postgres::TransactionOptions{});
-    trx.Execute("LOCK TABLE game_schema_version IN EXCLUSIVE MODE");
+  auto trx = cluster->Begin(storages::postgres::ClusterHostType::kMaster,
+                            storages::postgres::TransactionOptions{});
+  trx.Execute("LOCK TABLE game_schema_version IN EXCLUSIVE MODE");
 
-    auto version_result =
-        trx.Execute("SELECT COALESCE(MAX(version), 0) FROM game_schema_version");
-    const int current = version_result.Front()[0].As<std::int16_t>();
+  auto version_result = trx.Execute("SELECT COALESCE(MAX(version), 0) FROM game_schema_version");
+  const int current = version_result.Front()[0].As<std::int16_t>();
 
-    if (current > kGameTargetSchemaVersion) {
-        throw std::runtime_error(
-            "GameStore: DB game schema version " + std::to_string(current) +
-            " is newer than the version this binary supports (" +
-            std::to_string(kGameTargetSchemaVersion) + ")");
+  if (current > kGameTargetSchemaVersion) {
+    throw std::runtime_error("GameStore: DB game schema version " + std::to_string(current) +
+                             " is newer than the version this binary supports (" +
+                             std::to_string(kGameTargetSchemaVersion) + ")");
+  }
+
+  for (const auto& m : game_migrations) {
+    if (m.version <= current) continue;
+    for (const char* stmt : m.statements) {
+      trx.Execute(stmt);
     }
-
-    for (const auto& m : game_migrations) {
-        if (m.version <= current) continue;
-        for (const char* stmt : m.statements) {
-            trx.Execute(stmt);
-        }
-        trx.Execute("INSERT INTO game_schema_version(version) VALUES($1)",
-                    m.version);
-    }
-    trx.Commit();
+    trx.Execute("INSERT INTO game_schema_version(version) VALUES($1)", m.version);
+  }
+  trx.Commit();
 }
 
 // Same background-retry posture as PersistentStore (postgres-db-1 has
@@ -179,385 +158,379 @@ constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
 constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
 
 void RunGameMigrationsWithRetry(const storages::postgres::ClusterPtr& cluster) {
-    for (int attempt = 1;; ++attempt) {
-        try {
-            RunGameMigrations(cluster);
-            return;
-        } catch (const std::exception& ex) {
-            if (attempt >= kMigrationMaxAttempts) {
-                LOG_ERROR() << "[GameStore] schema migration failed after "
-                            << attempt << " attempts, giving up: " << ex.what();
-                throw;
-            }
-            const auto delay = std::min(
-                kMigrationBackoffCap,
-                kMigrationBackoffBase * (1 << (attempt - 1)));
-            LOG_WARNING() << "[GameStore] schema migration attempt " << attempt
-                          << " failed (" << ex.what() << "), retrying in "
-                          << delay.count() << "ms — likely Postgres's "
-                          << "connection pool is still starting up";
-            engine::SleepFor(delay);
-        }
+  for (int attempt = 1;; ++attempt) {
+    try {
+      RunGameMigrations(cluster);
+      return;
+    } catch (const std::exception& ex) {
+      if (attempt >= kMigrationMaxAttempts) {
+        LOG_ERROR() << "[GameStore] schema migration failed after " << attempt
+                    << " attempts, giving up: " << ex.what();
+        throw;
+      }
+      const auto delay =
+          std::min(kMigrationBackoffCap, kMigrationBackoffBase * (1 << (attempt - 1)));
+      LOG_WARNING() << "[GameStore] schema migration attempt " << attempt << " failed ("
+                    << ex.what() << "), retrying in " << delay.count() << "ms — likely Postgres's "
+                    << "connection pool is still starting up";
+      engine::SleepFor(delay);
     }
+  }
 }
 
-} // namespace
+}  // namespace
 
-// ════════════════════════════════════════════════════════════════════════════
 // Component
-// ════════════════════════════════════════════════════════════════════════════
 
 struct GameStore::Impl {
-    storages::postgres::ClusterPtr cluster;
+  storages::postgres::ClusterPtr cluster;
 
-    // One unretried attempt up front (fast path: Postgres already reachable →
-    // schema ready before the constructor returns). RunGameMigrations is
-    // idempotent, so OnAllComponentsLoaded's background retry is a cheap
-    // re-check when this already succeeded.
-    explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
-        try {
-            RunGameMigrations(cluster);
-        } catch (const std::exception& ex) {
-            LOG_WARNING() << "[GameStore] initial schema migration attempt "
-                          << "failed (" << ex.what() << "), deferring to the "
-                          << "background retry";
-        }
+  // One unretried attempt up front (fast path: Postgres already reachable →
+  // schema ready before the constructor returns). RunGameMigrations is
+  // idempotent, so OnAllComponentsLoaded's background retry is a cheap
+  // re-check when this already succeeded.
+  explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
+    try {
+      RunGameMigrations(cluster);
+    } catch (const std::exception& ex) {
+      LOG_WARNING() << "[GameStore] initial schema migration attempt "
+                    << "failed (" << ex.what() << "), deferring to the "
+                    << "background retry";
     }
+  }
 };
 
-GameStore::GameStore(const components::ComponentConfig&  config,
+GameStore::GameStore(const components::ComponentConfig& config,
                      const components::ComponentContext& context)
-    : ComponentBase(config, context)
-    , main_tp_(context.GetTaskProcessor("main-task-processor"))
-{
-    const std::string dbname = config["dbname"].As<std::string>("postgres-db-1");
-    auto cluster = context.FindComponent<components::Postgres>(dbname).GetCluster();
-    impl_ = std::make_unique<Impl>(std::move(cluster));
-    LOG_INFO() << "[GameStore] Postgres cluster attached: " << dbname;
+    : ComponentBase(config, context), main_tp_(context.GetTaskProcessor("main-task-processor")) {
+  const std::string dbname = config["dbname"].As<std::string>("postgres-db-1");
+  auto cluster = context.FindComponent<components::Postgres>(dbname).GetCluster();
+  impl_ = std::make_unique<Impl>(std::move(cluster));
+  LOG_INFO() << "[GameStore] Postgres cluster attached: " << dbname;
 }
 
 GameStore::~GameStore() = default;
 
 void GameStore::OnAllComponentsLoaded() {
-    migration_task_ = utils::Async(main_tp_, "game-store-migrate", [this] {
-        try {
-            RunGameMigrationsWithRetry(impl_->cluster);
-            LOG_INFO() << "[GameStore] schema migrations complete";
-        } catch (const std::exception& ex) {
-            LOG_ERROR() << "[GameStore] giving up on schema migrations, "
-                        << "continuing to serve with an unmigrated/stale "
-                        << "schema until Postgres recovers: " << ex.what();
-        }
-    });
+  migration_task_ = utils::Async(main_tp_, "game-store-migrate", [this] {
+    try {
+      RunGameMigrationsWithRetry(impl_->cluster);
+      LOG_INFO() << "[GameStore] schema migrations complete";
+    } catch (const std::exception& ex) {
+      LOG_ERROR() << "[GameStore] giving up on schema migrations, "
+                  << "continuing to serve with an unmigrated/stale "
+                  << "schema until Postgres recovers: " << ex.what();
+    }
+  });
 }
 
 bool GameStore::Ping() const {
-    try {
-        auto res = impl_->cluster->Execute(
-            storages::postgres::ClusterHostType::kMaster, "SELECT 1");
-        return !res.IsEmpty();
-    } catch (const std::exception& e) {
-        LOG_ERROR() << "[GameStore] Ping failed: " << e.what();
-        return false;
-    }
+  try {
+    auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster, "SELECT 1");
+    return !res.IsEmpty();
+  } catch (const std::exception& e) {
+    LOG_ERROR() << "[GameStore] Ping failed: " << e.what();
+    return false;
+  }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
 // Profile API — [SF-GAME-12]
-// ════════════════════════════════════════════════════════════════════════════
 
 namespace {
 
 std::int64_t NowUnix() {
-    return std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
+  return std::chrono::duration_cast<std::chrono::seconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
 }
 
 // 1-based leaderboard rank by elo descending: how many profiles strictly
 // out-rank this one, plus one. Ties share the higher rank (COUNT of strictly
 // greater elo), which is fine for a display rank.
 int RankFor(const storages::postgres::ClusterPtr& cluster, int elo) {
-    auto res = cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT COUNT(*) FROM game_profiles WHERE elo > $1", elo);
-    return static_cast<int>(res.Front()[0].As<std::int64_t>()) + 1;
+  auto res = cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                              "SELECT COUNT(*) FROM game_profiles WHERE elo > $1",
+                              elo);
+  return static_cast<int>(res.Front()[0].As<std::int64_t>()) + 1;
 }
 
-Profile ReadProfile(const storages::postgres::ClusterPtr& cluster,
-                    std::int64_t user_id) {
-    auto res = cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT user_id, display_name, avatar_url, elo, games "
-        "FROM game_profiles WHERE user_id = $1", user_id);
-    const auto row = res.Front();  // caller guarantees the row exists
-    Profile p;
-    p.user_id      = row[0].As<std::int64_t>();
-    p.display_name = row[1].As<std::optional<std::string>>().value_or("");
-    p.avatar_url   = row[2].As<std::optional<std::string>>().value_or("");
-    p.elo          = row[3].As<int>();
-    p.games        = row[4].As<int>();
-    p.rank         = RankFor(cluster, p.elo);
-    return p;
+Profile ReadProfile(const storages::postgres::ClusterPtr& cluster, std::int64_t user_id) {
+  auto res = cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                              "SELECT user_id, display_name, avatar_url, elo, games "
+                              "FROM game_profiles WHERE user_id = $1",
+                              user_id);
+  const auto row = res.Front();  // caller guarantees the row exists
+  Profile p;
+  p.user_id = row[0].As<std::int64_t>();
+  p.display_name = row[1].As<std::optional<std::string>>().value_or("");
+  p.avatar_url = row[2].As<std::optional<std::string>>().value_or("");
+  p.elo = row[3].As<int>();
+  p.games = row[4].As<int>();
+  p.rank = RankFor(cluster, p.elo);
+  return p;
 }
 
-} // namespace
+}  // namespace
 
 Profile GameStore::EnsureAndGetProfile(std::int64_t user_id,
                                        const std::string& display_name_default,
                                        const std::string& avatar_url_default) const {
-    const std::int64_t now = NowUnix();
-    // First-sight create; existing rows keep their stored values (DO NOTHING).
-    impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "INSERT INTO game_profiles (user_id, display_name, avatar_url, created_ts) "
-        "VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO NOTHING",
-        user_id,
-        display_name_default.empty() ? std::string{"Genius User"} : display_name_default,
-        avatar_url_default.empty() ? std::optional<std::string>{} : std::optional<std::string>{avatar_url_default},
-        now);
-    return ReadProfile(impl_->cluster, user_id);
+  const std::int64_t now = NowUnix();
+  // First-sight create; existing rows keep their stored values (DO NOTHING).
+  impl_->cluster->Execute(
+      storages::postgres::ClusterHostType::kMaster,
+      "INSERT INTO game_profiles (user_id, display_name, avatar_url, created_ts) "
+      "VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO NOTHING",
+      user_id,
+      display_name_default.empty() ? std::string{"Genius User"} : display_name_default,
+      avatar_url_default.empty() ? std::optional<std::string>{}
+                                 : std::optional<std::string>{avatar_url_default},
+      now);
+  return ReadProfile(impl_->cluster, user_id);
 }
 
-Profile GameStore::SetDisplayName(std::int64_t user_id,
-                                  const std::string& display_name) const {
-    impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "UPDATE game_profiles SET display_name = $2 WHERE user_id = $1",
-        user_id, display_name);
-    return ReadProfile(impl_->cluster, user_id);
+Profile GameStore::SetDisplayName(std::int64_t user_id, const std::string& display_name) const {
+  impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                          "UPDATE game_profiles SET display_name = $2 WHERE user_id = $1",
+                          user_id,
+                          display_name);
+  return ReadProfile(impl_->cluster, user_id);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
 // Public profile lookup + history — [SF-GAME-17]
-// ════════════════════════════════════════════════════════════════════════════
 
 std::optional<Profile> GameStore::GetProfileIfExists(std::int64_t user_id) const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kSlave,
-        "SELECT 1 FROM game_profiles WHERE user_id = $1", user_id);
-    if (res.IsEmpty()) return std::nullopt;
-    return ReadProfile(impl_->cluster, user_id);
+  auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kSlave,
+                                     "SELECT 1 FROM game_profiles WHERE user_id = $1",
+                                     user_id);
+  if (res.IsEmpty()) return std::nullopt;
+  return ReadProfile(impl_->cluster, user_id);
 }
 
-std::vector<AttemptSummary> GameStore::ListRecentAttempts(std::int64_t user_id,
-                                                          int limit) const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kSlave,
-        "SELECT challenge_id, valid, score, hops, ts FROM game_attempts "
-        "WHERE user_id = $1 ORDER BY ts DESC LIMIT $2",
-        user_id, limit);
+std::vector<AttemptSummary> GameStore::ListRecentAttempts(std::int64_t user_id, int limit) const {
+  auto res =
+      impl_->cluster->Execute(storages::postgres::ClusterHostType::kSlave,
+                              "SELECT challenge_id, valid, score, hops, ts FROM game_attempts "
+                              "WHERE user_id = $1 ORDER BY ts DESC LIMIT $2",
+                              user_id,
+                              limit);
 
-    std::vector<AttemptSummary> out;
-    out.reserve(res.Size());
-    for (const auto& row : res) {
-        AttemptSummary a;
-        a.challenge_id = row[0].As<std::int64_t>();
-        a.valid        = row[1].As<bool>();
-        a.score        = row[2].As<int>();
-        a.hops         = row[3].As<int>();
-        a.ts           = row[4].As<std::int64_t>();
-        out.push_back(a);
-    }
-    return out;
+  std::vector<AttemptSummary> out;
+  out.reserve(res.Size());
+  for (const auto& row : res) {
+    AttemptSummary a;
+    a.challenge_id = row[0].As<std::int64_t>();
+    a.valid = row[1].As<bool>();
+    a.score = row[2].As<int>();
+    a.hops = row[3].As<int>();
+    a.ts = row[4].As<std::int64_t>();
+    out.push_back(a);
+  }
+  return out;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
 // Challenge + submission API — [SF-GAME-15]
-// ════════════════════════════════════════════════════════════════════════════
 
 std::optional<Challenge> GameStore::GetChallenge(std::int64_t challenge_id) const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT id, from_artist_id, to_artist_id, role_mask, kind, "
-        "       optimal_len, optimal_path, season_id "
-        "FROM game_challenges WHERE id = $1", challenge_id);
-    if (res.IsEmpty()) return std::nullopt;
+  auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                                     "SELECT id, from_artist_id, to_artist_id, role_mask, kind, "
+                                     "       optimal_len, optimal_path, season_id "
+                                     "FROM game_challenges WHERE id = $1",
+                                     challenge_id);
+  if (res.IsEmpty()) return std::nullopt;
 
-    const auto row = res.Front();
-    Challenge c;
-    c.id             = row[0].As<std::int64_t>();
-    c.from_artist_id = row[1].As<std::int64_t>();
-    c.to_artist_id   = row[2].As<std::int64_t>();
-    c.role_mask      = row[3].As<int>();
-    c.kind           = row[4].As<std::string>();
-    c.optimal_len    = row[5].As<std::optional<int>>();
-    c.optimal_path   = row[6].As<std::optional<std::vector<std::int64_t>>>()
-                            .value_or(std::vector<std::int64_t>{});
-    c.season_id      = row[7].As<std::optional<std::int64_t>>();
-    return c;
+  const auto row = res.Front();
+  Challenge c;
+  c.id = row[0].As<std::int64_t>();
+  c.from_artist_id = row[1].As<std::int64_t>();
+  c.to_artist_id = row[2].As<std::int64_t>();
+  c.role_mask = row[3].As<int>();
+  c.kind = row[4].As<std::string>();
+  c.optimal_len = row[5].As<std::optional<int>>();
+  c.optimal_path =
+      row[6].As<std::optional<std::vector<std::int64_t>>>().value_or(std::vector<std::int64_t>{});
+  c.season_id = row[7].As<std::optional<std::int64_t>>();
+  return c;
 }
 
-void GameStore::RecordInvalidAttempt(std::int64_t user_id, std::int64_t challenge_id,
+void GameStore::RecordInvalidAttempt(std::int64_t user_id,
+                                     std::int64_t challenge_id,
                                      const std::vector<std::int64_t>& chain) const {
-    const int hops = std::max(0, static_cast<int>(chain.size()) - 1);
-    impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "INSERT INTO game_attempts (challenge_id, user_id, chain, valid, hops, score, ts) "
-        "VALUES ($1, $2, $3, false, $4, 0, $5)",
-        challenge_id, user_id, chain, hops, NowUnix());
+  const int hops = std::max(0, static_cast<int>(chain.size()) - 1);
+  impl_->cluster->Execute(
+      storages::postgres::ClusterHostType::kMaster,
+      "INSERT INTO game_attempts (challenge_id, user_id, chain, valid, hops, score, ts) "
+      "VALUES ($1, $2, $3, false, $4, 0, $5)",
+      challenge_id,
+      user_id,
+      chain,
+      hops,
+      NowUnix());
 }
 
-SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id, std::int64_t challenge_id,
+SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id,
+                                           std::int64_t challenge_id,
                                            const std::vector<std::int64_t>& chain,
                                            int optimal_len,
                                            std::optional<int> elapsed_ms,
                                            std::optional<std::int64_t> season_id) const {
-    const int player_len = static_cast<int>(chain.size()) - 1;
+  const int player_len = static_cast<int>(chain.size()) - 1;
 
-    // One transaction for the whole read-score-write sequence, per the
-    // ticket's explicit requirement — a crash partway through must never
-    // leave the attempt row and the profile's elo/games disagreeing. The
-    // attempt row this INSERT writes IS the leaderboard update: there is no
-    // separate leaderboard table to keep in sync — GetLeaderboard reads
-    // straight off game_attempts (see its own comment) — so writing it here
-    // already satisfies "пишет attempt + обновляет лидерборд в одной
-    // транзакции" without a second write.
-    auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
-                                     storages::postgres::TransactionOptions{});
+  // One transaction for the whole read-score-write sequence, per the
+  // ticket's explicit requirement — a crash partway through must never
+  // leave the attempt row and the profile's elo/games disagreeing. The
+  // attempt row this INSERT writes IS the leaderboard update: there is no
+  // separate leaderboard table to keep in sync — GetLeaderboard reads
+  // straight off game_attempts (see its own comment) — so writing it here
+  // already satisfies "пишет attempt + обновляет лидерборд в одной
+  // транзакции" without a second write.
+  auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
+                                   storages::postgres::TransactionOptions{});
 
-    // Counted BEFORE this attempt's own INSERT below, so it only reflects
-    // attempts strictly earlier than this one (see scoring.hpp's own
-    // comment on prior_attempts).
-    const auto prior_res = trx.Execute(
-        "SELECT COUNT(*) FROM game_attempts WHERE challenge_id = $1 AND user_id = $2",
-        challenge_id, user_id);
-    const int prior_attempts =
-        static_cast<int>(prior_res.Front()[0].As<std::int64_t>());
+  // Counted BEFORE this attempt's own INSERT below, so it only reflects
+  // attempts strictly earlier than this one (see scoring.hpp's own
+  // comment on prior_attempts).
+  const auto prior_res =
+      trx.Execute("SELECT COUNT(*) FROM game_attempts WHERE challenge_id = $1 AND user_id = $2",
+                  challenge_id,
+                  user_id);
+  const int prior_attempts = static_cast<int>(prior_res.Front()[0].As<std::int64_t>());
 
-    const int score = ComputeScore(optimal_len, player_len, prior_attempts, elapsed_ms);
+  const int score = ComputeScore(optimal_len, player_len, prior_attempts, elapsed_ms);
 
-    // FOR UPDATE: serializes concurrent submits by the same player (e.g. two
-    // browser tabs) against a read-then-write elo race. The caller
-    // (submit_handler.cpp) ensures this row already exists (EnsureAndGetProfile)
-    // before starting the attempt, same convention SetDisplayName relies on.
-    const auto elo_res = trx.Execute(
-        "SELECT elo FROM game_profiles WHERE user_id = $1 FOR UPDATE", user_id);
-    const int elo_before = elo_res.IsEmpty() ? 1200 : elo_res.Front()[0].As<int>();
+  // FOR UPDATE: serializes concurrent submits by the same player (e.g. two
+  // browser tabs) against a read-then-write elo race. The caller
+  // (submit_handler.cpp) ensures this row already exists (EnsureAndGetProfile)
+  // before starting the attempt, same convention SetDisplayName relies on.
+  const auto elo_res =
+      trx.Execute("SELECT elo FROM game_profiles WHERE user_id = $1 FOR UPDATE", user_id);
+  const int elo_before = elo_res.IsEmpty() ? 1200 : elo_res.Front()[0].As<int>();
 
-    // [fix: анти-абуз повторного челленджа] Only the player's FIRST valid
-    // attempt at a challenge moves their Elo / games count. Replaying the same
-    // challenge still records the attempt (the leaderboard already keeps a
-    // player's single best score, so a repeat can't inflate it either) but
-    // never farms Elo — without this a player could re-submit the same optimal
-    // line indefinitely and climb forever.
-    const bool ranked = (prior_attempts == 0);
-    const int elo_after = ranked
-        ? UpdateElo(elo_before, optimal_len, score, kMaxScore).new_rating
-        : elo_before;
+  // [fix: анти-абуз повторного челленджа] Only the player's FIRST valid
+  // attempt at a challenge moves their Elo / games count. Replaying the same
+  // challenge still records the attempt (the leaderboard already keeps a
+  // player's single best score, so a repeat can't inflate it either) but
+  // never farms Elo — without this a player could re-submit the same optimal
+  // line indefinitely and climb forever.
+  const bool ranked = (prior_attempts == 0);
+  const int elo_after =
+      ranked ? UpdateElo(elo_before, optimal_len, score, kMaxScore).new_rating : elo_before;
 
-    trx.Execute(
-        "INSERT INTO game_attempts (challenge_id, user_id, season_id, chain, valid, hops, score, ts) "
-        "VALUES ($1, $2, $3, $4, true, $5, $6, $7)",
-        challenge_id, user_id, season_id, chain, player_len, score, NowUnix());
+  trx.Execute(
+      "INSERT INTO game_attempts (challenge_id, user_id, season_id, chain, valid, hops, score, ts) "
+      "VALUES ($1, $2, $3, $4, true, $5, $6, $7)",
+      challenge_id,
+      user_id,
+      season_id,
+      chain,
+      player_len,
+      score,
+      NowUnix());
 
-    int games_after = 0;
-    if (ranked) {
-        const auto games_res = trx.Execute(
-            "UPDATE game_profiles SET elo = $2, games = games + 1 "
-            "WHERE user_id = $1 RETURNING games",
-            user_id, elo_after);
-        games_after = games_res.Front()[0].As<int>();
-    } else {
-        const auto games_res = trx.Execute(
-            "SELECT games FROM game_profiles WHERE user_id = $1", user_id);
-        games_after = games_res.IsEmpty() ? 0 : games_res.Front()[0].As<int>();
-    }
+  int games_after = 0;
+  if (ranked) {
+    const auto games_res = trx.Execute(
+        "UPDATE game_profiles SET elo = $2, games = games + 1 "
+        "WHERE user_id = $1 RETURNING games",
+        user_id,
+        elo_after);
+    games_after = games_res.Front()[0].As<int>();
+  } else {
+    const auto games_res =
+        trx.Execute("SELECT games FROM game_profiles WHERE user_id = $1", user_id);
+    games_after = games_res.IsEmpty() ? 0 : games_res.Front()[0].As<int>();
+  }
 
-    trx.Commit();
+  trx.Commit();
 
-    SubmitResult r;
-    r.player_len   = player_len;
-    r.score        = score;
-    r.max_score    = kMaxScore;
-    r.elo_before   = elo_before;
-    r.elo_after    = elo_after;
-    r.elo_delta    = elo_after - elo_before;
-    r.games_after  = games_after;
-    return r;
+  SubmitResult r;
+  r.player_len = player_len;
+  r.score = score;
+  r.max_score = kMaxScore;
+  r.elo_before = elo_before;
+  r.elo_after = elo_after;
+  r.elo_delta = elo_after - elo_before;
+  r.games_after = games_after;
+  return r;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
 // Achievement rule-engine — [SF-GAME-19]
-// ════════════════════════════════════════════════════════════════════════════
 
 namespace {
 constexpr int kSpeedrunnerMaxElapsedMs = 15000;
-constexpr int kVeteranGames            = 50;
-constexpr int kEloMasterThreshold      = 1500;
-} // namespace
+constexpr int kVeteranGames = 50;
+constexpr int kEloMasterThreshold = 1500;
+}  // namespace
 
 std::vector<std::string> GameStore::EvaluateAndAwardAchievements(
-    std::int64_t user_id, const SubmitResult& outcome,
-    std::optional<int> elapsed_ms) const {
-    // Every rule this attempt/profile snapshot satisfies — a code appears at
-    // most once here even if awarded on an earlier attempt (the INSERT
-    // below is what actually decides "newly earned", not this list).
-    std::vector<std::string> candidates;
-    if (outcome.games_after == 1) candidates.emplace_back("first_win");
-    if (outcome.score >= outcome.max_score) candidates.emplace_back("perfect_solve");
-    if (elapsed_ms && *elapsed_ms < kSpeedrunnerMaxElapsedMs) candidates.emplace_back("speedrunner");
-    if (outcome.games_after >= kVeteranGames) candidates.emplace_back("veteran");
-    if (outcome.elo_after >= kEloMasterThreshold) candidates.emplace_back("elo_1500");
+    std::int64_t user_id, const SubmitResult& outcome, std::optional<int> elapsed_ms) const {
+  // Every rule this attempt/profile snapshot satisfies — a code appears at
+  // most once here even if awarded on an earlier attempt (the INSERT
+  // below is what actually decides "newly earned", not this list).
+  std::vector<std::string> candidates;
+  if (outcome.games_after == 1) candidates.emplace_back("first_win");
+  if (outcome.score >= outcome.max_score) candidates.emplace_back("perfect_solve");
+  if (elapsed_ms && *elapsed_ms < kSpeedrunnerMaxElapsedMs) candidates.emplace_back("speedrunner");
+  if (outcome.games_after >= kVeteranGames) candidates.emplace_back("veteran");
+  if (outcome.elo_after >= kEloMasterThreshold) candidates.emplace_back("elo_1500");
 
-    std::vector<std::string> newly_awarded;
-    for (const auto& code : candidates) {
-        // ON CONFLICT DO NOTHING + RETURNING is the same "only tell me what
-        // actually changed" idiom UpsertChallenge's own (xmax = 0) trick
-        // serves — a row that already existed returns zero rows here, so
-        // `newly_awarded` never re-announces an achievement earned earlier.
-        auto res = impl_->cluster->Execute(
-            storages::postgres::ClusterHostType::kMaster,
-            "INSERT INTO game_user_achievements (user_id, code, ts) "
-            "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING code",
-            user_id, code, NowUnix());
-        if (!res.IsEmpty()) newly_awarded.push_back(code);
-    }
-    return newly_awarded;
+  std::vector<std::string> newly_awarded;
+  for (const auto& code : candidates) {
+    // ON CONFLICT DO NOTHING + RETURNING is the same "only tell me what
+    // actually changed" idiom UpsertChallenge's own (xmax = 0) trick
+    // serves — a row that already existed returns zero rows here, so
+    // `newly_awarded` never re-announces an achievement earned earlier.
+    auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                                       "INSERT INTO game_user_achievements (user_id, code, ts) "
+                                       "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING code",
+                                       user_id,
+                                       code,
+                                       NowUnix());
+    if (!res.IsEmpty()) newly_awarded.push_back(code);
+  }
+  return newly_awarded;
 }
 
 std::vector<Achievement> GameStore::ListAchievementCatalog() const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT code, title, descr FROM game_achievements ORDER BY code");
+  auto res =
+      impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                              "SELECT code, title, descr FROM game_achievements ORDER BY code");
 
-    std::vector<Achievement> out;
-    out.reserve(res.Size());
-    for (const auto& row : res) {
-        Achievement a;
-        a.code  = row[0].As<std::string>();
-        a.title = row[1].As<std::string>();
-        a.descr = row[2].As<std::optional<std::string>>().value_or(std::string{});
-        a.ts    = 0;  // catalog entry — no earn time
-        out.push_back(a);
-    }
-    return out;
+  std::vector<Achievement> out;
+  out.reserve(res.Size());
+  for (const auto& row : res) {
+    Achievement a;
+    a.code = row[0].As<std::string>();
+    a.title = row[1].As<std::string>();
+    a.descr = row[2].As<std::optional<std::string>>().value_or(std::string{});
+    a.ts = 0;  // catalog entry — no earn time
+    out.push_back(a);
+  }
+  return out;
 }
 
 std::vector<Achievement> GameStore::ListAchievements(std::int64_t user_id) const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT ua.code, a.title, a.descr, ua.ts "
-        "FROM game_user_achievements ua "
-        "JOIN game_achievements a ON a.code = ua.code "
-        "WHERE ua.user_id = $1 ORDER BY ua.ts",
-        user_id);
+  auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                                     "SELECT ua.code, a.title, a.descr, ua.ts "
+                                     "FROM game_user_achievements ua "
+                                     "JOIN game_achievements a ON a.code = ua.code "
+                                     "WHERE ua.user_id = $1 ORDER BY ua.ts",
+                                     user_id);
 
-    std::vector<Achievement> out;
-    out.reserve(res.Size());
-    for (const auto& row : res) {
-        Achievement a;
-        a.code  = row[0].As<std::string>();
-        a.title = row[1].As<std::string>();
-        a.descr = row[2].As<std::optional<std::string>>().value_or(std::string{});
-        a.ts    = row[3].As<std::int64_t>();
-        out.push_back(a);
-    }
-    return out;
+  std::vector<Achievement> out;
+  out.reserve(res.Size());
+  for (const auto& row : res) {
+    Achievement a;
+    a.code = row[0].As<std::string>();
+    a.title = row[1].As<std::string>();
+    a.descr = row[2].As<std::optional<std::string>>().value_or(std::string{});
+    a.ts = row[3].As<std::int64_t>();
+    out.push_back(a);
+  }
+  return out;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
 // Challenge lifecycle — [SF-GAME-16]
-// ════════════════════════════════════════════════════════════════════════════
 
 // [SF-GAME-18] Deterministic 30-day windows anchored at a fixed epoch
 // (2024-01-01T00:00:00Z) — any two callers computing "now"'s window agree
@@ -569,132 +542,142 @@ constexpr std::int64_t kSeasonEpoch = 1704067200;
 constexpr std::int64_t kSeasonLenSeconds = 30 * 24 * 3600;
 
 Season GameStore::EnsureCurrentSeason() const {
-    const auto now = NowUnix();
+  const auto now = NowUnix();
 
-    auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
-                                     storages::postgres::TransactionOptions{});
-    trx.Execute("LOCK TABLE game_seasons IN EXCLUSIVE MODE");
+  auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
+                                   storages::postgres::TransactionOptions{});
+  trx.Execute("LOCK TABLE game_seasons IN EXCLUSIVE MODE");
 
-    auto existing = trx.Execute(
-        "SELECT id, name, starts_ts, ends_ts FROM game_seasons "
-        "WHERE starts_ts <= $1 AND ends_ts > $1 LIMIT 1", now);
-    if (!existing.IsEmpty()) {
-        trx.Commit();
-        const auto row = existing.Front();
-        Season s;
-        s.id        = row[0].As<std::int64_t>();
-        s.name      = row[1].As<std::string>();
-        s.starts_ts = row[2].As<std::int64_t>();
-        s.ends_ts   = row[3].As<std::int64_t>();
-        return s;
-    }
-
-    const std::int64_t idx    = (now - kSeasonEpoch) / kSeasonLenSeconds;
-    const std::int64_t starts = kSeasonEpoch + idx * kSeasonLenSeconds;
-    const std::int64_t ends   = starts + kSeasonLenSeconds;
-    const std::string  name   = "Season " + std::to_string(idx + 1);
-
-    auto inserted = trx.Execute(
-        "INSERT INTO game_seasons (name, starts_ts, ends_ts) "
-        "VALUES ($1, $2, $3) RETURNING id",
-        name, starts, ends);
+  auto existing = trx.Execute(
+      "SELECT id, name, starts_ts, ends_ts FROM game_seasons "
+      "WHERE starts_ts <= $1 AND ends_ts > $1 LIMIT 1",
+      now);
+  if (!existing.IsEmpty()) {
     trx.Commit();
-
+    const auto row = existing.Front();
     Season s;
-    s.id        = inserted.Front()[0].As<std::int64_t>();
-    s.name      = name;
-    s.starts_ts = starts;
-    s.ends_ts   = ends;
+    s.id = row[0].As<std::int64_t>();
+    s.name = row[1].As<std::string>();
+    s.starts_ts = row[2].As<std::int64_t>();
+    s.ends_ts = row[3].As<std::int64_t>();
     return s;
+  }
+
+  const std::int64_t idx = (now - kSeasonEpoch) / kSeasonLenSeconds;
+  const std::int64_t starts = kSeasonEpoch + idx * kSeasonLenSeconds;
+  const std::int64_t ends = starts + kSeasonLenSeconds;
+  const std::string name = "Season " + std::to_string(idx + 1);
+
+  auto inserted = trx.Execute(
+      "INSERT INTO game_seasons (name, starts_ts, ends_ts) "
+      "VALUES ($1, $2, $3) RETURNING id",
+      name,
+      starts,
+      ends);
+  trx.Commit();
+
+  Season s;
+  s.id = inserted.Front()[0].As<std::int64_t>();
+  s.name = name;
+  s.starts_ts = starts;
+  s.ends_ts = ends;
+  return s;
 }
 
-ChallengeUpsertResult GameStore::UpsertChallenge(
-    std::int64_t from_artist_id, std::int64_t to_artist_id, int role_mask,
-    const std::string& kind, std::optional<std::int64_t> created_by,
-    std::optional<std::int64_t> season_id) const {
-    // "kind = game_challenges.kind" is a deliberate no-op update: the ONLY
-    // reason for a DO UPDATE clause here (instead of DO NOTHING) is that
-    // RETURNING otherwise produces zero rows on a conflict — this makes
-    // RETURNING fire whether the row was just inserted or already existed,
-    // which is exactly the "create or return existing" behaviour the ticket
-    // asks for. "(xmax = 0)" is the standard Postgres idiom for telling
-    // those two cases apart from the query result: a fresh INSERT leaves
-    // xmax at its default 0, an UPDATE (even a no-op one, via ON CONFLICT)
-    // always sets it. season_id is likewise never touched by the DO UPDATE
-    // — it's whatever season the row was ACTUALLY born in, read back below.
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "INSERT INTO game_challenges "
-        "(from_artist_id, to_artist_id, role_mask, kind, season_id, created_by, created_ts) "
-        "VALUES ($1, $2, $3, $4, $5, $6, $7) "
-        "ON CONFLICT (from_artist_id, to_artist_id, role_mask, kind) "
-        "DO UPDATE SET kind = game_challenges.kind "
-        "RETURNING id, optimal_len, optimal_path, season_id, (xmax = 0) AS inserted",
-        from_artist_id, to_artist_id, role_mask, kind, season_id, created_by, NowUnix());
+ChallengeUpsertResult GameStore::UpsertChallenge(std::int64_t from_artist_id,
+                                                 std::int64_t to_artist_id,
+                                                 int role_mask,
+                                                 const std::string& kind,
+                                                 std::optional<std::int64_t> created_by,
+                                                 std::optional<std::int64_t> season_id) const {
+  // "kind = game_challenges.kind" is a deliberate no-op update: the ONLY
+  // reason for a DO UPDATE clause here (instead of DO NOTHING) is that
+  // RETURNING otherwise produces zero rows on a conflict — this makes
+  // RETURNING fire whether the row was just inserted or already existed,
+  // which is exactly the "create or return existing" behaviour the ticket
+  // asks for. "(xmax = 0)" is the standard Postgres idiom for telling
+  auto res = impl_->cluster->Execute(
+      storages::postgres::ClusterHostType::kMaster,
+      "INSERT INTO game_challenges "
+      "(from_artist_id, to_artist_id, role_mask, kind, season_id, created_by, created_ts) "
+      "VALUES ($1, $2, $3, $4, $5, $6, $7) "
+      "ON CONFLICT (from_artist_id, to_artist_id, role_mask, kind) "
+      "DO UPDATE SET kind = game_challenges.kind "
+      "RETURNING id, optimal_len, optimal_path, season_id, (xmax = 0) AS inserted",
+      from_artist_id,
+      to_artist_id,
+      role_mask,
+      kind,
+      season_id,
+      created_by,
+      NowUnix());
 
-    const auto row = res.Front();
-    ChallengeUpsertResult r;
-    r.id           = row[0].As<std::int64_t>();
-    r.created      = row[4].As<bool>();
-    r.optimal_len  = row[1].As<std::optional<int>>();
-    r.optimal_path = row[2].As<std::optional<std::vector<std::int64_t>>>()
-                          .value_or(std::vector<std::int64_t>{});
-    r.season_id    = row[3].As<std::optional<std::int64_t>>();
-    return r;
+  const auto row = res.Front();
+  ChallengeUpsertResult r;
+  r.id = row[0].As<std::int64_t>();
+  r.created = row[4].As<bool>();
+  r.optimal_len = row[1].As<std::optional<int>>();
+  r.optimal_path =
+      row[2].As<std::optional<std::vector<std::int64_t>>>().value_or(std::vector<std::int64_t>{});
+  r.season_id = row[3].As<std::optional<std::int64_t>>();
+  return r;
 }
 
-bool GameStore::SetChallengeIdeal(std::int64_t challenge_id, int optimal_len,
+bool GameStore::SetChallengeIdeal(std::int64_t challenge_id,
+                                  int optimal_len,
                                   const std::vector<std::int64_t>& optimal_path) const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "UPDATE game_challenges SET optimal_len = $2, optimal_path = $3 "
-        "WHERE id = $1 AND optimal_len IS NULL",
-        challenge_id, optimal_len, optimal_path);
-    return res.RowsAffected() > 0;
+  auto res =
+      impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                              "UPDATE game_challenges SET optimal_len = $2, optimal_path = $3 "
+                              "WHERE id = $1 AND optimal_len IS NULL",
+                              challenge_id,
+                              optimal_len,
+                              optimal_path);
+  return res.RowsAffected() > 0;
 }
 
 std::vector<std::int64_t> GameStore::RandomArtistIdsWithCredits(int limit) const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT DISTINCT artist_id FROM credits ORDER BY random() LIMIT $1",
-        limit);
-    std::vector<std::int64_t> out;
-    out.reserve(res.Size());
-    for (const auto& row : res) out.push_back(row[0].As<std::int64_t>());
-    return out;
+  auto res =
+      impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                              "SELECT DISTINCT artist_id FROM credits ORDER BY random() LIMIT $1",
+                              limit);
+  std::vector<std::int64_t> out;
+  out.reserve(res.Size());
+  for (const auto& row : res) out.push_back(row[0].As<std::int64_t>());
+  return out;
 }
 
 std::optional<DailyChallengeView> GameStore::GetLatestDailyChallenge() const {
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT c.id, c.from_artist_id, c.to_artist_id, c.role_mask, c.kind, "
-        "       c.optimal_len, c.optimal_path, c.season_id, "
-        "       fa.name, fa.image_url, ta.name, ta.image_url "
-        "FROM game_challenges c "
-        "JOIN artists fa ON fa.id = c.from_artist_id "
-        "JOIN artists ta ON ta.id = c.to_artist_id "
-        "WHERE c.kind = 'daily' "
-        "ORDER BY c.created_ts DESC LIMIT 1");
-    if (res.IsEmpty()) return std::nullopt;
+  auto res =
+      impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                              "SELECT c.id, c.from_artist_id, c.to_artist_id, c.role_mask, c.kind, "
+                              "       c.optimal_len, c.optimal_path, c.season_id, "
+                              "       fa.name, fa.image_url, ta.name, ta.image_url "
+                              "FROM game_challenges c "
+                              "JOIN artists fa ON fa.id = c.from_artist_id "
+                              "JOIN artists ta ON ta.id = c.to_artist_id "
+                              "WHERE c.kind = 'daily' "
+                              "ORDER BY c.created_ts DESC LIMIT 1");
+  if (res.IsEmpty()) return std::nullopt;
 
-    const auto row = res.Front();
-    DailyChallengeView view;
-    view.challenge.id             = row[0].As<std::int64_t>();
-    view.challenge.from_artist_id = row[1].As<std::int64_t>();
-    view.challenge.to_artist_id   = row[2].As<std::int64_t>();
-    view.challenge.role_mask      = row[3].As<int>();
-    view.challenge.kind           = row[4].As<std::string>();
-    view.challenge.optimal_len    = row[5].As<std::optional<int>>();
-    view.challenge.optimal_path   = row[6].As<std::optional<std::vector<std::int64_t>>>()
-                                         .value_or(std::vector<std::int64_t>{});
-    view.challenge.season_id      = row[7].As<std::optional<std::int64_t>>();
-    view.from.id                  = view.challenge.from_artist_id;
-    view.from.name                = row[8].As<std::string>();
-    view.from.image_url           = row[9].As<std::optional<std::string>>();
-    view.to.id                    = view.challenge.to_artist_id;
-    view.to.name                  = row[10].As<std::string>();
-    view.to.image_url             = row[11].As<std::optional<std::string>>();
-    return view;
+  const auto row = res.Front();
+  DailyChallengeView view;
+  view.challenge.id = row[0].As<std::int64_t>();
+  view.challenge.from_artist_id = row[1].As<std::int64_t>();
+  view.challenge.to_artist_id = row[2].As<std::int64_t>();
+  view.challenge.role_mask = row[3].As<int>();
+  view.challenge.kind = row[4].As<std::string>();
+  view.challenge.optimal_len = row[5].As<std::optional<int>>();
+  view.challenge.optimal_path =
+      row[6].As<std::optional<std::vector<std::int64_t>>>().value_or(std::vector<std::int64_t>{});
+  view.challenge.season_id = row[7].As<std::optional<std::int64_t>>();
+  view.from.id = view.challenge.from_artist_id;
+  view.from.name = row[8].As<std::string>();
+  view.from.image_url = row[9].As<std::optional<std::string>>();
+  view.to.id = view.challenge.to_artist_id;
+  view.to.name = row[10].As<std::string>();
+  view.to.image_url = row[11].As<std::optional<std::string>>();
+  return view;
 }
 
 std::vector<ChallengeListItem> GameStore::ListChallenges(
@@ -702,258 +685,220 @@ std::vector<ChallengeListItem> GameStore::ListChallenges(
     const std::string& query,
     std::optional<std::pair<std::int64_t, std::int64_t>> cursor,
     int limit) const {
-    // Keyset pagination on (created_ts, id) DESC. Both the kind filter and the
-    // cursor are optional and expressed as "$n IS NULL/empty OR ..." so a
-    // single prepared statement serves every page/filter combination — same
-    // one-statement-covers-every-case style ListRecentAttempts/GetLeaderboard
-    // use. Only challenges whose ideal is computed (optimal_len NOT NULL) are
-    // listed — an un-solved pair isn't a playable browser entry yet.
-    const std::optional<std::int64_t> cur_ts = cursor ? std::optional<std::int64_t>(cursor->first)  : std::nullopt;
-    const std::optional<std::int64_t> cur_id = cursor ? std::optional<std::int64_t>(cursor->second) : std::nullopt;
-    // Подстрока, а не префикс: "west" должен находить и Kanye West. Спецсимволы
-    // LIKE экранируем — иначе введённый игроком '%' превратился бы в
-    // "любой челлендж", а '_' тихо разъезжался бы на один символ.
-    std::string escaped;
-    escaped.reserve(query.size());
-    for (char c : query) {
-        if (c == '%' || c == '_' || c == '\\') escaped.push_back('\\');
-        escaped.push_back(c);
-    }
-    const std::string pattern = escaped.empty() ? std::string{} : "%" + escaped + "%";
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kMaster,
-        "SELECT c.id, c.from_artist_id, c.to_artist_id, c.role_mask, c.kind, "
-        "       c.optimal_len, c.season_id, c.created_ts, "
-        "       fa.name, fa.image_url, ta.name, ta.image_url "
-        "FROM game_challenges c "
-        "JOIN artists fa ON fa.id = c.from_artist_id "
-        "JOIN artists ta ON ta.id = c.to_artist_id "
-        "WHERE c.optimal_len IS NOT NULL "
-        "  AND ($1 = '' OR c.kind = $1) "
-        // [SF-GAME-46] Поиск по артисту на ЛЮБОМ из двух концов: игрок ищет
-        // "челлендж с Дрейком", не зная и не желая знать, откуда он — старт
-        // или цель. ILIKE по уже приджойненным artists (обе таблицы в запросе
-        // с самого начала — новых join'ов не появилось). Пустой $5 отключает
-        // фильтр целиком, тем же "$n = '' OR ..." приёмом, что и kind выше,
-        // так что одно подготовленное выражение по-прежнему обслуживает все
-        // комбинации фильтров и страниц.
-        "  AND ($5 = '' OR fa.name ILIKE $5 OR ta.name ILIKE $5) "
-        "  AND ($2::bigint IS NULL OR c.created_ts < $2 "
-        "       OR (c.created_ts = $2 AND c.id < $3)) "
-        "ORDER BY c.created_ts DESC, c.id DESC "
-        "LIMIT $4",
-        kind, cur_ts, cur_id, limit, pattern);
+  const std::optional<std::int64_t> cur_ts =
+      cursor ? std::optional<std::int64_t>(cursor->first) : std::nullopt;
+  const std::optional<std::int64_t> cur_id =
+      cursor ? std::optional<std::int64_t>(cursor->second) : std::nullopt;
+  std::string escaped;
+  escaped.reserve(query.size());
+  for (char c : query) {
+    if (c == '%' || c == '_' || c == '\\') escaped.push_back('\\');
+    escaped.push_back(c);
+  }
+  const std::string pattern = escaped.empty() ? std::string{} : "%" + escaped + "%";
+  auto res =
+      impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                              "SELECT c.id, c.from_artist_id, c.to_artist_id, c.role_mask, c.kind, "
+                              "       c.optimal_len, c.season_id, c.created_ts, "
+                              "       fa.name, fa.image_url, ta.name, ta.image_url "
+                              "FROM game_challenges c "
+                              "JOIN artists fa ON fa.id = c.from_artist_id "
+                              "JOIN artists ta ON ta.id = c.to_artist_id "
+                              "WHERE c.optimal_len IS NOT NULL "
+                              "  AND ($1 = '' OR c.kind = $1) "
+                              "  AND ($5 = '' OR fa.name ILIKE $5 OR ta.name ILIKE $5) "
+                              "  AND ($2::bigint IS NULL OR c.created_ts < $2 "
+                              "       OR (c.created_ts = $2 AND c.id < $3)) "
+                              "ORDER BY c.created_ts DESC, c.id DESC "
+                              "LIMIT $4",
+                              kind,
+                              cur_ts,
+                              cur_id,
+                              limit,
+                              pattern);
 
-    std::vector<ChallengeListItem> out;
-    out.reserve(res.Size());
-    for (const auto& row : res) {
-        ChallengeListItem item;
-        item.challenge.id             = row[0].As<std::int64_t>();
-        item.challenge.from_artist_id = row[1].As<std::int64_t>();
-        item.challenge.to_artist_id   = row[2].As<std::int64_t>();
-        item.challenge.role_mask      = row[3].As<int>();
-        item.challenge.kind           = row[4].As<std::string>();
-        item.challenge.optimal_len    = row[5].As<std::optional<int>>();
-        item.challenge.season_id      = row[6].As<std::optional<std::int64_t>>();
-        item.created_ts               = row[7].As<std::int64_t>();
-        item.from.id                  = item.challenge.from_artist_id;
-        item.from.name                = row[8].As<std::string>();
-        item.from.image_url           = row[9].As<std::optional<std::string>>();
-        item.to.id                    = item.challenge.to_artist_id;
-        item.to.name                  = row[10].As<std::string>();
-        item.to.image_url             = row[11].As<std::optional<std::string>>();
-        out.push_back(std::move(item));
-    }
-    return out;
+  std::vector<ChallengeListItem> out;
+  out.reserve(res.Size());
+  for (const auto& row : res) {
+    ChallengeListItem item;
+    item.challenge.id = row[0].As<std::int64_t>();
+    item.challenge.from_artist_id = row[1].As<std::int64_t>();
+    item.challenge.to_artist_id = row[2].As<std::int64_t>();
+    item.challenge.role_mask = row[3].As<int>();
+    item.challenge.kind = row[4].As<std::string>();
+    item.challenge.optimal_len = row[5].As<std::optional<int>>();
+    item.challenge.season_id = row[6].As<std::optional<std::int64_t>>();
+    item.created_ts = row[7].As<std::int64_t>();
+    item.from.id = item.challenge.from_artist_id;
+    item.from.name = row[8].As<std::string>();
+    item.from.image_url = row[9].As<std::optional<std::string>>();
+    item.to.id = item.challenge.to_artist_id;
+    item.to.name = row[10].As<std::string>();
+    item.to.image_url = row[11].As<std::optional<std::string>>();
+    out.push_back(std::move(item));
+  }
+  return out;
 }
-
-// ════════════════════════════════════════════════════════════════════════════
-// Leaderboard — [SF-GAME-17]
-// ════════════════════════════════════════════════════════════════════════════
 
 namespace {
 
-// "score:attempt_id" — opaque only in the sense that callers must treat it
-// as such, not cryptographically signed (a public leaderboard's own
-// pagination internals aren't sensitive). A malformed/tampered cursor
-// degrades to nullopt, which GetLeaderboard treats exactly like "no
-// cursor" (starts from the top) — harmless, never an error.
 std::optional<std::pair<int, std::int64_t>> ParseLeaderboardCursor(
     const std::optional<std::string>& cursor) {
-    if (!cursor) return std::nullopt;
-    const auto sep = cursor->find(':');
-    if (sep == std::string::npos) return std::nullopt;
-    try {
-        const int          score = std::stoi(cursor->substr(0, sep));
-        const std::int64_t id    = std::stoll(cursor->substr(sep + 1));
-        return std::make_pair(score, id);
-    } catch (const std::exception&) {
-        return std::nullopt;
-    }
+  if (!cursor) return std::nullopt;
+  const auto sep = cursor->find(':');
+  if (sep == std::string::npos) return std::nullopt;
+  try {
+    const int score = std::stoi(cursor->substr(0, sep));
+    const std::int64_t id = std::stoll(cursor->substr(sep + 1));
+    return std::make_pair(score, id);
+  } catch (const std::exception&) {
+    return std::nullopt;
+  }
 }
 
-// [SF-GAME-53] Сезонная доска: один ряд на игрока, ключ — рейтинг.
-//
-// Читается прямо из game_profiles, а не из game_attempts: рейтинг — это
-// состояние игрока, а не свойство какой-то одной попытки, и DISTINCT ON по
-// попыткам тут просто нечего делать. Keyset — (elo, user_id): elo не уникален,
-// поэтому в ключ добавлен user_id, иначе страница могла бы зациклиться на
-// группе игроков с одинаковым рейтингом. Тот же приём и тот же формат курсора
-// "<int>:<int64>", что и у доски челленджа, поэтому ParseLeaderboardCursor
-// разбирает оба без изменений.
-//
-// games > 0 — в таблице лежит и тот, кто просто залогинился: показывать в
-// сезонной таблице людей с дефолтными 1200 и нулём партий значило бы, что
-// половина доски никогда не играла.
 LeaderboardPage SeasonEloBoard(const storages::postgres::ClusterPtr& cluster,
                                const std::optional<std::string>& cursor,
                                int limit) {
-    const auto parsed = ParseLeaderboardCursor(cursor);
-    const std::optional<int>          cur_elo = parsed ? std::optional<int>(parsed->first) : std::nullopt;
-    const std::optional<std::int64_t> cur_uid = parsed ? std::optional<std::int64_t>(parsed->second) : std::nullopt;
+  const auto parsed = ParseLeaderboardCursor(cursor);
+  const std::optional<int> cur_elo = parsed ? std::optional<int>(parsed->first) : std::nullopt;
+  const std::optional<std::int64_t> cur_uid =
+      parsed ? std::optional<std::int64_t>(parsed->second) : std::nullopt;
 
-    auto res = cluster->Execute(
-        storages::postgres::ClusterHostType::kSlave,
-        "SELECT user_id, display_name, elo, games "
-        "FROM game_profiles "
-        "WHERE games > 0 "
-        "  AND ($1::int IS NULL OR (elo, user_id) < ($1::int, $2::bigint)) "
-        "ORDER BY elo DESC, user_id DESC "
-        "LIMIT $3",
-        cur_elo, cur_uid, limit + 1);
+  auto res = cluster->Execute(storages::postgres::ClusterHostType::kSlave,
+                              "SELECT user_id, display_name, elo, games "
+                              "FROM game_profiles "
+                              "WHERE games > 0 "
+                              "  AND ($1::int IS NULL OR (elo, user_id) < ($1::int, $2::bigint)) "
+                              "ORDER BY elo DESC, user_id DESC "
+                              "LIMIT $3",
+                              cur_elo,
+                              cur_uid,
+                              limit + 1);
 
-    struct Row {
-        std::int64_t user_id;
-        std::string  display_name;
-        int          elo;
-        int          games;
-    };
-    std::vector<Row> rows;
-    rows.reserve(res.Size());
-    for (const auto& row : res) {
-        rows.push_back(Row{
-            row[0].As<std::int64_t>(),
-            row[1].As<std::optional<std::string>>().value_or(""),
-            row[2].As<int>(),
-            row[3].As<int>(),
-        });
-    }
+  struct Row {
+    std::int64_t user_id;
+    std::string display_name;
+    int elo;
+    int games;
+  };
+  std::vector<Row> rows;
+  rows.reserve(res.Size());
+  for (const auto& row : res) {
+    rows.push_back(Row{
+        row[0].As<std::int64_t>(),
+        row[1].As<std::optional<std::string>>().value_or(""),
+        row[2].As<int>(),
+        row[3].As<int>(),
+    });
+  }
 
-    LeaderboardPage page;
-    const std::size_t take = std::min<std::size_t>(rows.size(), static_cast<std::size_t>(limit));
-    page.entries.reserve(take);
-    for (std::size_t i = 0; i < take; ++i) {
-        // score/hops/ts у сезонной строки смысла не имеют — это не одна
-        // попытка, а состояние игрока за сезон.
-        page.entries.push_back(LeaderboardEntry{
-            rows[i].user_id, rows[i].display_name, 0, 0, 0,
-            rows[i].elo, rows[i].games,
-        });
-    }
-    if (rows.size() > take) {
-        page.next_cursor = std::to_string(rows[take - 1].elo) + ":" +
-                           std::to_string(rows[take - 1].user_id);
-    }
-    return page;
+  LeaderboardPage page;
+  const std::size_t take = std::min<std::size_t>(rows.size(), static_cast<std::size_t>(limit));
+  page.entries.reserve(take);
+  for (std::size_t i = 0; i < take; ++i) {
+    page.entries.push_back(LeaderboardEntry{
+        rows[i].user_id,
+        rows[i].display_name,
+        0,
+        0,
+        0,
+        rows[i].elo,
+        rows[i].games,
+    });
+  }
+  if (rows.size() > take) {
+    page.next_cursor =
+        std::to_string(rows[take - 1].elo) + ":" + std::to_string(rows[take - 1].user_id);
+  }
+  return page;
 }
 
-} // namespace
-
-LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope, std::int64_t scope_id,
+}  // namespace
+LeaderboardPage GameStore::GetLeaderboard(LeaderboardScope scope,
+                                          std::int64_t scope_id,
                                           const std::optional<std::string>& cursor,
                                           int limit) const {
-    const auto parsed = ParseLeaderboardCursor(cursor);
-    const std::optional<int>          cursor_score = parsed ? std::optional<int>(parsed->first) : std::nullopt;
-    const std::optional<std::int64_t> cursor_id    = parsed ? std::optional<std::int64_t>(parsed->second) : std::nullopt;
+  const auto parsed = ParseLeaderboardCursor(cursor);
+  const std::optional<int> cursor_score = parsed ? std::optional<int>(parsed->first) : std::nullopt;
+  const std::optional<std::int64_t> cursor_id =
+      parsed ? std::optional<std::int64_t>(parsed->second) : std::nullopt;
 
-    // [SF-GAME-53] Сезонная доска — это доска РЕЙТИНГА, а не одной удачной
-    // попытки.
-    //
-    // Раньше оба скоупа считались одинаково: «лучший score игрока в скоупе».
-    // Для челленджа это правильно (там и правда сравнивают линии на одной
-    // паре), а для сезона — нет, и это ломалось прямо в глазах игрока: на
-    // экране Season подиум строился по score, а строчка «You: Elo … · Rank #N»
-    // рядом — по RankFor(), то есть по elo. Два числа на одном экране про одно
-    // и то же место в таблице, посчитанные по разным ключам, могли расходиться
-    // сколь угодно сильно. Прогрессия во всём остальном приложении (кабинет,
-    // ачивка elo_1500, RankFor) ведётся по elo — сезонная доска обязана
-    // отвечать тем же ключом.
-    if (scope == LeaderboardScope::kSeason) {
-        return SeasonEloBoard(impl_->cluster, cursor, limit);
-    }
+  if (scope == LeaderboardScope::kSeason) {
+    return SeasonEloBoard(impl_->cluster, cursor, limit);
+  }
 
-    // `scope_column` is one of two hardcoded literals chosen by the enum
-    // above — never derived from request input — so splicing it into the
-    // SQL text (rather than as a bind parameter, which can't parametrize a
-    // column name anyway) carries no injection risk.
-    const char* scope_column = "challenge_id";
+  const char* scope_column = "challenge_id";
 
-    // Best-per-player subquery (DISTINCT ON — one row per user_id, their
-    // own highest score in scope), then keyset-paginated by
-    // (score DESC, attempt id DESC) over that de-duplicated set. Fetches
-    // limit+1 rows to know whether a next page exists without a separate
-    // COUNT(*) round-trip.
-    const std::string sql =
-        std::string("SELECT best.user_id, p.display_name, best.score, best.hops, "
-                    "best.ts, best.id, p.elo "
-                    "FROM ( "
-                    "  SELECT DISTINCT ON (a.user_id) a.user_id, a.score, a.hops, a.ts, a.id "
-                    "  FROM game_attempts a "
-                    "  WHERE a.") + scope_column + " = $1 AND a.valid = true "
-                    "  ORDER BY a.user_id, a.score DESC, a.ts ASC "
-                    ") best "
-                    "JOIN game_profiles p ON p.user_id = best.user_id "
-                    "WHERE ($2::int IS NULL OR (best.score, best.id) < ($2::int, $3::bigint)) "
-                    "ORDER BY best.score DESC, best.id DESC "
-                    "LIMIT $4";
+  const std::string sql =
+      std::string(
+          "SELECT best.user_id, p.display_name, best.score, best.hops, "
+          "best.ts, best.id, p.elo "
+          "FROM ( "
+          "  SELECT DISTINCT ON (a.user_id) a.user_id, a.score, a.hops, a.ts, a.id "
+          "  FROM game_attempts a "
+          "  WHERE a.") +
+      scope_column +
+      " = $1 AND a.valid = true "
+      "  ORDER BY a.user_id, a.score DESC, a.ts ASC "
+      ") best "
+      "JOIN game_profiles p ON p.user_id = best.user_id "
+      "WHERE ($2::int IS NULL OR (best.score, best.id) < ($2::int, $3::bigint)) "
+      "ORDER BY best.score DESC, best.id DESC "
+      "LIMIT $4";
 
-    auto res = impl_->cluster->Execute(
-        storages::postgres::ClusterHostType::kSlave, sql,
-        scope_id, cursor_score, cursor_id, limit + 1);
+  auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kSlave,
+                                     sql,
+                                     scope_id,
+                                     cursor_score,
+                                     cursor_id,
+                                     limit + 1);
 
-    struct Row {
-        std::int64_t user_id;
-        std::string  display_name;
-        int          score;
-        int          hops;
-        std::int64_t ts;
-        std::int64_t attempt_id;
-        int          elo;
-    };
-    std::vector<Row> rows;
-    rows.reserve(res.Size());
-    for (const auto& row : res) {
-        rows.push_back(Row{
-            row[0].As<std::int64_t>(),
-            row[1].As<std::optional<std::string>>().value_or(""),
-            row[2].As<int>(),
-            row[3].As<int>(),
-            row[4].As<std::int64_t>(),
-            row[5].As<std::int64_t>(),
-            row[6].As<int>(),
-        });
-    }
+  struct Row {
+    std::int64_t user_id;
+    std::string display_name;
+    int score;
+    int hops;
+    std::int64_t ts;
+    std::int64_t attempt_id;
+    int elo;
+  };
+  std::vector<Row> rows;
+  rows.reserve(res.Size());
+  for (const auto& row : res) {
+    rows.push_back(Row{
+        row[0].As<std::int64_t>(),
+        row[1].As<std::optional<std::string>>().value_or(""),
+        row[2].As<int>(),
+        row[3].As<int>(),
+        row[4].As<std::int64_t>(),
+        row[5].As<std::int64_t>(),
+        row[6].As<int>(),
+    });
+  }
 
-    LeaderboardPage page;
-    const std::size_t take = std::min<std::size_t>(rows.size(), static_cast<std::size_t>(limit));
-    page.entries.reserve(take);
-    for (std::size_t i = 0; i < take; ++i) {
-        page.entries.push_back(LeaderboardEntry{
-            rows[i].user_id, rows[i].display_name, rows[i].score,
-            rows[i].hops, rows[i].ts, rows[i].elo, 0,
-        });
-    }
-    if (rows.size() > take) {
-        page.next_cursor = std::to_string(rows[take - 1].score) + ":" +
-                          std::to_string(rows[take - 1].attempt_id);
-    }
-    return page;
+  LeaderboardPage page;
+  const std::size_t take = std::min<std::size_t>(rows.size(), static_cast<std::size_t>(limit));
+  page.entries.reserve(take);
+  for (std::size_t i = 0; i < take; ++i) {
+    page.entries.push_back(LeaderboardEntry{
+        rows[i].user_id,
+        rows[i].display_name,
+        rows[i].score,
+        rows[i].hops,
+        rows[i].ts,
+        rows[i].elo,
+        0,
+    });
+  }
+  if (rows.size() > take) {
+    page.next_cursor =
+        std::to_string(rows[take - 1].score) + ":" + std::to_string(rows[take - 1].attempt_id);
+  }
+  return page;
 }
 
-// static
 yaml_config::Schema GameStore::GetStaticConfigSchema() {
-    return yaml_config::MergeSchemas<components::ComponentBase>(
-        kGameStoreComponentSchema);
+  return yaml_config::MergeSchemas<components::ComponentBase>(kGameStoreComponentSchema);
 }
 
-} // namespace six_feat::game
+}  // namespace six_feat::game

@@ -1,6 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// helpers.test.js — unit tests for pure functions in helpers.js
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   escapeHtml,
@@ -19,7 +16,7 @@ import { State, COLOR } from "./state.js";
 describe("escapeHtml", () => {
   it("escapes all five special characters", () => {
     expect(escapeHtml(`<a href="x">'&'</a>`)).toBe(
-      "&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;"
+      "&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;",
     );
   });
 
@@ -98,7 +95,6 @@ describe("debounce", () => {
     vi.advanceTimersByTime(200);
     debounced("third");
 
-    // Not yet 300ms since the last ("third") call.
     vi.advanceTimersByTime(299);
     expect(fn).not.toHaveBeenCalled();
 
@@ -132,11 +128,7 @@ describe("debounce", () => {
 
 describe("dominantRoleFromCollabs", () => {
   it("picks the highest-priority role present (featured > primary > producer > writer)", () => {
-    const collabs = [
-      { roles: ["writer"] },
-      { roles: ["producer"] },
-      { roles: ["featured"] },
-    ];
+    const collabs = [{ roles: ["writer"] }, { roles: ["producer"] }, { roles: ["featured"] }];
     expect(dominantRoleFromCollabs(collabs)).toBe("featured");
   });
 
@@ -180,7 +172,6 @@ describe("brighten", () => {
   it("increases lightness of a hex color", () => {
     const result = brighten("#000000", 50);
     expect(result).toMatch(/^#[0-9a-f]{6}$/);
-    // Pure black brightened should no longer be pure black.
     expect(result).not.toBe("#000000");
   });
 
@@ -209,7 +200,7 @@ describe("placeholderFor", () => {
   });
 
   it("uses the seed accent color for seed nodes and the pulse accent otherwise", () => {
-    const seedSvg    = decodeURIComponent(placeholderFor("Drake", true));
+    const seedSvg = decodeURIComponent(placeholderFor("Drake", true));
     const nonSeedSvg = decodeURIComponent(placeholderFor("Drake", false));
     expect(seedSvg).toContain(COLOR.signal);
     expect(nonSeedSvg).toContain(COLOR.pulse);
@@ -222,7 +213,7 @@ describe("placeholderFor", () => {
   });
 
   it("treats seed vs non-seed as distinct cache entries for the same initial", () => {
-    const seed    = placeholderFor("Radiohead", true);
+    const seed = placeholderFor("Radiohead", true);
     const nonSeed = placeholderFor("Radiohead", false);
     expect(seed).not.toBe(nonSeed);
   });
@@ -253,12 +244,18 @@ describe("placeholderFor", () => {
 
 describe("isGeniusDefaultAvatar", () => {
   it("recognizes Genius's real default-image URL, cache-buster query string included", () => {
-    expect(isGeniusDefaultAvatar("https://assets.genius.com/images/default_cover_image.png?1783625229")).toBe(true);
-    expect(isGeniusDefaultAvatar("https://assets.genius.com/images/default_cover_image.png")).toBe(true);
+    expect(
+      isGeniusDefaultAvatar("https://assets.genius.com/images/default_cover_image.png?1783625229"),
+    ).toBe(true);
+    expect(isGeniusDefaultAvatar("https://assets.genius.com/images/default_cover_image.png")).toBe(
+      true,
+    );
   });
 
   it("does not flag a real photo URL", () => {
-    expect(isGeniusDefaultAvatar("https://images.genius.com/1234567890abcdef.1000x1000x1.jpg")).toBe(false);
+    expect(
+      isGeniusDefaultAvatar("https://images.genius.com/1234567890abcdef.1000x1000x1.jpg"),
+    ).toBe(false);
   });
 
   it("treats non-string/empty input as not a default avatar", () => {

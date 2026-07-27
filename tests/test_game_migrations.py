@@ -94,8 +94,7 @@ def test_every_migration_has_a_versioned_sql_file():
         if not list(MIGRATIONS_DIR.glob(f"V{version}__*.sql")):
             missing.append(version)
     assert not missing, (
-        f"no postgresql/migrations/game/V{{n}}__*.sql for game_migrations "
-        f"version(s): {missing}"
+        f"no postgresql/migrations/game/V{{n}}__*.sql for game_migrations version(s): {missing}"
     )
 
 
@@ -107,14 +106,10 @@ def test_every_versioned_sql_file_has_a_matching_migration():
         assert m, f"unexpected migration filename shape: {path.name}"
         if int(m.group(1)) not in known_versions:
             orphans.append(path.name)
-    assert not orphans, (
-        f"game/V*.sql file(s) with no matching game_migrations entry: {orphans}"
-    )
+    assert not orphans, f"game/V*.sql file(s) with no matching game_migrations entry: {orphans}"
 
 
-@pytest.mark.parametrize(
-    "version,var_name", _MIGRATIONS, ids=[f"V{v}" for v, _ in _MIGRATIONS]
-)
+@pytest.mark.parametrize("version,var_name", _MIGRATIONS, ids=[f"V{v}" for v, _ in _MIGRATIONS])
 def test_sql_file_statements_match_cpp_array(version: int, var_name: str):
     """[SF-GAME-11] For each game_migrations entry, the statements actually
     applied in-process (kGameMigrationV{N} in game_store.cpp) must be exactly
@@ -126,9 +121,7 @@ def test_sql_file_statements_match_cpp_array(version: int, var_name: str):
     assert len(matches) == 1, (
         f"expected exactly one game/V{version}__*.sql, found {[m.name for m in matches]}"
     )
-    sql_statements = [
-        _normalize(s) for s in _extract_sql_file_statements(matches[0])
-    ]
+    sql_statements = [_normalize(s) for s in _extract_sql_file_statements(matches[0])]
 
     assert sql_statements == cpp_statements, (
         f"postgresql/migrations/game/{matches[0].name} has drifted from "

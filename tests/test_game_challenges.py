@@ -1,6 +1,6 @@
 """
 test_game_challenges.py — [SF-GAME-21] integration tests for
-GET /api/v1/game/challenges, the challenge-browser listing (game #3): recent
+GET /api/v1/game/challenges, the challenge-browser listing (game
 PLAYABLE challenges (ideal computed), newest first, endpoints resolved to
 names, keyset-paginated. Open endpoint — no session.
 
@@ -39,7 +39,6 @@ DB_CONN_PARAMS = dict(
     password=os.environ.get("DB_PASSWORD", "six_feat_test_password"),
 )
 
-# Dedicated SF-GAME-21 id block, disjoint from the other test_game_*.py files.
 _A_ID, _B_ID, _C_ID, _D_ID = 211_001, 211_002, 211_003, 211_004
 
 
@@ -57,8 +56,9 @@ def _seed_artist(artist_id: int, name: str) -> None:
         conn.close()
 
 
-def _seed_challenge(from_id: int, to_id: int, kind: str, optimal_len: int,
-                    optimal_path: list[int], created_ts: int) -> int:
+def _seed_challenge(
+    from_id: int, to_id: int, kind: str, optimal_len: int, optimal_path: list[int], created_ts: int
+) -> int:
     conn = psycopg2.connect(**DB_CONN_PARAMS)
     try:
         conn.autocommit = True
@@ -102,9 +102,7 @@ def seeded() -> dict:
     _seed_artist(_B_ID, "SFG21ChB")
     _seed_artist(_C_ID, "SFG21ChC")
     _seed_artist(_D_ID, "SFG21ChD")
-    # Far-future created_ts so these two sort to the very top (newest first),
-    # making the pagination walk deterministic regardless of what else is in
-    # the shared challenge table.
+
     base = int(time.time()) + 1_000_000
     id_ab = _seed_challenge(_A_ID, _B_ID, "custom", 1, [_A_ID, _B_ID], base + 1)
     id_cd = _seed_challenge(_C_ID, _D_ID, "custom", 2, [_C_ID, _D_ID], base)
@@ -138,14 +136,17 @@ def test_validation_rejects_bad_input():
     assert requests.get(CHALLENGES_URL, params={"kind": "bogus"}, timeout=5).status_code == 400
     assert requests.get(CHALLENGES_URL, params={"limit": "0"}, timeout=5).status_code == 400
     assert requests.get(CHALLENGES_URL, params={"limit": "9999"}, timeout=5).status_code == 400
-    assert requests.get(CHALLENGES_URL, params={"cursor": "not-a-cursor"}, timeout=5).status_code == 400
+    assert (
+        requests.get(CHALLENGES_URL, params={"cursor": "not-a-cursor"}, timeout=5).status_code
+        == 400
+    )
 
 
 def test_keyset_pagination_walks_distinct_pages(seeded: dict):
     page1 = requests.get(CHALLENGES_URL, params={"kind": "custom", "limit": 1}, timeout=5).json()
     assert len(page1["challenges"]) == 1
-    assert page1["next_cursor"] is not None  # at least the two seeded customs remain
-    # The future-dated pair sorts first, so page 1 is the A-B row.
+    assert page1["next_cursor"] is not None
+
     assert page1["challenges"][0]["id"] == seeded["ab"]
 
     page2 = requests.get(
@@ -158,49 +159,56 @@ def test_keyset_pagination_walks_distinct_pages(seeded: dict):
     assert page2["challenges"][0]["id"] == seeded["cd"]
 
 
-# ── [SF-GAME-46] Поиск по артисту ─────────────────────────────────────────────
-# Фильтр применяется НА СЕРВЕРЕ, по обоим концам пары. Клиентская фильтрация
-# загруженной страницы была бы враньём: она не видит остальные страницы.
-
-
 def test_search_matches_the_from_endpoint(seeded: dict):
     body = requests.get(CHALLENGES_URL, params={"q": "SFG21ChA", "limit": 60}, timeout=5).json()
     ids = {c["id"] for c in body["challenges"]}
-    assert seeded["ab"] in ids          # A — старт этой пары
-    assert seeded["cd"] not in ids      # C-D к запросу отношения не имеет
+    assert seeded["ab"] in ids
+    assert seeded["cd"] not in ids
 
 
 def test_search_matches_the_to_endpoint_too(seeded: dict):
     """Игрок ищет «челлендж с этим артистом», не зная, старт он там или цель."""
     body = requests.get(CHALLENGES_URL, params={"q": "SFG21ChB", "limit": 60}, timeout=5).json()
     ids = {c["id"] for c in body["challenges"]}
-    assert seeded["ab"] in ids          # B — ЦЕЛЬ этой пары, а не старт
+    assert seeded["ab"] in ids
 
 
 def test_search_is_case_insensitive_and_substring(seeded: dict):
     for term in ("sfg21cha", "SFG21CHA", "21ChA", "g21Ch"):
-        ids = {c["id"] for c in requests.get(
-            CHALLENGES_URL, params={"q": term, "limit": 60}, timeout=5).json()["challenges"]}
+        ids = {
+            c["id"]
+            for c in requests.get(
+                CHALLENGES_URL, params={"q": term, "limit": 60}, timeout=5
+            ).json()["challenges"]
+        }
         assert seeded["ab"] in ids, f"{term!r} should still find the A-B pair"
 
 
 def test_search_combines_with_the_kind_filter(seeded: dict):
     """kind и q — независимые фильтры, а не альтернативы."""
-    ids = {c["id"] for c in requests.get(
-        CHALLENGES_URL, params={"q": "SFG21ChA", "kind": "custom", "limit": 60},
-        timeout=5).json()["challenges"]}
+    ids = {
+        c["id"]
+        for c in requests.get(
+            CHALLENGES_URL, params={"q": "SFG21ChA", "kind": "custom", "limit": 60}, timeout=5
+        ).json()["challenges"]
+    }
     assert seeded["ab"] in ids
 
-    ids = {c["id"] for c in requests.get(
-        CHALLENGES_URL, params={"q": "SFG21ChA", "kind": "daily", "limit": 60},
-        timeout=5).json()["challenges"]}
+    ids = {
+        c["id"]
+        for c in requests.get(
+            CHALLENGES_URL, params={"q": "SFG21ChA", "kind": "daily", "limit": 60}, timeout=5
+        ).json()["challenges"]
+    }
     assert seeded["ab"] not in ids
 
 
 def test_empty_query_is_the_same_as_no_filter(seeded: dict):
     """Старые клиенты, не знающие про q, не должны ничего заметить."""
     without = requests.get(CHALLENGES_URL, params={"kind": "custom", "limit": 60}, timeout=5).json()
-    with_empty = requests.get(CHALLENGES_URL, params={"kind": "custom", "q": "", "limit": 60}, timeout=5).json()
+    with_empty = requests.get(
+        CHALLENGES_URL, params={"kind": "custom", "q": "", "limit": 60}, timeout=5
+    ).json()
     assert [c["id"] for c in without["challenges"]] == [c["id"] for c in with_empty["challenges"]]
 
 
@@ -217,7 +225,9 @@ def test_like_wildcards_are_escaped_not_honoured(seeded: dict):
     assert seeded["ab"] not in {c["id"] for c in body["challenges"]}
 
     body = requests.get(CHALLENGES_URL, params={"q": "SFG21Ch_", "limit": 60}, timeout=5).json()
-    assert seeded["ab"] not in {c["id"] for c in body["challenges"]}, "'_' must not match any single char"
+    assert seeded["ab"] not in {c["id"] for c in body["challenges"]}, (
+        "'_' must not match any single char"
+    )
 
 
 def test_overlong_query_is_rejected():

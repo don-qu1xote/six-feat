@@ -1,9 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// game-graph.test.js — unit tests for fetchNeighbours (game-graph.js), the
-// game's reuse of the Explorer's /api/v1/graph endpoint. apiFetch is mocked so
-// these exercise the request URL + the graph→neighbours transform and every
-// failure fallback.
-// ════════════════════════════════════════════════════════════════════════════
 import { it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api/net.js", () => ({ apiFetch: vi.fn() }));
@@ -11,9 +5,11 @@ vi.mock("../api/net.js", () => ({ apiFetch: vi.fn() }));
 import { apiFetch } from "../api/net.js";
 import { fetchNeighbours } from "./game-graph.js";
 
-const ok = body => ({ ok: true, json: async () => body });
+const ok = (body) => ({ ok: true, json: async () => body });
 
-beforeEach(() => { apiFetch.mockReset(); });
+beforeEach(() => {
+  apiFetch.mockReset();
+});
 
 it("returns null immediately for a null id (no request)", async () => {
   expect(await fetchNeighbours(null)).toBeNull();
@@ -29,15 +25,18 @@ it("requests /api/v1/graph?id= with all four roles", async () => {
 });
 
 it("maps nodes to {id,name,image}, filtering out the seed", async () => {
-  apiFetch.mockResolvedValue(ok({
-    seed_id: 100, seed: "Drake",
-    nodes: [
-      { id: 100, name: "Drake", image: "d.jpg" },
-      { id: 200, name: "Rihanna", image: "r.jpg" },
-      { id: 900, name: "Adele", image: null },
-    ],
-    edges: [],
-  }));
+  apiFetch.mockResolvedValue(
+    ok({
+      seed_id: 100,
+      seed: "Drake",
+      nodes: [
+        { id: 100, name: "Drake", image: "d.jpg" },
+        { id: 200, name: "Rihanna", image: "r.jpg" },
+        { id: 900, name: "Adele", image: null },
+      ],
+      edges: [],
+    }),
+  );
   const res = await fetchNeighbours(100);
   expect(res.seedId).toBe(100);
   expect(res.seedName).toBe("Drake");

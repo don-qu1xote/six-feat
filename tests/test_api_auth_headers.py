@@ -50,21 +50,14 @@ import requests
 
 from conftest import SERVICE_BASE, GeniusMock, _build_song_detail
 
-GRAPH_URL  = f"{SERVICE_BASE}/api/v1/graph"
-PATH_URL   = f"{SERVICE_BASE}/api/v1/graph/path"
+GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
+PATH_URL = f"{SERVICE_BASE}/api/v1/graph/path"
 SEARCH_URL = f"{SERVICE_BASE}/api/v1/search"
 STATUS_URL = f"{SERVICE_BASE}/api/v1/status"
-SSE_URL    = f"{SERVICE_BASE}/api/v1/status/stream"
+SSE_URL = f"{SERVICE_BASE}/api/v1/status/stream"
 
-# Same check the running service_proc instance itself makes at startup
-# (IsHttpsDeployment() in security_headers.cpp): HSTS is sent unless
-# COOKIE_SECURE is explicitly "false" in the service's environment.
 _HSTS_EXPECTED = os.environ.get("COOKIE_SECURE") != "false"
 
-# [SF-SEC-03] Must match kContentSecurityPolicy/kPermissionsPolicy in
-# security_headers.cpp exactly, and the SAME values test_static_handlers.py
-# expects on index.html/script.js — one shared ApplySecurityHeaders() now
-# produces both.
 _EXPECTED_REFERRER_POLICY = "strict-origin-when-cross-origin"
 _EXPECTED_PERMISSIONS_POLICY = (
     "geolocation=(), camera=(), microphone=(), payment=(), usb=(), "
@@ -84,20 +77,19 @@ def _assert_security_headers(headers) -> None:
     assert headers.get("Permissions-Policy") == _EXPECTED_PERMISSIONS_POLICY
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Per-endpoint "make this an authenticated success" setup — each returns the
-# query params for the 200-path request after programming the surrogate
-# Genius server (where needed).
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _setup_graph(genius_mock: GeniusMock, artist_id: int) -> Dict[str, str]:
     name = f"SFAPI02Graph{artist_id}"
     genius_mock.resolve(name, [{"id": artist_id, "name": name, "score": 0.99}])
     genius_mock.songs(artist_id, [artist_id * 10 + 1])
     genius_mock.song_detail(
         artist_id * 10 + 1,
-        _build_song_detail(artist_id * 10 + 1, "Track", artist_id, name,
-                            collaborators=[{"id": artist_id + 1, "name": "Collab"}]),
+        _build_song_detail(
+            artist_id * 10 + 1,
+            "Track",
+            artist_id,
+            name,
+            collaborators=[{"id": artist_id + 1, "name": "Collab"}],
+        ),
     )
     return {"artist": name}
 
@@ -111,8 +103,13 @@ def _setup_path(genius_mock: GeniusMock, artist_id: int) -> Dict[str, str]:
     genius_mock.songs(b_id, [artist_id * 10 + 1])
     genius_mock.song_detail(
         artist_id * 10 + 1,
-        _build_song_detail(artist_id * 10 + 1, "Collab Track", a_id, a_name,
-                            collaborators=[{"id": b_id, "name": b_name, "role": "featured"}]),
+        _build_song_detail(
+            artist_id * 10 + 1,
+            "Collab Track",
+            a_id,
+            a_name,
+            collaborators=[{"id": b_id, "name": b_name, "role": "featured"}],
+        ),
     )
     return {"from": a_name, "to": b_name}
 
@@ -127,69 +124,78 @@ def _setup_status(genius_mock: GeniusMock, artist_id: int) -> Dict[str, str]:
     return {"id": str(artist_id)}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# One entry per endpoint: url, its own 401 body (verbatim from the handler),
-# how to program a successful request, a top-level key that proves the
-# success body is the *right* JSON shape, and whether the endpoint streams.
-# ─────────────────────────────────────────────────────────────────────────────
-
 ENDPOINTS = [
     pytest.param(
         GRAPH_URL,
         {"type": "graph", "error": "not_authenticated", "nodes": [], "edges": []},
-        _setup_graph, "seed_id", False,
+        _setup_graph,
+        "seed_id",
+        False,
         id="graph",
     ),
     pytest.param(
         PATH_URL,
-        {"type": "path", "error": "not_authenticated",
-         "message": "Login with Genius to search for collaboration paths."},
-        _setup_path, "hops", False,
+        {
+            "type": "path",
+            "error": "not_authenticated",
+            "message": "Login with Genius to search for collaboration paths.",
+        },
+        _setup_path,
+        "hops",
+        False,
         id="graph_path",
     ),
     pytest.param(
         SEARCH_URL,
-        {"type": "search", "error": "not_authenticated",
-         "message": "Login with Genius to search for artists."},
-        _setup_search, "candidates", False,
+        {
+            "type": "search",
+            "error": "not_authenticated",
+            "message": "Login with Genius to search for artists.",
+        },
+        _setup_search,
+        "candidates",
+        False,
         id="search",
     ),
     pytest.param(
         STATUS_URL,
         {"error": "not_authenticated"},
-        _setup_status, "artist_id", False,
+        _setup_status,
+        "artist_id",
+        False,
         id="status",
     ),
     pytest.param(
         SSE_URL,
         {"error": "not_authenticated"},
-        _setup_status, None, True,
+        _setup_status,
+        None,
+        True,
         id="status_stream",
     ),
 ]
 
 
-@pytest.mark.parametrize(
-    "url, expected_401_body, setup_fn, success_key, is_stream", ENDPOINTS
-)
+@pytest.mark.parametrize("url, expected_401_body, setup_fn, success_key, is_stream", ENDPOINTS)
 class TestApiAuthAndSecurityHeaders:
     """[SF-API-02] Single parametrized sweep over all five protected
     /api/v1 endpoints: anon-401 (+ its own body), auth-200, and the two
     response headers ApplySecurityHeaders adds to every one of them."""
 
     def test_anonymous_returns_401_with_expected_body(
-        self, anon_client: requests.Session,
-        url: str, expected_401_body: dict, setup_fn, success_key, is_stream: bool,
+        self,
+        anon_client: requests.Session,
+        url: str,
+        expected_401_body: dict,
+        setup_fn,
+        success_key,
+        is_stream: bool,
     ):
         resp = anon_client.get(url, timeout=5.0)
         assert resp.status_code == 401
 
         body = resp.json()
-        # [SF-API-06] graph/path/search/status now also carry a "request_id"
-        # in every error body (sse_status_handler.cpp is untouched by that
-        # ticket, so status_stream's body is still the bare literal below).
-        # Checked separately from the rest of the body since its value is
-        # per-request and can't be part of the static ENDPOINTS fixture.
+
         request_id = body.pop("request_id", None)
         if is_stream:
             assert request_id is None
@@ -199,15 +205,27 @@ class TestApiAuthAndSecurityHeaders:
         assert body == expected_401_body
 
     def test_anonymous_401_has_security_headers(
-        self, anon_client: requests.Session,
-        url: str, expected_401_body: dict, setup_fn, success_key, is_stream: bool,
+        self,
+        anon_client: requests.Session,
+        url: str,
+        expected_401_body: dict,
+        setup_fn,
+        success_key,
+        is_stream: bool,
     ):
         resp = anon_client.get(url, timeout=5.0)
         _assert_security_headers(resp.headers)
 
     def test_authenticated_reaches_success_path(
-        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int,
-        url: str, expected_401_body: dict, setup_fn, success_key, is_stream: bool,
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        unique_artist_id: int,
+        url: str,
+        expected_401_body: dict,
+        setup_fn,
+        success_key,
+        is_stream: bool,
     ):
         params = setup_fn(genius_mock, unique_artist_id)
         if is_stream:
@@ -223,8 +241,15 @@ class TestApiAuthAndSecurityHeaders:
             assert success_key in resp.json()
 
     def test_authenticated_success_has_security_headers(
-        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int,
-        url: str, expected_401_body: dict, setup_fn, success_key, is_stream: bool,
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        unique_artist_id: int,
+        url: str,
+        expected_401_body: dict,
+        setup_fn,
+        success_key,
+        is_stream: bool,
     ):
         params = setup_fn(genius_mock, unique_artist_id)
         if is_stream:

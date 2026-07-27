@@ -1,24 +1,31 @@
-// ════════════════════════════════════════════════════════════════════════════
-// game-api.test.js — unit tests for the game service client (game-api.js).
-// apiFetch (../api/net.js) is mocked so these exercise only the request
-// shaping + response mapping (ok → parsed JSON, non-ok / throw → null, and
-// checkLink's three-state verdict).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api/net.js", () => ({ apiFetch: vi.fn() }));
 
 import { apiFetch } from "../api/net.js";
 import {
-  createChallenge, submitChain, fetchDailyChallenge, fetchChallenge, fetchChallenges,
-  fetchLeaderboard, fetchSeasonLeaderboard, fetchProfile, fetchPublicProfile,
-  fetchSeason, fetchAdminStatus, publishDaily, checkLink, updateDisplayName,
+  createChallenge,
+  submitChain,
+  fetchDailyChallenge,
+  fetchChallenge,
+  fetchChallenges,
+  fetchLeaderboard,
+  fetchSeasonLeaderboard,
+  fetchProfile,
+  fetchPublicProfile,
+  fetchSeason,
+  fetchAdminStatus,
+  publishDaily,
+  checkLink,
+  updateDisplayName,
 } from "./game-api.js";
 
-const ok = body => ({ ok: true, json: async () => body });
+const ok = (body) => ({ ok: true, json: async () => body });
 const notOk = (status = 500) => ({ ok: false, status, json: async () => null });
 
-beforeEach(() => { apiFetch.mockReset(); });
+beforeEach(() => {
+  apiFetch.mockReset();
+});
 
 describe("GET reads (getJson)", () => {
   it("fetchDailyChallenge hits the daily endpoint and returns the body", async () => {
@@ -117,7 +124,9 @@ describe("POST writes (postJson)", () => {
     apiFetch.mockResolvedValue(ok({ valid: true }));
     await submitChain(7, [1, 2], 4200);
     expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({
-      challenge_id: 7, chain: [1, 2], elapsed_ms: 4200,
+      challenge_id: 7,
+      chain: [1, 2],
+      elapsed_ms: 4200,
     });
   });
 

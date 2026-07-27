@@ -1,10 +1,3 @@
--- Versioned reference copy of kGameMigrationV1 in services/game/game_store.cpp.
--- The code (game_migrations) is the source of truth; keep this file in sync
--- with it — tests/test_game_migrations.py (SF-DB-05 pattern) enforces parity.
---
--- [SF-GAME-11] Baseline game_* schema. Lives in the same Postgres database as
--- six-feat's own schema, gated by a dedicated game_schema_version table so the
--- two migration registries never collide.
 
 CREATE TABLE IF NOT EXISTS game_profiles (
     user_id      BIGINT PRIMARY KEY,
@@ -36,9 +29,6 @@ CREATE TABLE IF NOT EXISTS game_challenges (
     UNIQUE (from_artist_id, to_artist_id, role_mask, kind)
 );
 
--- season_id denormalized onto attempts (also on the challenge) so the season
--- leaderboard top-N is a direct (season_id, score DESC) index scan. Set at
--- submit time (SF-GAME-17/18); nullable until then.
 CREATE TABLE IF NOT EXISTS game_attempts (
     id           BIGSERIAL PRIMARY KEY,
     challenge_id BIGINT NOT NULL REFERENCES game_challenges(id),

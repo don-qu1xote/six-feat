@@ -1,16 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// canvas-declutter.test.js — [SF-WEB-14] asserts index.html itself has no
-//                             duplicate global buttons for the four
-//                             mini-actions (expand/focus/genius/pin) or for
-//                             fit-view/role-filters, which moved into the
-//                             new canvas-zoom-cluster/role-filter-segment.
-//
-// This reads the real index.html as text rather than mocking DOM state —
-// unlike sidebar.js's own tests (which assign detached elements straight to
-// els.*, bypassing the markup entirely), "no duplicate button exists in the
-// page" is a statement about the markup itself, not about sidebar.js's
-// logic, so it needs the actual file.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -27,9 +14,6 @@ function countOccurrences(haystack, needle) {
 
 describe("[SF-WEB-14] no duplicate global entry points on the canvas", () => {
   it("has no separate rail buttons for the three object-action-bar actions", () => {
-    // These three ids only exist inside .object-action-bar. [SF-WEB-47]
-    // The fourth (pin) is gone entirely — it only existed to gate
-    // Compare's old pinned-pair selection.
     expect(countOccurrences(html, 'id="obj-action-expand"')).toBe(1);
     expect(countOccurrences(html, 'id="obj-action-focus"')).toBe(1);
     expect(countOccurrences(html, 'id="obj-action-genius"')).toBe(1);
@@ -64,7 +48,7 @@ describe("[SF-WEB-27] object action bar merged into the sidebar body", () => {
 
   it("no longer floats #object-action-bar above the companion panel — it's nested inside .sidebar-body, after #companion-panel opens", () => {
     const companionPanelIdx = html.indexOf('id="companion-panel"');
-    const actionBarIdx      = html.indexOf('id="object-action-bar"');
+    const actionBarIdx = html.indexOf('id="object-action-bar"');
     expect(companionPanelIdx).toBeGreaterThan(-1);
     expect(actionBarIdx).toBeGreaterThan(companionPanelIdx);
   });
@@ -72,12 +56,9 @@ describe("[SF-WEB-27] object action bar merged into the sidebar body", () => {
   it("renders exactly one action row containing Genius for node context", () => {
     expect(countOccurrences(html, 'id="object-action-bar"')).toBe(1);
     expect(countOccurrences(html, 'id="obj-action-genius"')).toBe(1);
-    // The single object-action-bar block must be the one containing it.
-    // Genius is the last of the three buttons (see [SF-WEB-47] above — the
-    // old fourth button, pin, is gone), so anchor the block's end there.
     const barStart = html.indexOf('id="object-action-bar"');
-    const barEnd    = html.indexOf("</div>", html.indexOf('id="obj-action-genius"'));
-    const barBlock  = html.slice(barStart, barEnd);
+    const barEnd = html.indexOf("</div>", html.indexOf('id="obj-action-genius"'));
+    const barBlock = html.slice(barStart, barEnd);
     expect(barBlock).toContain('id="obj-action-genius"');
   });
 });
@@ -121,9 +102,6 @@ describe("[SF-WEB-31 follow-up] landing drops explanatory prose for a logo mark"
   });
 });
 
-// [SF-WEB-31 follow-up 2] Google/Yandex reference: one wordmark, no
-// separate eyebrow tag or slogan — the service name itself, same font/size
-// the old three-line slogan used, is the whole landing logo.
 describe("[SF-WEB-31 follow-up 2] landing wordmark replaces the eyebrow+slogan", () => {
   it("has no separate eyebrow tag or dot-mark icon", () => {
     expect(html).not.toContain('class="eyebrow"');
@@ -140,17 +118,10 @@ describe("[SF-WEB-31 follow-up 2] landing wordmark replaces the eyebrow+slogan",
   });
 });
 
-// [SF-WEB-50] Landing folded into Observatory — absorbs SF-WEB-31 (no
-// longer a separate ticket). Brand (wordmark) stays, one short thesis line
-// joins it, every existing entry point (Explore/Connect switch, role
-// filters, chips, auth) stays present and reachable — nothing removed, the
-// first screen just gains one quiet line of copy under the wordmark.
 describe("[SF-WEB-50] landing folded into Observatory", () => {
   it("pairs the wordmark with exactly one short thesis line, not a return to the old explanatory paragraph", () => {
     expect(html).toContain('<div class="hero-header">');
     expect(html).toMatch(/<p class="hero-tagline">[^<]{1,60}<\/p>/);
-    // The old instructional/slogan copy this ticket explicitly does NOT
-    // want back — see the SF-WEB-31/SF-WEB-31-follow-up describes above.
     expect(html).not.toContain("Search an artist to map who they've made songs with");
     expect(html).not.toContain("Trace the people behind the");
   });
@@ -169,8 +140,6 @@ describe("[SF-WEB-50] landing folded into Observatory", () => {
 
   it("still renders the dandelion/starfield decorator mount behind the landing", () => {
     expect(html).toContain('id="canvas-decorator"');
-    // Decorator markup sits before search-modal in document order — it's
-    // the atmosphere BEHIND the landing, not drawn after/over it.
     expect(html.indexOf('id="canvas-decorator"')).toBeLessThan(html.indexOf('id="search-modal"'));
   });
 });

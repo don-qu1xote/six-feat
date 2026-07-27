@@ -1,16 +1,3 @@
-// @vitest-environment node
-// ════════════════════════════════════════════════════════════════════════════
-// observatory.test.js — [SF-WEB-42] the Observatory global shell skin.
-//
-// SF-WEB-42 is shell-only (body/canvas background, the SF-WEB-11 kit's
-// panel/tile/button/chip/segment — not individual surfaces, those land in
-// 43-45) and purely visual — no handlers/selectors change. Asserts the
-// specific things the ticket calls for: glass panels are actually
-// translucent (so backdrop-filter has something to blur), both themes
-// carry their own RGB triplets for the new tokens (not pinned to dark's),
-// the focus-ring/hover/active states are token-driven instead of literal,
-// and the canvas/body background still resolves (graph stays readable).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect } from "vitest";
 import { buildSync } from "esbuild";
 import { fileURLToPath } from "node:url";
@@ -44,13 +31,11 @@ describe("SF-WEB-42 Observatory shell — tokens", () => {
   });
 
   it("light theme redefines its own triplets instead of inheriting dark's", () => {
-    const lightBlockRaw = rule(css, ':root[data-theme="light"]') || rule(css, ":root[data-theme=light]");
+    const lightBlockRaw =
+      rule(css, ':root[data-theme="light"]') || rule(css, ":root[data-theme=light]");
     expect(lightBlockRaw, "light theme :root block not found").toBeTruthy();
     const lightBlock = lightBlockRaw.replace(/\s+/g, "");
     expect(lightBlock).toContain("--panel-2-rgb:244,246,251");
-    // [SF-WEB-49] --signal/--pulse hex (and so their triplets) moved darker
-    // for AA text contrast — see tokens.css's own comment and
-    // styles.test.js's [SF-WEB-49] contrast assertions for why.
     expect(lightBlock).toContain("--signal-rgb:11,125,100");
     expect(lightBlock).toContain("--pulse-rgb:112,60,255");
   });
@@ -65,7 +50,9 @@ describe("SF-WEB-42 Observatory shell — tokens", () => {
       "--hover-tint:rgba(var(--pulse-rgb)",
       "--active-tint:rgba(var(--signal-rgb)",
     ]) {
-      expect(root.replace(/\s+/g, ""), `${composite} not composed from a triplet token`).toContain(composite.replace(/\s+/g, ""));
+      expect(root.replace(/\s+/g, ""), `${composite} not composed from a triplet token`).toContain(
+        composite.replace(/\s+/g, ""),
+      );
     }
   });
 
@@ -84,8 +71,12 @@ describe("SF-WEB-42 Observatory shell — glass panels", () => {
     for (const selector of [".ui-panel", ".bento-tile"]) {
       const r = rule(css, selector);
       expect(r, `${selector} rule missing`).toBeTruthy();
-      expect(r, `${selector} should use var(--glass-fill)`).toMatch(/background:\s*var\(--glass-fill\)/);
-      expect(r, `${selector} should not be pinned to the old opaque var(--panel-2)`).not.toMatch(/background:\s*var\(--panel-2\)/);
+      expect(r, `${selector} should use var(--glass-fill)`).toMatch(
+        /background:\s*var\(--glass-fill\)/,
+      );
+      expect(r, `${selector} should not be pinned to the old opaque var(--panel-2)`).not.toMatch(
+        /background:\s*var\(--panel-2\)/,
+      );
     }
   });
 
@@ -110,7 +101,9 @@ describe("SF-WEB-42 Observatory shell — unified hover/active/focus-ring", () =
       const hover = rule(css, `${selector}:hover`);
       const focus = rule(css, `${selector}:focus-visible`);
       expect(hover, `${selector}:hover missing`).toMatch(/background:\s*var\(--hover-tint\)/);
-      expect(focus, `${selector}:focus-visible missing`).toMatch(/box-shadow:\s*var\(--focus-ring\)/);
+      expect(focus, `${selector}:focus-visible missing`).toMatch(
+        /box-shadow:\s*var\(--focus-ring\)/,
+      );
     }
   });
 
@@ -124,10 +117,14 @@ describe("SF-WEB-42 Observatory shell — unified hover/active/focus-ring", () =
       for (const state of [":hover", ":focus-visible", ".active", '[aria-pressed="true"]']) {
         const r = rule(css, `${selector}${state}`);
         if (!r) continue;
-        expect(r, `${selector}${state} still has a literal rgba(94,230,197,...) instead of a token`)
-          .not.toMatch(/rgba\(94,\s*230,\s*197/);
-        expect(r, `${selector}${state} still has a literal rgba(185,138,255,...) instead of a token`)
-          .not.toMatch(/rgba\(185,\s*138,\s*255/);
+        expect(
+          r,
+          `${selector}${state} still has a literal rgba(94,230,197,...) instead of a token`,
+        ).not.toMatch(/rgba\(94,\s*230,\s*197/);
+        expect(
+          r,
+          `${selector}${state} still has a literal rgba(185,138,255,...) instead of a token`,
+        ).not.toMatch(/rgba\(185,\s*138,\s*255/);
       }
     }
   });

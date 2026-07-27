@@ -55,10 +55,6 @@ class TestSearchBasics:
         assert "request_id" not in data
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [SF-API-06] request_id in error bodies
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSearchRequestId:
     def test_anonymous_error_body_has_nonempty_request_id_matching_header(
         self, anon_client: requests.Session
@@ -82,10 +78,6 @@ class TestSearchRequestId:
         assert data["request_id"] == resp.headers.get("X-Request-Id")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [SF-API-04] ETag / Cache-Control / If-None-Match on the search response
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSearchETag:
     def test_success_response_has_etag_and_cache_control(
         self, client: requests.Session, genius_mock: GeniusMock
@@ -103,9 +95,7 @@ class TestSearchETag:
         first = client.get(SEARCH_URL, params={"q": "Drake"})
         etag = first.headers["ETag"]
 
-        second = client.get(
-            SEARCH_URL, params={"q": "Drake"}, headers={"If-None-Match": etag}
-        )
+        second = client.get(SEARCH_URL, params={"q": "Drake"}, headers={"If-None-Match": etag})
         assert second.status_code == 304
         assert not second.content
 
@@ -139,8 +129,8 @@ class TestSearchETag:
         genius_mock.resolve("drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         genius_mock.resolve(" Drake ", [{"id": 1, "name": "Drake", "score": 0.99}])
 
-        resp_plain  = client.get(SEARCH_URL, params={"q": "Drake"})
-        resp_lower  = client.get(SEARCH_URL, params={"q": "drake"})
+        resp_plain = client.get(SEARCH_URL, params={"q": "Drake"})
+        resp_lower = client.get(SEARCH_URL, params={"q": "drake"})
         resp_padded = client.get(SEARCH_URL, params={"q": " Drake "})
         assert resp_plain.headers.get("ETag") == resp_lower.headers.get("ETag")
         assert resp_plain.headers.get("ETag") == resp_padded.headers.get("ETag")

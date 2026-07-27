@@ -1,9 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// vis-adapter/visuals.test.js — SF-WEB-18: node labels removed from the
-//                                 graph itself. nodeVisual() must not emit
-//                                 label/font; the artist's name still lives
-//                                 in the tooltip (buildNodeTooltip).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, beforeEach } from "vitest";
 import { State } from "../state/state.js";
 import { nodeVisual, seedShadow, nodeShadowFor } from "./visuals.js";
@@ -21,10 +15,6 @@ describe("nodeVisual", () => {
     expect(v).not.toHaveProperty("font");
   });
 
-  // [SF-WEB-45] never opacity in node data for the glow — this file's big
-  // "Структурный фикс" comment documents why opacity:0 historically broke
-  // circularImage, so opacity must stay a fixed 1.0/0.6 (seed/leaf vs.
-  // expired), independent of whatever nodeShadowFor decides for `shadow`.
   it("keeps opacity fixed (never used to express glow) and never loses circularImage", () => {
     const seed = nodeVisual({ id: 1, name: "Seed", isSeed: true, computedRadius: 22 });
     const leaf = nodeVisual({ id: 2, name: "Leaf", computedRadius: 22 });
@@ -61,8 +51,6 @@ describe("nodeVisual", () => {
     const expanded = nodeVisual({ id: 1, name: "Hub", computedRadius: 22 });
     const leaf = nodeVisual({ id: 2, name: "Leaf", computedRadius: 22 });
     expect(expanded.shadow.size).toBeGreaterThan(leaf.shadow.size);
-    // nodeShadowFor is the single source of truth nodeVisual, and
-    // highlight.js's default-color cache / hover-revert, all read from.
     expect(nodeShadowFor({ id: 1 })).toEqual(expanded.shadow);
   });
 });

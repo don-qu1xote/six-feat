@@ -60,11 +60,13 @@ function main() {
   const content = readFileSync(bundlePath);
   const { ok, sizeBytes, budgetBytes } = checkBudget(gzipSize(content));
 
-  const sizeKb   = (sizeBytes / 1024).toFixed(1);
+  const sizeKb = (sizeBytes / 1024).toFixed(1);
   const budgetKb = (budgetBytes / 1024).toFixed(1);
 
   if (!ok) {
-    console.error(`[check-bundle-size] ${script}: ${sizeKb} KB gzip exceeds budget of ${budgetKb} KB.`);
+    console.error(
+      `[check-bundle-size] ${script}: ${sizeKb} KB gzip exceeds budget of ${budgetKb} KB.`,
+    );
     process.exit(1);
   }
   console.log(`[check-bundle-size] ${script}: ${sizeKb} KB gzip (budget ${budgetKb} KB) — OK`);

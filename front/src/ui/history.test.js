@@ -1,9 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/history.test.js — SF-WEB-02: shareable-URL full-state round-trip.
-//                       serializeGraphState/parseGraphState are pure
-//                       functions (State → URLSearchParams → state) so they
-//                       can be tested without touching window.location.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { State, GRAPH_DEFAULT_LIMIT } from "../state/state.js";
 import { els } from "../dom/dom.js";
@@ -14,14 +8,14 @@ vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 describe("serializeGraphState / parseGraphState round-trip", () => {
   it("encodes and decodes seed artist, roles, expanded nodes and limit identically", () => {
     const original = {
-      artist:      "Kendrick Lamar",
-      seedId:      42,
-      roles:       new Set(["featured", "producer"]),
+      artist: "Kendrick Lamar",
+      seedId: 42,
+      roles: new Set(["featured", "producer"]),
       expandedIds: new Set([7, 3, 19]),
-      limit:       GRAPH_DEFAULT_LIMIT + 40,
+      limit: GRAPH_DEFAULT_LIMIT + 40,
     };
 
-    const params  = serializeGraphState(original);
+    const params = serializeGraphState(original);
     const decoded = parseGraphState(params.toString());
 
     expect(decoded.artist).toBe(original.artist);
@@ -33,7 +27,10 @@ describe("serializeGraphState / parseGraphState round-trip", () => {
 
   it("omits the limit param when it equals the server default (compact URL)", () => {
     const params = serializeGraphState({
-      artist: "Rosalía", seedId: 1, roles: new Set(), expandedIds: new Set(),
+      artist: "Rosalía",
+      seedId: 1,
+      roles: new Set(),
+      expandedIds: new Set(),
       limit: GRAPH_DEFAULT_LIMIT,
     });
     expect(params.has("limit")).toBe(false);
@@ -42,7 +39,10 @@ describe("serializeGraphState / parseGraphState round-trip", () => {
 
   it("serializes ids compactly as a sorted numeric comma-list", () => {
     const params = serializeGraphState({
-      artist: "A", seedId: 1, roles: new Set(), expandedIds: new Set([30, 2, 100]),
+      artist: "A",
+      seedId: 1,
+      roles: new Set(),
+      expandedIds: new Set([30, 2, 100]),
       limit: null,
     });
     expect(params.get("exp")).toBe("2,30,100");
@@ -53,7 +53,11 @@ describe("parseGraphState on invalid/missing input → defaults", () => {
   it("returns null artist/seed/limit and empty sets for an empty query string", () => {
     const decoded = parseGraphState("");
     expect(decoded).toEqual({
-      artist: null, roles: new Set(), seedId: null, expandedIds: new Set(), limit: null,
+      artist: null,
+      roles: new Set(),
+      seedId: null,
+      expandedIds: new Set(),
+      limit: null,
     });
   });
 
@@ -73,13 +77,6 @@ describe("parseGraphState on invalid/missing input → defaults", () => {
   });
 });
 
-// [SF-WEB-61] "кнопки переключения типов связей они не проверяются по
-// запросу и по-дефолту горят" — loadArtistFromUrl restores State.activeFilters
-// from a shared URL's ?roles=, but used to only sync the OLD rail buttons
-// (els.filterFeatured/-Producer/-Writer), removed back in SF-WEB-14 — those
-// dom.js keys don't exist anymore, so the sync silently did nothing for the
-// buttons that are actually visible (.role-filter-segment / canvasFilter*),
-// which stayed stuck on their hardcoded-in-HTML "active" default.
 describe("loadArtistFromUrl — syncs the visible role-filter buttons to the URL's roles (SF-WEB-61)", () => {
   const realLocation = window.location;
 

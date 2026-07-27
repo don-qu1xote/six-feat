@@ -32,7 +32,7 @@ import requests
 
 import session_crypto
 
-TEST_APP_SECRET = "f" * 64  # same as tests/conftest.py's TEST_APP_SECRET
+TEST_APP_SECRET = "f" * 64
 ORIGIN = os.environ.get("GAME_SERVICE_ORIGIN", "http://localhost:8080")
 PROFILE_URL = f"{ORIGIN}/api/v1/game/profile"
 
@@ -41,14 +41,15 @@ pytestmark = pytest.mark.game_profile
 
 def _valid_cookie(name: str = "Test User") -> str:
     return session_crypto.make_cookie(
-        TEST_APP_SECRET, access_token="test-genius-access-token",
-        ttl_seconds=3600, name=name,
+        TEST_APP_SECRET,
+        access_token="test-genius-access-token",
+        ttl_seconds=3600,
+        name=name,
     )
 
 
 def _skip_if_unreachable() -> None:
     try:
-        # An unauthenticated hit should answer 401 quickly if the service is up.
         requests.get(PROFILE_URL, timeout=2)
     except requests.exceptions.RequestException:
         pytest.skip(f"game service not reachable at {ORIGIN} — start docker compose")
@@ -76,7 +77,7 @@ def _patch(cookie: str | None, body: dict):
 def test_no_cookie_returns_401():
     resp = _get(None)
     assert resp.status_code == 401
-    # SF-API-11 unified envelope (application/problem+json).
+
     assert "application/problem+json" in resp.headers.get("Content-Type", "")
     body = resp.json()
     assert body.get("status") == 401
@@ -86,14 +87,14 @@ def test_valid_session_creates_and_reads_profile():
     resp = _get(_valid_cookie())
     assert resp.status_code == 200
     body = resp.json()
-    # Created on first sight with the migration defaults; shape is complete.
+
     for field in ("user_id", "display_name", "elo", "games", "rank"):
         assert field in body, f"missing {field} in profile {body}"
     assert isinstance(body["user_id"], int)
     assert body["elo"] == 1200
     assert body["games"] == 0
     assert body["rank"] >= 1
-    # Same session → same stable user_id on a second read.
+
     again = _get(_valid_cookie()).json()
     assert again["user_id"] == body["user_id"]
 
@@ -106,7 +107,6 @@ def test_patch_display_name_persists():
     assert patched.status_code == 200
     assert patched.json()["display_name"] == new_name
 
-    # Persisted: a fresh GET reflects it.
     after = _get(cookie)
     assert after.status_code == 200
     assert after.json()["display_name"] == new_name

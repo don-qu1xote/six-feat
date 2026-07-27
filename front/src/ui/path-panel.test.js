@@ -1,8 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// path-panel.test.js — [fix] unit coverage for the docked path-panel's swap
-// button (variant B of 5 mockups — a functional swap control between the
-// From/To fields, replacing the earlier decorative route-rail idea).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./modals.js", () => ({
@@ -37,15 +32,15 @@ beforeEach(() => {
     <button id="btn-find-path"></button>
     <button id="path-panel-close"></button>
   `;
-  els.pathPanel      = document.getElementById("path-panel");
+  els.pathPanel = document.getElementById("path-panel");
   els.pathPanelClose = document.getElementById("path-panel-close");
-  els.pathFromInput  = document.getElementById("path-from-input");
-  els.pathToInput    = document.getElementById("path-to-input");
-  els.btnSwapPath    = document.getElementById("btn-swap-path");
-  els.btnRunPath     = document.getElementById("btn-run-path");
-  els.btnClearPath   = document.getElementById("btn-clear-path");
-  els.btnFindPath    = document.getElementById("btn-find-path");
-  els.hopChain       = document.getElementById("hop-chain");
+  els.pathFromInput = document.getElementById("path-from-input");
+  els.pathToInput = document.getElementById("path-to-input");
+  els.btnSwapPath = document.getElementById("btn-swap-path");
+  els.btnRunPath = document.getElementById("btn-run-path");
+  els.btnClearPath = document.getElementById("btn-clear-path");
+  els.btnFindPath = document.getElementById("btn-find-path");
+  els.hopChain = document.getElementById("hop-chain");
   State.graphNodes = [];
   setupPathPanel();
 });
@@ -53,7 +48,7 @@ beforeEach(() => {
 describe("btn-swap-path", () => {
   it("swaps the From/To field values", () => {
     els.pathFromInput.value = "Drake";
-    els.pathToInput.value   = "Future";
+    els.pathToInput.value = "Future";
 
     els.btnSwapPath.dispatchEvent(new window.Event("click", { bubbles: true }));
 
@@ -63,7 +58,7 @@ describe("btn-swap-path", () => {
 
   it("swapping twice restores the original values", () => {
     els.pathFromInput.value = "Drake";
-    els.pathToInput.value   = "Future";
+    els.pathToInput.value = "Future";
 
     els.btnSwapPath.dispatchEvent(new window.Event("click", { bubbles: true }));
     els.btnSwapPath.dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -74,12 +69,12 @@ describe("btn-swap-path", () => {
 
   it("swaps the underlying selected-node ids alongside the field text", async () => {
     const { runServerPath } = await import("./path-result.js");
-    State.graphNodes = [{ id: 11, name: "Drake" }, { id: 22, name: "Future" }];
+    State.graphNodes = [
+      { id: 11, name: "Drake" },
+      { id: 22, name: "Future" },
+    ];
     els.pathFromInput.value = "Drake";
-    els.pathToInput.value   = "Future";
-    // Simulate the user picking each name from the node-AC (sets the
-    // internal _pathFromId/_pathToId this test can't reach directly —
-    // exercised indirectly via a fresh "input" then Find path click).
+    els.pathToInput.value = "Future";
     els.pathFromInput.dispatchEvent(new window.Event("input", { bubbles: true }));
     els.pathToInput.dispatchEvent(new window.Event("input", { bubbles: true }));
 
@@ -87,9 +82,6 @@ describe("btn-swap-path", () => {
     els.btnRunPath.dispatchEvent(new window.Event("click", { bubbles: true }));
     await Promise.resolve();
 
-    // With no AC-selected id (ids reset by the "input" events above), Find
-    // path falls back to the raw (now swapped) text — proves the swap
-    // itself, not just that a request fired.
     expect(runServerPath).toHaveBeenCalledWith("Future", "Drake", expect.anything());
   });
 });

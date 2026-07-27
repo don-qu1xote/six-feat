@@ -1,12 +1,4 @@
-# six-feat-genius-gateway — standalone Genius-API gateway service (IDEA-45).
-# All traffic to the external Genius API (incl. CircuitBreaker and
-# lane-based rate-limiting) is centralized here behind a small internal
-# HTTP API (POST /internal/genius/artist|song-list|song|candidates). One
-# instance of this service means one global CB / FG-BG rate-limit state,
-# shared across every caller instead of being duplicated per-process.
-#
-# No Postgres — this service never touches persistent storage, only
-# outbound HTTP to Genius.
+
 
 components_manager:
   task_processors:
@@ -18,8 +10,6 @@ components_manager:
       worker_threads: 4
       thread_name: fs-task-processor
 
-    # [IDEA-27 pattern] Dedicated, low-concurrency TP for the internal
-    # metrics endpoint so scraping never contends with gateway handling.
     monitor-task-processor:
       worker_threads: 1
       thread_name: monitor-worker
@@ -31,9 +21,7 @@ components_manager:
       listener:
         port: 8082
         task_processor: &main_tp main-task-processor
-      # Internal-only listener for handler-server-monitor below — separate
-      # port, no host port mapping in docker-compose.yml (this service has
-      # none), no auth-checker of its own.
+
       listener-monitor:
         port: 8087
         task_processor: &monitor_tp monitor-task-processor
@@ -49,9 +37,7 @@ components_manager:
         default:
           file_path: '@stdout'
           level: $logging_level
-          # [SF-OBS-03] Structured JSON — see services/six-feat/
-          # static_config.yaml's own logging block for the full rationale;
-          # kept identical across all 4 services' static_config.yaml.
+
           format: json
 
     testsuite-support:
@@ -98,18 +84,11 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
-    # [SF-INF-03] Unified readiness contract — see
-    # libs/six-feat-common/src/http/readiness_common.hpp. Gates on the
-    # shared CircuitBreaker's state (see ReadinessHandler's own header
-    # comment for why this service gates on it while six-feat doesn't).
     handler-readyz:
       path: /readyz
       method: GET
       task_processor: *main_tp
 
-    # ── Observability (IDEA-27 pattern) ─────────────────────────────────────
-    # Metrics: CB state and FG/BG lane token+slot availability (genius-gateway),
-    # centralized here now that this is the single instance driving Genius.
     handler-server-monitor:
       path: /metrics
       method: GET

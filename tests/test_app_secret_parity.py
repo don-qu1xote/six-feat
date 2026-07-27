@@ -32,9 +32,7 @@ READYZ_URL_BADSECRET = f"{SERVICE_BASE_BADSECRET}/readyz"
 
 
 class TestAppSecretParityMatching:
-    def test_readyz_reports_ok_when_secrets_match(
-        self, service_proc, auth_service_proc
-    ) -> None:
+    def test_readyz_reports_ok_when_secrets_match(self, service_proc, auth_service_proc) -> None:
         resp = requests.get(READYZ_URL)
         body = resp.json()
 
@@ -45,9 +43,7 @@ class TestAppSecretParityMatching:
 
 
 class TestAppSecretParityMismatch:
-    def test_readyz_reports_mismatch_when_secrets_differ(
-        self, service_proc_badsecret
-    ) -> None:
+    def test_readyz_reports_mismatch_when_secrets_differ(self, service_proc_badsecret) -> None:
         resp = requests.get(READYZ_URL_BADSECRET)
         body = resp.json()
 

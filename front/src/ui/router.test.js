@@ -1,12 +1,16 @@
-// ════════════════════════════════════════════════════════════════════════════
-// router.test.js — [SF-WEB-25] minimal client-side routing (#/graph, #/game).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { State } from "../state/state.js";
 import {
-  SURFACE_GRAPH, SURFACE_GAME, SURFACE_GAME_SEASON, DEFAULT_SURFACE,
-  parseSurfaceFromHash, getCurrentSurface, onSurfaceChange,
-  navigateToSurface, restoreSurfaceFromUrl, isGameSurface,
+  SURFACE_GRAPH,
+  SURFACE_GAME,
+  SURFACE_GAME_SEASON,
+  DEFAULT_SURFACE,
+  parseSurfaceFromHash,
+  getCurrentSurface,
+  onSurfaceChange,
+  navigateToSurface,
+  restoreSurfaceFromUrl,
+  isGameSurface,
 } from "./router.js";
 
 beforeEach(() => {
@@ -122,9 +126,8 @@ describe("graph <-> game round trip via the URL", () => {
     navigateToSurface(SURFACE_GAME);
     const hashAfterNav = window.location.hash;
 
-    // Simulate a fresh load picking up exactly the URL navigateToSurface left behind.
     history.replaceState(null, "", `http://localhost:3000/${hashAfterNav}`);
-    State.surface = DEFAULT_SURFACE; // reset, as a real fresh load would start
+    State.surface = DEFAULT_SURFACE;
     expect(restoreSurfaceFromUrl()).toBe(SURFACE_GAME);
 
     navigateToSurface(SURFACE_GRAPH);
@@ -150,10 +153,6 @@ describe("popstate (browser back/forward)", () => {
 
 describe("hashchange (plain <a href=\"#/graph\"> links, e.g. the game surface's own 'Back to graph')", () => {
   it("[fix] updates State.surface and notifies listeners on a direct hash change, not just popstate", () => {
-    // Same shape as a real <a href="#/graph"> click: the browser updates
-    // location.hash itself (no pushState/replaceState call, no popstate) and
-    // fires "hashchange" — pushState/replaceState alone would previously
-    // leave State.surface stale since only "popstate" was ever listened to.
     const fn = vi.fn();
     const unsubscribe = onSurfaceChange(fn);
     navigateToSurface(SURFACE_GAME);

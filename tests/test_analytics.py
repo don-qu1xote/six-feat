@@ -50,11 +50,6 @@ from mocks.mock_persistent_store import (
     TrackCredit,
 )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Python reimplementation of the C++ algorithms (for unit testing)
-# ─────────────────────────────────────────────────────────────────────────────
-
 AdjList = Dict[int, List[CollabEdge]]
 
 
@@ -114,8 +109,7 @@ def bidirectional_bfs(adj: AdjList, src: int, dst: int) -> List[int]:
     if src not in adj or dst not in adj:
         return []
 
-    # Forward and backward frontiers
-    fwd: Dict[int, int] = {src: -1}   # node → predecessor
+    fwd: Dict[int, int] = {src: -1}
     bwd: Dict[int, int] = {dst: -1}
 
     fwd_frontier = [src]
@@ -123,7 +117,6 @@ def bidirectional_bfs(adj: AdjList, src: int, dst: int) -> List[int]:
     meeting_node = -1
 
     while fwd_frontier and bwd_frontier:
-        # Expand smaller frontier
         if len(fwd_frontier) <= len(bwd_frontier):
             next_frontier = []
             for u in fwd_frontier:
@@ -159,7 +152,6 @@ def bidirectional_bfs(adj: AdjList, src: int, dst: int) -> List[int]:
     if meeting_node == -1:
         return []
 
-    # Reconstruct path
     path = []
     node = meeting_node
     while node != -1:
@@ -184,13 +176,9 @@ def _make_adj(edges: List[tuple]) -> AdjList:
     return adj
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BetweennessCentrality tests
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestBetweennessCentrality:
     def test_path_graph_middle_node_highest(self):
-        # A(1) - B(2) - C(3): B is the only bridge
+
         adj = _make_adj([(1, 2, 1), (2, 3, 1)])
         bc = betweenness_centrality(adj, [1, 2, 3])
         assert bc[2] > bc[1]
@@ -203,7 +191,7 @@ class TestBetweennessCentrality:
         assert bc[3] == pytest.approx(0.0)
 
     def test_star_graph_centre_bc_highest(self):
-        # Hub (0) connected to leaves 1,2,3,4
+
         edges = [(0, i, 1) for i in range(1, 5)]
         nodes = [0, 1, 2, 3, 4]
         adj = _make_adj(edges)
@@ -226,9 +214,9 @@ class TestBetweennessCentrality:
         assert bc[42] == pytest.approx(0.0)
 
     def test_clique_all_equal_bc(self):
-        # Complete graph K4 — by symmetry all nodes have equal BC
+
         nodes = [1, 2, 3, 4]
-        edges = [(a, b, 1) for i, a in enumerate(nodes) for b in nodes[i + 1:]]
+        edges = [(a, b, 1) for i, a in enumerate(nodes) for b in nodes[i + 1 :]]
         adj = _make_adj(edges)
         bc = betweenness_centrality(adj, nodes)
         scores = [bc[n] for n in nodes]
@@ -263,10 +251,10 @@ class TestBetweennessCentrality:
         test_graph.py, but at the algorithm level: normalised = raw / max,
         guarding against max == 0 (e.g. a single node or fully symmetric
         graph where every score is 0)."""
-        adj = _make_adj([(0, i, 1) for i in range(1, 6)])  # star, hub=0
+        adj = _make_adj([(0, i, 1) for i in range(1, 6)])
         nodes = [0, 1, 2, 3, 4, 5]
         bc = betweenness_centrality(adj, nodes)
-        max_bc = max(bc.values()) or 1.0  # avoid divide-by-zero, mirrors C++ guard
+        max_bc = max(bc.values()) or 1.0
         for n in nodes:
             normalised = bc[n] / max_bc
             assert 0.0 <= normalised <= 1.0
@@ -286,10 +274,6 @@ class TestBetweennessCentrality:
             assert normalised == pytest.approx(0.0)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# BidirectionalBFS tests
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestBidirectionalBFS:
     def test_direct_edge(self):
         adj = _make_adj([(1, 2, 1)])
@@ -305,7 +289,7 @@ class TestBidirectionalBFS:
         assert 2 in path
 
     def test_no_path_returns_empty(self):
-        # Two disconnected components
+
         adj = _make_adj([(1, 2, 1), (3, 4, 1)])
         path = bidirectional_bfs(adj, 1, 3)
         assert path == []
@@ -316,10 +300,10 @@ class TestBidirectionalBFS:
         assert path == [1]
 
     def test_prefers_shortest_in_multipath_graph(self):
-        # 1 → 2 → 3 (length 2) and 1 → 4 → 5 → 3 (length 3)
+
         adj = _make_adj([(1, 2, 1), (2, 3, 1), (1, 4, 1), (4, 5, 1), (5, 3, 1)])
         path = bidirectional_bfs(adj, 1, 3)
-        assert len(path) == 3  # shortest = [1, 2, 3]
+        assert len(path) == 3
 
     def test_path_endpoints_match_src_dst(self):
         adj = _make_adj([(10, 20, 1), (20, 30, 1), (30, 40, 1)])
@@ -350,10 +334,6 @@ class TestBidirectionalBFS:
         assert path[-1] == 4
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# InMemoryStore tests
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestInMemoryStore:
     def test_unknown_artist_depth_is_none(self):
         store = InMemoryStore()
@@ -379,7 +359,7 @@ class TestInMemoryStore:
         store = InMemoryStore()
         data = ArtistSongs(seed=ArtistRef(id=2, name="FullArtist"), songs=[])
         store.UpsertArtistSongs(data, Depth.FULL)
-        store.UpsertArtistSongs(data, Depth.FOREGROUND)  # Should not downgrade
+        store.UpsertArtistSongs(data, Depth.FOREGROUND)
         assert store.GetFetchDepth(2) == Depth.FULL
 
     def test_load_artist_songs_below_want_returns_none(self):
@@ -411,14 +391,13 @@ class TestInMemoryStore:
 
     def test_load_neighbours_with_role_filter(self):
         store = InMemoryStore()
-        # Setup: artist 10 co-stars with artist 11 (featured) and artist 12 (producer)
+
         store.seed_artist(10, "Main")
         store.seed_artist(11, "Featured")
         store.seed_artist(12, "Producer")
         store.seed_song(1001, "Track", [(10, "primary"), (11, "featured"), (12, "producer")])
         store.seed_fetch_state(10, Depth.FOREGROUND, 1)
 
-        # Allow only featured
         mask_featured = RoleMask(primary=False, producer=False, writer=False, featured=True)
         neighbours = store.LoadNeighbours(10, mask_featured)
         neighbour_ids = {n.neighbour for n in neighbours}
@@ -455,7 +434,7 @@ class TestInMemoryStore:
         store = InMemoryStore()
         store.seed_artist(20, "ArtistX")
         store.seed_artist(21, "ArtistY")
-        # Two songs featuring ArtistY → weight should be 2
+
         store.seed_song(2001, "Song One", [(20, "primary"), (21, "featured")])
         store.seed_song(2002, "Song Two", [(20, "primary"), (21, "featured")])
 

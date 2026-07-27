@@ -1,90 +1,67 @@
-#include <userver/clients/dns/component.hpp>
-#include <userver/clients/http/component_list.hpp>   // вместо component.hpp
-#include <userver/components/minimal_server_component_list.hpp>
-#include <userver/server/handlers/server_monitor.hpp>
-#include <userver/storages/postgres/component.hpp>
-#include <userver/testsuite/testsuite_support.hpp>
-#include <userver/utils/daemon_run.hpp>
-
-#include "storage/artist_repository.hpp"
-#include "auth/app_secret_parity_checker.hpp"
-#include "auth/oauth_handler.hpp"
 #include "core/collab_service.hpp"
-#include "enrichment/enrichment_client.hpp"
-#include "genius/genius_gateway_client.hpp"
+#include "core/rate_limit_store_component.hpp"
+
 #include "http/artist_handler.hpp"
 #include "http/graph_handler.hpp"
 #include "http/health_handler.hpp"
 #include "http/image_proxy_handler.hpp"
 #include "http/internal_neighbours_handler.hpp"
 #include "http/path_handler.hpp"
-#include "storage/persistent_store.hpp"
-#include "core/rate_limit_store_component.hpp"
 #include "http/readiness_handler.hpp"
 #include "http/search_handler.hpp"
+#include "http/sse_status_handler.hpp"
 #include "http/static_handler.hpp"
 #include "http/status_handler.hpp"
-#include "http/sse_status_handler.hpp"
+
+#include "auth/app_secret_parity_checker.hpp"
+#include "auth/oauth_handler.hpp"
+
+#include "storage/artist_repository.hpp"
+#include "storage/persistent_store.hpp"
+
+#include "genius/genius_gateway_client.hpp"
+
+#include "enrichment/enrichment_client.hpp"
+
+#include <userver/clients/dns/component.hpp>
+#include <userver/clients/http/component_list.hpp>   #include <userver/components/minimal_server_component_list.hpp>
+#include <userver/server/handlers/server_monitor.hpp>
+#include <userver/storages/postgres/component.hpp>
+#include <userver/testsuite/testsuite_support.hpp>
+#include <userver/utils/daemon_run.hpp>
 
 using namespace userver;
 
-int main(int argc, char *argv[]) {
-    const auto component_list =
-        components::MinimalServerComponentList()
-            .Append<clients::dns::Component>()
-            .AppendComponentList(clients::http::ComponentList())
-            .Append<components::TestsuiteSupport>()
-            .Append<components::Postgres>("postgres-db-1")
-            .Append<six_feat::PersistentStore>()
-            .Append<six_feat::GeniusGatewayClient>()
-            // [IDEA-53] OAuthConfig stays here — it's what
-            // src/auth/token_router.hpp's RequireSession/ExtractToken use to
-            // decrypt six_feat_session LOCALLY on every request (same
-            // APP_SECRET the standalone six-feat-auth service encrypts with).
-            // The OAuth flow itself (LoginHandler/CallbackHandler/
-            // LogoutHandler/MeHandler) has moved to services/auth/ — see
-            // that service's main.cpp.
-            .Append<six_feat::auth::OAuthConfig>()
-            // [SF-SEC-01] Periodically verifies this process's APP_SECRET
-            // matches six-feat-auth's, over the internal mesh, without ever
-            // transmitting the secret — see ReadinessHandler's
-            // "app_secret_parity" check below.
-            .Append<six_feat::AppSecretParityChecker>()
-            .Append<six_feat::ArtistRepository>()
-            .Append<six_feat::EnrichmentClient>()
-            .Append<six_feat::CollabService>()
-            // [SF-SEC-04] Backend (single in-process, default | shared
-            // Postgres-backed) for graph/path/search's per-IP rate limits —
-            // see rate_limit_store_component.hpp. Must come before the
-            // three handlers below, which look it up in their own
-            // constructors.
-            .Append<six_feat::RateLimitStoreComponent>()
-            .Append<six_feat::GraphHandler>()
-            .Append<six_feat::PathHandler>()
-            .Append<six_feat::SearchHandler>()
-            .Append<six_feat::HealthHandler>()
-            .Append<six_feat::ReadinessHandler>()
-            .Append<six_feat::StatusHandler>()
-            .Append<six_feat::ArtistHandler>()
-            // [SF-GAME-13] Internal-mesh anti-cheat lookup for six-feat-game
-            // — X-Internal-Secret-gated, answers purely from L1
-            // (ArtistRepository, already appended above).
-            .Append<six_feat::InternalNeighboursHandler>()
-            .Append<six_feat::SseStatusHandler>()
-            .Append<six_feat::ImageProxyHandler>()
-            .Append<six_feat::IndexHandler>()
-            .Append<six_feat::ScriptHandler>()
-            // [SF-WEB-40] Hashed CSS design-system bundle — see
-            // static_handler.hpp.
-            .Append<six_feat::StyleHandler>()
-            // [SF-SEC-02] Self-hosted vis-network vendor bundle — see
-            // static_handler.hpp.
-            .Append<six_feat::VendorVisNetworkHandler>()
-            // [SF-API-05] Static OpenAPI 3.1 document — see static_handler.hpp.
-            .Append<six_feat::OpenApiHandler>()
-            // [IDEA-27] Internal metrics endpoint — bound to listener-monitor
-            // (see static_config.yaml), not the public listener.
-            .Append<server::handlers::ServerMonitor>();
+int main(int argc, char* argv[]) {
+  const auto component_list = components::MinimalServerComponentList()
+                                  .Append<clients::dns::Component>()
+                                  .AppendComponentList(clients::http::ComponentList())
+                                  .Append<components::TestsuiteSupport>()
+                                  .Append<components::Postgres>("postgres-db-1")
+                                  .Append<six_feat::PersistentStore>()
+                                  .Append<six_feat::GeniusGatewayClient>()
+                                  .Append<six_feat::auth::OAuthConfig>()
+                                  .Append<six_feat::AppSecretParityChecker>()
+                                  .Append<six_feat::ArtistRepository>()
+                                  .Append<six_feat::EnrichmentClient>()
+                                  .Append<six_feat::CollabService>()
+                                  .Append<six_feat::RateLimitStoreComponent>()
+                                  .Append<six_feat::GraphHandler>()
+                                  .Append<six_feat::PathHandler>()
+                                  .Append<six_feat::SearchHandler>()
+                                  .Append<six_feat::HealthHandler>()
+                                  .Append<six_feat::ReadinessHandler>()
+                                  .Append<six_feat::StatusHandler>()
+                                  .Append<six_feat::ArtistHandler>()
+                                  .Append<six_feat::InternalNeighboursHandler>()
+                                  .Append<six_feat::SseStatusHandler>()
+                                  .Append<six_feat::ImageProxyHandler>()
+                                  .Append<six_feat::IndexHandler>()
+                                  .Append<six_feat::ScriptHandler>()
+                                  .Append<six_feat::StyleHandler>()
+                                  .Append<six_feat::VendorVisNetworkHandler>()
+                                  .Append<six_feat::OpenApiHandler>()
+                                  .Append<server::handlers::ServerMonitor>();
 
   return utils::DaemonMain(argc, argv, component_list);
 }

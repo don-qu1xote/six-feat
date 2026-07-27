@@ -42,20 +42,8 @@ STATUS_URL_BG = f"{SERVICE_BASE_BG}/api/v1/status"
 
 pytestmark = pytest.mark.bg_profile
 
-# docker-compose's postgres service persists across separate local test
-# runs (unlike CI's ephemeral service container), so fixed artist-id
-# literals here would collide with rows this file already wrote on a
-# prior run — e.g. status["depth"] reading back Full from that old run
-# instead of the Foreground this run's own FG request just produced.
-# Seed from wall-clock time so each run gets a fresh, never-before-used
-# range while keeping the ids well clear of the 1-100ish range other test
-# files use against the same shared database.
 _ID_BASE = 90_000_000_000 + int(time.time() * 1000)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# (a) Background enrichment raises depth Foreground -> Full
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestBackgroundEnrichmentRaisesDepth:
     def test_depth_becomes_full_after_bg_worker_runs(
@@ -70,7 +58,10 @@ class TestBackgroundEnrichmentRaisesDepth:
         genius_mock_bg.song_detail(
             song_id,
             _build_song_detail(
-                song_id, "BG Enriched Song", artist_id, name,
+                song_id,
+                "BG Enriched Song",
+                artist_id,
+                name,
                 collaborators=[{"id": artist_id + 1, "name": "BgCollab", "role": "featured"}],
             ),
         )
@@ -78,15 +69,9 @@ class TestBackgroundEnrichmentRaisesDepth:
         resp = client_bg.get(GRAPH_URL_BG, params={"artist": name})
         assert resp.status_code == 200
 
-        # Immediately after the FG request, L1 has Foreground depth (1) —
-        # the worker (queue-capacity>0 in this profile) has been enqueued
-        # via CollabService::BuildRadialGraph's EnqueueIfNeeded but likely
-        # hasn't run yet.
         status = client_bg.get(STATUS_URL_BG, params={"id": str(artist_id)}).json()
         assert status["depth"] == 1
 
-        # Poll until the bg-enrichment task processor's worker coroutine
-        # picks up the job and WriteThrough(..., Depth::Full) lands.
         deadline = time.monotonic() + 10.0
         depth = status["depth"]
         while time.monotonic() < deadline and depth < 2:
@@ -108,7 +93,8 @@ class TestBackgroundEnrichmentRaisesDepth:
         genius_mock_bg.resolve(name, [{"id": artist_id, "name": name, "score": 0.99}])
         genius_mock_bg.songs(artist_id, [song_id])
         genius_mock_bg.song_detail(
-            song_id, _build_song_detail(song_id, "Another BG Song", artist_id, name),
+            song_id,
+            _build_song_detail(song_id, "Another BG Song", artist_id, name),
         )
 
         client_bg.get(GRAPH_URL_BG, params={"artist": name})
@@ -117,16 +103,12 @@ class TestBackgroundEnrichmentRaisesDepth:
         enriching = True
         while time.monotonic() < deadline and enriching:
             time.sleep(0.2)
-            enriching = client_bg.get(
-                STATUS_URL_BG, params={"id": str(artist_id)}
-            ).json()["enriching"]
+            enriching = client_bg.get(STATUS_URL_BG, params={"id": str(artist_id)}).json()[
+                "enriching"
+            ]
 
         assert enriching is False
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# (b) CircuitBreaker: Closed -> Open -> HalfOpen -> {Open again | Closed}
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestCircuitBreakerLifecycle:
     def test_opens_on_failures_then_halfopens_then_recovers(
@@ -147,29 +129,19 @@ class TestCircuitBreakerLifecycle:
         genius_mock_bg.search_error(503)
         name = "CbLifecycleArtist"
 
-        # 1) Trip the CB: exactly cb-failure-threshold requests should
-        #    reach the mock before CircuitBreaker::AllowRequest() starts
-        #    fast-failing new attempts from *within* the same retry loop.
         resp = client_bg.get(GRAPH_URL_BG, params={"artist": name})
         assert resp.status_code == 503
         calls_at_trip = len(mock_server_bg.calls)
         assert calls_at_trip >= 3
 
-        # 2) While Open, further requests fail fast WITHOUT reaching the
-        #    mock at all.
         resp2 = client_bg.get(GRAPH_URL_BG, params={"artist": name})
         assert resp2.status_code == 503
         assert len(mock_server_bg.calls) == calls_at_trip, (
             "a request while the CB is Open should not reach the upstream mock"
         )
 
-        # 3) Wait out cb-open-seconds so Open -> HalfOpen becomes eligible.
         time.sleep(1.5)
 
-        # 4) The first probe reaches the mock (still 503'ing) -> HalfOpen
-        #    fails -> trips straight back to Open. Only ONE probe is let
-        #    through per open window: the very next request (before the
-        #    next open-seconds window elapses) fails fast again.
         resp3 = client_bg.get(GRAPH_URL_BG, params={"artist": name})
         assert resp3.status_code == 503
         calls_after_probe = len(mock_server_bg.calls)
@@ -182,8 +154,6 @@ class TestCircuitBreakerLifecycle:
             "should fast-fail again instead of probing a second time"
         )
 
-        # 5) Wait out another open window, then let the probe succeed this
-        #    time -> HalfOpen -> Closed.
         time.sleep(1.5)
         recovered_id = _ID_BASE + 101
         recovered_song_id = recovered_id * 10
@@ -197,17 +167,11 @@ class TestCircuitBreakerLifecycle:
         resp5 = client_bg.get(GRAPH_URL_BG, params={"artist": name})
         assert resp5.status_code == 200
 
-        # 6) CB is Closed again: a further request goes straight through
-        #    to the (healthy) mock instead of fast-failing.
         calls_before_final = len(mock_server_bg.calls)
         resp6 = client_bg.get(GRAPH_URL_BG, params={"artist": name})
         assert resp6.status_code == 200
         assert len(mock_server_bg.calls) > calls_before_final
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# (c) Retries with backoff on transient 5xx
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestRetryWithBackoffOnTransient5xx:
     def test_transient_5xx_is_retried_and_eventually_succeeds(
@@ -231,7 +195,10 @@ class TestRetryWithBackoffOnTransient5xx:
         genius_mock_bg.song_detail(
             song_id,
             _build_song_detail(
-                song_id, "Retried Song", artist_id, name,
+                song_id,
+                "Retried Song",
+                artist_id,
+                name,
                 collaborators=[{"id": artist_id + 1, "name": "RetryCollab", "role": "featured"}],
             ),
         )
@@ -250,7 +217,9 @@ class TestRetryWithBackoffOnTransient5xx:
         resp = client_bg.get(GRAPH_URL_BG, params={"artist": name})
 
         assert resp.status_code == 200
-        assert len(returned_statuses) >= 3, "expected 2 failed attempts followed by a successful retry"
+        assert len(returned_statuses) >= 3, (
+            "expected 2 failed attempts followed by a successful retry"
+        )
         assert returned_statuses[:2] == [503, 503]
         assert 200 in returned_statuses
 

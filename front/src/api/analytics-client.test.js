@@ -1,12 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// analytics-client.test.js — unit tests for getBfsAdj/bfsPath (analytics-client.js)
-//
-// vis-adapter/index.js is mocked out: analytics-client.js only needs
-// restoreDefaultColors (used by clearPathHighlight, not under test here) and
-// re-exports highlightPath from it — pulling in the real module would drag
-// in the whole vis.Network-facing adapter chain for no benefit to these
-// pure BFS-math tests.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../vis-adapter/index.js", () => ({
@@ -45,9 +36,10 @@ describe("getBfsAdj", () => {
     State.graphEdges = [{ from: 1, to: 2 }];
     const first = getBfsAdj();
 
-    // Graph changes without invalidating the cache — getBfsAdj should keep
-    // returning the same, already-built (now stale) adjacency instance.
-    State.graphEdges = [{ from: 1, to: 2 }, { from: 2, to: 3 }];
+    State.graphEdges = [
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+    ];
     const second = getBfsAdj();
 
     expect(second).toBe(first);
@@ -58,7 +50,10 @@ describe("getBfsAdj", () => {
     State.graphEdges = [{ from: 1, to: 2 }];
     const first = getBfsAdj();
 
-    State.graphEdges = [{ from: 1, to: 2 }, { from: 2, to: 3 }];
+    State.graphEdges = [
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+    ];
     State._bfsAdj = null;
     const second = getBfsAdj();
 
@@ -69,7 +64,6 @@ describe("getBfsAdj", () => {
 
 describe("bfsPath", () => {
   beforeEach(() => {
-    // 1-2-3-4 chain plus a side branch 1-5, and a disconnected pair 6-7.
     State.graphEdges = [
       { from: 1, to: 2 },
       { from: 2, to: 3 },

@@ -31,13 +31,9 @@ import pytest
 import session_crypto as sc
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Key derivation (mirrors auth::KeyFromEnv())
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestKeyFromSecret:
     def test_64_hex_chars_used_as_raw_bytes(self):
-        secret = "0123456789abcdef" * 4  # 64 hex chars
+        secret = "0123456789abcdef" * 4
         key = sc.key_from_secret(secret)
         assert key == bytes.fromhex(secret)
         assert len(key) == 32
@@ -66,7 +62,7 @@ class TestKeyFromSecret:
         assert key == hashlib.sha256(secret.encode()).digest()
 
     def test_64_chars_with_non_hex_char_is_sha256_hashed(self):
-        secret = "g" + "a" * 63  # 'g' is not a hex digit
+        secret = "g" + "a" * 63
         key = sc.key_from_secret(secret)
         assert key == hashlib.sha256(secret.encode()).digest()
 
@@ -77,10 +73,6 @@ class TestKeyFromSecret:
     def test_derivation_is_deterministic(self):
         assert sc.key_from_secret("abc") == sc.key_from_secret("abc")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Encrypt / Decrypt round-trip
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestEncryptDecryptRoundTrip:
     def test_basic_round_trip(self):
@@ -148,17 +140,13 @@ class TestEncryptDecryptRoundTrip:
         assert data.access_token == "normal-token-no-quotes"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tamper detection (GCM authentication tag)
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestTamperDetection:
     def test_flipped_character_is_rejected(self):
         key = sc.key_from_secret("a" * 64)
         cookie = sc.encrypt("tok", int(time.time()) + 100, key)
         idx = len(cookie) - 5
         flipped_char = "A" if cookie[idx] != "A" else "B"
-        tampered = cookie[:idx] + flipped_char + cookie[idx + 1:]
+        tampered = cookie[:idx] + flipped_char + cookie[idx + 1 :]
         assert sc.decrypt(tampered, key) is None
 
     def test_truncated_cookie_is_rejected(self):
@@ -194,10 +182,6 @@ class TestTamperDetection:
         assert sc.decrypt("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", key) is None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Expiry
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestExpiry:
     def test_expired_cookie_is_rejected(self):
         key = sc.key_from_secret("a" * 64)
@@ -207,7 +191,7 @@ class TestExpiry:
 
     def test_far_future_expiry_is_accepted(self):
         key = sc.key_from_secret("a" * 64)
-        future = int(time.time()) + 90 * 86400  # 90 days, matches session-ttl-days default
+        future = int(time.time()) + 90 * 86400
         cookie = sc.encrypt("tok", future, key)
         data = sc.decrypt(cookie, key)
         assert data is not None
@@ -220,10 +204,6 @@ class TestExpiry:
         cookie = sc.encrypt("tok", int(time.time()) - 1, key)
         assert sc.decrypt(cookie, key) is None
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Empty access_token is always invalid (mirrors `if (data.access_token.empty())`)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestEmptyToken:
     def test_empty_token_round_trip_is_rejected(self):

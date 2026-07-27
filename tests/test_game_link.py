@@ -1,6 +1,6 @@
 """
 test_game_link.py — [SF-GAME-21] integration tests for GET /api/v1/game/link,
-the live per-hop connection check (game #2) the branching-web front-end calls
+the live per-hop connection check (game
 before letting a player type an unconnected artist onto their web.
 
 Same harness convention as the other test_game_*.py files: runs against the
@@ -39,8 +39,6 @@ DB_CONN_PARAMS = dict(
 ROLE_PRIMARY = 1
 ROLE_FEATURED = 2
 
-# A dedicated, SF-GAME-21-themed id block, disjoint from every other
-# test_game_*.py file's own range (140/150/160/170).
 _A_ID, _B_ID, _C_ID, _D_ID = 210_001, 210_002, 210_003, 210_004
 
 
@@ -88,14 +86,15 @@ def _require_service() -> None:
 
 @pytest.fixture(scope="module")
 def seeded() -> bool:
-    # A-B is a real collaboration; C-D is a separate one so C exists in L1 but
-    # shares no song with A (a definitive, not "couldn't-check", not-linked).
+
     _seed_collaboration(
-        210_101, "SF-GAME-21 Link A-B",
+        210_101,
+        "SF-GAME-21 Link A-B",
         [(_A_ID, "SFG21LinkA", ROLE_PRIMARY), (_B_ID, "SFG21LinkB", ROLE_FEATURED)],
     )
     _seed_collaboration(
-        210_102, "SF-GAME-21 Link C-D",
+        210_102,
+        "SF-GAME-21 Link C-D",
         [(_C_ID, "SFG21LinkC", ROLE_PRIMARY), (_D_ID, "SFG21LinkD", ROLE_FEATURED)],
     )
     return True

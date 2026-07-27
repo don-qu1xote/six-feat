@@ -1,9 +1,3 @@
-// @vitest-environment node
-// ════════════════════════════════════════════════════════════════════════════
-// hero-connect.test.js — [fix] Connect ("Six degrees of separation") panel
-// redesign: matches Explore's scale/floating look instead of sitting in its
-// own boxed bento-tile card.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect } from "vitest";
 import { buildSync } from "esbuild";
 import { readFileSync } from "node:fs";

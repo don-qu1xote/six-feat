@@ -33,7 +33,7 @@ import requests
 
 import session_crypto
 
-TEST_APP_SECRET = "f" * 64  # same as tests/conftest.py's TEST_APP_SECRET
+TEST_APP_SECRET = "f" * 64
 ORIGIN = os.environ.get("GAME_SERVICE_ORIGIN", "http://localhost:8080")
 ADMIN_URL = f"{ORIGIN}/api/v1/game/admin"
 
@@ -50,18 +50,17 @@ DB_CONN_PARAMS = dict(
 ROLE_PRIMARY = 1
 ROLE_FEATURED = 2
 
-# The fixed admin identity the opt-in positive path impersonates. For it to run,
-# the game service must be started with GAME_ADMIN_GENIUS_IDS including this.
 ADMIN_NAME = "SFG21Admin"
 
-# Dedicated SF-GAME-21 id block, disjoint from the other test_game_*.py files.
 _A_ID, _B_ID = 213_001, 213_002
 
 
 def _cookie(name: str) -> str:
     return session_crypto.make_cookie(
-        TEST_APP_SECRET, access_token="test-genius-access-token",
-        ttl_seconds=3600, name=name,
+        TEST_APP_SECRET,
+        access_token="test-genius-access-token",
+        ttl_seconds=3600,
+        name=name,
     )
 
 
@@ -137,12 +136,13 @@ def test_post_non_admin_is_403():
 @pytest.mark.skipif(
     not _admin_configured(),
     reason="set GAME_ADMIN_GENIUS_IDS to include SFG21Admin (on the game service "
-           "and this test env) to exercise the positive publish path",
+    "and this test env) to exercise the positive publish path",
 )
 def test_admin_can_publish_a_specific_daily():
-    # A real A-B collaboration so the server's BFS ideal actually resolves.
+
     _seed_collaboration(
-        213_101, "SF-GAME-21 Admin A-B",
+        213_101,
+        "SF-GAME-21 Admin A-B",
         [(_A_ID, "SFG21AdminA", ROLE_PRIMARY), (_B_ID, "SFG21AdminB", ROLE_FEATURED)],
     )
     s = _session(ADMIN_NAME)

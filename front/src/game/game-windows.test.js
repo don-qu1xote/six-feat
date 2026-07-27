@@ -1,11 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// game-windows.test.js — DOM-level coverage for the routed game windows
-// controller (game-windows.js): surface show/hide + active nav, and each
-// screen's data load (leaderboard scopes, profile + admin gating, challenge
-// browser, season hub). game-api.js, the router, connect.js, autocomplete and
-// toast are all mocked, so these drive the real render/route logic off a jsdom
-// fixture with no network or vis.Network.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../ui/router.js", () => ({
@@ -38,14 +30,20 @@ import { startChallengeByRefs } from "./connect.js";
 import { resolveArtistId } from "./connect-store.js";
 import { showToast } from "../ui/toast.js";
 import {
-  fetchProfile, fetchPublicProfile, fetchChallenges, fetchSeason,
-  fetchLeaderboard, fetchSeasonLeaderboard, fetchAdminStatus, publishDaily,
+  fetchProfile,
+  fetchPublicProfile,
+  fetchChallenges,
+  fetchSeason,
+  fetchLeaderboard,
+  fetchSeasonLeaderboard,
+  fetchAdminStatus,
+  publishDaily,
 } from "./game-api.js";
 import { setupGameWindows } from "./game-windows.js";
 
-// Слив очереди через границу макротаска, а не счётчик микротасков: считать
-// внутреннюю глубину промисов реализации — хрупко (см. connect.test.js).
-const flush = async () => { await new Promise(resolve => setTimeout(resolve, 0)); };
+const flush = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
 
 const NAV = `<nav><a class="game-nav-link" data-surface="game/leaderboard"></a>
   <a class="game-nav-link" data-surface="game/profile"></a></nav>`;
@@ -96,20 +94,51 @@ function fixture() {
 
 function bind() {
   const map = {
-    gameLeaderboardSurface: "game-leaderboard-surface", lbTabSeason: "lb-tab-season",
-    lbTabChallenge: "lb-tab-challenge", lbScopeLabel: "lb-scope-label", lbList: "lb-list", lbEmpty: "lb-empty",
-    gameProfileSurface: "game-profile-surface", profileSignedOut: "profile-signed-out", profileCard: "profile-card",
-    pfAvatar: "pf-avatar", pfName: "pf-name", pfRank: "pf-rank", pfElo: "pf-elo", pfGames: "pf-games",
-    pfBadges: "pf-badges", pfBadgeList: "pf-badge-list", pfBadgesEmpty: "pf-badges-empty",
-    pfHistory: "pf-history", pfHistoryEmpty: "pf-history-empty",
-    gameChallengesSurface: "game-challenges-surface", chTabAll: "ch-tab-all", chTabDaily: "ch-tab-daily",
-    chTabCustom: "ch-tab-custom", chGrid: "ch-grid", chEmpty: "ch-empty", chMore: "ch-more",
-    chSearchInput: "ch-search-input", chSearchClear: "ch-search-clear",
-    gameSeasonSurface: "game-season-surface", snName: "sn-name", snCountdown: "sn-countdown", snYou: "sn-you",
-    snProgressFill: "sn-progress-fill", snDates: "sn-dates", snPodium: "sn-podium", snPodiumEmpty: "sn-podium-empty",
-    snAchCount: "sn-ach-count", snAchHint: "sn-ach-hint", snAchGrid: "sn-ach-grid",
-    adminPanel: "admin-panel", adminFromInput: "admin-from-input", adminFromAc: "admin-from-ac",
-    adminToInput: "admin-to-input", adminToAc: "admin-to-ac", adminPublishDaily: "admin-publish-daily",
+    gameLeaderboardSurface: "game-leaderboard-surface",
+    lbTabSeason: "lb-tab-season",
+    lbTabChallenge: "lb-tab-challenge",
+    lbScopeLabel: "lb-scope-label",
+    lbList: "lb-list",
+    lbEmpty: "lb-empty",
+    gameProfileSurface: "game-profile-surface",
+    profileSignedOut: "profile-signed-out",
+    profileCard: "profile-card",
+    pfAvatar: "pf-avatar",
+    pfName: "pf-name",
+    pfRank: "pf-rank",
+    pfElo: "pf-elo",
+    pfGames: "pf-games",
+    pfBadges: "pf-badges",
+    pfBadgeList: "pf-badge-list",
+    pfBadgesEmpty: "pf-badges-empty",
+    pfHistory: "pf-history",
+    pfHistoryEmpty: "pf-history-empty",
+    gameChallengesSurface: "game-challenges-surface",
+    chTabAll: "ch-tab-all",
+    chTabDaily: "ch-tab-daily",
+    chTabCustom: "ch-tab-custom",
+    chGrid: "ch-grid",
+    chEmpty: "ch-empty",
+    chMore: "ch-more",
+    chSearchInput: "ch-search-input",
+    chSearchClear: "ch-search-clear",
+    gameSeasonSurface: "game-season-surface",
+    snName: "sn-name",
+    snCountdown: "sn-countdown",
+    snYou: "sn-you",
+    snProgressFill: "sn-progress-fill",
+    snDates: "sn-dates",
+    snPodium: "sn-podium",
+    snPodiumEmpty: "sn-podium-empty",
+    snAchCount: "sn-ach-count",
+    snAchHint: "sn-ach-hint",
+    snAchGrid: "sn-ach-grid",
+    adminPanel: "admin-panel",
+    adminFromInput: "admin-from-input",
+    adminFromAc: "admin-from-ac",
+    adminToInput: "admin-to-input",
+    adminToAc: "admin-to-ac",
+    adminPublishDaily: "admin-publish-daily",
     adminStatus: "admin-status",
   };
   for (const [k, id] of Object.entries(map)) els[k] = document.getElementById(id);
@@ -121,7 +150,9 @@ beforeEach(() => {
   document.body.innerHTML = fixture();
   bind();
   State.connect = null;
-  onSurfaceChange.mockImplementation(fn => { applySurface = fn; });
+  onSurfaceChange.mockImplementation((fn) => {
+    applySurface = fn;
+  });
   setupGameWindows();
 });
 
@@ -145,9 +176,9 @@ describe("surface routing", () => {
 describe("leaderboard", () => {
   it("loads the season board by default", async () => {
     fetchSeason.mockResolvedValue({ season: { id: 3 } });
-    fetchSeasonLeaderboard.mockResolvedValue({ entries: [
-      { user_id: 1, display_name: "Alice", score: 900, hops: 2 },
-    ] });
+    fetchSeasonLeaderboard.mockResolvedValue({
+      entries: [{ user_id: 1, display_name: "Alice", score: 900, hops: 2 }],
+    });
     applySurface("game/leaderboard");
     await flush();
     expect(fetchSeasonLeaderboard).toHaveBeenCalledWith(3, { limit: 50 });
@@ -171,7 +202,9 @@ describe("leaderboard", () => {
 
   it("challenge tab loads the current challenge's board when one is active", async () => {
     State.connect = { game: { challengeId: 7 } };
-    fetchLeaderboard.mockResolvedValue({ entries: [{ user_id: 1, display_name: "Bob", score: 5, hops: 1 }] });
+    fetchLeaderboard.mockResolvedValue({
+      entries: [{ user_id: 1, display_name: "Bob", score: 5, hops: 1 }],
+    });
     els.lbTabChallenge.click();
     await flush();
     expect(fetchLeaderboard).toHaveBeenCalledWith(7, { limit: 50 });
@@ -190,13 +223,20 @@ describe("profile + admin gating", () => {
 
   it("renders the card, badges and history when signed in", async () => {
     fetchProfile.mockResolvedValue({
-      user_id: 5, display_name: "Al", avatar_url: null, elo: 1300, games: 4, rank: 2,
+      user_id: 5,
+      display_name: "Al",
+      avatar_url: null,
+      elo: 1300,
+      games: 4,
+      rank: 2,
       achievements: [{ code: "first_win", title: "First win", descr: "..." }],
     });
-    fetchPublicProfile.mockResolvedValue({ history: [
-      { valid: true, score: 900, hops: 2, ts: 1 },
-      { valid: false, hops: 0, ts: 2 },
-    ] });
+    fetchPublicProfile.mockResolvedValue({
+      history: [
+        { valid: true, score: 900, hops: 2, ts: 1 },
+        { valid: false, hops: 0, ts: 2 },
+      ],
+    });
     applySurface("game/profile");
     await flush();
     expect(els.profileCard.hidden).toBe(false);
@@ -208,7 +248,14 @@ describe("profile + admin gating", () => {
   });
 
   it("keeps the admin panel hidden for a non-admin", async () => {
-    fetchProfile.mockResolvedValue({ user_id: 5, display_name: "Al", elo: 1, games: 0, rank: 0, achievements: [] });
+    fetchProfile.mockResolvedValue({
+      user_id: 5,
+      display_name: "Al",
+      elo: 1,
+      games: 0,
+      rank: 0,
+      achievements: [],
+    });
     fetchAdminStatus.mockResolvedValue(false);
     applySurface("game/profile");
     await flush();
@@ -216,7 +263,14 @@ describe("profile + admin gating", () => {
   });
 
   it("reveals the admin panel for an admin", async () => {
-    fetchProfile.mockResolvedValue({ user_id: 5, display_name: "Al", elo: 1, games: 0, rank: 0, achievements: [] });
+    fetchProfile.mockResolvedValue({
+      user_id: 5,
+      display_name: "Al",
+      elo: 1,
+      games: 0,
+      rank: 0,
+      achievements: [],
+    });
     fetchAdminStatus.mockResolvedValue(true);
     applySurface("game/profile");
     await flush();
@@ -247,7 +301,13 @@ describe("challenges browser", () => {
   it("renders challenge cards and a Load more when there's a cursor", async () => {
     fetchChallenges.mockResolvedValue({
       challenges: [
-        { id: 1, kind: "daily", optimal_len: 2, from: { id: 10, name: "A" }, to: { id: 20, name: "B" } },
+        {
+          id: 1,
+          kind: "daily",
+          optimal_len: 2,
+          from: { id: 10, name: "A" },
+          to: { id: 20, name: "B" },
+        },
       ],
       next_cursor: "100:1",
     });
@@ -266,7 +326,15 @@ describe("challenges browser", () => {
 
   it("starting a card hands the endpoints to connect.js", async () => {
     fetchChallenges.mockResolvedValue({
-      challenges: [{ id: 1, kind: "custom", optimal_len: 2, from: { id: 10, name: "A", image: "a.jpg" }, to: { id: 20, name: "B" } }],
+      challenges: [
+        {
+          id: 1,
+          kind: "custom",
+          optimal_len: 2,
+          from: { id: 10, name: "A", image: "a.jpg" },
+          to: { id: 20, name: "B" },
+        },
+      ],
       next_cursor: null,
     });
     applySurface("game/challenges");
@@ -282,7 +350,12 @@ describe("challenges browser", () => {
     fetchChallenges.mockResolvedValue({ challenges: [], next_cursor: null });
     els.chTabDaily.click();
     await flush();
-    expect(fetchChallenges).toHaveBeenLastCalledWith({ kind: "daily", query: "", cursor: "", limit: 24 });
+    expect(fetchChallenges).toHaveBeenLastCalledWith({
+      kind: "daily",
+      query: "",
+      cursor: "",
+      limit: 24,
+    });
   });
 });
 
@@ -290,7 +363,7 @@ describe("[SF-GAME-46] поиск челленджа по артисту", () =>
   beforeEach(() => {
     fetchChallenges.mockResolvedValue({ challenges: [], next_cursor: null });
     els.chSearchInput.value = "";
-    els.chTabAll.click();          // сбрасываем kind, оставленный соседями
+    els.chTabAll.click(); // сбрасываем kind, оставленный соседями
   });
 
   // _chQuery — модульное состояние контроллера, оно переживает beforeEach и
@@ -306,7 +379,8 @@ describe("[SF-GAME-46] поиск челленджа по артисту", () =>
     els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     expect(fetchChallenges).toHaveBeenLastCalledWith(
-      expect.objectContaining({ query: "Drake", cursor: "" }));
+      expect.objectContaining({ query: "Drake", cursor: "" }),
+    );
   });
 
   it("сохраняет вкладку: поиск и kind — независимые фильтры", async () => {
@@ -316,7 +390,8 @@ describe("[SF-GAME-46] поиск челленджа по артисту", () =>
     els.chSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await flush();
     expect(fetchChallenges).toHaveBeenLastCalledWith(
-      expect.objectContaining({ kind: "daily", query: "Adele" }));
+      expect.objectContaining({ kind: "daily", query: "Adele" }),
+    );
   });
 
   it("Esc и кнопка сброса очищают поиск", async () => {
@@ -341,7 +416,10 @@ describe("[SF-GAME-46] поиск челленджа по артисту", () =>
   });
 
   it("сбрасывает пагинацию — иначе вторая страница пришла бы от прошлого запроса", async () => {
-    fetchChallenges.mockResolvedValue({ challenges: [{ id: 1, kind: "daily", from: {}, to: {} }], next_cursor: "c1" });
+    fetchChallenges.mockResolvedValue({
+      challenges: [{ id: 1, kind: "daily", from: {}, to: {} }],
+      next_cursor: "c1",
+    });
     els.chTabAll.click();
     await flush();
     els.chSearchInput.value = "Drake";
@@ -363,7 +441,10 @@ describe("season hub", () => {
       ],
     });
     fetchProfile.mockResolvedValue({
-      user_id: 5, display_name: "Al", elo: 1300, rank: 2,
+      user_id: 5,
+      display_name: "Al",
+      elo: 1300,
+      rank: 2,
       achievements: [{ code: "first_win" }],
     });
     applySurface("game/season");
@@ -377,7 +458,11 @@ describe("season hub", () => {
   });
 
   it("shows the podium empty state with no scores", async () => {
-    fetchSeason.mockResolvedValue({ season: { id: 3, name: "S", starts_ts: 0, ends_ts: 0 }, podium: [], achievements: [] });
+    fetchSeason.mockResolvedValue({
+      season: { id: 3, name: "S", starts_ts: 0, ends_ts: 0 },
+      podium: [],
+      achievements: [],
+    });
     fetchProfile.mockResolvedValue(null);
     applySurface("game/season");
     await flush();
@@ -389,8 +474,8 @@ describe("[SF-GAME-34] admin publish resolves what's actually typed", () => {
   it("resolves a typed (not picked) name to a REAL id instead of sending 0", async () => {
     resolveArtistId.mockResolvedValue(777);
     publishDaily.mockResolvedValue({ id: 9, optimal_len: 2 });
-    els.adminFromInput.value = "Drake";      // набрано, но не выбрано из списка
-    els.adminToInput.value = "";             // пусто = пусть выберет сервер
+    els.adminFromInput.value = "Drake"; // набрано, но не выбрано из списка
+    els.adminToInput.value = ""; // пусто = пусть выберет сервер
     els.adminPublishDaily.click();
     await flush();
     expect(resolveArtistId).toHaveBeenCalledWith("Drake");
@@ -402,7 +487,7 @@ describe("[SF-GAME-34] admin publish resolves what's actually typed", () => {
     els.adminFromInput.value = "Not An Artist";
     els.adminPublishDaily.click();
     await flush();
-    expect(publishDaily).not.toHaveBeenCalled();   // никакой случайной пары
+    expect(publishDaily).not.toHaveBeenCalled(); // никакой случайной пары
     expect(els.adminStatus.textContent).toContain("Not An Artist");
     expect(els.adminPublishDaily.disabled).toBe(false);
   });
@@ -435,7 +520,7 @@ describe("[SF-GAME-37] empty vs unavailable", () => {
   });
 
   it("says the leaderboard isn't LOADED when the service is unreachable", async () => {
-    fetchSeason.mockResolvedValue(null);          // сервис не ответил
+    fetchSeason.mockResolvedValue(null); // сервис не ответил
     onSurfaceChange.mock.calls[0][0]("game/leaderboard");
     await flush();
     expect(els.lbEmpty.hidden).toBe(false);

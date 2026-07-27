@@ -56,14 +56,12 @@ INDEX_URL = f"{SERVICE_BASE}/"
 SCRIPT_URL = f"{SERVICE_BASE}/script.js"
 VENDOR_VIS_NETWORK_URL = f"{SERVICE_BASE}/vendor/vis-network.min.js"
 
-pytestmark = pytest.mark.static_headers  # custom marker; see pytest.ini
+pytestmark = pytest.mark.static_headers
 
 EXPECTED_STATIC_HEADERS = {
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
     "x-frame-options": "DENY",
-    # [SF-SEC-03] Must match kPermissionsPolicy in security_headers.cpp
-    # exactly — every feature this app never uses, denied outright.
     "permissions-policy": (
         "geolocation=(), camera=(), microphone=(), payment=(), usb=(), "
         "magnetometer=(), gyroscope=(), accelerometer=(), fullscreen=()"
@@ -76,10 +74,6 @@ def _skip_if_not_implemented(resp: requests.Response) -> None:
     if resp.status_code == 404:
         pytest.skip("static handler returned 404 — not registered in this build")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. GET /
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestIndexSecurityHeaders:
     def test_returns_200(self, anon_client: requests.Session):
@@ -106,10 +100,6 @@ class TestIndexSecurityHeaders:
         assert "text/html" in resp.headers.get("content-type", "")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. GET /script.js
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestScriptSecurityHeaders:
     def test_returns_200(self, anon_client: requests.Session):
         resp = anon_client.get(SCRIPT_URL)
@@ -135,11 +125,6 @@ class TestScriptSecurityHeaders:
         assert "javascript" in resp.headers.get("content-type", "")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. GET /vendor/vis-network.min.js — [SF-SEC-02] the self-hosted vendor
-#    bundle that replaced the unpkg.com CDN <script> tag.
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestVendorVisNetworkSecurityHeaders:
     def test_returns_200(self, anon_client: requests.Session):
         resp = anon_client.get(VENDOR_VIS_NETWORK_URL)
@@ -164,11 +149,6 @@ class TestVendorVisNetworkSecurityHeaders:
         _skip_if_not_implemented(resp)
         assert "javascript" in resp.headers.get("content-type", "")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. CSP directive contents — must cover every external host the front-end
-#    actually loads, otherwise the page breaks (blocked script/style/font/img).
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestCspDirectiveContents:
     def test_default_src_self(self, anon_client: requests.Session):
@@ -223,9 +203,7 @@ class TestCspDirectiveContents:
         resp = anon_client.get(INDEX_URL)
         _skip_if_not_implemented(resp)
         csp = resp.headers["content-security-policy"]
-        script_src_directive = next(
-            d for d in csp.split(";") if d.strip().startswith("script-src")
-        )
+        script_src_directive = next(d for d in csp.split(";") if d.strip().startswith("script-src"))
         assert "'unsafe-inline'" not in script_src_directive
 
     def test_style_src_allows_inline_and_fonts(self, anon_client: requests.Session):

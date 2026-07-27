@@ -1,7 +1,7 @@
 type: object
 description: >-
     Same-origin proxy for Genius CDN artist/song avatars (SF-API-12) — lets
-    the live #network <canvas> and PNG export draw real photos instead of
+    the live
     placeholders without tainting the canvas on a CORS-less CDN response.
 additionalProperties: false
 properties:

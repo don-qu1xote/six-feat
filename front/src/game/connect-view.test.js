@@ -1,8 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// connect-view.test.js — [SF-GAME-32] Вью раунда: пишет в DOM то, что видит в
-// состоянии, и НИЧЕГО не меняет. game-board.js мокается (он тянет реальный
-// движок графа) — здесь проверяется, что вью его дёргает и чем именно.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./game-board.js", () => ({ renderBoard: vi.fn() }));
@@ -11,24 +6,42 @@ import { renderBoard } from "./game-board.js";
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { createConnectChain, addHop } from "./connect-model.js";
-import { render, draw, formatElapsed, setBoardHandlers, setEndpointsExpanded } from "./connect-view.js";
+import {
+  render,
+  draw,
+  formatElapsed,
+  setBoardHandlers,
+  setEndpointsExpanded,
+} from "./connect-view.js";
 
-// Минимальный набор узлов, которые читает render(). Всё, чего нет, вью обязан
-// пережить молча (каждая render*-функция сама проверяет свой els.*).
 function mountDom() {
-  const mk = (key, tag = "div") => { els[key] = document.createElement(tag); return els[key]; };
-  mk("connectTitleStart", "span"); mk("connectTitleGoal", "span"); mk("connectHopsValue", "span");
-  mk("connectParPill"); mk("connectParValue", "span");
-  mk("connectRivalPill"); mk("connectRivalText", "span");
+  const mk = (key, tag = "div") => {
+    els[key] = document.createElement(tag);
+    return els[key];
+  };
+  mk("connectTitleStart", "span");
+  mk("connectTitleGoal", "span");
+  mk("connectHopsValue", "span");
+  mk("connectParPill");
+  mk("connectParValue", "span");
+  mk("connectRivalPill");
+  mk("connectRivalText", "span");
   mk("connectLineList", "ul");
   mk("connectEndpoints");
   mk("connectStageEmpty");
-  mk("connectAddInput", "input"); mk("connectAddBtn", "button");
-  mk("connectBrowse"); mk("connectBrowseChips"); mk("connectBrowseLabel", "span");
-  mk("connectUndo", "button"); mk("connectReset", "button");
-  mk("connectGiveUp", "button"); mk("connectShare", "button");
+  mk("connectAddInput", "input");
+  mk("connectAddBtn", "button");
+  mk("connectBrowse");
+  mk("connectBrowseChips");
+  mk("connectBrowseLabel", "span");
+  mk("connectUndo", "button");
+  mk("connectReset", "button");
+  mk("connectGiveUp", "button");
+  mk("connectShare", "button");
   mk("connectLockin", "button");
-  mk("connectFinishScore", "span"); mk("connectFinishLabel", "span"); mk("connectFinishDetail");
+  mk("connectFinishScore", "span");
+  mk("connectFinishLabel", "span");
+  mk("connectFinishDetail");
   mk("connectLeaderboard");
   mk("connectTimerValue", "span");
 }
@@ -39,9 +52,16 @@ beforeEach(() => {
   setBoardHandlers({});
   setEndpointsExpanded(false);
   Object.assign(State.connect, {
-    startName: "", goalName: "", game: null,
-    photos: {}, ids: {}, frontier: null,
-    rivalBanner: null, par: null, seasonId: null, submitted: false,
+    startName: "",
+    goalName: "",
+    game: null,
+    photos: {},
+    ids: {},
+    frontier: null,
+    rivalBanner: null,
+    par: null,
+    seasonId: null,
+    submitted: false,
     unresolved: {},
   });
 });
@@ -53,23 +73,21 @@ describe("render() with no game", () => {
     expect(els.connectTitleGoal.textContent).toBe("Goal");
     expect(els.connectHopsValue.textContent).toBe("0");
     expect(els.connectLineList.innerHTML).toBe("");
-    // [SF-GAME-47] Без партии подсказки на сцене НЕТ — её место занял экран
-    // старта (карточка выбора пары). Две «пустые» надписи разом читались бы
-    // как поломка, а не как приглашение начать.
     expect(els.connectStageEmpty.hidden).toBe(true);
   });
 
   it("shows no score and keeps the endpoint editor open", () => {
     render();
     expect(els.connectFinishScore.textContent).toBe("—");
-    expect(els.connectEndpoints.hidden).toBe(false); // endpoints not ready → editing
+    expect(els.connectEndpoints.hidden).toBe(false);
   });
 });
 
 describe("render() with an active game", () => {
   beforeEach(() => {
     const s = State.connect;
-    s.startName = "Drake"; s.goalName = "Adele";
+    s.startName = "Drake";
+    s.goalName = "Adele";
     s.game = createConnectChain("Drake", "Adele");
   });
 
@@ -110,19 +128,17 @@ describe("render() with an active game", () => {
   it("escapes artist names instead of injecting them as markup", () => {
     State.connect.game = createConnectChain("<img src=x onerror=1>", "Adele");
     render();
-    // Проверяем DOM, а не строку innerHTML: сериализация не экранирует "<"
-    // внутри значения атрибута (там он однозначен), поэтому подстрочный поиск
-    // по innerHTML дал бы ложную тревогу. Значимое свойство — что никакого
-    // элемента из имени не возникло, а видимый текст экранирован.
     expect(els.connectLineList.querySelector("img")).toBeNull();
-    expect(els.connectLineList.querySelector(".clp-row-name").textContent).toBe("<img src=x onerror=1>");
+    expect(els.connectLineList.querySelector(".clp-row-name").textContent).toBe(
+      "<img src=x onerror=1>",
+    );
     expect(els.connectLineList.innerHTML).toContain("&lt;img");
   });
 
   it("keeps Lock in disabled until the line reaches the goal", () => {
     render();
     expect(els.connectLockin.disabled).toBe(true);
-    addHop(State.connect.game, "Adele"); // достигли цели
+    addHop(State.connect.game, "Adele");
     render();
     expect(els.connectLockin.disabled).toBe(false);
     expect(els.connectLockin.textContent).toBe("Lock in");
@@ -139,7 +155,8 @@ describe("render() with an active game", () => {
 
 describe("[SF-GAME-34 / ADR-0009] честное состояние вместо фейкового узла", () => {
   beforeEach(() => {
-    State.connect.startName = "Drake"; State.connect.goalName = "Nobody";
+    State.connect.startName = "Drake";
+    State.connect.goalName = "Nobody";
     State.connect.game = createConnectChain("Drake", "Nobody");
   });
 
@@ -178,7 +195,8 @@ describe("[SF-GAME-34 / ADR-0009] честное состояние вместо
 describe("frontier (dandelion) chips", () => {
   beforeEach(() => {
     const s = State.connect;
-    s.startName = "Drake"; s.goalName = "Adele";
+    s.startName = "Drake";
+    s.goalName = "Adele";
     s.game = createConnectChain("Drake", "Adele");
   });
 
@@ -188,7 +206,11 @@ describe("frontier (dandelion) chips", () => {
   });
 
   it("renders each collaborator on the ui-chip kit base [SF-GAME-33]", () => {
-    State.connect.frontier = { centerName: "Drake", loading: false, neighbours: [{ id: 200, name: "SZA", image: null }] };
+    State.connect.frontier = {
+      centerName: "Drake",
+      loading: false,
+      neighbours: [{ id: 200, name: "SZA", image: null }],
+    };
     render();
     expect(els.connectBrowse.hidden).toBe(false);
     expect(els.connectBrowseChips.innerHTML).toContain("ui-chip");
@@ -200,7 +222,12 @@ describe("frontier (dandelion) chips", () => {
     render();
     expect(els.connectBrowseChips.innerHTML).toContain("Loading");
 
-    State.connect.frontier = { centerName: "Drake", loading: false, neighbours: [], unavailable: true };
+    State.connect.frontier = {
+      centerName: "Drake",
+      loading: false,
+      neighbours: [],
+      unavailable: true,
+    };
     render();
     expect(els.connectBrowseChips.innerHTML).toContain("No graph data");
 

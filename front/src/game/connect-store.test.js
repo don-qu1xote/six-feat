@@ -1,9 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// connect-store.test.js — [SF-GAME-32] Слой данных/идентичности раунда:
-// кэши фото и id, разрешение имени в РЕАЛЬНЫЙ Genius id (ADR-0009) и
-// сериализация ссылки-шаринга. Сеть замокана — здесь проверяется поведение
-// кэша и разбор ответа, а не транспорт.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api/net.js", () => ({ apiFetch: vi.fn() }));
@@ -11,21 +5,37 @@ vi.mock("../api/net.js", () => ({ apiFetch: vi.fn() }));
 import { apiFetch } from "../api/net.js";
 import { State } from "../state/state.js";
 import {
-  slice, setPhoto, setId, idFor, photoFor, eqName, endpointsReady, resolveId,
-  isUnresolved, unresolvedNames, clearUnresolved, resolveArtistId,
-  serializeGameShareState, parseGameShareState,
+  slice,
+  setPhoto,
+  setId,
+  idFor,
+  photoFor,
+  eqName,
+  endpointsReady,
+  resolveId,
+  isUnresolved,
+  unresolvedNames,
+  clearUnresolved,
+  resolveArtistId,
+  serializeGameShareState,
+  parseGameShareState,
 } from "./connect-store.js";
 
-const okJson = body => ({ ok: true, json: async () => body });
+const okJson = (body) => ({ ok: true, json: async () => body });
 
 beforeEach(() => {
   apiFetch.mockReset();
-  // Слайс объявлен в state.js (SF-GAME-30) — сбрасываем его поля, а не
-  // пересоздаём объект, чтобы проверять ровно то, что видит прод.
   Object.assign(State.connect, {
-    startName: "", goalName: "", game: null,
-    photos: {}, ids: {}, frontier: null,
-    rivalBanner: null, par: null, seasonId: null, submitted: false,
+    startName: "",
+    goalName: "",
+    game: null,
+    photos: {},
+    ids: {},
+    frontier: null,
+    rivalBanner: null,
+    par: null,
+    seasonId: null,
+    submitted: false,
     unresolved: {},
   });
 });
@@ -33,7 +43,7 @@ beforeEach(() => {
 describe("slice()", () => {
   it("reads the declared state.js slice, not an ad-hoc global", () => {
     expect(slice()).toBe(State.connect);
-    expect(State.game.connect).toBe(State.connect); // bridge к слайсу game
+    expect(State.game.connect).toBe(State.connect);
   });
 
   it("re-creates the nested caches if something wiped them", () => {
@@ -59,7 +69,9 @@ describe("id / photo caches", () => {
   });
 
   it("ignores empty names and null values instead of poisoning the cache", () => {
-    setId("", 5); setId("X", null); setPhoto("Y", "");
+    setId("", 5);
+    setId("X", null);
+    setPhoto("Y", "");
     expect(slice().ids).toEqual({});
     expect(slice().photos).toEqual({});
   });
@@ -112,7 +124,7 @@ describe("resolveId — [ADR-0009] имя → реальный Genius id", () =>
     apiFetch.mockRejectedValue(new Error("offline"));
     expect(await resolveId("C")).toBeNull();
 
-    expect(slice().ids).toEqual({}); // ничего не закэшировано
+    expect(slice().ids).toEqual({});
   });
 });
 
@@ -141,7 +153,7 @@ describe("[SF-GAME-34 / ADR-0009] нерешённые имена", () => {
     await resolveId("Drake");
     expect(isUnresolved("Drake")).toBe(true);
 
-    slice().ids = {}; // как будто пробуем заново
+    slice().ids = {};
     apiFetch.mockResolvedValue(okJson({ candidates: [{ id: 100 }] }));
     expect(await resolveId("Drake")).toBe(100);
     expect(isUnresolved("Drake")).toBe(false);

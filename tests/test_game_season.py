@@ -1,6 +1,6 @@
 """
 test_game_season.py — [SF-GAME-21] integration tests for GET /api/v1/game/season,
-the season & achievements hub (game #4): the current season (created on first
+the season & achievements hub (game
 sight), its season-scoped podium, and the achievement catalog, in one call.
 Open endpoint — no session.
 
@@ -37,7 +37,6 @@ DB_CONN_PARAMS = dict(
     password=os.environ.get("DB_PASSWORD", "six_feat_test_password"),
 )
 
-# SF-GAME-18: constexpr kSeasonLenSeconds = 30 * 24 * 3600 (game_store.cpp).
 SEASON_LEN_SECONDS = 30 * 24 * 3600
 
 
@@ -68,7 +67,7 @@ def test_season_hub_shape():
     assert season["name"]
     assert season["starts_ts"] < season["ends_ts"]
 
-    assert isinstance(body["podium"], list)  # may be empty on a fresh stack
+    assert isinstance(body["podium"], list)
     for e in body["podium"]:
         assert {"user_id", "display_name", "score", "hops", "ts"} <= e.keys()
 

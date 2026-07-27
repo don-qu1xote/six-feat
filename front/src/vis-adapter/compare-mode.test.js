@@ -1,24 +1,13 @@
-// ════════════════════════════════════════════════════════════════════════════
-// vis-adapter/compare-mode.test.js — SF-WEB-47: graph-native Compare mode
-// (click two nodes to compare them, replacing the old pin-to-select
-// mechanic). showComparePanel/bfsPath/highlightPath (ui/index.js,
-// api/analytics-client.js) are mocked — this file is about compare-mode.js's
-// own state machine (enter/exit/toggle, first→second pick sequencing, and
-// the extra path-highlight step on a completed pick) and its use of
-// highlight.js's real markCompareEndpoint/clearCompareEndpoints (exercised
-// for real, not mocked, so a marker/revert bug would actually fail these
-// tests).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { invalidateColorCache, resetHoverState } from "./highlight.js";
 
 const showComparePanel = vi.fn();
-const showToast        = vi.fn();
+const showToast = vi.fn();
 vi.mock("../ui/index.js", () => ({
   showComparePanel: (...args) => showComparePanel(...args),
-  showToast:        (...args) => showToast(...args),
+  showToast: (...args) => showToast(...args),
 }));
 
 const bfsPath = vi.fn(() => null);
@@ -27,14 +16,17 @@ vi.mock("../api/analytics-client.js", () => ({
 }));
 
 import {
-  isCompareModeActive, enterCompareMode, exitCompareMode, toggleCompareMode,
+  isCompareModeActive,
+  enterCompareMode,
+  exitCompareMode,
+  toggleCompareMode,
   handleCompareModeNodeClick,
 } from "./compare-mode.js";
 
 function mockDataSet(items) {
-  const map = new Map(items.map(n => [n.id, n]));
+  const map = new Map(items.map((n) => [n.id, n]));
   return {
-    get: id => map.get(id) || null,
+    get: (id) => map.get(id) || null,
     getIds: () => [...map.keys()],
     update: vi.fn(),
   };
@@ -67,13 +59,13 @@ describe("enterCompareMode / exitCompareMode / toggleCompareMode", () => {
     expect(isCompareModeActive()).toBe(true);
     expect(State.compareModeStartId).toBeNull();
     expect(els.btnCompareMode.classList.contains("active")).toBe(true);
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/first/i), expect.any(Number), true);
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringMatching(/first/i),
+      expect.any(Number),
+      true,
+    );
   });
 
-  // [fix] Reported as tooltips/edge-coloring still showing while picking —
-  // our own highlightNeighborhood/highlightEdgePair were already suppressed
-  // via isSelectionActive(), but vis.js's native hover/tooltip is
-  // independent of that and needed its own explicit off/on toggle.
   it("enterCompareMode disables the network's native hover (tooltip); exitCompareMode restores it", () => {
     enterCompareMode();
     expect(State.network.setOptions).toHaveBeenCalledWith({ interaction: { hover: false } });
@@ -85,7 +77,7 @@ describe("enterCompareMode / exitCompareMode / toggleCompareMode", () => {
 
   it("exitCompareMode turns the mode off, un-marks the button, and reverts any endpoint marker", () => {
     enterCompareMode();
-    handleCompareModeNodeClick(1); // picks a first, paints a marker
+    handleCompareModeNodeClick(1);
     expect(State.nodesDS.update).toHaveBeenCalled();
     State.nodesDS.update.mockClear();
 
@@ -94,7 +86,7 @@ describe("enterCompareMode / exitCompareMode / toggleCompareMode", () => {
     expect(State.compareModeStartId).toBeNull();
     expect(els.btnCompareMode.classList.contains("active")).toBe(false);
     expect(State.nodesDS.update).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.objectContaining({ id: 1 })])
+      expect.arrayContaining([expect.objectContaining({ id: 1 })]),
     );
   });
 
@@ -132,7 +124,7 @@ describe("handleCompareModeNodeClick", () => {
     State.nodesDS.update.mockClear();
 
     handleCompareModeNodeClick(2);
-    const secondUpd = State.nodesDS.update.mock.calls.find(call => call[0].id === 2)[0];
+    const secondUpd = State.nodesDS.update.mock.calls.find((call) => call[0].id === 2)[0];
 
     expect(firstUpd.color.border).not.toBe(secondUpd.color.border);
   });
@@ -163,8 +155,7 @@ describe("handleCompareModeNodeClick", () => {
   it("resets gracefully instead of opening the panel if the first node vanished mid-pick (graph changed under it)", () => {
     enterCompareMode();
     handleCompareModeNodeClick(1);
-    State.graphNodes = State.graphNodes.filter(n => n.id !== 1); // simulate a graph replaced mid-pick
-
+    State.graphNodes = State.graphNodes.filter((n) => n.id !== 1);
     handleCompareModeNodeClick(2);
     expect(showComparePanel).not.toHaveBeenCalled();
     expect(isCompareModeActive()).toBe(false);
@@ -180,15 +171,11 @@ describe("handleCompareModeNodeClick", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: 1 }),
         expect.objectContaining({ id: 2 }),
-      ])
+      ]),
     );
   });
 });
 
-// [SF-WEB-47] "additionally highlight the path" — the whole point of this
-// round: Compare mode doesn't just open the panel, it also lights up the
-// connecting path between the two picked artists, same three-level dimming
-// the six-degrees text search already uses.
 describe("handleCompareModeNodeClick — path highlight", () => {
   it("highlights the BFS path between the two picked artists when one exists, and passes it to showComparePanel", () => {
     bfsPath.mockReturnValue([1, 3, 2]);
@@ -221,18 +208,14 @@ describe("handleCompareModeNodeClick — path highlight", () => {
     expect(showComparePanel).toHaveBeenCalledWith(1, 2, null);
   });
 
-  // [SF-WEB-61] "убери затемнения при компаир моде и оставь только
-  // подсветку всех нод пути и крайних" — a node NOT on the found path
-  // (here: id 3, a bystander unrelated to the 1<->2 path) must be left at
-  // full resting opacity, not the path finder's usual deep-dim.
   it("leaves an off-path node at full opacity — no deep-dim in Compare mode", () => {
-    bfsPath.mockReturnValue([1, 2]);  // node 3 is not on this path
+    bfsPath.mockReturnValue([1, 2]);
     enterCompareMode();
     handleCompareModeNodeClick(1);
     handleCompareModeNodeClick(2);
 
     const [nodeUpdates] = State.nodesDS.update.mock.calls.at(-1);
-    const off = nodeUpdates.find(u => u.id === 3);
+    const off = nodeUpdates.find((u) => u.id === 3);
     expect(off.opacity).toBe(1);
   });
 });

@@ -52,9 +52,7 @@ def key_from_secret(app_secret: str) -> bytes:
     """Mirror of auth::KeyFromEnv() — derive the 32-byte AES key."""
     if not app_secret:
         raise ValueError("APP_SECRET must be non-empty")
-    is_hex64 = len(app_secret) == 64 and all(
-        c in "0123456789abcdefABCDEF" for c in app_secret
-    )
+    is_hex64 = len(app_secret) == 64 and all(c in "0123456789abcdefABCDEF" for c in app_secret)
     if is_hex64:
         return bytes.fromhex(app_secret)
     return hashlib.sha256(app_secret.encode("utf-8")).digest()
@@ -65,12 +63,8 @@ def _b64url_encode_nopad(data: bytes) -> str:
 
 
 def _b64url_decode_nopad(s: str) -> bytes:
-    # base64url alphabet validation mirrors B64CharVal: any character
-    # outside [A-Za-z0-9-_] is invalid and must be rejected (not padded
-    # away silently), matching the C++ decoder's all-or-nothing behaviour.
-    valid_chars = set(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-    )
+
+    valid_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
     if not s:
         return b""
     if any(c not in valid_chars for c in s):
@@ -98,8 +92,7 @@ def encrypt(access_token: str, expires_at_unix: int, key: bytes, name: str = "")
 
     nonce = os.urandom(NONCE_LEN)
     aesgcm = AESGCM(key)
-    # cryptography's AESGCM.encrypt() appends the 16-byte tag to the
-    # ciphertext already, matching the C++ nonce||ciphertext||tag layout.
+
     ct_and_tag = aesgcm.encrypt(nonce, plain.encode("utf-8"), None)
     payload = nonce + ct_and_tag
     return _b64url_encode_nopad(payload)
@@ -137,8 +130,6 @@ def decrypt(cookie_value: str, key: bytes) -> Optional[SessionData]:
     try:
         obj = json.loads(plain.decode("utf-8"))
     except Exception:
-        # C++ JsonGetString/JsonGetInt degrade gracefully to "" / 0 on
-        # malformed JSON rather than throwing; mirror that here too.
         obj = {}
 
     access_token = obj.get("tok", "") if isinstance(obj, dict) else ""

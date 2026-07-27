@@ -1,17 +1,9 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/canvas-states.test.js — [SF-WEB-19] unit tests for the unified
-// empty/loading/error component (renderEmptyState/renderLoadingState/
-// renderErrorState/clearCanvasState). Verifies: the right kit-based markup
-// (.ui-panel/.ui-btn) renders for each state, action buttons (retry /
-// onAction) invoke exactly the caller-supplied existing handler — this
-// module never calls searchArtist/runServerPath/openSearchModal itself —
-// and a container's own base class survives every render (so the same
-// functions work for both the canvas overlay slot and an in-panel
-// container like .path-result).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  renderEmptyState, renderLoadingState, renderErrorState, clearCanvasState
+  renderEmptyState,
+  renderLoadingState,
+  renderErrorState,
+  clearCanvasState,
 } from "./canvas-states.js";
 
 describe("renderEmptyState", () => {
@@ -38,7 +30,10 @@ describe("renderEmptyState", () => {
 
   it("accepts custom title/body/action label", () => {
     renderEmptyState(container, {
-      title: "Custom title", body: "Custom body", actionLabel: "Go", onAction: vi.fn(),
+      title: "Custom title",
+      body: "Custom body",
+      actionLabel: "Go",
+      onAction: vi.fn(),
     });
     expect(container.querySelector(".ui-state-title").textContent).toBe("Custom title");
     expect(container.querySelector(".ui-state-body").textContent).toBe("Custom body");

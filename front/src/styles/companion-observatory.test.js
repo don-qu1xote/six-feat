@@ -1,19 +1,3 @@
-// @vitest-environment node
-// ════════════════════════════════════════════════════════════════════════════
-// companion-observatory.test.js — [SF-WEB-44] Observatory pass on the
-// companion panel's node/edge/path contexts.
-//
-// SF-WEB-44 is shell-only (the companion panel already sits in .ui-panel —
-// see companion.css's own comment) plus a light re-token pass and a couple
-// of small visual additions (seed-glow avatar, "constellation" glow on
-// path/hop avatars and connectors) — static markup throughout (SF-WEB-12),
-// no dynamic grid-tile insertion, handlers unchanged. This file asserts the
-// specific things the ticket calls for: role-chip colours are token-driven
-// (not the dark theme's hex hardcoded per callsite — the same bug class
-// SF-WEB-42/43 already fixed elsewhere), the mini-action row is one
-// .ui-segment (not four independent buttons), and the new glow rules exist
-// and are token-driven, not literals.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect } from "vitest";
 import { buildSync } from "esbuild";
 import { readFileSync } from "node:fs";
@@ -64,7 +48,8 @@ describe("SF-WEB-44 companion panel — Observatory pass", () => {
     const root = rule(css, ":root");
     expect(root).toContain("--amber-rgb");
     expect(root).toContain("--primary2-rgb");
-    const lightBlock = rule(css, ':root[data-theme="light"]') || rule(css, ":root[data-theme=light]");
+    const lightBlock =
+      rule(css, ':root[data-theme="light"]') || rule(css, ":root[data-theme=light]");
     expect(lightBlock, "light theme :root block not found").toBeTruthy();
     expect(lightBlock).toContain("--amber-rgb");
     expect(lightBlock).toContain("--primary2-rgb");
@@ -91,7 +76,6 @@ describe("SF-WEB-44 companion panel — Observatory pass", () => {
   it("no dynamic grid-tile insertion helper (ensureTile) is defined in the sidebar module", () => {
     // sidebar.js's own comments reference the name historically ("no more
     // ensureTile()-style DOM insertion") — that prose should stay; this
-    // only checks that no such function is actually *defined* any more.
     const sidebarSrc = readFileSync(resolve(here, "../ui/sidebar.js"), "utf8");
     expect(sidebarSrc).not.toMatch(/function\s+ensureTile\b/);
     expect(sidebarSrc).not.toMatch(/\bensureTile\s*=\s*\(/);

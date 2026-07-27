@@ -54,10 +54,8 @@ from conftest import (
     _wait_for_port,
 )
 
-pytestmark = pytest.mark.rate_limit_store  # custom marker; see pytest.ini
+pytestmark = pytest.mark.rate_limit_store
 
-# Dedicated ports, distinct from every other fixture's — see conftest.py's
-# own SERVICE_PORT/_BG/_BADSECRET constants for the ranges already in use.
 SERVICE_PORT_SHARED_A = 18110
 MONITOR_PORT_SHARED_A = 18111
 SERVICE_PORT_SHARED_B = 18112
@@ -78,10 +76,7 @@ def _spawn_shared_backend_instance(
         enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
         auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
     )
-    # Only the rate-limit-store block differs from service_proc's config —
-    # every other section (Postgres, OAuth, handlers...) stays identical, so
-    # this is genuinely the same binary/schema, just with the one knob this
-    # ticket introduces flipped.
+
     needle = "rate-limit-store:\n      backend: single"
     assert needle in cfg, (
         "_TEST_CONFIG_TEMPLATE's rate-limit-store block shape changed — "
@@ -189,9 +184,7 @@ def shared_backend_replicas(
         try:
             base_a = f"http://localhost:{SERVICE_PORT_SHARED_A}"
             base_b = f"http://localhost:{SERVICE_PORT_SHARED_B}"
-            # [fix] See _warm_up's own comment — grow both replicas'
-            # Postgres pools past their cold min_pool_size: 1 before any
-            # test times a burst against them.
+
             _warm_up(base_a)
             _warm_up(base_b)
             yield [base_a, base_b]
@@ -211,8 +204,9 @@ def _fire(base_url: str, n: int) -> List[requests.Response]:
     responses: List[requests.Response] = []
     with ThreadPoolExecutor(max_workers=n) as pool:
         futures = [
-            pool.submit(session.get, url, params={"artist": "SFSEC04RateLimitStoreTest"},
-                       timeout=5.0)
+            pool.submit(
+                session.get, url, params={"artist": "SFSEC04RateLimitStoreTest"}, timeout=5.0
+            )
             for _ in range(n)
         ]
         for f in as_completed(futures):
@@ -236,7 +230,6 @@ class TestSharedRateLimitStore:
         precisely the bug this ticket fixes."""
         base_a, base_b = shared_backend_replicas
 
-        # [fix] See _sleep_until_fresh_window's own comment.
         _sleep_until_fresh_window()
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_a = pool.submit(_fire, base_a, 40)

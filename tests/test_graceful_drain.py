@@ -59,20 +59,12 @@ from conftest import (
 
 pytestmark = pytest.mark.bg_profile
 
-# Dedicated port range — distinct from every other fixture in conftest.py
-# (service_proc[_bg]/enrichment_proc_bg use 18080-18096) so these
-# self-managed processes never collide with the shared session fixtures.
 _PORT_A = 18110
 _MOCK_PORT_A = 18111
 _MONITOR_PORT_A = 18112
 _PORT_B = 18113
 _MONITOR_PORT_B = 18114
 
-# [IDEA-46] This file's dedicated six-feat-genius-gateway instance — like
-# the rest of this suite, service_proc/enrichment_proc_bg's shared gateway
-# fixtures can't be reused here since these tests own their own process
-# lifecycles (SIGTERM at a precise moment). Fronts mock_server_a instead of
-# pointing enrichment directly at it.
 _GATEWAY_PORT_A = 18115
 _GATEWAY_MONITOR_PORT_A = 18116
 
@@ -151,11 +143,6 @@ def _write_config(
             queue_capacity=queue_capacity,
             drain_timeout_ms=drain_timeout_ms,
             sync_start="true",
-            # [SF-DB-06] PRUNE_TTL_DAYS isn't set on this file's own
-            # subprocess env (see _start_enrichment below) — prune-task
-            # never starts regardless of these values, so plain
-            # production-like defaults are fine here, same reasoning as
-            # enrichment_proc_bg's own call site in conftest.py.
             prune_interval_seconds=3600,
             prune_batch_size=500,
         )
@@ -262,10 +249,6 @@ def _status(port: int, artist_id: int) -> dict:
     return resp.json()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# (a) A quick queued job finishes draining before the process exits.
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGracefulDrainCompletesQueuedJob:
     def test_queued_job_reaches_full_depth_despite_shutdown(
         self,
@@ -280,10 +263,10 @@ class TestGracefulDrainCompletesQueuedJob:
         mock = GeniusMock(mock_server_a)
         mock.resolve(name, [{"id": artist_id, "name": name, "score": 0.99}])
         mock.songs(artist_id, [song_id])
-        # Slow enough that the job is very likely still in flight/queued
-        # when SIGTERM lands, but well inside the generous drain window.
+
         mock.song_detail_slow(
-            song_id, _build_song_detail(song_id, "Drained Song", artist_id, name),
+            song_id,
+            _build_song_detail(song_id, "Drained Song", artist_id, name),
             delay_seconds=0.5,
         )
 
@@ -300,10 +283,6 @@ class TestGracefulDrainCompletesQueuedJob:
             resp = _enqueue(_PORT_A, artist_id, name)
             assert resp.status_code == 202 and resp.json()["enqueued"] is True
 
-            # Give the worker a brief moment to actually pop the job off the
-            # queue before we start shutting the process down, so this test
-            # exercises "job in flight during shutdown" rather than "job
-            # never even started".
             time.sleep(0.05)
 
             start = time.monotonic()
@@ -318,10 +297,6 @@ class TestGracefulDrainCompletesQueuedJob:
         finally:
             _stop(proc)
 
-        # Restart a fresh instance against the same DB purely to read back
-        # the persisted depth via /internal/status — the previous process
-        # is gone, but WriteThrough(..., Depth::Full) already landed in
-        # Postgres before it exited, if the drain worked.
         proc2 = _start_enrichment(
             tmp_drain_dir,
             port=_PORT_B,
@@ -340,10 +315,6 @@ class TestGracefulDrainCompletesQueuedJob:
             _stop(proc2)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# (b) A job stuck past drain-timeout-ms falls back to cancellation.
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGracefulDrainFallsBackToCancelOnTimeout:
     def test_slow_job_does_not_block_shutdown_past_drain_timeout(
         self,
@@ -358,11 +329,10 @@ class TestGracefulDrainFallsBackToCancelOnTimeout:
         mock = GeniusMock(mock_server_a)
         mock.resolve(name, [{"id": artist_id, "name": name, "score": 0.99}])
         mock.songs(artist_id, [song_id])
-        # Deliberately much slower than the short drain-timeout below, so
-        # the destructor's drain window elapses while the worker is still
-        # mid-request and must fall back to RequestCancel().
+
         mock.song_detail_slow(
-            song_id, _build_song_detail(song_id, "Stuck Song", artist_id, name),
+            song_id,
+            _build_song_detail(song_id, "Stuck Song", artist_id, name),
             delay_seconds=3.0,
         )
 
@@ -387,8 +357,6 @@ class TestGracefulDrainFallsBackToCancelOnTimeout:
             proc.wait(timeout=10)
             elapsed = time.monotonic() - start
 
-            # Bounded by drain-timeout-ms plus generous slack for process
-            # teardown — must be far below the 3s the slow request needs.
             assert elapsed < 2.0, (
                 f"shutdown took {elapsed:.2f}s — expected the fallback "
                 "RequestCancel() to bound exit time to roughly "
@@ -397,10 +365,6 @@ class TestGracefulDrainFallsBackToCancelOnTimeout:
         finally:
             _stop(proc)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# (c) Config validation: negative drain-timeout-ms must fail at startup.
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestDrainTimeoutConfigValidation:
     def test_negative_drain_timeout_ms_fails_startup(
@@ -433,8 +397,7 @@ class TestDrainTimeoutConfigValidation:
                 "instance should refuse to start with a negative "
                 "drain-timeout-ms (RequireNonNegative validation)"
             )
-            # Should have already exited (crashed on the config error)
-            # rather than hanging around never opening the port.
+
             assert proc.wait(timeout=5) != 0
         finally:
             _stop(proc)

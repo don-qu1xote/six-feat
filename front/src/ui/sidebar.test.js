@@ -1,36 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// sidebar.test.js — unit tests for the companion panel's node/edge context
-//                    (ui/sidebar.js): SF-WEB-12's static tiles and the
-//                    object action bar (SF-WEB-14, merged into the sidebar
-//                    body's own grid by SF-WEB-27).
-//
-// Asserts the things these tickets care about: (1) node vs edge context
-// render into the right static tiles with the right content, (2) doing so
-// never creates new DOM elements (the ensureTile()-style dynamic grid-tile
-// insertion SF-WEB-12 removes) — every tile referenced here is assigned
-// once in beforeEach, exactly like the real static markup in index.html,
-// and a document.createElement spy proves sidebar.js never reaches for a
-// fresh one — and (3) the object action bar is visible only for node
-// context, contains Genius as one of its own three buttons (no separate
-// Genius element anymore — see [SF-WEB-27] below), and wires all three
-// buttons to the node it's currently showing. [SF-WEB-47] The bar's old
-// fourth button (pin) is gone — it only ever existed to gate Compare's old
-// pinned-pair selection, which compare-mode.js's Compare mode replaced.
-//
-// [SF-WEB-27] Genius used to be a standalone .sidebar-genius-btn wired
-// independently of the object action bar (els.sidebarGenius, since
-// removed); it's now exclusively els.objActionGenius, one of the three
-// buttons syncObjectActionBar wires together. The markup-level assertions
-// ("exactly one action row in the page, no leftover .sidebar-genius-btn, no
-// floating #object-action-bar above the panel") live in
-// canvas-declutter.test.js instead, since they're statements about
-// index.html itself, not about this module's logic — same split the file
-// header there documents.
-//
-// Path context (openPathPanel/closePathPanel mutual exclusivity with node/
-// edge context) is covered separately in modals.test.js, since that's where
-// the actual show/hide logic for the path section lives.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../vis-adapter/index.js", () => ({
@@ -56,12 +23,16 @@ import { els } from "../dom/dom.js";
 import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar } from "./sidebar.js";
 import { closePathPanel } from "./modals.js";
 import {
-  selectNode, selectEdge,
-  clearSelectedNode, clearSelectedEdge,
+  selectNode,
+  selectEdge,
+  clearSelectedNode,
+  clearSelectedEdge,
 } from "../vis-adapter/index.js";
 import { searchArtist } from "../api/api.js";
 
-function freshEl(tag = "div") { return document.createElement(tag); }
+function freshEl(tag = "div") {
+  return document.createElement(tag);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,34 +42,35 @@ beforeEach(() => {
   State.expandedNodes = new Set();
 
   els.companionPanel = freshEl();
-  els.artistSidebar   = freshEl();
-  els.pathPanel        = freshEl();
-  els.searchModal      = freshEl();
-  els.sidebarAvatar    = freshEl("img");
-  els.sidebarName      = freshEl();
-  els.sidebarMeta      = freshEl();
-  els.sidebarTracks    = freshEl();
+  els.artistSidebar = freshEl();
+  els.pathPanel = freshEl();
+  els.searchModal = freshEl();
+  els.sidebarAvatar = freshEl("img");
+  els.sidebarName = freshEl();
+  els.sidebarMeta = freshEl();
+  els.sidebarTracks = freshEl();
   els.sidebarRoleBreakdownTile = freshEl();
-  els.sidebarRoleChips         = freshEl();
-  els.sidebarPathTile          = freshEl();
-  els.sidebarPathTrack         = freshEl();
-  // [SF-WEB-33] Edge-only endpoints tile.
-  els.sidebarEndpointsTile  = freshEl();
+  els.sidebarRoleChips = freshEl();
+  els.sidebarPathTile = freshEl();
+  els.sidebarPathTrack = freshEl();
+  els.sidebarEndpointsTile = freshEl();
   els.sidebarEndpointsTrack = freshEl();
 
-  // [SF-WEB-14/SF-WEB-27] Object action bar — Genius lives here now, no
-  // separate els.sidebarGenius any more.
   els.objectActionBar = freshEl();
   els.objectActionBar.hidden = true;
   els.objActionExpand = freshEl("button");
-  els.objActionFocus  = freshEl("button");
+  els.objActionFocus = freshEl("button");
   els.objActionGenius = freshEl("button");
 });
 
 function mockNode(overrides = {}) {
   return {
-    id: 1, name: "Drake", imageUrl: "", isSeed: false,
-    _totalCollabs: 5, _topTracks: [{ song: "God's Plan", roles: ["featured"] }],
+    id: 1,
+    name: "Drake",
+    imageUrl: "",
+    isSeed: false,
+    _totalCollabs: 5,
+    _topTracks: [{ song: "God's Plan", roles: ["featured"] }],
     ...overrides,
   };
 }
@@ -122,7 +94,6 @@ describe("showArtistSidebar (node context)", () => {
 
     expect(els.sidebarRoleBreakdownTile.style.display).toBe("");
     expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer");
-    // No current seed → getPathToSeed() is null → tile stays hidden.
     expect(els.sidebarPathTile.style.display).toBe("none");
   });
 
@@ -155,8 +126,6 @@ describe("showArtistSidebar (node context)", () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  // [SF-WEB-44] .sidebar-avatar.is-seed — purely visual hook for the
-  // Observatory accent-glow ring (companion.css).
   it("marks the avatar .is-seed when showing the seed node", () => {
     State.graphNodes = [mockNode({ isSeed: true })];
     showArtistSidebar(1);
@@ -205,7 +174,11 @@ describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
 describe("showEdgeSidebar (edge context)", () => {
   function mockEdge(overrides = {}) {
     return {
-      id: "1_2", from: 1, to: 2, weight: 3, dominantRole: "featured",
+      id: "1_2",
+      from: 1,
+      to: 2,
+      weight: 3,
+      dominantRole: "featured",
       collaborations: [{ song: "Jumpman", roles: ["featured"] }],
       ...overrides,
     };
@@ -228,8 +201,6 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.sidebarPathTile.style.display).toBe("none");
   });
 
-  // [SF-WEB-44] A combined two-artist avatar is never "the seed" — clears
-  // any glow left over from a previous node context.
   it("clears .is-seed on the avatar — a combined edge avatar is never the seed", () => {
     els.sidebarAvatar.classList.add("is-seed");
     State.graphEdges = [mockEdge()];
@@ -238,13 +209,15 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.sidebarAvatar.classList.contains("is-seed")).toBe(false);
   });
 
-  // [SF-WEB-33] Edge-context parity: both endpoints, edge-scoped role
-  // breakdown — previously this tile was hidden entirely for edges.
   it("[SF-WEB-33] shows and populates the role-breakdown tile with THIS edge's roles, not a per-node breakdown", () => {
-    State.graphEdges = [mockEdge({ collaborations: [
-      { song: "Jumpman", roles: ["featured"] },
-      { song: "Life Is Good", roles: ["producer", "featured"] },
-    ] })];
+    State.graphEdges = [
+      mockEdge({
+        collaborations: [
+          { song: "Jumpman", roles: ["featured"] },
+          { song: "Life Is Good", roles: ["producer", "featured"] },
+        ],
+      }),
+    ];
     showEdgeSidebar("1_2", {});
 
     expect(els.sidebarRoleBreakdownTile.style.display).toBe("");
@@ -301,15 +274,14 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.artistSidebar.classList.contains("show")).toBe(false);
   });
 
-  // [SF-WEB-03] Six-degrees path edges (SF-API-08) carry songs[] instead of
-  // collaborations[] — the companion panel must still show the connecting
-  // tracks/role for them, not fall through to "No track data.".
   it("falls back to songs[] + the edge's dominant role when collaborations[] is empty", () => {
-    State.graphEdges = [mockEdge({
-      collaborations: [],
-      songs: ["A-B Track", "B-C Track"],
-      dominantRole: "producer",
-    })];
+    State.graphEdges = [
+      mockEdge({
+        collaborations: [],
+        songs: ["A-B Track", "B-C Track"],
+        dominantRole: "producer",
+      }),
+    ];
     showEdgeSidebar("1_2", {});
 
     const tracks = els.sidebarTracks.querySelectorAll(".sidebar-track");
@@ -320,10 +292,12 @@ describe("showEdgeSidebar (edge context)", () => {
   });
 
   it("prefers collaborations[] (per-song roles) over songs[] when both are present", () => {
-    State.graphEdges = [mockEdge({
-      collaborations: [{ song: "Regular Graph Track", roles: ["producer"] }],
-      songs: ["Path Track"],
-    })];
+    State.graphEdges = [
+      mockEdge({
+        collaborations: [{ song: "Regular Graph Track", roles: ["producer"] }],
+        songs: ["Path Track"],
+      }),
+    ];
     showEdgeSidebar("1_2", {});
 
     expect(els.sidebarTracks.innerHTML).toContain("Regular Graph Track");
@@ -353,15 +327,6 @@ describe("hideArtistSidebar", () => {
   });
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// [SF-WEB-28] Node and edge selection are equivalent, symmetric operations:
-// showArtistSidebar/showEdgeSidebar are the single downstream entry point
-// selectObject (vis-adapter/events.js) funnels both through, and each one
-// applies its own persistent marker (selectNode/selectEdge) itself — so
-// every caller (canvas click, node-search, the a11y node list, a
-// path-chain-card click) gets the same marker + mutual exclusion, not just
-// the canvas click path.
-// ════════════════════════════════════════════════════════════════════════════
 describe("[SF-WEB-28] node and edge selection go through equivalent marker calls", () => {
   it("showArtistSidebar calls selectNode(nodeId) — the single place mutual exclusion with an edge is enforced", () => {
     State.graphNodes = [mockNode()];
@@ -371,7 +336,11 @@ describe("[SF-WEB-28] node and edge selection go through equivalent marker calls
 
   function mockEdge(overrides = {}) {
     return {
-      id: "1_2", from: 1, to: 2, weight: 3, dominantRole: "featured",
+      id: "1_2",
+      from: 1,
+      to: 2,
+      weight: 3,
+      dominantRole: "featured",
       collaborations: [{ song: "Jumpman", roles: ["featured"] }],
       ...overrides,
     };

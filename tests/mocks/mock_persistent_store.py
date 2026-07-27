@@ -32,10 +32,6 @@ from enum import IntEnum
 from typing import Dict, List, Optional, Tuple
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Domain types (mirrors domain_types.hpp)
-# ─────────────────────────────────────────────────────────────────────────────
-
 class Depth(IntEnum):
     NONE = 0
     FOREGROUND = 1
@@ -75,10 +71,6 @@ class CollabEdge:
     weight: int
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Role encoding — mirrors persistent_store.cpp
-# ─────────────────────────────────────────────────────────────────────────────
-
 _ROLE_TO_INT: Dict[str, int] = {
     "primary": 1,
     "featured": 2,
@@ -95,10 +87,6 @@ def _role_to_int(role: str) -> int:
 def _int_to_role(n: int) -> str:
     return _INT_TO_ROLE.get(n, "unknown")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Schema DDL — matches persistent_store.cpp kSchema
-# ─────────────────────────────────────────────────────────────────────────────
 
 _SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -134,10 +122,6 @@ CREATE INDEX IF NOT EXISTS idx_credits_song   ON credits(song_id);
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RoleMask helper
-# ─────────────────────────────────────────────────────────────────────────────
-
 @dataclass
 class RoleMask:
     primary: bool = True
@@ -155,16 +139,16 @@ class RoleMask:
 
     def allowed_ints(self) -> List[int]:
         allowed = []
-        if self.primary:  allowed.append(1)
-        if self.featured: allowed.append(2)
-        if self.writer:   allowed.append(3)
-        if self.producer: allowed.append(4)
+        if self.primary:
+            allowed.append(1)
+        if self.featured:
+            allowed.append(2)
+        if self.writer:
+            allowed.append(3)
+        if self.producer:
+            allowed.append(4)
         return allowed
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# InMemoryStore
-# ─────────────────────────────────────────────────────────────────────────────
 
 class InMemoryStore:
     """
@@ -180,8 +164,6 @@ class InMemoryStore:
 
     def close(self) -> None:
         self._conn.close()
-
-    # ── Test helpers ──────────────────────────────────────────────────────────
 
     def seed_artist(
         self,
@@ -200,7 +182,7 @@ class InMemoryStore:
         self,
         song_id: int,
         title: str,
-        credits: List[Tuple[int, str]],  # list of (artist_id, role)
+        credits: List[Tuple[int, str]],
     ) -> None:
         """Insert a song and its credits.  Artists must exist first."""
         self._conn.execute(
@@ -230,12 +212,8 @@ class InMemoryStore:
         )
         self._conn.commit()
 
-    # ── PersistentStore public API ────────────────────────────────────────────
-
     def GetFetchDepth(self, artist_id: int) -> Depth:
-        cur = self._conn.execute(
-            "SELECT depth FROM fetch_state WHERE artist_id = ?", (artist_id,)
-        )
+        cur = self._conn.execute("SELECT depth FROM fetch_state WHERE artist_id = ?", (artist_id,))
         row = cur.fetchone()
         if row is None:
             return Depth.NONE
@@ -260,7 +238,6 @@ class InMemoryStore:
         if ref is None:
             return None
 
-        # Load songs that have a credit for this artist
         cur = self._conn.execute(
             """SELECT DISTINCT s.id, s.title
                FROM songs s
@@ -271,7 +248,6 @@ class InMemoryStore:
         song_rows = cur.fetchall()
         songs = []
         for song_id, title in song_rows:
-            # Load all credits for this song
             ccur = self._conn.execute(
                 """SELECT a.id, a.name, a.image_url, a.url, c.role
                    FROM credits c
@@ -281,10 +257,12 @@ class InMemoryStore:
             )
             credits = []
             for aid, aname, aimage, aurl, role_int in ccur.fetchall():
-                credits.append(TrackCredit(
-                    artist=ArtistRef(id=aid, name=aname, image=aimage or "", url=aurl or ""),
-                    role=_int_to_role(role_int),
-                ))
+                credits.append(
+                    TrackCredit(
+                        artist=ArtistRef(id=aid, name=aname, image=aimage or "", url=aurl or ""),
+                        role=_int_to_role(role_int),
+                    )
+                )
             songs.append(SongRecord(id=song_id, title=title, credits=credits))
 
         return ArtistSongs(seed=ref, songs=songs)
@@ -330,7 +308,6 @@ class InMemoryStore:
                     (song.id, credit.artist.id, _role_to_int(credit.role)),
                 )
 
-        # Advance fetch_state monotonically
         existing_depth = self.GetFetchDepth(seed.id)
         if new_depth > existing_depth:
             self._conn.execute(

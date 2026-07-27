@@ -44,8 +44,7 @@ def _seed_artist(artist_id: int, last_fetch_ts: int) -> None:
                 (artist_id, f"Prune Test Artist {artist_id}"),
             )
             cur.execute(
-                "INSERT INTO songs(id, title) VALUES (%s, %s) "
-                "ON CONFLICT (id) DO NOTHING",
+                "INSERT INTO songs(id, title) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
                 (artist_id, f"Prune Test Song {artist_id}"),
             )
             cur.execute(
@@ -115,8 +114,9 @@ class TestPruneDisabledByDefault:
         _seed_artist(artist_id, old_ts)
         try:
             time.sleep(2.0)
-            assert _row_exists("artists", "id", artist_id), \
+            assert _row_exists("artists", "id", artist_id), (
                 "artist row was pruned even though PRUNE_TTL_DAYS=0 (disabled)"
+            )
             assert _row_exists("fetch_state", "artist_id", artist_id)
         finally:
             _cleanup(artist_id)
@@ -131,7 +131,7 @@ class TestPruneEnabled:
 
     def test_stale_artist_is_pruned(self, enrichment_proc_prune):
         artist_id = _ID_BASE + 1
-        # Comfortably older than the 1-day TTL — ~11.5 days in the past.
+
         old_ts = int(time.time()) - 1_000_000
         _seed_artist(artist_id, old_ts)
         try:
@@ -139,14 +139,18 @@ class TestPruneEnabled:
             while time.monotonic() < deadline and _row_exists("artists", "id", artist_id):
                 time.sleep(0.2)
 
-            assert not _row_exists("artists", "id", artist_id), \
+            assert not _row_exists("artists", "id", artist_id), (
                 "stale artist row was not pruned within timeout"
-            assert not _row_exists("fetch_state", "artist_id", artist_id), \
+            )
+            assert not _row_exists("fetch_state", "artist_id", artist_id), (
                 "stale fetch_state row was not pruned within timeout"
-            assert not _row_exists("credits", "artist_id", artist_id), \
+            )
+            assert not _row_exists("credits", "artist_id", artist_id), (
                 "stale credits row was not pruned within timeout"
-            assert not _row_exists("songs", "id", artist_id), \
+            )
+            assert not _row_exists("songs", "id", artist_id), (
                 "song orphaned by the pruned artist's only credit was not swept"
+            )
         finally:
             _cleanup(artist_id)
 
@@ -155,11 +159,10 @@ class TestPruneEnabled:
         fresh_ts = int(time.time())
         _seed_artist(artist_id, fresh_ts)
         try:
-            # A few prune-task ticks (1s interval) elapse; a fresh row must
-            # survive every one of them.
             time.sleep(3.0)
-            assert _row_exists("artists", "id", artist_id), \
+            assert _row_exists("artists", "id", artist_id), (
                 "fresh artist row was incorrectly pruned"
+            )
             assert _row_exists("fetch_state", "artist_id", artist_id)
         finally:
             _cleanup(artist_id)

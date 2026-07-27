@@ -1,9 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// game-mode.test.js — [SF-GAME-31 / ADR-0008] Контракт ограниченного игрового
-// режима движка: вход/выход владеет переездом #network и роутингом клика, а
-// не игровой модуль. compare-mode мокается (он тянет ui/index.js целиком, а
-// нам от него нужен только факт «Compare гасится при входе в игру»).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./compare-mode.js", () => ({ exitCompareMode: vi.fn() }));
@@ -11,7 +5,13 @@ vi.mock("./compare-mode.js", () => ({ exitCompareMode: vi.fn() }));
 import { exitCompareMode } from "./compare-mode.js";
 import { State, setGameMode, setNodes, setEdges } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { isGameModeActive, enterGameMode, exitGameMode, handleGameModeNodeClick, applyGameEngineOptions } from "./game-mode.js";
+import {
+  isGameModeActive,
+  enterGameMode,
+  exitGameMode,
+  handleGameModeNodeClick,
+  applyGameEngineOptions,
+} from "./game-mode.js";
 
 let home;
 
@@ -88,7 +88,7 @@ describe("exitGameMode", () => {
   it("is a no-op when the mode was never entered", () => {
     exitGameMode();
     expect(els.network.parentElement).toBe(home);
-    expect(State.graphNodes).toEqual([{ id: 1 }]); // untouched
+    expect(State.graphNodes).toEqual([{ id: 1 }]);
   });
 });
 
@@ -114,35 +114,25 @@ describe("handleGameModeNodeClick", () => {
   });
 });
 
-// [SF-GAME-55] Нативный ховер движка в игре выключен — и это ГЛАВНАЯ причина
-// «граф дёргается при движении мышки». interaction.hover заставляет vis вести
-// своё состояние наведения и перерисовывать канву на каждом переходе курсора
-// с узла на узел; замер на живой странице дал 13 полных перерисовок за один
-// проход сквозь веер, а каждая заново рисует ВСЕ узлы, включая фотографии.
-// После выключения — ноль перерисовок на тот же проход.
-//
-// Отдельно проверяем, что опция накладывается ПОВТОРНО: replaceGraph
-// пересоздаёт сеть с дефолтными опциями уже после enterGameMode, и первая
-// версия фикса из-за этого не срабатывала вовсе (hover оставался true).
 describe("[SF-GAME-55] движок в игре не перерисовывается на ховер", () => {
   function fakeNet() {
     const calls = [];
-    return { calls, setOptions: o => calls.push(o), on() {}, redraw() {} };
+    return { calls, setOptions: (o) => calls.push(o), on() {}, redraw() {} };
   }
 
   it("выключает interaction.hover при входе в режим", () => {
     const net = fakeNet();
     State.network = net;
     enterGameMode({ container: document.createElement("div"), onNodeClick: () => {} });
-    expect(net.calls.some(o => o?.interaction?.hover === false)).toBe(true);
+    expect(net.calls.some((o) => o?.interaction?.hover === false)).toBe(true);
   });
 
   it("накладывает ограничение заново на пересозданную сеть", () => {
     enterGameMode({ container: document.createElement("div"), onNodeClick: () => {} });
-    const fresh = fakeNet();          // replaceGraph отдал новую сеть
+    const fresh = fakeNet();
     State.network = fresh;
     applyGameEngineOptions();
-    expect(fresh.calls.some(o => o?.interaction?.hover === false)).toBe(true);
+    expect(fresh.calls.some((o) => o?.interaction?.hover === false)).toBe(true);
   });
 
   it("вне режима ничего не трогает", () => {
@@ -158,6 +148,6 @@ describe("[SF-GAME-55] движок в игре не перерисовывае�
     const net = fakeNet();
     State.network = net;
     exitGameMode();
-    expect(net.calls.some(o => o?.interaction?.hover === true)).toBe(true);
+    expect(net.calls.some((o) => o?.interaction?.hover === true)).toBe(true);
   });
 });

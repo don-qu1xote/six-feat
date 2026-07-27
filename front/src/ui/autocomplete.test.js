@@ -1,9 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/autocomplete.test.js — [SF-WEB-59] history rows must render with the
-// same .ac-avatar layout as live suggestion rows (previously history rows
-// skipped the avatar entirely, reading as a visibly different, narrower
-// component next to live suggestions in the same dropdown).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, beforeEach } from "vitest";
 import { State } from "../state/state.js";
 import { attachGeniusAutocomplete } from "./autocomplete.js";
@@ -54,10 +48,6 @@ describe("attachGeniusAutocomplete — history rows (SF-WEB-59)", () => {
   });
 });
 
-// [SF-GAME-51] Пустая история — не повод открывать дропдаун. Раньше фокус на
-// поле выкатывал панель во всю его ширину с единственной надписью «No recent
-// searches»: первым, что видел новый посетитель главной, был пустой блок,
-// сообщающий, что ничего нет. Он же перекрывал кнопку «Filters» под полем.
 describe("[SF-GAME-51] attachGeniusAutocomplete — пустая история", () => {
   it("не открывает дропдаун, когда показывать нечего", () => {
     State.history = [];

@@ -97,10 +97,6 @@ def _skip_if_not_implemented(resp: requests.Response) -> None:
         pytest.skip("/healthz returned 404 — handler not registered in this build")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. HTTP 200
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestHealthzStatus:
     def test_returns_200(self, client: requests.Session, genius_mock):  # type: ignore[override]
         resp = client.get(HEALTH_URL)
@@ -115,10 +111,6 @@ class TestHealthzStatus:
             assert resp.status_code == 200
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Body: {"status": "ok"}
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestHealthzBody:
     def test_status_ok(self, client: requests.Session, genius_mock):  # type: ignore[override]
         resp = client.get(HEALTH_URL)
@@ -131,10 +123,6 @@ class TestHealthzBody:
         _skip_if_not_implemented(resp)
         assert isinstance(resp.json(), dict)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. uptime_s field
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestHealthzUptime:
     def test_uptime_s_present(self, client: requests.Session, genius_mock):  # type: ignore[override]
@@ -163,14 +151,8 @@ class TestHealthzUptime:
         resp2 = client.get(HEALTH_URL)
         data1 = resp1.json()
         data2 = resp2.json()
-        assert data2["uptime_s"] > data1["uptime_s"], (
-            "uptime_s should increase between calls"
-        )
+        assert data2["uptime_s"] > data1["uptime_s"], "uptime_s should increase between calls"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Content-Type
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestHealthzContentType:
     def test_content_type_json(self, client: requests.Session, genius_mock):  # type: ignore[override]
@@ -180,10 +162,6 @@ class TestHealthzContentType:
         assert "application/json" in ct, f"Expected application/json, got: {ct}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. Response latency
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestHealthzPerformance:
     def test_responds_within_two_seconds(self, client: requests.Session, genius_mock):  # type: ignore[override]
         start = time.monotonic()
@@ -192,11 +170,6 @@ class TestHealthzPerformance:
         _skip_if_not_implemented(resp)
         assert elapsed < 2.0, f"Healthz took {elapsed:.2f}s — too slow for a liveness probe"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. six-feat /readyz — unified contract shape
-#    (app_secret_parity degradation itself: test_app_secret_parity.py)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestReadyzSixFeat:
     def test_returns_200_when_healthy(self, client: requests.Session, genius_mock):  # type: ignore[override]
@@ -216,11 +189,6 @@ class TestReadyzSixFeat:
         assert "application/json" in resp.headers.get("content-type", "")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. enrichment/genius-gateway/auth /healthz — same shared handler, hit
-#    directly on each service's own port (not proxied through six-feat)
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestHealthzOtherServices:
     def test_enrichment_healthz_ok(self, enrichment_proc_bg):
         resp = requests.get(ENRICHMENT_HEALTH_URL_BG, timeout=2.0)
@@ -238,10 +206,6 @@ class TestHealthzOtherServices:
         assert resp.json()["status"] == "ok"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 8. enrichment /readyz — database check, ok and degraded
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestReadyzEnrichment:
     def test_ready_when_db_reachable(self, enrichment_proc_bg):
         resp = requests.get(ENRICHMENT_READY_URL_BG, timeout=2.0)
@@ -258,10 +222,6 @@ class TestReadyzEnrichment:
         assert body["checks"]["database"]["ok"] is False
         assert body["checks"]["database"]["status"] == "error"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 9. genius-gateway /readyz — circuit-breaker check, closed and open
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestReadyzGeniusGateway:
     def test_ready_when_circuit_closed(self, genius_gateway_proc):
@@ -297,10 +257,6 @@ class TestReadyzGeniusGateway:
         assert body["checks"]["circuit_breaker"]["ok"] is False
         assert body["checks"]["circuit_breaker"]["status"] == "open"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 10. auth /readyz — always ready, empty checks (no degradable dependency)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestReadyzAuth:
     def test_always_ready_with_empty_checks(self, auth_service_proc):

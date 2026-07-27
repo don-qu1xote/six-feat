@@ -24,10 +24,6 @@ import requests
 
 from conftest import SERVICE_BASE, GeniusMock, _build_song_detail
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
 _REQUIRED_FIELDS = {"type", "nodes", "edges"}
@@ -43,10 +39,6 @@ def _collab(collab_id: int, name: str, role: str = "featured") -> dict:
     return {"id": collab_id, "name": name, "role": role}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 0. [ТЗ-6] Anonymous access is rejected
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGraphRequiresAuth:
     """
     GraphHandler calls auth::ExtractToken() and rejects any request that
@@ -55,7 +47,9 @@ class TestGraphRequiresAuth:
     pre-authenticated `client` fixture used everywhere else in this file.
     """
 
-    def test_anonymous_by_name_returns_401(self, anon_client: requests.Session, genius_mock: GeniusMock):
+    def test_anonymous_by_name_returns_401(
+        self, anon_client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         resp = anon_client.get(GRAPH_URL, params={"artist": "Drake"})
         assert resp.status_code == 401
@@ -93,7 +87,7 @@ class TestGraphRequiresAuth:
         full ciphertext, so this is a basic tamper-detection smoke test)."""
         idx = len(auth_cookie) - 5
         flipped_char = "A" if auth_cookie[idx] != "A" else "B"
-        tampered = auth_cookie[:idx] + flipped_char + auth_cookie[idx + 1:]
+        tampered = auth_cookie[:idx] + flipped_char + auth_cookie[idx + 1 :]
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
         sess.cookies.update({"six_feat_session": tampered})
@@ -118,9 +112,7 @@ class TestGraphRequiresAuth:
         import session_crypto
 
         key = session_crypto.key_from_secret("f" * 64)
-        expired_value = session_crypto.encrypt(
-            "some-token", expires_at_unix=1, key=key  # exp=1 (1970) — always expired
-        )
+        expired_value = session_crypto.encrypt("some-token", expires_at_unix=1, key=key)
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
         sess.cookies.update({"six_feat_session": expired_value})
@@ -149,10 +141,6 @@ class TestGraphRequiresAuth:
         assert resp.status_code == 200
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. Happy path — name resolves to a single artist
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGraphByName:
     def test_returns_graph_type(self, client: requests.Session, genius_mock: GeniusMock):
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
@@ -160,7 +148,10 @@ class TestGraphByName:
         genius_mock.song_detail(
             101,
             _build_song_detail(
-                101, "God's Plan", 1, "Drake",
+                101,
+                "God's Plan",
+                1,
+                "Drake",
                 collaborators=[_collab(2, "Future")],
             ),
         )
@@ -175,8 +166,7 @@ class TestGraphByName:
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
@@ -190,22 +180,22 @@ class TestGraphByName:
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
         node_ids = {n["id"] for n in data["nodes"]}
-        assert 1 in node_ids  # seed
-        assert 2 in node_ids  # Future
+        assert 1 in node_ids
+        assert 2 in node_ids
 
-    def test_edge_exists_between_seed_and_collab(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_edge_exists_between_seed_and_collab(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
@@ -219,8 +209,7 @@ class TestGraphByName:
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
@@ -233,8 +222,7 @@ class TestGraphByName:
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
@@ -243,18 +231,15 @@ class TestGraphByName:
             assert not missing, f"Edge missing fields: {missing}, edge={edge}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. Request by numeric ID
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGraphById:
     def test_by_id_returns_graph(self, client: requests.Session, genius_mock: GeniusMock):
         genius_mock.artist(42, {"id": 42, "name": "Kendrick Lamar"})
         genius_mock.songs(42, [201])
         genius_mock.song_detail(
             201,
-            _build_song_detail(201, "HUMBLE.", 42, "Kendrick Lamar",
-                               collaborators=[_collab(43, "SZA")]),
+            _build_song_detail(
+                201, "HUMBLE.", 42, "Kendrick Lamar", collaborators=[_collab(43, "SZA")]
+            ),
         )
 
         resp = client.get(GRAPH_URL, params={"id": "42"})
@@ -262,13 +247,16 @@ class TestGraphById:
         data = resp.json()
         assert data["seed_id"] == 42
 
-    def test_by_id_nodes_include_collaborator(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_by_id_nodes_include_collaborator(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.artist(42, {"id": 42, "name": "Kendrick Lamar"})
         genius_mock.songs(42, [201])
         genius_mock.song_detail(
             201,
-            _build_song_detail(201, "HUMBLE.", 42, "Kendrick Lamar",
-                               collaborators=[_collab(43, "SZA")]),
+            _build_song_detail(
+                201, "HUMBLE.", 42, "Kendrick Lamar", collaborators=[_collab(43, "SZA")]
+            ),
         )
 
         data = client.get(GRAPH_URL, params={"id": "42"}).json()
@@ -279,17 +267,15 @@ class TestGraphById:
         resp = client.get(GRAPH_URL, params={"id": "not-a-number"})
         assert resp.status_code == 400
 
-    def test_unknown_id_returns_empty_graph(self, client: requests.Session, genius_mock: GeniusMock):
-        # No artist registered → gateway returns 404 → service returns empty graph
+    def test_unknown_id_returns_empty_graph(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+
         resp = client.get(GRAPH_URL, params={"id": "99999"})
         assert resp.status_code == 200
         data = resp.json()
         assert data["nodes"] == []
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. Ambiguous name (multiple candidates)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestGraphAmbiguous:
     def _setup_ambiguous(self, genius_mock: GeniusMock) -> None:
@@ -325,10 +311,6 @@ class TestGraphAmbiguous:
         assert data.get("query") == "Chris"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. Unknown name → empty graph
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGraphUnknownName:
     def test_unknown_returns_empty_nodes(self, client: requests.Session, genius_mock: GeniusMock):
         genius_mock.resolve_empty("xyzzy_does_not_exist_ever")
@@ -344,32 +326,38 @@ class TestGraphUnknownName:
         assert data["type"] == "graph"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. Role filter
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGraphRoleFilter:
     def _setup(self, genius_mock: GeniusMock) -> None:
         genius_mock.resolve("Taylor Swift", [{"id": 20, "name": "Taylor Swift", "score": 0.95}])
         genius_mock.songs(20, [301, 302])
-        # Song 301: collab with producer (id=21)
+
         genius_mock.song_detail(
             301,
-            _build_song_detail(301, "Song A", 20, "Taylor Swift",
-                               collaborators=[_collab(21, "Jack Antonoff", role="producer")]),
+            _build_song_detail(
+                301,
+                "Song A",
+                20,
+                "Taylor Swift",
+                collaborators=[_collab(21, "Jack Antonoff", role="producer")],
+            ),
         )
-        # Song 302: collab with featured artist (id=22)
+
         genius_mock.song_detail(
             302,
-            _build_song_detail(302, "Song B", 20, "Taylor Swift",
-                               collaborators=[_collab(22, "Brendon Urie", role="featured")]),
+            _build_song_detail(
+                302,
+                "Song B",
+                20,
+                "Taylor Swift",
+                collaborators=[_collab(22, "Brendon Urie", role="featured")],
+            ),
         )
 
     def test_producer_only_filter(self, client: requests.Session, genius_mock: GeniusMock):
         self._setup(genius_mock)
         data = client.get(GRAPH_URL, params={"artist": "Taylor Swift", "roles": "producer"}).json()
         node_ids = {n["id"] for n in data["nodes"]}
-        # Producer (21) should appear; featured (22) should not
+
         assert 21 in node_ids
         assert 22 not in node_ids
 
@@ -382,7 +370,9 @@ class TestGraphRoleFilter:
 
     def test_multiple_roles_filter(self, client: requests.Session, genius_mock: GeniusMock):
         self._setup(genius_mock)
-        data = client.get(GRAPH_URL, params={"artist": "Taylor Swift", "roles": "producer,featured"}).json()
+        data = client.get(
+            GRAPH_URL, params={"artist": "Taylor Swift", "roles": "producer,featured"}
+        ).json()
         node_ids = {n["id"] for n in data["nodes"]}
         assert 21 in node_ids
         assert 22 in node_ids
@@ -395,12 +385,10 @@ class TestGraphRoleFilter:
         assert 22 in node_ids
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. Betweenness centrality: star graph → hub has highest score
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestBetweennessCentrality:
-    def test_seed_has_highest_betweenness_in_star(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_seed_has_highest_betweenness_in_star(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         """
         Star graph: seed (id=50) collaborates with 5 distinct artists.
         The seed is the only hub; its BC score must be ≥ all others.
@@ -413,7 +401,10 @@ class TestBetweennessCentrality:
             genius_mock.song_detail(
                 sid,
                 _build_song_detail(
-                    sid, f"Track {i}", 50, "HubArtist",
+                    sid,
+                    f"Track {i}",
+                    50,
+                    "HubArtist",
                     collaborators=[_collab(cid, f"Artist{cid}")],
                 ),
             )
@@ -427,13 +418,16 @@ class TestBetweennessCentrality:
             if cid in nodes_by_id:
                 assert hub_bc >= nodes_by_id[cid]["betweenness"]
 
-    def test_betweenness_normalised_is_in_range(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_betweenness_normalised_is_in_range(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.resolve("HubArtist", [{"id": 50, "name": "HubArtist", "score": 0.99}])
         genius_mock.songs(50, [500])
         genius_mock.song_detail(
             500,
-            _build_song_detail(500, "Track 0", 50, "HubArtist",
-                               collaborators=[_collab(51, "Artist51")]),
+            _build_song_detail(
+                500, "Track 0", 50, "HubArtist", collaborators=[_collab(51, "Artist51")]
+            ),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "HubArtist"}).json()
@@ -443,18 +437,13 @@ class TestBetweennessCentrality:
             )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 7. Required JSON schema fields on every successful response
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGraphSchema:
     def test_schema_required_fields(self, client: requests.Session, genius_mock: GeniusMock):
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
@@ -466,8 +455,7 @@ class TestGraphSchema:
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
@@ -484,17 +472,12 @@ class TestGraphSchema:
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
         assert "request_id" not in data
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 8. Upstream error handling
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestGraphErrorHandling:
     def test_genius_503_returns_503(self, client: requests.Session, genius_mock: GeniusMock):
@@ -502,20 +485,20 @@ class TestGraphErrorHandling:
         resp = client.get(GRAPH_URL, params={"artist": "anyone"})
         assert resp.status_code == 503
 
-    def test_genius_503_returns_json_error_body(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_genius_503_returns_json_error_body(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.search_error(503)
         resp = client.get(GRAPH_URL, params={"artist": "anyone"})
         data = resp.json()
         assert "error" in data
 
-    def test_missing_artist_and_id_returns_400(self, client: requests.Session, genius_mock: GeniusMock):
+    def test_missing_artist_and_id_returns_400(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
         resp = client.get(GRAPH_URL)
         assert resp.status_code == 400
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 9. Multiple collaborations on the same edge are deduplicated
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestGraphEdgeDeduplication:
     def test_duplicate_collab_counts_once(self, client: requests.Session, genius_mock: GeniusMock):
@@ -541,13 +524,9 @@ class TestGraphEdgeDeduplication:
         data = client.get(GRAPH_URL, params={"artist": "ArtistA"}).json()
         edges = [e for e in data["edges"] if {e["from"], e["to"]} == {60, 61}]
         assert len(edges) == 1
-        # Weight must be 1 (one unique song), not 2
+
         assert edges[0]["weight"] == 1
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 10. Track popularity metric on collaborations (IDEA-17)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestGraphCollaborationPopularity:
     def test_collaboration_carries_popularity_field(
@@ -561,7 +540,10 @@ class TestGraphCollaborationPopularity:
         genius_mock.song_detail(
             song_id,
             _build_song_detail(
-                song_id, "Popular Song", seed_id, "PopArtist",
+                song_id,
+                "Popular Song",
+                seed_id,
+                "PopArtist",
                 collaborators=[_collab(collab_id, "Collaborator")],
                 popularity=98765,
             ),
@@ -585,7 +567,10 @@ class TestGraphCollaborationPopularity:
         genius_mock.song_detail(
             song_id,
             _build_song_detail(
-                song_id, "No Stats Song", seed_id, "NoPopArtist",
+                song_id,
+                "No Stats Song",
+                seed_id,
+                "NoPopArtist",
                 collaborators=[_collab(collab_id, "Collaborator")],
             ),
         )
@@ -596,18 +581,10 @@ class TestGraphCollaborationPopularity:
         assert collab["popularity"] == 0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 11. [IDEA-50] FG truncation indicator
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# songs-limit-fg is configured to 10 in the test harness (see conftest.py).
-# When the seed's fetched song count meets-or-exceeds the effective limit,
-# the graph is likely missing collaborations that didn't fit in the FG
-# fetch, so the response must say so explicitly.
-
 class TestGraphTruncationIndicator:
-    def _songs_and_details(self, genius_mock: GeniusMock, seed_id: int,
-                            seed_name: str, count: int) -> None:
+    def _songs_and_details(
+        self, genius_mock: GeniusMock, seed_id: int, seed_name: str, count: int
+    ) -> None:
         song_ids = [seed_id * 100 + i for i in range(count)]
         genius_mock.artist(seed_id, {"id": seed_id, "name": seed_name})
         genius_mock.songs(seed_id, song_ids)
@@ -615,7 +592,10 @@ class TestGraphTruncationIndicator:
             genius_mock.song_detail(
                 sid,
                 _build_song_detail(
-                    sid, f"Track {i}", seed_id, seed_name,
+                    sid,
+                    f"Track {i}",
+                    seed_id,
+                    seed_name,
                     collaborators=[_collab(seed_id * 1000 + i, f"Collab{i}")],
                 ),
             )
@@ -651,9 +631,7 @@ class TestGraphTruncationIndicator:
         seed_id = unique_artist_id
         self._songs_and_details(genius_mock, seed_id, "OverrideArtist", 5)
 
-        data = client.get(
-            GRAPH_URL, params={"id": str(seed_id), "limit": "5"}
-        ).json()
+        data = client.get(GRAPH_URL, params={"id": str(seed_id), "limit": "5"}).json()
         assert data["truncated"] is True
         assert data["song_limit"] == 5
         assert data["shown_song_count"] == 5
@@ -665,8 +643,7 @@ class TestGraphTruncationIndicator:
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
             101,
-            _build_song_detail(101, "God's Plan", 1, "Drake",
-                               collaborators=[_collab(2, "Future")]),
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
         )
 
         data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
@@ -682,72 +659,71 @@ class TestGraphTruncationIndicator:
         self._songs_and_details(genius_mock, seed_id, "EtagArtist", 5)
 
         resp_default = client.get(GRAPH_URL, params={"id": str(seed_id)})
-        resp_override = client.get(
-            GRAPH_URL, params={"id": str(seed_id), "limit": "5"}
-        )
+        resp_override = client.get(GRAPH_URL, params={"id": str(seed_id), "limit": "5"})
         assert resp_default.headers.get("ETag") != resp_override.headers.get("ETag")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 12. [SF-PERF-03] Golden regression for the graph_handler hot path
-#     SF-PERF-01 touched (edge dedup on a numeric key, order_set replaced by
-#     edges.count()). Locks down the FULL response shape for a fixed
-#     multi-song scenario — crucially including nodes[]/edges[] ARRAY ORDER,
-#     which must stay exactly "seed, then collaborators in first-appearance
-#     order" for BuildGraphETag caching to keep working (see
-#     test_etag_changes_with_limit_override above, which this must not break).
-#
-# Scenario, one collaborator role-credit per song (so credit-array
-# concatenation order — primary, producer, writer, featured, see
-# genius_gateway.cpp — never needs to be reasoned about for order):
-#   song1: A featured        -> order becomes [A]
-#   song2: B producer        -> order becomes [A, B]
-#   song3: A writer (repeat) -> order unchanged [A, B]; escalates A's
-#                                dominant_role (writer outranks featured) and
-#                                bumps A's weight to 2 distinct songs
-#   song4: C featured        -> order becomes [A, B, C]
-#   song5: A + C together, both already-known artists (repeat) — exercises
-#          the inter-collaborator co-occurrence step (graph_handler.cpp
-#          Step 2) without introducing any new node, so it can't perturb the
-#          asserted node/edge order above regardless of same-song credit
-#          ordering.
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestGraphGoldenNodeEdgeOrder:
     def _setup(self, genius_mock: GeniusMock, seed_id: int) -> dict:
-        # [SF-PERF-03 fix] unique_artist_id is a monotonic counter that only
-        # advances by small integer steps between consecutive tests (see
-        # conftest.py's _unique_artist_id_counter), so seed_id+1/+2/+3
-        # collided with an *adjacent* test's own unique_artist_id (e.g. this
-        # test's seed_id could equal another test's "b" or "c") once real
-        # background enrichment persisted that other test's collaborator
-        # data — surfacing as extra, unrelated nodes on a later request for
-        # this seed. Widely-spaced multiplicative ids (same pattern already
-        # used for song ids below, and by _songs_and_details above) keep
-        # this test's derived artist ids well clear of any nearby seed_id.
+
         a, b, c = seed_id * 1000 + 1, seed_id * 1000 + 2, seed_id * 1000 + 3
         s1, s2, s3, s4, s5 = (seed_id * 10 + i for i in range(1, 6))
 
         genius_mock.artist(seed_id, {"id": seed_id, "name": "GoldenArtist"})
         genius_mock.songs(seed_id, [s1, s2, s3, s4, s5])
-        genius_mock.song_detail(s1, _build_song_detail(
-            s1, "Song One", seed_id, "GoldenArtist",
-            collaborators=[_collab(a, "ArtistA", "featured")]))
-        genius_mock.song_detail(s2, _build_song_detail(
-            s2, "Song Two", seed_id, "GoldenArtist",
-            collaborators=[_collab(b, "ArtistB", "producer")]))
-        genius_mock.song_detail(s3, _build_song_detail(
-            s3, "Song Three", seed_id, "GoldenArtist",
-            collaborators=[_collab(a, "ArtistA", "writer")]))
-        genius_mock.song_detail(s4, _build_song_detail(
-            s4, "Song Four", seed_id, "GoldenArtist",
-            collaborators=[_collab(c, "ArtistC", "featured")]))
-        genius_mock.song_detail(s5, _build_song_detail(
-            s5, "Song Five", seed_id, "GoldenArtist",
-            collaborators=[
-                _collab(a, "ArtistA", "featured"),
-                _collab(c, "ArtistC", "featured"),
-            ]))
+        genius_mock.song_detail(
+            s1,
+            _build_song_detail(
+                s1,
+                "Song One",
+                seed_id,
+                "GoldenArtist",
+                collaborators=[_collab(a, "ArtistA", "featured")],
+            ),
+        )
+        genius_mock.song_detail(
+            s2,
+            _build_song_detail(
+                s2,
+                "Song Two",
+                seed_id,
+                "GoldenArtist",
+                collaborators=[_collab(b, "ArtistB", "producer")],
+            ),
+        )
+        genius_mock.song_detail(
+            s3,
+            _build_song_detail(
+                s3,
+                "Song Three",
+                seed_id,
+                "GoldenArtist",
+                collaborators=[_collab(a, "ArtistA", "writer")],
+            ),
+        )
+        genius_mock.song_detail(
+            s4,
+            _build_song_detail(
+                s4,
+                "Song Four",
+                seed_id,
+                "GoldenArtist",
+                collaborators=[_collab(c, "ArtistC", "featured")],
+            ),
+        )
+        genius_mock.song_detail(
+            s5,
+            _build_song_detail(
+                s5,
+                "Song Five",
+                seed_id,
+                "GoldenArtist",
+                collaborators=[
+                    _collab(a, "ArtistA", "featured"),
+                    _collab(c, "ArtistC", "featured"),
+                ],
+            ),
+        )
         return {"seed": seed_id, "a": a, "b": b, "c": c}
 
     def test_node_id_order_is_seed_then_first_appearance(
@@ -771,15 +747,13 @@ class TestGraphGoldenNodeEdgeOrder:
             (ids["seed"], ids["b"]),
             (ids["seed"], ids["c"]),
         ]
-        # A: 3 distinct songs (1, 3, 5); dominant role escalates to "writer"
-        # (rank 3) even though it was last re-mentioned as "featured" (rank 2)
-        # on song 5 — RoleAllowed/RoleRank track the *highest* rank ever seen.
+
         assert edges[0]["weight"] == 3
         assert edges[0]["dominant_role"] == "writer"
-        # B: 1 song, producer only.
+
         assert edges[1]["weight"] == 1
         assert edges[1]["dominant_role"] == "producer"
-        # C: 2 distinct songs (4, 5), featured only.
+
         assert edges[2]["weight"] == 2
         assert edges[2]["dominant_role"] == "featured"
 
@@ -791,12 +765,13 @@ class TestGraphGoldenNodeEdgeOrder:
         as flakiness between two back-to-back requests for the same seed,
         not necessarily as an outright wrong single response."""
         ids = self._setup(genius_mock, unique_artist_id)
-        first  = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
+        first = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
         second = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
 
         assert [n["id"] for n in first["nodes"]] == [n["id"] for n in second["nodes"]]
-        assert [(e["from"], e["to"]) for e in first["edges"]] == \
-               [(e["from"], e["to"]) for e in second["edges"]]
+        assert [(e["from"], e["to"]) for e in first["edges"]] == [
+            (e["from"], e["to"]) for e in second["edges"]
+        ]
 
     def test_full_schema_present_on_golden_response(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int

@@ -1,15 +1,5 @@
-// ════════════════════════════════════════════════════════════════════════════
-// api.test.js — unit tests for _doSearch (fetch mocked via vi.stubGlobal)
-//
-// api.js's own DOM/canvas collaborators (graph rendering, toasts, loading
-// indicator, vis-adapter) are mocked out so these tests exercise only the
-// networking/race-condition logic: AbortController cancellation, the
-// _graphCache short-circuit, the pendingExpand queue, 401 handling, and the
-// ambiguous-candidate branch.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// ─── Mock all of _doSearch's side-effecting collaborators ──────────────────
 vi.mock("../graph.js", () => ({
   replaceGraph: vi.fn(),
   mergeGraph: vi.fn(),
@@ -36,8 +26,6 @@ import { replaceGraph, mergeGraph } from "../graph.js";
 import { showCandidatePicker, showToast, showRetryToast, updateScanStatus } from "../ui/index.js";
 import { _doSearch, showMoreCollaborations } from "./api.js";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────
-
 function jsonResponse(body, init = {}) {
   const headers = init.headers ?? { get: () => null };
   return {
@@ -58,8 +46,6 @@ function resetState() {
   State.activeFilters = new Set(["featured", "producer", "writer"]);
 }
 
-// A minimal EventSource stub — pollEnrichment() is invoked as a side-effect
-// of a successful non-expansion search and opens one of these.
 class FakeEventSource {
   constructor(url) {
     this.url = url;
@@ -79,10 +65,6 @@ beforeEach(() => {
   resetState();
   FakeEventSource.instances = [];
   vi.stubGlobal("EventSource", FakeEventSource);
-  // jsdom treats a full-page window.location.href assignment as
-  // unimplemented navigation and never updates the property (only hash
-  // changes are supported) — swap in a writable stub so redirect assertions
-  // can observe the assigned value instead.
   _originalLocation = window.location;
   delete window.location;
   window.location = { href: _originalLocation.href };
@@ -94,14 +76,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// ─── Scenario 1: plain successful search ────────────────────────────────
-
 describe("_doSearch — successful search", () => {
   it("updates State and calls replaceGraph on a normal (non-expansion) search", async () => {
     const graph = {
       seed: "Radiohead",
       seed_id: 1,
-      nodes: [{ id: 1, name: "Radiohead" }, { id: 2, name: "Thom Yorke" }],
+      nodes: [
+        { id: 1, name: "Radiohead" },
+        { id: 2, name: "Thom Yorke" },
+      ],
       edges: [{ from: 1, to: 2, roles: ["featured"] }],
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(graph)));
@@ -116,11 +99,9 @@ describe("_doSearch — successful search", () => {
     expect(replaceGraph).toHaveBeenCalledWith(graph);
     expect(mergeGraph).not.toHaveBeenCalled();
 
-    // Cache populated under the returned seed_id.
     expect(State._graphCache.has(1)).toBe(true);
     expect(State._graphCache.get(1).graph).toBe(graph);
 
-    // Request lifecycle flags reset in the `finally` block.
     expect(State.inFlight).toBe(false);
     expect(State._abortController).toBe(null);
   });
@@ -167,20 +148,30 @@ describe("_doSearch — successful search", () => {
   });
 });
 
-// ─── SF-WEB-05: pollEnrichment drives the inline scan-status indicator ──────
-
 describe("pollEnrichment — SSE events drive updateScanStatus", () => {
   it("shows an optimistic partial/scanning status as soon as the SSE stream opens", async () => {
-    const graph = { seed: "Radiohead", seed_id: 1, nodes: [{ id: 1, name: "Radiohead" }], edges: [] };
+    const graph = {
+      seed: "Radiohead",
+      seed_id: 1,
+      nodes: [{ id: 1, name: "Radiohead" }],
+      edges: [],
+    };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(graph)));
 
     await _doSearch("Radiohead", false, false);
 
-    expect(updateScanStatus).toHaveBeenCalledWith(expect.objectContaining({ depth: 1, enriching: true }));
+    expect(updateScanStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ depth: 1, enriching: true }),
+    );
   });
 
   it("reflects each mock status event, partial → background scan → full", async () => {
-    const graph = { seed: "Radiohead", seed_id: 1, nodes: [{ id: 1, name: "Radiohead" }], edges: [] };
+    const graph = {
+      seed: "Radiohead",
+      seed_id: 1,
+      nodes: [{ id: 1, name: "Radiohead" }],
+      edges: [],
+    };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(graph)));
 
     await _doSearch("Radiohead", false, false);
@@ -198,12 +189,9 @@ describe("pollEnrichment — SSE events drive updateScanStatus", () => {
       { depth: 1, song_count: 25, enriching: true },
       { depth: 2, song_count: 40, enriching: false },
     ]);
-    // depth>=2 also closes the stream (existing full-scan-complete behaviour).
     expect(es.closed).toBe(true);
   });
 });
-
-// ─── Scenario 2: parallel requests / AbortController race ──────────────────
 
 describe("_doSearch — concurrent requests cancel the previous one", () => {
   it("aborts the first in-flight fetch's signal when a second _doSearch starts", async () => {
@@ -212,7 +200,6 @@ describe("_doSearch — concurrent requests cancel the previous one", () => {
     const fetchMock = vi.fn().mockImplementation((url, opts) => {
       if (fetchMock.mock.calls.length === 1) {
         capturedFirstSignal = opts.signal;
-        // Never resolves on its own — only settles via abort.
         return new Promise((_resolve, reject) => {
           opts.signal.addEventListener("abort", () => {
             const err = new Error("Aborted");
@@ -222,13 +209,12 @@ describe("_doSearch — concurrent requests cancel the previous one", () => {
         });
       }
       return Promise.resolve(
-        jsonResponse({ seed_id: 2, nodes: [{ id: 2, name: "Second" }], edges: [] })
+        jsonResponse({ seed_id: 2, nodes: [{ id: 2, name: "Second" }], edges: [] }),
       );
     });
     vi.stubGlobal("fetch", fetchMock);
 
     const firstCall = _doSearch("First Artist", false, false);
-    // Let the first call reach `await fetch(...)` before starting the second.
     await Promise.resolve();
     await Promise.resolve();
 
@@ -237,13 +223,9 @@ describe("_doSearch — concurrent requests cancel the previous one", () => {
     await Promise.all([firstCall, secondCall]);
 
     expect(capturedFirstSignal.aborted).toBe(true);
-    // AbortError is swallowed silently — no error toast for a self-cancelled request.
     expect(showToast).not.toHaveBeenCalled();
-    // Only the second (winning) request's graph made it to replaceGraph.
     expect(replaceGraph).toHaveBeenCalledTimes(1);
-    expect(replaceGraph).toHaveBeenCalledWith(
-      expect.objectContaining({ seed_id: 2 })
-    );
+    expect(replaceGraph).toHaveBeenCalledWith(expect.objectContaining({ seed_id: 2 }));
   });
 
   it("does not show a toast when a request is aborted", async () => {
@@ -267,13 +249,11 @@ describe("_doSearch — concurrent requests cancel the previous one", () => {
   });
 });
 
-// ─── Scenario 3: 401 handling ────────────────────────────────────────────
-
 describe("_doSearch — 401 responses", () => {
   it("redirects to /auth/login on token_invalid", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ error: "token_invalid" }, { status: 401 }))
+      vi.fn().mockResolvedValue(jsonResponse({ error: "token_invalid" }, { status: 401 })),
     );
     vi.useFakeTimers();
 
@@ -281,28 +261,21 @@ describe("_doSearch — 401 responses", () => {
     await p;
     await vi.advanceTimersByTimeAsync(1500);
 
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringMatching(/token expired/i)
-    );
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/token expired/i));
     expect(window.location.href).toContain("/auth/login");
 
     vi.useRealTimers();
   });
 
   it("redirects to /auth/login when not signed in at all (401 without token_invalid)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({}, { status: 401 }))
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 401 })));
     vi.useFakeTimers();
 
     const p = _doSearch("Artist", false, false);
     await p;
     await vi.advanceTimersByTimeAsync(1200);
 
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringMatching(/sign in with genius/i)
-    );
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/sign in with genius/i));
     expect(window.location.href).toContain("/auth/login");
 
     vi.useRealTimers();
@@ -311,7 +284,7 @@ describe("_doSearch — 401 responses", () => {
   it("does not call replaceGraph/mergeGraph on a 401", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ error: "token_invalid" }, { status: 401 }))
+      vi.fn().mockResolvedValue(jsonResponse({ error: "token_invalid" }, { status: 401 })),
     );
     vi.useFakeTimers();
     const p = _doSearch("Artist", false, false);
@@ -324,14 +297,12 @@ describe("_doSearch — 401 responses", () => {
   });
 });
 
-// ─── Scenario 4: ambiguous artist name ──────────────────────────────────
-
 describe("_doSearch — ambiguous results", () => {
   it("calls showCandidatePicker with the candidate list and original query", async () => {
     const candidates = [{ name: "Genesis (UK band)" }, { name: "Genesis (rapper)" }];
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(jsonResponse({ ambiguous: true, candidates }))
+      vi.fn().mockResolvedValue(jsonResponse({ ambiguous: true, candidates })),
     );
 
     await _doSearch("Genesis", false, false);
@@ -350,37 +321,32 @@ describe("_doSearch — ambiguous results", () => {
   });
 });
 
-// ─── pendingExpand queue drains after the in-flight request settles ────────
-
 describe("_doSearch — pendingExpand queue", () => {
   it("automatically re-runs a queued pendingExpand once the current request finishes", async () => {
     const firstGraph = { seed_id: 1, nodes: [{ id: 1, name: "First" }], edges: [] };
     const secondGraph = { seed_id: 2, nodes: [{ id: 2, name: "Queued" }], edges: [] };
 
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockResolvedValueOnce(jsonResponse(firstGraph))
       .mockResolvedValueOnce(jsonResponse(secondGraph));
     vi.stubGlobal("fetch", fetchMock);
 
-    // Simulate searchArtist() having queued an expansion while inFlight was true.
     const p = _doSearch("First", false, false);
     State.pendingExpand = { name: "Queued" };
     await p;
-    // The queued follow-up (fired from the `finally` block above, not
-    // awaited) needs a further tick to reach its own fetch/json/mergeGraph.
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(mergeGraph).toHaveBeenCalledWith(secondGraph);
   });
 });
 
-// ─── IDEA-24: transient (502/503/network) failures offer a Retry action ────
-
 describe("_doSearch — transient failures show a Retry toast", () => {
   it("offers Retry (not a plain toast) on a 502, and retry re-issues the request", async () => {
     const okGraph = { seed_id: 1, nodes: [{ id: 1, name: "Radiohead" }], edges: [] };
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockResolvedValueOnce(jsonResponse({}, { status: 502 }))
       .mockResolvedValueOnce(jsonResponse(okGraph));
     vi.stubGlobal("fetch", fetchMock);
@@ -393,11 +359,8 @@ describe("_doSearch — transient failures show a Retry toast", () => {
     expect(msg).toMatch(/couldn't reach genius/i);
 
     // Clicking the toast's Retry button re-runs the original search. retry()
-    // calls searchArtist(), which fires _doSearch() without awaiting it, so
-    // flush a macrotask to let the follow-up fetch/json/replaceGraph chain
-    // settle before asserting on it.
     retry();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(replaceGraph).toHaveBeenCalledWith(okGraph);
   });
@@ -418,13 +381,9 @@ describe("_doSearch — transient failures show a Retry toast", () => {
     await _doSearch("Radiohead", false, false);
 
     expect(showRetryToast).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringMatching(/please enter an artist name/i)
-    );
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/please enter an artist name/i));
   });
 });
-
-// ─── showMoreCollaborations — transient failures also offer Retry ──────────
 
 describe("showMoreCollaborations — transient failures show a Retry toast", () => {
   it("offers Retry on a 503 using the show-more-specific message", async () => {
@@ -437,7 +396,7 @@ describe("showMoreCollaborations — transient failures show a Retry toast", () 
 
     expect(showRetryToast).toHaveBeenCalledTimes(1);
     expect(showRetryToast.mock.calls[0][0]).toBe(
-      "Genius is temporarily unavailable — please try again in a minute."
+      "Genius is temporarily unavailable — please try again in a minute.",
     );
   });
 });

@@ -1,53 +1,34 @@
-// ════════════════════════════════════════════════════════════════════════════
-// vis-adapter/events.test.js — attachNetworkEvents' click handler, focused on
-// SF-WEB-47: Compare mode must fully take over node clicks while active
-// (bypassing selectObject/setFocus entirely) and hand them straight back
-// once it's off, with the pre-existing SF-WEB-28 click behavior unchanged.
-// vis.Network itself is a plain {on(event, cb)} stub — no real vis-network
-// involved, same style as highlight.test.js's DataSet stubs.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State, setGameMode } from "../state/state.js";
 
 const showArtistSidebar = vi.fn();
-const showEdgeSidebar   = vi.fn();
+const showEdgeSidebar = vi.fn();
 const hideArtistSidebar = vi.fn();
-const showToast         = vi.fn();
+const showToast = vi.fn();
 vi.mock("../ui/index.js", () => ({
   showArtistSidebar: (...a) => showArtistSidebar(...a),
-  showEdgeSidebar:   (...a) => showEdgeSidebar(...a),
+  showEdgeSidebar: (...a) => showEdgeSidebar(...a),
   hideArtistSidebar: (...a) => hideArtistSidebar(...a),
-  showToast:         (...a) => showToast(...a),
+  showToast: (...a) => showToast(...a),
 }));
 
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
 const highlightNeighborhood = vi.fn();
-const highlightEdgePair     = vi.fn();
-const clearHoverHighlight   = vi.fn();
+const highlightEdgePair = vi.fn();
+const clearHoverHighlight = vi.fn();
 vi.mock("./highlight.js", () => ({
   highlightNeighborhood: (...a) => highlightNeighborhood(...a),
-  highlightEdgePair:     (...a) => highlightEdgePair(...a),
-  restoreDefaultColors:  vi.fn(),
-  clearHoverHighlight:   (...a) => clearHoverHighlight(...a),
-  cancelPendingHover:    vi.fn(),
-  clearSelectedNode:     vi.fn(),
-  clearSelectedEdge:     vi.fn(),
+  highlightEdgePair: (...a) => highlightEdgePair(...a),
+  restoreDefaultColors: vi.fn(),
+  clearHoverHighlight: (...a) => clearHoverHighlight(...a),
+  cancelPendingHover: vi.fn(),
+  clearSelectedNode: vi.fn(),
+  clearSelectedEdge: vi.fn(),
 }));
 
 vi.mock("./physics.js", () => ({ nudgePhysics: vi.fn() }));
 
-// hoverNode/blurNode (unlike click) write els.network.style.cursor
-// directly — those two aren't exercised by any test here. [SF-WEB-73]
-// addEventListener/getBoundingClientRect/appendChild — the custom
-// mousemove-driven edge hover wiring (attachNetworkEvents calls
-// els.network.addEventListener unconditionally when els.network exists).
-// [SF-WEB-74] events.js's own _domHoverWired guard means addEventListener
-// only actually fires on the FIRST attachNetworkEvents call across this
-// whole file's run (whichever test happens to run first) — every later
-// test's vi.clearAllMocks() wipes the mock's *call history* but the
-// captured handler itself must survive that, so it's stashed in a plain
-// object via vi.hoisted rather than re-read from addEventListener.mock.calls.
 const domRefs = vi.hoisted(() => ({ moveHandler: null, leaveHandler: null }));
 vi.mock("../dom/dom.js", () => ({
   els: {
@@ -68,9 +49,9 @@ let compareModeActive = false;
 const handleCompareModeNodeClick = vi.fn();
 const exitCompareMode = vi.fn();
 vi.mock("./compare-mode.js", () => ({
-  isCompareModeActive:        () => compareModeActive,
+  isCompareModeActive: () => compareModeActive,
   handleCompareModeNodeClick: (...a) => handleCompareModeNodeClick(...a),
-  exitCompareMode:            (...a) => exitCompareMode(...a),
+  exitCompareMode: (...a) => exitCompareMode(...a),
 }));
 
 import { attachNetworkEvents, _hoveredEdgeIdAt } from "./events.js";
@@ -79,14 +60,22 @@ import { els } from "../dom/dom.js";
 
 function makeNet() {
   const handlers = {};
-  return { on: (evt, cb) => { handlers[evt] = cb; }, _handlers: handlers };
+  return {
+    on: (evt, cb) => {
+      handlers[evt] = cb;
+    },
+    _handlers: handlers,
+  };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
   compareModeActive = false;
-  State.graphNodes = [{ id: 1, name: "Alpha" }, { id: 2, name: "Beta" }];
+  State.graphNodes = [
+    { id: 1, name: "Alpha" },
+    { id: 2, name: "Beta" },
+  ];
   State.focusedNodeId = null;
   State.selectedEdgeId = null;
   State._clickTimer = null;
@@ -112,9 +101,6 @@ describe("attachNetworkEvents click — Compare mode active", () => {
     expect(highlightNeighborhood).not.toHaveBeenCalled();
   });
 
-  // [fix] Was a silent no-op — reported as feeling "stuck" in the mode
-  // with no visible way out. An edge/empty-canvas click isn't a valid pick
-  // target, so it now exits the mode instead of doing nothing.
   it("exits Compare mode on an edge click instead of ignoring it", () => {
     compareModeActive = true;
     const net = makeNet();
@@ -136,16 +122,11 @@ describe("attachNetworkEvents click — Compare mode active", () => {
 
     net._handlers.click({ nodes: [], edges: [] });
 
-    expect(hideArtistSidebar).not.toHaveBeenCalled(); // clearFocus() not reached
+    expect(hideArtistSidebar).not.toHaveBeenCalled();
     expect(exitCompareMode).toHaveBeenCalledTimes(1);
   });
 });
 
-// [SF-WEB-74] "неинтуитивно" — doubleClick used to ignore Compare mode
-// entirely: a double-click mid-pick silently ran the normal expand flow
-// (searchArtist) underneath an in-progress first/second pick instead of
-// doing anything compare-related. Same rule the click handler's own
-// isCompareModeActive() gate already applies.
 describe("attachNetworkEvents doubleClick — Compare mode (SF-WEB-74)", () => {
   it("exits Compare mode instead of expanding when a pick is in progress", () => {
     compareModeActive = true;
@@ -172,15 +153,10 @@ describe("attachNetworkEvents doubleClick — Compare mode (SF-WEB-74)", () => {
   });
 });
 
-// [SF-GAME-49] Игровой режим ограничивает не только клик, но и ХОВЕР.
-// highlightNeighborhood переписывает у каждого узла shape/image/color/
-// borderWidth/shadow — на игровой доске это и читалось как «граф дёргается
-// при движении мышки»: узлы меняли размер под курсором, аватарки мигали от
-// перезаписи image, а парный clearHoverHighlight стирал раскраску ролей до
-// следующего renderBoard. Замер на живой странице: 8 полных перекрасок
-// DataSet за один проход мыши через веер.
 describe("attachNetworkEvents hover — game mode (SF-GAME-49)", () => {
-  afterEach(() => { setGameMode(false); });
+  afterEach(() => {
+    setGameMode(false);
+  });
 
   it("не запускает конвейер подсветки Explorer'а, пока режим включён", () => {
     const net = makeNet();
@@ -193,8 +169,6 @@ describe("attachNetworkEvents hover — game mode (SF-GAME-49)", () => {
 
     expect(highlightNeighborhood).not.toHaveBeenCalled();
     expect(clearHoverHighlight).not.toHaveBeenCalled();
-    // Курсор — единственное, что ховер меняет в игре напрямую; кольцо
-    // рисует game-board.js на оверлее, без записей в DataSet.
     expect(els.network.style.cursor).toBe("default");
   });
 
@@ -215,7 +189,7 @@ describe("attachNetworkEvents click — Compare mode inactive (SF-WEB-28 unchang
     attachNetworkEvents({});
 
     net._handlers.click({ nodes: [1], edges: [] });
-    expect(showArtistSidebar).not.toHaveBeenCalled(); // debounced, not yet
+    expect(showArtistSidebar).not.toHaveBeenCalled();
     vi.advanceTimersByTime(300);
 
     expect(handleCompareModeNodeClick).not.toHaveBeenCalled();
@@ -246,16 +220,6 @@ describe("attachNetworkEvents click — Compare mode inactive (SF-WEB-28 unchang
   });
 });
 
-// [SF-WEB-73] "подсветка не совпадает с тултипом" — found LIVE on a dense
-// hub (65+ direct edges): vis.js's native hoverEdge event and its own
-// built-in (title-based) tooltip stayed internally inconsistent with EACH
-// OTHER, reproducibly, hovering the exact same pixel — both rely on
-// edges.smooth "continuous", a DIFFERENT curve than the one actually drawn
-// (edge-render.js's hub-bowed quadratic). hoverEdge/blurEdge are replaced
-// entirely by _hoveredEdgeIdAt (curve-aware, same curve drawEdges paints)
-// — a pure function (State.network + explicit DOM pointer in) testable
-// without a real canvas/mousemove. This also folds in SF-WEB-71's "no
-// separate edge-count threshold" — there never was one here to begin with.
 describe("_hoveredEdgeIdAt (SF-WEB-73)", () => {
   beforeEach(() => {
     State.graphEdges = [];
@@ -274,44 +238,36 @@ describe("_hoveredEdgeIdAt (SF-WEB-73)", () => {
 
   it("finds the cached edge whose drawn curve passes through the pointer's world position even on a graph with hundreds of edges", () => {
     const edgeId = "1_2";
-    State.graphEdges = Array.from({ length: 500 }, (_, i) => ({ id: `e${i}`, from: 1, to: 3 + i, weight: 1 }));
+    State.graphEdges = Array.from({ length: 500 }, (_, i) => ({
+      id: `e${i}`,
+      from: 1,
+      to: 3 + i,
+      weight: 1,
+    }));
     State.graphEdges.push({ id: edgeId, from: 1, to: 2, weight: 1 });
     setEdgeCache(new Map([[edgeId, { from: 1, to: 2, kind: "intra" }]]));
     const positions = { 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } };
     State.network = {
       getPositions: () => positions,
       getNodeAt: () => undefined,
-      // DOMtoCanvas here is the identity — the test feeds "world" coords directly.
       DOMtoCanvas: (p) => p,
     };
-    // Node 1's own position — always exactly on its incident edge's curve
-    // regardless of bow, same reasoning as edge-render.test.js's nearestEdgeAt case.
     expect(_hoveredEdgeIdAt(positions[1])).toBe(edgeId);
   });
 });
 
-// [SF-WEB-74] "подсветка нод зависит от зума (на сильном zoom-out большого
-// графа не подсвечиваем) — сделай то же для рёбер". render.js's own
-// _attachZoomThrottle disables vis.js's native interaction.hover at
-// bigGraph+scale<0.5, which used to silence hoverEdge for free (it went
-// through the same native mechanism as hoverNode). SF-WEB-73 moved edge
-// hover onto a DOM mousemove listener that bypasses interaction.hover
-// entirely, so the same threshold needs an explicit check here — this
-// drives the real mousemove → rAF-flush path end to end (attachNetworkEvents
-// wires the listener; the stubbed rAF below runs the flush synchronously).
 describe("_flushHoverEdgeFrame — zoom-based hover suppression (SF-WEB-74)", () => {
   beforeEach(() => {
     State.graphEdges = [];
     clearEdgeCache();
-    vi.stubGlobal("requestAnimationFrame", (cb) => { cb(); return 1; });
+    vi.stubGlobal("requestAnimationFrame", (cb) => {
+      cb();
+      return 1;
+    });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    // _customHoveredEdgeId is module-level state in events.js, not reset by
-    // vi.clearAllMocks() — without this, the NEXT test's "same edge id
-    // still hovered" would look like a no-op change and skip
-    // highlightEdgePair entirely, same as a real mouseleave would reset it.
     domRefs.leaveHandler?.();
   });
 
@@ -321,7 +277,12 @@ describe("_flushHoverEdgeFrame — zoom-based hover suppression (SF-WEB-74)", ()
   }
 
   it("suppresses edge hover-highlight and the tooltip on a big graph zoomed far out — same threshold node-hover already uses", () => {
-    State.graphEdges = Array.from({ length: 200 }, (_, i) => ({ id: `e${i}`, from: 1, to: 2 + i, weight: 1 }));
+    State.graphEdges = Array.from({ length: 200 }, (_, i) => ({
+      id: `e${i}`,
+      from: 1,
+      to: 2 + i,
+      weight: 1,
+    }));
     const edgeId = "1_2";
     setEdgeCache(new Map([[edgeId, { from: 1, to: 2, kind: "intra" }]]));
     const positions = { 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } };
@@ -330,18 +291,23 @@ describe("_flushHoverEdgeFrame — zoom-based hover suppression (SF-WEB-74)", ()
       getPositions: () => positions,
       getNodeAt: () => undefined,
       DOMtoCanvas: (p) => p,
-      getScale: () => 0.3, // < 0.5 — same as render.js's native-hover cutoff
+      getScale: () => 0.3,
     };
 
     wireAndMove();
 
     expect(highlightEdgePair).not.toHaveBeenCalled();
     expect(els.network.style.cursor).toBe("default");
-    expect(els.network.appendChild).not.toHaveBeenCalled(); // no tooltip
+    expect(els.network.appendChild).not.toHaveBeenCalled();
   });
 
   it("still highlights/tooltips the same graph once zoomed back in past the cutoff", () => {
-    State.graphEdges = Array.from({ length: 200 }, (_, i) => ({ id: `e${i}`, from: 1, to: 2 + i, weight: 1 }));
+    State.graphEdges = Array.from({ length: 200 }, (_, i) => ({
+      id: `e${i}`,
+      from: 1,
+      to: 2 + i,
+      weight: 1,
+    }));
     const edgeId = "1_2";
     setEdgeCache(new Map([[edgeId, { from: 1, to: 2, kind: "intra" }]]));
     const positions = { 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } };

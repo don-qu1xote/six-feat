@@ -29,10 +29,6 @@ from mocks.mock_genius_gateway import (
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ResolveCandidates
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestResolveCandidates:
     def test_programmed_response_returned(self):
         mock = MockGeniusGateway()
@@ -104,10 +100,6 @@ class TestResolveCandidates:
         assert mock.calls[0]["query"] == "Drake"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FetchArtistById
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestFetchArtistById:
     def test_programmed_response_returned(self):
         mock = MockGeniusGateway()
@@ -126,7 +118,7 @@ class TestFetchArtistById:
 
     def test_error_is_raised(self):
         mock = MockGeniusGateway()
-        mock.set_artist_error(1, 401)  # (artist_id, status_code) — see note below
+        mock.set_artist_error(1, 401)
         with pytest.raises(GeniusHttpError) as exc_info:
             mock.FetchArtistById(1)
         assert exc_info.value.status_code == 401
@@ -143,10 +135,6 @@ class TestFetchArtistById:
         mock.FetchArtistById(1, lane="Background")
         assert mock.calls[0]["lane"] == "Background"
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# FetchSongList
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestFetchSongList:
     def test_programmed_response_returned(self):
@@ -188,10 +176,6 @@ class TestFetchSongList:
         }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FetchSongDetail
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestFetchSongDetail:
     def test_programmed_response_returned(self):
         mock = MockGeniusGateway()
@@ -223,12 +207,8 @@ class TestFetchSongDetail:
         mock = MockGeniusGateway()
         mock.set_song_detail_slow(101, delay_s=0.01)
         result = mock.FetchSongDetail(101)
-        assert result is None  # the slow stub always returns None
+        assert result is None
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# call_count / assert_called / assert_not_called / reset
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestCallTracking:
     def test_call_count_zero_when_never_called(self):
@@ -239,7 +219,7 @@ class TestCallTracking:
         mock = MockGeniusGateway()
         mock.set_resolve_response("Drake", [])
         mock.ResolveCandidates("Drake")
-        mock.assert_called("ResolveCandidates")  # must not raise
+        mock.assert_called("ResolveCandidates")
 
     def test_assert_called_raises_when_not_called(self):
         mock = MockGeniusGateway()
@@ -248,7 +228,7 @@ class TestCallTracking:
 
     def test_assert_not_called_passes_when_untouched(self):
         mock = MockGeniusGateway()
-        mock.assert_not_called("FetchArtistById")  # must not raise
+        mock.assert_not_called("FetchArtistById")
 
     def test_assert_not_called_raises_after_call(self):
         mock = MockGeniusGateway()
@@ -266,7 +246,7 @@ class TestCallTracking:
         mock.reset()
 
         assert mock.call_count("ResolveCandidates") == 0
-        assert mock.ResolveCandidates("Drake") == []  # programmed response gone too
+        assert mock.ResolveCandidates("Drake") == []
 
     def test_multiple_calls_to_same_method_all_recorded(self):
         mock = MockGeniusGateway()
@@ -276,10 +256,6 @@ class TestCallTracking:
         mock.ResolveCandidates("B")
         assert mock.call_count("ResolveCandidates") == 2
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Convenience builders: make_artist / make_song
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestConvenienceBuilders:
     def test_make_artist_basic(self):
@@ -304,7 +280,9 @@ class TestConvenienceBuilders:
         feat = make_artist(2, "Future")
         producer = make_artist(3, "40")
         song = make_song(
-            101, "God's Plan", primary,
+            101,
+            "God's Plan",
+            primary,
             collaborators=[
                 {"artist": feat, "role": "featured"},
                 {"artist": producer, "role": "producer"},

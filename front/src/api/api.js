@@ -1,35 +1,34 @@
-// ════════════════════════════════════════════════════════════════════════════
-// api.js — Server communication: searchArtist, _doSearch, pollEnrichment
-// ════════════════════════════════════════════════════════════════════════════
 import {
-  State, SEARCH_DEBOUNCE, setGraphCacheEntry,
-  GRAPH_DEFAULT_LIMIT, GRAPH_LOAD_MORE_STEP, GRAPH_MAX_LIMIT
+  State,
+  SEARCH_DEBOUNCE,
+  setGraphCacheEntry,
+  GRAPH_DEFAULT_LIMIT,
+  GRAPH_LOAD_MORE_STEP,
+  GRAPH_MAX_LIMIT,
 } from "../state/state.js";
 import { debounce } from "../state/helpers.js";
 import { replaceGraph, mergeGraph } from "../graph.js";
 import { showCandidatePicker } from "../ui/index.js";
-import { showLoading, showToast, showRetryToast, hideToast, pushHistory, updateShareableUrl, updateRateLimitIndicator, updateScanStatus } from "../ui/index.js";
+import {
+  showLoading,
+  showToast,
+  showRetryToast,
+  hideToast,
+  pushHistory,
+  updateShareableUrl,
+  updateRateLimitIndicator,
+  updateScanStatus,
+} from "../ui/index.js";
 import { restoreDefaultColors } from "../vis-adapter/index.js";
 import { apiFetch, throwForStatus, redirectToLogin } from "./net.js";
 
-const _searchDebounced = debounce((artist, isExpansion, forceImmediate, limitOverride) => _doSearch(artist, isExpansion, forceImmediate, limitOverride), SEARCH_DEBOUNCE);
-
-// ════════════════════════════════════════════════════════════════════════════
-// ENRICHMENT STATUS — SSE
-// Opens a single, long-lived Server-Sent Events connection to
-// /api/v1/status/stream. The server holds the connection open and pushes a
-// JSON event roughly every ~2 s; we close the connection and refresh the
-// graph as soon as depth >= 2 (Full-scan complete), so the canvas picks up
-// any collaborations discovered during the deep scan.
-//
-// Since the server no longer closes the stream after a single snapshot,
-// `onerror` now only fires on a genuine transport failure (dropped
-// connection, proxy timeout, server crash) — reconnect-with-backoff below
-// exists purely to recover from that, not as a stand-in for polling.
-// ════════════════════════════════════════════════════════════════════════════
+const _searchDebounced = debounce(
+  (artist, isExpansion, forceImmediate, limitOverride) =>
+    _doSearch(artist, isExpansion, forceImmediate, limitOverride),
+  SEARCH_DEBOUNCE,
+);
 
 export function pollEnrichment(seedId) {
-  // Close any previous SSE connection that may still be open.
   if (State._enrichmentPoller) {
     State._enrichmentPoller.close();
     State._enrichmentPoller = null;
@@ -43,10 +42,6 @@ export function pollEnrichment(seedId) {
   let es = null;
   let timeoutId = null;
 
-  // SF-WEB-05: pollEnrichment only ever starts once a graph response has
-  // already landed (FG depth reached) — show the indicator optimistically
-  // right away instead of waiting ~2s for the first real SSE event, then
-  // let each onmessage below refine/replace it with the server's actual state.
   updateScanStatus({ depth: 1, enriching: true });
 
   const connect = () => {
@@ -60,25 +55,19 @@ export function pollEnrichment(seedId) {
       try {
         const s = JSON.parse(e.data);
         updateScanStatus(s);
-        if (s.depth >= 2) {           // Full-scan complete — server closes its end too.
+        if (s.depth >= 2) {
           closed = true;
           if (timeoutId) clearTimeout(timeoutId);
           es.close();
           State._enrichmentPoller = null;
           showToast("Deep scan complete — updating graph with new collaborations", 3000);
-          // ТЗ-5: invalidate cache for this seed so the next click goes to server.
           State._graphCache.delete(seedId);
-          // Re-request the graph with the full, deep-scanned dataset.
           const seedName = document.getElementById("hero-input")?.value || "";
           if (seedName) searchArtist(seedName, false, true);
         }
-      } catch (_) {
-        // Malformed event — ignore, keep connection open.
-      }
+      } catch (_) {}
     };
 
-    // Real network error — the server-driven close above already returns
-    // before this can fire for the expected end-of-stream case.
     es.onerror = () => {
       if (closed) return;
 
@@ -101,25 +90,25 @@ export function pollEnrichment(seedId) {
       closed = true;
       if (es) es.close();
       if (timeoutId) clearTimeout(timeoutId);
-    }
+    },
   };
 
   State._enrichmentPoller = poller;
   connect();
 }
 
-// SF-WEB-02: limitOverride lets a restored deep-link ask for the same
-// collab limit the sharer had (see loadArtistFromUrl in ui/history.js) —
-// only meaningful for a fresh (non-expansion) search, same as
-// showMoreCollaborations' own `limit=` param.
-export function searchArtist(artist, isExpansion = false, forceImmediate = false, limitOverride = null) {
+export function searchArtist(
+  artist,
+  isExpansion = false,
+  forceImmediate = false,
+  limitOverride = null,
+) {
   artist = (artist || "").trim();
   if (!artist) return;
   if (State.inFlight) {
     if (isExpansion) {
       State.pendingExpand = { name: artist };
     } else {
-      // Отменяем текущий запрос и ставим новый как pending (ТЗ-4).
       if (State._abortController) State._abortController.abort();
       State.pendingExpand = { name: artist };
     }
@@ -130,12 +119,11 @@ export function searchArtist(artist, isExpansion = false, forceImmediate = false
 }
 
 export async function _doSearch(artist, isExpansion, forceImmediate, limitOverride = null) {
-  // ТЗ-4: abort any in-flight search request before starting a new one.
   if (State._abortController) State._abortController.abort();
   State._abortController = new AbortController();
   const signal = State._abortController.signal;
 
-  State.inFlight      = true;
+  State.inFlight = true;
   State.pendingExpand = null;
   showLoading(true, artist);
   hideToast();
@@ -143,13 +131,9 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
   try {
     const roles = [...State.activeFilters].join(",");
 
-    // ТЗ-5: resolve artist to a numeric id for cache lookup (id may be stored
-    // on the current seed or on any already-loaded node with this name).
-    const knownNode = State.graphNodes.find(n => n.name === artist);
-    const parsedId  = knownNode ? knownNode.id : null;
+    const knownNode = State.graphNodes.find((n) => n.name === artist);
+    const parsedId = knownNode ? knownNode.id : null;
 
-    // ТЗ-5: cache hit — skip the network round-trip.
-    // forceImmediate is re-used as the BG-enrichment "force refresh" flag.
     if (parsedId != null && !forceImmediate) {
       const cached = State._graphCache.get(parsedId);
       if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
@@ -158,32 +142,24 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
       }
     }
 
-    // SF-WEB-02: same idea as showMoreCollaborations' `limit=` override —
-    // only applied to a fresh (non-expansion) search, so a restored deep-link
-    // reproduces the sharer's collab limit instead of falling back to the
-    // server default.
-    const limitParam = (!isExpansion && limitOverride > 0) ? `&limit=${limitOverride}` : "";
+    const limitParam = !isExpansion && limitOverride > 0 ? `&limit=${limitOverride}` : "";
     const url = `/api/v1/graph?artist=${encodeURIComponent(artist)}&roles=${encodeURIComponent(roles)}${limitParam}`;
     const res = await apiFetch(url, { signal });
 
-    // IDEA-21: reflect the backend's per-client rate-limit state (headers
-    // are present on both success and 429 responses) so the user sees the
-    // quota before they hit it, not only after.
-    const rlLimit     = res.headers.get("X-RateLimit-Limit");
+    const rlLimit = res.headers.get("X-RateLimit-Limit");
     const rlRemaining = res.headers.get("X-RateLimit-Remaining");
     if (rlLimit !== null && rlRemaining !== null) {
       updateRateLimitIndicator(Number(rlRemaining), Number(rlLimit));
     }
 
-    // [ТЗ-6] 401 covers two distinct cases — read the body before the
-    // generic !res.ok branch so we can give the right prompt instead of a
-    // vague gateway error.
     if (res.status === 401) {
       let body = {};
-      try { body = await res.json(); } catch (_) {}
-      // Not signed in at all — there is no anonymous/shared-token fallback
-      // anymore, so every request requires a Genius session.
-      redirectToLogin(showToast, body, { notSignedInMessage: "Sign in with Genius to start exploring." });
+      try {
+        body = await res.json();
+      } catch (_) {}
+      redirectToLogin(showToast, body, {
+        notSignedInMessage: "Sign in with Genius to start exploring.",
+      });
       return;
     }
 
@@ -201,29 +177,22 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
       return;
     }
 
-    // ТЗ-5: store result in cache (max 20 entries, evict oldest).
     if (graph.seed_id != null) {
       setGraphCacheEntry(State._graphCache, graph.seed_id, { graph, timestamp: Date.now() });
     }
 
     if (isExpansion) {
       mergeGraph(graph);
-      // SF-WEB-02: keep the deep-link in sync as the user expands nodes —
-      // mergeGraph() just added expandedId to State.expandedNodes.
       updateShareableUrl();
     } else {
       replaceGraph(graph);
-      // replaceGraph()→finalizeGraphState() calls setSeed(), which resets
-      // collabLimit to null — restore it only after that settles.
       if (limitOverride > 0) State.collabLimit = limitOverride;
       pushHistory(graph.seed || artist);
       updateShareableUrl(graph.seed || artist);
-      // Once background enrichment (deep scan) finishes, re-fetch to pick
-      // up any additional collaborations discovered on the richer graph.
       if (graph.seed_id != null) pollEnrichment(graph.seed_id);
     }
   } catch (err) {
-    if (err.name === 'AbortError') return; // пользователь сам отменил — не показываем toast (ТЗ-4).
+    if (err.name === "AbortError") return;
     const msg = err.message || "Something went wrong. Please try again.";
     if (err.transient) {
       showRetryToast(msg, () => searchArtist(artist, isExpansion, true));
@@ -243,13 +212,6 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// IDEA-22: "Show more collaborations" — re-requests the current seed's graph
-// with a larger ?limit=, overriding the server's songs-limit-fg default just
-// for this call, and merges the (likely denser) result into the graph
-// already on canvas instead of replacing it.
-// ════════════════════════════════════════════════════════════════════════════
-
 export async function showMoreCollaborations() {
   const seedId = State.currentSeedId;
   if (seedId == null || State.inFlight) return;
@@ -261,12 +223,10 @@ export async function showMoreCollaborations() {
     return;
   }
 
-  // The cached response (if any) was fetched at the smaller limit — drop it
-  // so a later plain re-search doesn't silently serve the truncated graph.
   State._graphCache.delete(seedId);
 
   State.inFlight = true;
-  const seedName = State.graphNodes.find(n => n.id === seedId)?.name || "";
+  const seedName = State.graphNodes.find((n) => n.id === seedId)?.name || "";
   showLoading(true, seedName);
 
   try {

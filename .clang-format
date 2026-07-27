@@ -1,0 +1,35 @@
+BasedOnStyle: Google
+ColumnLimit: 100
+IndentWidth: 2
+AccessModifierOffset: -1
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBraces: Attach
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: true
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^"core/'
+    Priority: 1
+  - Regex: '^"domain/'
+    Priority: 2
+  - Regex: '^"http/'
+    Priority: 3
+  - Regex: '^"auth/'
+    Priority: 4
+  - Regex: '^"storage/'
+    Priority: 5
+  - Regex: '^"genius/'
+    Priority: 6
+  - Regex: '^"enrichment/'
+    Priority: 7
+  - Regex: '^"schemas/'
+    Priority: 8
+  - Regex: '<'
+    Priority: 9
+  - Regex: '.*'
+    Priority: 10

@@ -1,13 +1,15 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/canvas-controls.js — Viewport controls (fit/zoom/focus-seed), keyboard
-//                         shortcuts, seed card + help overlay, role-filter
-//                         toggles, clearCanvas (ТЗ-D8), updateStatus
-// ════════════════════════════════════════════════════════════════════════════
 import { State, MOTION, COLOR, visAnimation } from "../state/state.js";
 import { placeholderFor, proxiedImageUrl } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist, showMoreCollaborations } from "../api/api.js";
-import { clearFocus, resetCanvasToEmpty, networkOptions, isCompareModeActive, exitCompareMode, selectNode } from "../vis-adapter/index.js";
+import {
+  clearFocus,
+  resetCanvasToEmpty,
+  networkOptions,
+  isCompareModeActive,
+  exitCompareMode,
+  selectNode,
+} from "../vis-adapter/index.js";
 import { drawEdges } from "../vis-adapter/edge-render.js";
 import { drawContours } from "../vis-adapter/bubble-contours.js";
 import { clearPathHighlight } from "../api/analytics-client.js";
@@ -15,35 +17,30 @@ import { startCanvasDecorator } from "../dom/canvas-decorator.js";
 import { showToast, hideToast } from "./toast.js";
 import { updateShareableUrl } from "./history.js";
 import {
-  isSearchModalOpen, closeSearchModal, openSearchModal,
-  isPathPanelOpen, closePathPanel,
-  closeNodeSearch, openNodeSearch
+  isSearchModalOpen,
+  closeSearchModal,
+  openSearchModal,
+  isPathPanelOpen,
+  closePathPanel,
+  closeNodeSearch,
+  openNodeSearch,
 } from "./modals.js";
 import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import { renderEmptyState } from "./canvas-states.js";
 import { navigateToSurface, SURFACE_GRAPH } from "./router.js";
 
-// ════════════════════════════════════════════════════════════════════════════
-// Role filter toggles
-// ════════════════════════════════════════════════════════════════════════════
-
 export function setupFilterToggles() {
-  // Каждая роль теперь может иметь несколько кнопок-переключателей —
-  // те же в .rail (доступны после построения графа) и новые в
-  // .include-roles-row на лендинге (видны до построения графа). Обе группы
-  // читают/пишут один и тот же State.activeFilters, так что достаточно
-  // держать классы .active в синхроне между всеми кнопками одной роли.
   function makeToggle(role, btns) {
     const buttons = btns.filter(Boolean);
     if (!buttons.length) return;
 
     function syncButtons() {
       const isActive = State.activeFilters.has(role);
-      buttons.forEach(btn => btn.classList.toggle("active", isActive));
+      buttons.forEach((btn) => btn.classList.toggle("active", isActive));
     }
 
-    buttons.forEach(btn => {
+    buttons.forEach((btn) => {
       btn.addEventListener("click", () => {
         if (State.activeFilters.has(role)) {
           if (State.activeFilters.size <= 1) {
@@ -62,24 +59,11 @@ export function setupFilterToggles() {
     });
     syncButtons();
   }
-  // [SF-WEB-14] els.filterFeatured/-Producer/-Writer (the rail's own role
-  // filters) were removed — canvasFilterFeatured/-Producer/-Writer (the new
-  // always-visible canvas segment) took over their spot in this list.
   makeToggle("featured", [els.canvasFilterFeatured, els.heroFilterFeatured]);
   makeToggle("producer", [els.canvasFilterProducer, els.heroFilterProducer]);
-  makeToggle("writer",   [els.canvasFilterWriter,   els.heroFilterWriter]);
+  makeToggle("writer", [els.canvasFilterWriter, els.heroFilterWriter]);
 }
 
-// Note: active role-filters are no longer duplicated in the status card —
-// they're already visible via active state on the rail icons (ТЗ-D2).
-
-// ════════════════════════════════════════════════════════════════════════════
-// [SF-WEB-61] BubbleSet manual toggle — "давай добавим BubbleSet отдельной
-// кнопкой, которая по дефолту выключенна и не будем сами управлть ею": no
-// LOD/heuristic auto-show/hide left anywhere (see bubble-contours.js) — the
-// user is the only thing that flips State.bubbleSetsEnabled. Same
-// .rail-btn.active + aria-pressed kit btn-compare-mode already uses.
-// ════════════════════════════════════════════════════════════════════════════
 export function setupBubbleSetsToggle() {
   if (!els.btnBubbleSets) return;
   function sync() {
@@ -94,10 +78,6 @@ export function setupBubbleSetsToggle() {
   sync();
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Seed card & help overlay
-// ════════════════════════════════════════════════════════════════════════════
-
 export function setupSeedCard() {
   if (!els.seedCard) return;
   els.seedCard.addEventListener("click", () => {
@@ -105,24 +85,11 @@ export function setupSeedCard() {
   });
 }
 
-// IDEA-22: seed-only "show more collaborations" action — re-fetches the
-// current seed's graph with a bumped ?limit= and merges it into the canvas.
-// [style pass] The truncation-banner icon IS the trigger now (was a
-// separately-built action button nested inside an expanded pill).
 export function setupLoadMoreCollabs() {
   if (!els.truncationBanner) return;
   els.truncationBanner.addEventListener("click", showMoreCollaborations);
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// IDEA-50: FG-truncation indicator — shown only when the last graph response
-// reported truncated=true (the songs-limit-fg fetch hit its cap, so some
-// collaborations for a dense seed are very likely missing). Reflects
-// State.truncated/shownSongCount/songLimit (see state.js::setTruncation),
-// which is refreshed on every replaceGraph/mergeGraph via finalizeGraphState
-// — including after "Show more collaborations" merges a bigger-limit fetch,
-// so the banner updates/hides itself once the new limit isn't truncated.
-// ════════════════════════════════════════════════════════════════════════════
 export function updateTruncationBanner() {
   if (!els.truncationBanner) return;
 
@@ -131,28 +98,15 @@ export function updateTruncationBanner() {
     return;
   }
 
-  // [style pass] Collapsed to a single plus-icon button — clicking it calls
-  // showMoreCollaborations() directly (see setupLoadMoreCollabs above), so
-  // this text only needs to reach the user via hover/focus, through the
-  // same native `title` idiom #help-btn already uses for its own tooltip.
-  const text = `Showing top ${State.shownSongCount} collaborations — there may be more. `
-    + `Click to show ${State.shownSongCount} more.`;
+  const text =
+    `Showing top ${State.shownSongCount} collaborations — there may be more. ` +
+    `Click to show ${State.shownSongCount} more.`;
   els.truncationBanner.title = text;
   els.truncationBanner.setAttribute("aria-label", text);
 
   els.truncationBanner.hidden = false;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// SF-WEB-05: inline data-completeness indicator — depth/partial/background-
-// enrichment status, driven by /api/v1/status/stream events (see
-// pollEnrichment in api.js, which calls this on every SSE message). Lives
-// next to seed-card in #status (over the canvas) rather than only in the
-// companion — it needs to be visible even with nothing selected, since a
-// partial graph is a property of the whole canvas, not of one node/edge.
-// Hidden once depth reaches Full (2) — the data IS complete at that point,
-// nothing left to explain.
-// ════════════════════════════════════════════════════════════════════════════
 export function updateScanStatus(status) {
   if (!els.scanStatusBadge) return;
   const depth = status?.depth ?? 0;
@@ -176,44 +130,31 @@ export function updateScanStatus(status) {
 
 export function setupHelpOverlay() {
   if (!els.helpBtn || !els.helpOverlay) return;
-  const open  = () => els.helpOverlay.classList.add("show");
+  const open = () => els.helpOverlay.classList.add("show");
   const close = () => els.helpOverlay.classList.remove("show");
   els.helpBtn.addEventListener("click", open);
   els.helpClose?.addEventListener("click", close);
-  els.helpOverlay.addEventListener("click", e => {
+  els.helpOverlay.addEventListener("click", (e) => {
     if (e.target === els.helpOverlay) close();
   });
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// Canvas controls & navigation
-// ════════════════════════════════════════════════════════════════════════════
-
-// [SF-WEB-47] Every network.fit()/focus()/moveTo() below used to hardcode
-// its own {duration, easingFunction} literal and never checked
-// prefers-reduced-motion at all — visAnimation(MOTION.x) covers both.
 export function fitView() {
   if (State.network) State.network.fit({ animation: visAnimation(MOTION.camera) });
 }
 
 export function focusSeed() {
   if (State.network && State.currentSeedId != null) {
-    State.network.focus(State.currentSeedId, { scale: 1.2, locked: false, animation: visAnimation(MOTION.camera) });
+    State.network.focus(State.currentSeedId, {
+      scale: 1.2,
+      locked: false,
+      animation: visAnimation(MOTION.camera),
+    });
     clearFocus();
   }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// [SF-WEB-62] Keyboard navigation between hubs — Tab/Shift+Tab or ←/→ moves
-// the camera focus through the seed + every expanded pole, without needing
-// the mouse to find and click each one. Order is deterministic (seed
-// first, then poles sorted by id) — same "sorted by id" convention
-// layout.js's own placeChildren already uses for its own processing order,
-// so the cycle order stays stable across expands instead of shuffling
-// every time a new pole is added.
-// ════════════════════════════════════════════════════════════════════════════
-let _hubFocusIndex = -1;  // -1 == nothing focused via keyboard nav yet this session
-
+let _hubFocusIndex = -1;
 function _keyboardHubIds() {
   const hubs = [...State.expandedNodes].sort((a, b) => a - b);
   if (State.currentSeedId != null) hubs.unshift(State.currentSeedId);
@@ -222,59 +163,56 @@ function _keyboardHubIds() {
 
 export function focusNextHub(direction) {
   if (!State.network) return;
-  // [SF-WEB-74] "неинтуитивно" — во время активного pick'а (first/second)
-  // это дёргало selectNode/clearFocus в обход compare-mode целиком, оставляя
-  // начатый пик "подвешенным" (маркер first остаётся, а selection/камера уже
-  // уехали на другой узел). Тот же принцип, что click по ребру/пустому
-  // канвасу и doubleClick уже применяют — любое конкурирующее действие
-  // сбрасывает режим вместо того, чтобы молча работать поверх него.
-  if (isCompareModeActive()) { exitCompareMode(); return; }
+  if (isCompareModeActive()) {
+    exitCompareMode();
+    return;
+  }
   const hubs = _keyboardHubIds();
   if (!hubs.length) return;
 
-  // If the selected node is already one of the hubs (e.g. the user just
-  // clicked one), start cycling from there instead of wherever keyboard
-  // nav last left off — keeps mouse and keyboard interaction consistent
-  // with each other instead of two independent "current position" trackers.
   if (State.selectedNodeId != null) {
     const idx = hubs.indexOf(State.selectedNodeId);
     if (idx !== -1) _hubFocusIndex = idx;
   }
 
-  _hubFocusIndex = ((_hubFocusIndex + direction) % hubs.length + hubs.length) % hubs.length;
+  _hubFocusIndex = (((_hubFocusIndex + direction) % hubs.length) + hubs.length) % hubs.length;
   const id = hubs[_hubFocusIndex];
   State.network.focus(id, { scale: 1.2, locked: false, animation: visAnimation(MOTION.camera) });
   clearFocus();
   selectNode(id);
 }
 
-// Only for tests — keyboard nav's own "where was I" pointer resets between
-// unrelated searches/graph clears the same way State.selectedNodeId etc do.
-export function _resetHubFocusIndex() { _hubFocusIndex = -1; }
+export function _resetHubFocusIndex() {
+  _hubFocusIndex = -1;
+}
 
 export function zoomIn() {
   if (!State.network) return;
-  State.network.moveTo({ scale: State.network.getScale() * 1.25, animation: visAnimation(MOTION.med) });
+  State.network.moveTo({
+    scale: State.network.getScale() * 1.25,
+    animation: visAnimation(MOTION.med),
+  });
 }
 
 export function zoomOut() {
   if (!State.network) return;
-  State.network.moveTo({ scale: State.network.getScale() * 0.8, animation: visAnimation(MOTION.med) });
+  State.network.moveTo({
+    scale: State.network.getScale() * 0.8,
+    animation: visAnimation(MOTION.med),
+  });
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// IDEA-20 — export rendered graph as a PNG (client-only, no backend)
-// SF-WEB-04 — export the underlying graph data as JSON, same rail, same kit
-// ════════════════════════════════════════════════════════════════════════════
-
-// Shared by both export formats — "seed name" is the one piece of the
-// filename either format cares about identifying.
 function _graphExportSlug() {
-  const seedNode = State.currentSeedId != null
-    ? State.graphNodes.find(n => n.id === State.currentSeedId)
-    : null;
+  const seedNode =
+    State.currentSeedId != null ? State.graphNodes.find((n) => n.id === State.currentSeedId) : null;
   const rawName = seedNode?.name || els.heroInput.value || "graph";
-  return rawName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "graph";
+  return (
+    rawName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "graph"
+  );
 }
 
 function _downloadBlob(blob, filename) {
@@ -292,39 +230,29 @@ function downloadPngBlob(blob) {
   _downloadBlob(blob, `six-feet-${_graphExportSlug()}.png`);
 }
 
-// SF-WEB-04: stable, plain-JSON-serializable snapshot of the current graph —
-// deliberately NOT a raw dump of State.graphNodes/graphEdges (those carry
-// internal bookkeeping fields — _isNew, _dimBorder, _accent, _dominantRole,
-// _expandParent, etc. — that are rendering/layout implementation detail, not
-// graph data, and would make the export format an accidental, unstable
-// coupling to internal state shape). The field set mirrors what
-// buildNodeState/buildEdgeState (graph.js) treat as the graph's actual
-// public data — the same fields the backend's /api/v1/graph response
-// carries, not vis-adapter's derived visuals.
 export function buildGraphExportData() {
-  const seedNode = State.currentSeedId != null
-    ? State.graphNodes.find(n => n.id === State.currentSeedId)
-    : null;
+  const seedNode =
+    State.currentSeedId != null ? State.graphNodes.find((n) => n.id === State.currentSeedId) : null;
   return {
-    seed:       seedNode?.name ?? null,
-    seedId:     State.currentSeedId ?? null,
+    seed: seedNode?.name ?? null,
+    seedId: State.currentSeedId ?? null,
     exportedAt: new Date().toISOString(),
-    nodes: State.graphNodes.map(n => ({
-      id:        n.id,
-      name:      n.name,
-      imageUrl:  n.imageUrl || null,
+    nodes: State.graphNodes.map((n) => ({
+      id: n.id,
+      name: n.name,
+      imageUrl: n.imageUrl || null,
       geniusUrl: n.geniusUrl || null,
-      isSeed:    !!n.isSeed,
+      isSeed: !!n.isSeed,
     })),
-    edges: State.graphEdges.map(e => ({
-      id:                  e.id,
-      from:                e.from,
-      to:                  e.to,
-      weight:              e.weight,
-      dominantRole:        e.dominantRole,
+    edges: State.graphEdges.map((e) => ({
+      id: e.id,
+      from: e.from,
+      to: e.to,
+      weight: e.weight,
+      dominantRole: e.dominantRole,
       collaboration_count: e.collaboration_count ?? null,
-      songs:               e.songs || [],
-      collaborations:      e.collaborations || [],
+      songs: e.songs || [],
+      collaborations: e.collaborations || [],
     })),
   };
 }
@@ -335,66 +263,19 @@ export function exportGraphJson() {
     return;
   }
   const data = buildGraphExportData();
-  const dateStr = data.exportedAt.slice(0, 10); // YYYY-MM-DD
+  const dateStr = data.exportedAt.slice(0, 10);
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   _downloadBlob(blob, `six-feet-${_graphExportSlug()}-${dateStr}.json`);
 }
 
-// vis-network paints node avatars straight from Genius's CDN without
-// requesting CORS, so #network's live <canvas> flips to "tainted" the
-// instant the first real photo is drawn on it — and per spec that flag
-// never resets, so that canvas can never be handed to toBlob() again
-// (SecurityError, in every browser, permanently, once any avatar has
-// rendered). The only way to get pixels out is a second, disposable
-// vis.Network — same nodes/edges/positions, but every avatar routed
-// through this origin instead of Genius's CDN directly.
-//
-// [SF-WEB-32] Real photos now go through /api/v1/image?url=... (SF-API-12
-// — a same-origin proxy that re-serves the allowlisted Genius CDN bytes
-// from THIS origin) instead of always falling back to the local
-// placeholder — that was the only way to avoid tainting before this proxy
-// existed. A same-origin image never taints the canvas, so the shadow
-// network can now draw real photos and still export cleanly. Nodes with
-// no real Genius photo (graphNode.imageUrl empty — already normalized to
-// "" for Genius's own default-avatar placeholder, see graph.js) still get
-// the local placeholderFor icon, same as before. brokenImage is always
-// the local placeholder either way — if the proxy itself 400s/502s,
-// vis.js falls back to it exactly like any other broken image load.
-const EXPORT_MIN_SETTLE_MS   = 150; // unchanged baseline for placeholder-only exports
-// [SF-WEB-32 follow-up] 3000ms wasn't enough for a dense graph: every photo
-// is now an extra same-origin round trip (browser -> /api/v1/image -> Genius
-// CDN) instead of a direct CDN fetch, and browsers cap concurrent
-// connections per origin at ~6 — so a 50-60 node graph queues most of its
-// photos behind that cap. Observed in practice: a chunk of nodes still
-// mid-flight got cut off at 3s and fell back to their placeholder icon.
-// 3000 -> 10000 gives queued requests enough headroom to actually finish
-// instead of racing the clock; a slow export is still strictly better than
-// a wrong one, and every proxied response is cached long-term (see
-// image_proxy_handler.cpp's Cache-Control), so repeat exports of the same
-// graph are fast regardless of this value.
-//
-// [SF-WEB-59] 10000 -> 30000: still reported as "не всегда успевает
-// подгрузить все фотографии" (doesn't always finish loading every photo) —
-// a dense real graph (hundreds of nodes) queues far more than the ~6
-// same-origin connections a browser runs concurrently, and 10s wasn't
-// enough headroom for the tail of that queue. This is a SAFETY CEILING,
-// not the expected wait — Promise.all(loaders) still resolves as soon as
-// every image has actually finished (success or error), so a small/medium
-// graph's export isn't slowed down by this at all.
-const EXPORT_IMAGE_TIMEOUT_MS = 30000; // upper bound on waiting for proxied photos
-
-// Pure data-shaping step (no vis.Network/DOM involved) — kept separate so
-// it's directly testable. Returns the same per-node shape exportGraphPng
-// always built, plus the list of proxy URLs it used (so the caller knows
-// what to wait on before redraw/toBlob).
+const EXPORT_MIN_SETTLE_MS = 150;
+const EXPORT_IMAGE_TIMEOUT_MS = 30000;
 export function buildShadowNodes(nodeItems, graphNodes, positions) {
   const proxyUrls = [];
-  const shadowNodes = nodeItems.map(n => {
-    const graphNode   = graphNodes.find(g => g.id === n.id);
+  const shadowNodes = nodeItems.map((n) => {
+    const graphNode = graphNodes.find((g) => g.id === n.id);
     const placeholder = placeholderFor(graphNode?.name, graphNode?.isSeed);
-    const image = graphNode?.imageUrl
-      ? proxiedImageUrl(graphNode.imageUrl)
-      : placeholder;
+    const image = graphNode?.imageUrl ? proxiedImageUrl(graphNode.imageUrl) : placeholder;
     if (graphNode?.imageUrl) proxyUrls.push(image);
     const pos = positions[n.id];
     return {
@@ -404,85 +285,55 @@ export function buildShadowNodes(nodeItems, graphNodes, positions) {
       brokenImage: placeholder,
       x: pos ? pos.x : n.x,
       y: pos ? pos.y : n.y,
-      fixed: { x: true, y: true }
+      fixed: { x: true, y: true },
     };
   });
   return { shadowNodes, proxyUrls };
 }
 
-// [SF-WEB-32] Resolves once every proxied photo has either loaded or
-// failed (never rejects — one broken photo shouldn't block the whole
-// export) or after timeoutMs, whichever comes first — plus the same fixed
-// settle delay the old placeholder-only export always waited out (vis.js
-// still loads even local data: URIs through an async Image.onload before
-// its first real redraw). Preloading through our OWN Image objects (same
-// URL vis.js's internal circularImage loader will request) means the
-// browser's HTTP cache already has the bytes by the time vis.js asks for
-// them — waiting on vis.js's own internal loader isn't possible, it's a
-// private implementation detail, so this is the practical way to know
-// "the pixels are actually available" before grabbing a frame.
 export function waitForImages(urls, timeoutMs = EXPORT_IMAGE_TIMEOUT_MS) {
-  const minDelay = new Promise(resolve => setTimeout(resolve, EXPORT_MIN_SETTLE_MS));
+  const minDelay = new Promise((resolve) => setTimeout(resolve, EXPORT_MIN_SETTLE_MS));
   if (!urls.length) return minDelay;
 
-  const loaders = urls.map(url => new Promise(resolve => {
-    const img = new Image();
-    img.onload  = resolve;
-    img.onerror = resolve;
-    img.src = url;
-  }));
-  const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
+  const loaders = urls.map(
+    (url) =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.onload = resolve;
+        img.onerror = resolve;
+        img.src = url;
+      }),
+  );
+  const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs));
 
   return Promise.all([minDelay, Promise.race([Promise.all(loaders), timeout])]);
 }
 
-// [SF-WEB-59] Export used to reuse whatever the live on-screen canvas
-// happened to be sized/panned/zoomed to — "cropped to my rendered screen"
-// (a small browser window exported a small, half-empty-feeling PNG; a
-// zoomed-in live view exported only the visible slice, cutting off the
-// rest of the graph). A fixed, generous export canvas — independent of
-// the live viewport entirely — combined with _computeFitView below (a
-// deterministic "fit ALL current node positions, not just the visible
-// ones" calculation, the export's own equivalent of the fitView() button)
-// gives every export the same "whole graph, comfortably framed" result
-// regardless of what the user happened to be looking at on screen.
-const EXPORT_WIDTH  = 2400;
+const EXPORT_WIDTH = 2400;
 const EXPORT_HEIGHT = 1500;
-const EXPORT_FIT_MARGIN   = 140; // world-space px of breathing room around the outermost node
-const EXPORT_FIT_MAX_SCALE = 3;  // don't zoom in absurdly far for a tiny (1-2 node) graph
-
-// Pure math — deterministic bounding box over every position in `positions`
-// (not just nodeIds currently on screen), returning the vis.Network
-// moveTo()-compatible {position, scale} that fits it all inside a
-// canvasW×canvasH canvas with EXPORT_FIT_MARGIN of world-space padding.
-// Exported so it's directly unit-testable without a real vis.Network.
+const EXPORT_FIT_MARGIN = 140;
+const EXPORT_FIT_MAX_SCALE = 3;
 export function _computeFitView(positions, nodeIds, canvasW, canvasH, margin = EXPORT_FIT_MARGIN) {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity;
   for (const id of nodeIds) {
     const p = positions[id];
     if (!p) continue;
-    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
   }
   if (!Number.isFinite(minX)) return { position: { x: 0, y: 0 }, scale: 1 };
 
-  const width  = Math.max(maxX - minX, 1) + margin * 2;
+  const width = Math.max(maxX - minX, 1) + margin * 2;
   const height = Math.max(maxY - minY, 1) + margin * 2;
-  const scale  = Math.min(canvasW / width, canvasH / height, EXPORT_FIT_MAX_SCALE);
+  const scale = Math.min(canvasW / width, canvasH / height, EXPORT_FIT_MAX_SCALE);
   return { position: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }, scale };
 }
 
-// [SF-WEB-59] "игнорирует фон холста" — vis.js's own canvas (and our
-// custom draw layers) never paint a background, they're transparent by
-// design (the live app relies on the DOM/body background showing through
-// underneath — see styles/base.css). An exported PNG has no DOM behind
-// it, so without this the export was always a transparent/white image
-// regardless of the app's actual dark canvas tone. Registered as the
-// FIRST beforeDrawing listener (paints before anything else this frame),
-// resetting to the identity transform first since ctx here is already in
-// world-space (same convention edge-render.js/bubble-contours.js rely on)
-// and a plain fillRect in world coordinates wouldn't necessarily cover the
-// whole physical canvas.
 export function _drawExportBackground(ctx) {
   const canvas = ctx.canvas;
   ctx.save();
@@ -499,7 +350,11 @@ export function exportGraphPng() {
   }
 
   const positions = State.network.getPositions();
-  const { shadowNodes, proxyUrls } = buildShadowNodes(State.nodesDS.get(), State.graphNodes, positions);
+  const { shadowNodes, proxyUrls } = buildShadowNodes(
+    State.nodesDS.get(),
+    State.graphNodes,
+    positions,
+  );
 
   const holder = document.createElement("div");
   holder.style.cssText = `position:fixed; left:-99999px; top:0; width:${EXPORT_WIDTH}px; height:${EXPORT_HEIGHT}px;`;
@@ -508,45 +363,33 @@ export function exportGraphPng() {
   const shadowNetwork = new vis.Network(
     holder,
     { nodes: new vis.DataSet(shadowNodes), edges: new vis.DataSet(State.edgesDS.get()) },
-    { ...networkOptions(), physics: false }
+    { ...networkOptions(), physics: false },
   );
 
-  // [SF-WEB-59] Custom canvas layers (BubbleSets contours + our own curved
-  // edges — edge-render.js's drawEdges is what actually draws every
-  // cached edge, since the native vis.js edge fill is deliberately made
-  // invisible for them, see suppressNativeEdgeColor; the shadow network's
-  // own edge DataSet already carries that same suppression) painted UNDER
-  // the shadow network's native nodes, same beforeDrawing ordering the
-  // LIVE network uses (render.js::initNetwork) — this is what was entirely
-  // missing before ("не выводит линий", no BubbleSets either): the shadow
-  // network is a completely separate vis.Network instance that never had
-  // these hooks wired up.
   shadowNetwork.on("beforeDrawing", _drawExportBackground);
   shadowNetwork.on("beforeDrawing", drawContours);
   shadowNetwork.on("beforeDrawing", drawEdges);
 
-  const cleanup = () => { shadowNetwork.destroy(); holder.remove(); };
+  const cleanup = () => {
+    shadowNetwork.destroy();
+    holder.remove();
+  };
 
   waitForImages(proxyUrls).then(() => {
-    // [SF-WEB-59] drawContours/drawEdges both read positions via
-    // State.network.getPositions() internally (they're written against
-    // the app's one live network, not parameterized) — this shadow
-    // network holds the exact same fixed positions, so pointing
-    // State.network at it for this synchronous window makes both draw
-    // correctly against it. Restored immediately after the synchronous
-    // draw calls below (before the async toBlob callback) — canvas.toBlob
-    // only encodes pixels already rasterized onto the canvas, it never
-    // triggers another draw pass, so nothing after this point needs
-    // State.network to still point at the shadow network.
     const prevNetwork = State.network;
     State.network = shadowNetwork;
-    const { position, scale } = _computeFitView(positions, State.graphNodes.map(n => n.id), EXPORT_WIDTH, EXPORT_HEIGHT);
+    const { position, scale } = _computeFitView(
+      positions,
+      State.graphNodes.map((n) => n.id),
+      EXPORT_WIDTH,
+      EXPORT_HEIGHT,
+    );
     shadowNetwork.moveTo({ position, scale, animation: false });
     shadowNetwork.redraw();
     State.network = prevNetwork;
 
     const canvas = holder.querySelector("canvas");
-    canvas.toBlob(blob => {
+    canvas.toBlob((blob) => {
       cleanup();
       if (!blob) {
         showToast("PNG export failed.", 2400);
@@ -557,13 +400,9 @@ export function exportGraphPng() {
   });
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// KEYBOARD SHORTCUTS
-// ════════════════════════════════════════════════════════════════════════════
-
 export function setupKeyboard() {
-  document.addEventListener("keydown", e => {
-    const tag     = document.activeElement?.tagName;
+  document.addEventListener("keydown", (e) => {
+    const tag = document.activeElement?.tagName;
     const inInput = tag === "INPUT" || tag === "TEXTAREA";
 
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -573,76 +412,78 @@ export function setupKeyboard() {
     }
 
     if (e.key === "Escape") {
-      // [SF-WEB-47] Highest priority: Compare mode takes over click
-      // semantics while active, so Escape's first job is handing them back,
-      // ahead of any overlay/panel that happens to also be open.
-      if (isCompareModeActive())                            { exitCompareMode();       return; }
-      if (els.helpOverlay?.classList.contains("show"))      { els.helpOverlay.classList.remove("show"); return; }
-      if (els.candidateOverlay?.classList.contains("show")) { hideCandidatePicker(); return; }
-      if (els.nodeSearchOverlay.classList.contains("show")) { closeNodeSearch();      return; }
-      if (State.hasRendered && isSearchModalOpen())         { closeSearchModal();     return; }
-      if (isPathPanelOpen())                                { closePathPanel();       return; }
-      if (State.pathHighlight)                              { clearPathHighlight();   return; }
-      focusSeed(); return;
+      if (isCompareModeActive()) {
+        exitCompareMode();
+        return;
+      }
+      if (els.helpOverlay?.classList.contains("show")) {
+        els.helpOverlay.classList.remove("show");
+        return;
+      }
+      if (els.candidateOverlay?.classList.contains("show")) {
+        hideCandidatePicker();
+        return;
+      }
+      if (els.nodeSearchOverlay.classList.contains("show")) {
+        closeNodeSearch();
+        return;
+      }
+      if (State.hasRendered && isSearchModalOpen()) {
+        closeSearchModal();
+        return;
+      }
+      if (isPathPanelOpen()) {
+        closePathPanel();
+        return;
+      }
+      if (State.pathHighlight) {
+        clearPathHighlight();
+        return;
+      }
+      focusSeed();
+      return;
     }
 
     if (inInput) return;
 
-    // [SF-WEB-62] Keyboard navigation between hubs — ArrowLeft/ArrowRight
-    // only (not Tab: that's the browser's own focus-navigation key,
-    // hijacking it globally would break tabbing through the rail/buttons
-    // for anyone relying on it). Skipped with any modifier held so it
-    // doesn't fight the browser's own Alt+Arrow history navigation or
-    // Shift+Arrow text-selection conventions.
-    if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+    if (
+      (e.key === "ArrowRight" || e.key === "ArrowLeft") &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.shiftKey
+    ) {
       e.preventDefault();
       focusNextHub(e.key === "ArrowRight" ? 1 : -1);
       return;
     }
 
     switch (e.key) {
-      case "f": case "F": fitView(); break;
-      case "+": case "=": zoomIn();  break;
-      case "-": case "_": zoomOut(); break;
-      case "?": els.helpOverlay?.classList.add("show"); break;
+      case "f":
+      case "F":
+        fitView();
+        break;
+      case "+":
+      case "=":
+        zoomIn();
+        break;
+      case "-":
+      case "_":
+        zoomOut();
+        break;
+      case "?":
+        els.helpOverlay?.classList.add("show");
+        break;
     }
   });
 }
 
-
-// ════════════════════════════════════════════════════════════════════════════
-// ТЗ-D8 — clearCanvas (was resetToHero)
-// ────────────────────────────────────────────────────────────────────────────
-// Раньше это скрывало .graph-view и показывало отдельную .hero "страницу".
-// Затем — уничтожало граф и открывало search-modal поверх пустого canvas
-// (морф "назад в hero"). [SF-WEB-19] Модалка/переход на главную убраны: Clear
-// теперь ТОЛЬКО чистит холст и остаётся на странице графа (rail/status-чром
-// не трогаются, body.view-graph не снимается) — единый empty-state
-// (renderEmptyState) показывается прямо на канвасе вместо повторного
-// показа лендинг-модалки. Открыть поиск снова — обычный rail-докнутый
-// поиск (та же кнопка, что и над уже нарисованным графом), не полноэкранная
-// домашняя модалка.
-// ════════════════════════════════════════════════════════════════════════════
-// [fix] resetCanvasToEmpty() (called by clearCanvas() below) deliberately
-// KEEPS State.hasRendered true — SF-WEB-19's "Clear stays on the graph
-// page" design assumes the canvas is still "on scene". But the empty-state
-// action and goHome() both open the FULL-SCREEN (non-docked) landing
-// modal — conceptually "back to the start" — and graph.js's render
-// pipeline only calls initGraphOnCanvas() (which is what closes the
-// search modal again, via forceCloseSearchModal()) `if (!State.
-// hasRendered)`. Leaving the flag true meant that gate never fired on the
-// next successful search, so the modal stayed open on top of the newly
-// drawn graph (reported: "после Map it поиск не сворачивается"). Reset it
-// here so the next search is treated as a genuine first render again.
 function openFullSearchFromEmpty() {
   State.hasRendered = false;
   openSearchModal();
 }
 
 export function clearCanvas() {
-  // [SF-WEB-47] Same reasoning as resetExpansionState clearing
-  // State.compareMode — an in-progress first/second pick doesn't carry
-  // meaning onto the graph resetCanvasToEmpty() is about to leave behind.
   if (isCompareModeActive()) exitCompareMode({ silent: true });
   _resetHubFocusIndex();
   resetCanvasToEmpty();
@@ -650,14 +491,6 @@ export function clearCanvas() {
   if (els.truncationBanner) els.truncationBanner.hidden = true;
   if (els.scanStatusBadge) els.scanStatusBadge.hidden = true;
   startCanvasDecorator();
-  // [fix] Was docked search (`openSearchModal({ docked: true })`, per
-  // SF-WEB-19's original "Clear never leaves the graph page" framing) —
-  // the docked flow's own history/autocomplete dropdown isn't styled for
-  // being shown over a blank canvas (reported as an unstyled floating
-  // list). The full-screen landing modal already exists and is properly
-  // styled for exactly this "nothing on the canvas yet" moment, so the
-  // empty-state card's own action now opens that instead (see
-  // openFullSearchFromEmpty()'s own comment for why hasRendered resets).
   renderEmptyState(els.canvasState, { onAction: openFullSearchFromEmpty });
   els.heroInput.value = "";
   hideToast();
@@ -665,56 +498,37 @@ export function clearCanvas() {
   hideCandidatePicker();
   els.pathPanel.classList.remove("show");
   if (els.hopChain) els.hopChain.innerHTML = "";
-  // [fix] Was `history.replaceState(null, "", window.location.pathname)`,
-  // which drops the #/graph hash router.js (SF-WEB-25) owns — clicking
-  // .brand/Clear left the URL bare (http://host/ instead of .../#/graph).
-  // Harmless while "graph" stays the only real surface (a missing hash
-  // still resolves to it), but it broke the router's own invariant that
-  // the URL always reflects what's showing, and would misbehave the
-  // moment a second surface (game mode) exists. Still clear the shareable
-  // query string the same way as before, but hand the hash back to
-  // navigateToSurface() — the same call every other surface change goes
-  // through — instead of hand-rolling a bare replaceState.
   const url = new URL(window.location.href);
   url.search = "";
   history.replaceState(null, "", url.toString());
   navigateToSurface(SURFACE_GRAPH, { replace: true });
 }
 
-// [fix] .brand (the logo) used to call clearCanvas() directly — same as
-// the rail's "Clear graph" button — which (per SF-WEB-19) only clears the
-// canvas and stays on the graph page with an empty-state card. Reported
-// separately: clicking the logo is expected to act like a real "back to
-// home" action, landing straight on the full-screen search experience,
-// not an intermediate empty-state card the user has to click through.
-// Composes the same clearCanvas() reset with openFullSearchFromEmpty()
-// (same hasRendered-reset reasoning as the empty-state card's own action
-// above — without it, the modal doesn't close after the next search).
 export function goHome() {
   clearCanvas();
   openFullSearchFromEmpty();
 }
 
 export function updateStatus(graph) {
-  const seedId   = State.currentSeedId;
-  const seedNode = seedId != null ? State.graphNodes.find(n => n.id === seedId) : null;
-  const name     = graph.seed || seedNode?.name || els.heroInput.value || "—";
+  const seedId = State.currentSeedId;
+  const seedNode = seedId != null ? State.graphNodes.find((n) => n.id === seedId) : null;
+  const name = graph.seed || seedNode?.name || els.heroInput.value || "—";
 
   if (els.seedCardName) {
     els.seedCardName.textContent = name;
-    els.seedCardName.title = name;  // native tooltip when ellipsis-truncated
+    els.seedCardName.title = name;
   }
   if (els.seedCardAvatar) {
     const src = seedNode?.imageUrl || placeholderFor(name, true);
     els.seedCardAvatar.src = src;
     els.seedCardAvatar.alt = name;
-    els.seedCardAvatar.onerror = () => { els.seedCardAvatar.onerror = null; els.seedCardAvatar.src = placeholderFor(name, true); };
+    els.seedCardAvatar.onerror = () => {
+      els.seedCardAvatar.onerror = null;
+      els.seedCardAvatar.src = placeholderFor(name, true);
+    };
   }
 }
 
-// IDEA-21: soft indicator for the per-client rate limit (X-RateLimit-*
-// headers, read in api.js). The warning toast fires once per drop below
-// the threshold rather than on every request, so it doesn't spam.
 const RATE_LIMIT_WARN_RATIO = 0.2;
 let _rateLimitWarned = false;
 
@@ -722,12 +536,6 @@ export function updateRateLimitIndicator(remaining, limit) {
   if (!els.rateLimitBadge) return;
   if (!Number.isFinite(remaining) || !Number.isFinite(limit) || limit <= 0) return;
 
-  // [SF-WEB-48] Was a permanently-visible "N/M req/s" text pill — the raw
-  // reading now only surfaces on hover (title), same idiom
-  // .scan-status-badge/.truncation-icon-btn already use elsewhere in this
-  // row (see canvas-controls.css). The always-on visual is just the quiet
-  // dot (.rate-limit-badge-dot) — calm by default, .rate-limit-badge--low
-  // (same class/threshold as before) "wakes" it up instead of recoloring text.
   els.rateLimitBadge.title = `${remaining}/${limit} requests remaining this window`;
   els.rateLimitBadge.hidden = false;
 

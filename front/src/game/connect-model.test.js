@@ -1,22 +1,35 @@
-// ════════════════════════════════════════════════════════════════════════════
-// game/connect-model.test.js — [design: ветвящийся веб] the pure Connect-mode
-// branching-web model.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  createConnectChain, chainNodes, hopCount, isComplete, webSize,
-  webNodes, webEdges, winningPath, focusName, setFocus,
-  addHop, undoHop, resetChain, setChallengeId,
-  applyResult, clearResult, resultView,
-  applyLeaderboard, clearLeaderboard, leaderboardView,
-  giveUp, pathRevealed, elapsedMs,
+  createConnectChain,
+  chainNodes,
+  hopCount,
+  isComplete,
+  webSize,
+  webNodes,
+  webEdges,
+  winningPath,
+  focusName,
+  setFocus,
+  addHop,
+  undoHop,
+  resetChain,
+  setChallengeId,
+  applyResult,
+  clearResult,
+  resultView,
+  applyLeaderboard,
+  clearLeaderboard,
+  leaderboardView,
+  giveUp,
+  pathRevealed,
+  elapsedMs,
 } from "./connect-model.js";
 
 describe("createConnectChain", () => {
   it("starts as a lone start node, focused, with the goal not yet in the web", () => {
     const g = createConnectChain("Drake", "Adele");
     expect(webNodes(g)).toEqual(["Drake"]);
-    expect(chainNodes(g)).toEqual(["Drake"]);   // the current line is just start→focus
+    expect(chainNodes(g)).toEqual(["Drake"]);
     expect(focusName(g)).toBe("Drake");
     expect(hopCount(g)).toBe(0);
     expect(webSize(g)).toBe(0);
@@ -68,7 +81,7 @@ describe("addHop (attaches to the focus, focus follows)", () => {
     expect(addHop(g, "Adele")).toEqual({ ok: true, completed: true });
     expect(isComplete(g)).toBe(true);
     expect(winningPath(g)).toEqual(["Drake", "Rihanna", "Adele"]);
-    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Adele"]); // focus followed to the goal
+    expect(chainNodes(g)).toEqual(["Drake", "Rihanna", "Adele"]);
   });
 
   it("is case-insensitive for duplicate and goal checks", () => {
@@ -84,7 +97,8 @@ describe("addHop (attaches to the focus, focus follows)", () => {
     expect(addHop(g, "Rihanna")).toEqual({ ok: false, reason: "over" });
 
     const g2 = createConnectChain("Drake", "Adele");
-    addHop(g2, "Rihanna"); giveUp(g2);
+    addHop(g2, "Rihanna");
+    giveUp(g2);
     expect(addHop(g2, "21 Savage")).toEqual({ ok: false, reason: "over" });
   });
 });
@@ -92,22 +106,22 @@ describe("addHop (attaches to the focus, focus follows)", () => {
 describe("[design: ветвящийся веб] branching via setFocus", () => {
   it("re-focusing an earlier node grows a SECOND branch from it", () => {
     const g = createConnectChain("Drake", "Adele");
-    addHop(g, "Rihanna");        // Drake→Rihanna (focus Rihanna)
-    addHop(g, "Calvin Harris");  // Rihanna→Calvin (focus Calvin)
+    addHop(g, "Rihanna");
+    addHop(g, "Calvin Harris");
     expect(setFocus(g, "Drake").ok).toBe(true);
-    addHop(g, "Future");         // NEW branch: Drake→Future (focus Future)
+    addHop(g, "Future");
     expect(new Set(webNodes(g))).toEqual(new Set(["Drake", "Rihanna", "Calvin Harris", "Future"]));
-    expect(chainNodes(g)).toEqual(["Drake", "Future"]); // current line follows the new branch
+    expect(chainNodes(g)).toEqual(["Drake", "Future"]);
     expect(webSize(g)).toBe(3);
   });
 
   it("winningPath is the branch that actually reached the goal, not the other one", () => {
     const g = createConnectChain("Drake", "Adele");
     addHop(g, "Rihanna");
-    addHop(g, "Dead End");          // Drake→Rihanna→Dead End (a losing branch)
+    addHop(g, "Dead End");
     setFocus(g, "Drake");
-    addHop(g, "Paul Epworth");      // Drake→Paul Epworth
-    addHop(g, "Adele");             // Paul Epworth→Adele — wins on THIS branch
+    addHop(g, "Paul Epworth");
+    addHop(g, "Adele");
     expect(winningPath(g)).toEqual(["Drake", "Paul Epworth", "Adele"]);
   });
 
@@ -171,7 +185,17 @@ describe("resetChain", () => {
     setChallengeId(g, 42);
     addHop(g, "Rihanna");
     addHop(g, "Adele");
-    applyResult(g, { valid: true, player_len: 1, optimal_len: 1, optimal_path: [], score: 10, max_score: 10, elo_before: 1200, elo_after: 1210, elo_delta: 10 });
+    applyResult(g, {
+      valid: true,
+      player_len: 1,
+      optimal_len: 1,
+      optimal_path: [],
+      score: 10,
+      max_score: 10,
+      elo_before: 1200,
+      elo_after: 1210,
+      elo_delta: 10,
+    });
     resetChain(g);
     expect(g.start).toBe("Drake");
     expect(g.goal).toBe("Adele");
@@ -216,7 +240,9 @@ describe("timer (elapsedMs / startedAt / finishedAt)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
   });
-  afterEach(() => { vi.useRealTimers(); });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("starts at 0 elapsed and unfrozen on creation", () => {
     const g = createConnectChain("Drake", "Adele");
@@ -263,12 +289,26 @@ describe("result (SF-GAME-15/03)", () => {
   it("normalizes a revealed verdict, camelCasing the wire fields", () => {
     const g = createConnectChain("Drake", "Adele");
     applyResult(g, {
-      valid: true, player_len: 2, optimal_len: 1, optimal_path: [1, 2],
-      score: 700, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14,
+      valid: true,
+      player_len: 2,
+      optimal_len: 1,
+      optimal_path: [1, 2],
+      score: 700,
+      max_score: 1000,
+      elo_before: 1200,
+      elo_after: 1214,
+      elo_delta: 14,
     });
     expect(resultView(g)).toEqual({
-      revealed: true, playerLen: 2, optimalLen: 1, optimalPath: [1, 2],
-      score: 700, maxScore: 1000, eloBefore: 1200, eloAfter: 1214, eloDelta: 14,
+      revealed: true,
+      playerLen: 2,
+      optimalLen: 1,
+      optimalPath: [1, 2],
+      score: 700,
+      maxScore: 1000,
+      eloBefore: 1200,
+      eloAfter: 1214,
+      eloDelta: 14,
     });
   });
 

@@ -24,7 +24,7 @@ from conftest import SERVICE_BASE
 
 OPENAPI_URL = f"{SERVICE_BASE}/api/v1/openapi.json"
 
-pytestmark = pytest.mark.openapi_endpoint  # custom marker; see pytest.ini
+pytestmark = pytest.mark.openapi_endpoint
 
 EXPECTED_PATHS = {
     "/api/v1/graph",
@@ -47,7 +47,7 @@ class TestOpenApiDocument:
 
     def test_body_parses_as_json(self, anon_client: requests.Session):
         resp = anon_client.get(OPENAPI_URL)
-        data = resp.json()  # raises if not valid JSON
+        data = resp.json()
         assert isinstance(data, dict)
 
     def test_is_openapi_3_1(self, anon_client: requests.Session):
@@ -66,15 +66,11 @@ class TestOpenApiDocument:
         assert EXPECTED_PATHS <= paths
 
     @pytest.mark.parametrize("path", sorted(EXPECTED_PATHS))
-    def test_expected_path_has_get_operation(
-        self, anon_client: requests.Session, path: str
-    ):
+    def test_expected_path_has_get_operation(self, anon_client: requests.Session, path: str):
         data = anon_client.get(OPENAPI_URL).json()
         assert "get" in data["paths"][path]
 
-    def test_artist_path_documents_problem_json_errors(
-        self, anon_client: requests.Session
-    ):
+    def test_artist_path_documents_problem_json_errors(self, anon_client: requests.Session):
         """[SF-API-11] The one handler that actually uses the new envelope
         should document it, not the legacy {"error":...} shape."""
         data = anon_client.get(OPENAPI_URL).json()

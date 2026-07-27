@@ -40,16 +40,12 @@ import requests
 
 import session_crypto
 
-TEST_APP_SECRET = "f" * 64  # same as tests/conftest.py's TEST_APP_SECRET
+TEST_APP_SECRET = "f" * 64
 ORIGIN = os.environ.get("GAME_SERVICE_ORIGIN", "http://localhost:8080")
 VALIDATE_URL = f"{ORIGIN}/api/v1/game/validate"
 
 pytestmark = pytest.mark.game_validate
 
-# Same DB_* scheme docker-entrypoint.sh assembles db_connection_string from
-# (see tests/conftest.py's DB_CONN_PARAMS — reimplemented here rather than
-# imported, so this file has no dependency on conftest.py's own import chain,
-# same self-contained posture as test_game_profile.py).
 DB_CONN_PARAMS = dict(
     host=os.environ.get("DB_HOST", "localhost"),
     port=os.environ.get("DB_PORT", "5432"),
@@ -58,13 +54,9 @@ DB_CONN_PARAMS = dict(
     password=os.environ.get("DB_PASSWORD", "six_feat_test_password"),
 )
 
-# Role encoding — matches persistent_store.cpp's RoleToInt/kMigrationV1.
 ROLE_PRIMARY = 1
 ROLE_FEATURED = 2
 
-# A dedicated, SF-GAME-14-themed id block, disjoint from
-# tests/test_internal_neighbours.py's 130_00x range and test_bg_resilience.py's
-# 90000+ range.
 _A_ID, _B_ID, _X_ID = 140_001, 140_002, 140_003
 
 
@@ -97,14 +89,15 @@ def _seed_collaboration(song_id: int, title: str, members: list[tuple[int, str, 
 
 def _valid_cookie(name: str = "Test Player") -> str:
     return session_crypto.make_cookie(
-        TEST_APP_SECRET, access_token="test-genius-access-token",
-        ttl_seconds=3600, name=name,
+        TEST_APP_SECRET,
+        access_token="test-genius-access-token",
+        ttl_seconds=3600,
+        name=name,
     )
 
 
 def _skip_if_unreachable() -> None:
     try:
-        # An unauthenticated hit should answer 401 quickly if the service is up.
         requests.post(VALIDATE_URL, json={}, timeout=2)
     except requests.exceptions.RequestException:
         pytest.skip(f"game service not reachable at {ORIGIN} — start docker compose")
@@ -125,13 +118,14 @@ def _seed_l1() -> None:
     """A (primary) real-song-shared-with (B, featured): A and B are mutual
     neighbours. X shares NOTHING with B — used as the fabricated hop below."""
     _seed_collaboration(
-        140_101, "SF-GAME-14 Real Collab",
+        140_101,
+        "SF-GAME-14 Real Collab",
         [(_A_ID, "SFGAME14ArtistA", ROLE_PRIMARY), (_B_ID, "SFGAME14ArtistB", ROLE_FEATURED)],
     )
-    # X exists and HAS a real (different) collaborator, but never with B —
-    # so a claimed X->B hop is a genuine fabrication, not just an unseen id.
+
     _seed_collaboration(
-        140_102, "SF-GAME-14 Unrelated Collab",
+        140_102,
+        "SF-GAME-14 Unrelated Collab",
         [(_X_ID, "SFGAME14ArtistX", ROLE_PRIMARY), (_A_ID, "SFGAME14ArtistA", ROLE_FEATURED)],
     )
 
@@ -165,7 +159,7 @@ def test_chain_shorter_than_two_returns_400():
 
 def test_endpoints_not_matching_chain_is_endpoint_mismatch():
     cookie = _valid_cookie()
-    # from/to don't match the chain's actual first/last entries.
+
     resp = _post(cookie, {"from": _A_ID, "to": _X_ID, "chain": [_A_ID, _B_ID]})
     assert resp.status_code == 200
     body = resp.json()
@@ -181,8 +175,10 @@ def test_real_chain_is_valid():
 
 def test_fabricated_hop_is_rejected_with_index():
     cookie = _valid_cookie()
-    # A->X is real (seeded above); X->B is NOT — the first (and only) break.
-    resp = _post(cookie, {"from": _A_ID, "to": _B_ID, "chain": [_A_ID, _X_ID, _B_ID], "role_mask": 15})
+
+    resp = _post(
+        cookie, {"from": _A_ID, "to": _B_ID, "chain": [_A_ID, _X_ID, _B_ID], "role_mask": 15}
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body == {"valid": False, "reason": "invalid_hop", "invalid_hop_index": 1}

@@ -60,10 +60,6 @@ LOGOUT_URL = f"{AUTH_SERVICE_BASE}/auth/logout"
 ME_URL = f"{AUTH_SERVICE_BASE}/auth/me"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# /auth/login
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestAuthLogin:
     def test_redirects_to_genius_authorize(self, auth_anon_client: requests.Session):
         resp = auth_anon_client.get(LOGIN_URL, allow_redirects=False)
@@ -93,14 +89,14 @@ class TestAuthLogin:
         resp = auth_anon_client.get(LOGIN_URL, allow_redirects=False)
         location = resp.headers.get("Location", "")
         assert "redirect_uri=" in location
-        # the unencoded literal form must NOT appear as a query value
+
         assert "redirect_uri=http://" not in location
 
     def test_sets_oauth_state_cookie(self, auth_anon_client: requests.Session):
         resp = auth_anon_client.get(LOGIN_URL, allow_redirects=False)
         assert "six_feat_oauth_state" in resp.cookies
         state_value = resp.cookies.get("six_feat_oauth_state")
-        assert state_value  # non-empty
+        assert state_value
 
     def test_two_logins_produce_different_state(self, auth_anon_client: requests.Session):
         """RandomState() must use a real RNG (RAND_bytes), not a fixed or
@@ -108,21 +104,18 @@ class TestAuthLogin:
         a CSRF state token."""
         resp1 = auth_anon_client.get(LOGIN_URL, allow_redirects=False)
         state1 = resp1.cookies.get("six_feat_oauth_state")
-        # Fresh session so the second cookie isn't just overwriting the jar
-        # entry without the server actually generating a new one.
+
         sess2 = requests.Session()
         resp2 = sess2.get(LOGIN_URL, allow_redirects=False)
         state2 = resp2.cookies.get("six_feat_oauth_state")
         assert state1 != state2
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# /auth/callback — CSRF and parameter validation
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestAuthCallback:
     def test_missing_state_param_returns_400(self, auth_anon_client: requests.Session):
-        resp = auth_anon_client.get(CALLBACK_URL, params={"code": "anything"}, allow_redirects=False)
+        resp = auth_anon_client.get(
+            CALLBACK_URL, params={"code": "anything"}, allow_redirects=False
+        )
         assert resp.status_code == 400
 
     def test_mismatched_state_returns_400(self, auth_anon_client: requests.Session):
@@ -166,10 +159,6 @@ class TestAuthCallback:
         )
         assert resp.status_code == 400
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# /auth/logout
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestAuthLogout:
     """[F-38] Logout is POST-only, and — when there's an active session to
@@ -253,7 +242,9 @@ class TestAuthLogout:
         resp = auth_anon_client.get(LOGOUT_URL, allow_redirects=False)
         assert resp.status_code == 405
 
-    def test_post_without_csrf_token_is_rejected_when_authenticated(self, auth_service_proc, auth_cookie: str):
+    def test_post_without_csrf_token_is_rejected_when_authenticated(
+        self, auth_service_proc, auth_cookie: str
+    ):
         sess = requests.Session()
         sess.cookies.update({"six_feat_session": auth_cookie})
         resp = sess.post(LOGOUT_URL, allow_redirects=False)
@@ -262,15 +253,9 @@ class TestAuthLogout:
     def test_post_with_mismatched_csrf_token_is_rejected(self, auth_service_proc, auth_cookie: str):
         sess = requests.Session()
         sess.cookies.update({"six_feat_session": auth_cookie, "six_feat_csrf": "correct-token"})
-        resp = sess.post(
-            LOGOUT_URL, headers={"X-CSRF-Token": "wrong-token"}, allow_redirects=False
-        )
+        resp = sess.post(LOGOUT_URL, headers={"X-CSRF-Token": "wrong-token"}, allow_redirects=False)
         assert resp.status_code == 403
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# /auth/me
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestAuthMe:
     def test_anonymous_not_authenticated(self, auth_anon_client: requests.Session):

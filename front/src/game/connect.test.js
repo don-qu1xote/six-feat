@@ -7,8 +7,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./game-board.js", () => ({
-  renderBoard: vi.fn(), zoomBoard: vi.fn(), fitBoard: vi.fn(),
-  mountBoard: vi.fn(), unmountBoard: vi.fn(),
+  renderBoard: vi.fn(),
+  zoomBoard: vi.fn(),
+  fitBoard: vi.fn(),
+  mountBoard: vi.fn(),
+  unmountBoard: vi.fn(),
 }));
 vi.mock("../ui/autocomplete.js", () => ({ attachGeniusAutocomplete: vi.fn() }));
 vi.mock("../ui/router.js", () => ({
@@ -32,9 +35,19 @@ vi.mock("./game-api.js", () => ({
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import {
-  setStartArtist, setGoalArtist, commitHop, commitTypedHop, undoLast, resetGame,
-  giveUpGame, lockIn, setupConnectMode, _currentChain,
-  serializeGameShareState, parseGameShareState, shareCurrentChallenge,
+  setStartArtist,
+  setGoalArtist,
+  commitHop,
+  commitTypedHop,
+  undoLast,
+  resetGame,
+  giveUpGame,
+  lockIn,
+  setupConnectMode,
+  _currentChain,
+  serializeGameShareState,
+  parseGameShareState,
+  shareCurrentChallenge,
   setupGameLandingPanel,
 } from "./connect.js";
 import { checkLink } from "./game-api.js";
@@ -42,7 +55,13 @@ import { showToast } from "../ui/toast.js";
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
 import { apiFetch } from "../api/net.js";
 import { fetchNeighbours } from "./game-graph.js";
-import { createChallenge, submitChain, fetchLeaderboard, fetchDailyChallenge, fetchDailyChallengeState } from "./game-api.js";
+import {
+  createChallenge,
+  submitChain,
+  fetchLeaderboard,
+  fetchDailyChallenge,
+  fetchDailyChallengeState,
+} from "./game-api.js";
 import { navigateToSurface } from "../ui/router.js";
 
 // [SF-GAME-48] Реальный жест игрока на экране старта: выбрать оба конца и
@@ -50,8 +69,12 @@ import { navigateToSurface } from "../ui/router.js";
 // (connect.js::pickEndpoint) — раньше начинал, и кнопка Start, ради которой
 // экран и делался, оказывалась мёртвой: она исчезала вместе с карточкой в тот
 // же момент, когда игрок выбирал второго артиста.
-function pickStart(name, id) { attachGeniusAutocomplete.mock.calls[0][2](name, null, id); }
-function pickGoal(name, id)  { attachGeniusAutocomplete.mock.calls[1][2](name, null, id); }
+function pickStart(name, id) {
+  attachGeniusAutocomplete.mock.calls[0][2](name, null, id);
+}
+function pickGoal(name, id) {
+  attachGeniusAutocomplete.mock.calls[1][2](name, null, id);
+}
 function startPair(from = ["Drake", 100], to = ["Adele", 900]) {
   pickStart(from[0], from[1]);
   pickGoal(to[0], to[1]);
@@ -145,7 +168,7 @@ function bindEls() {
 // Таймаут переводит нас через границу макротаска, полностью осушая очередь
 // микротасков, сколько бы уровней там ни было.
 async function flush() {
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 beforeEach(() => {
@@ -168,7 +191,17 @@ beforeEach(() => {
   fetchDailyChallengeState.mockImplementation(async () => ({ status: "none", daily: null }));
   checkLink.mockClear();
   checkLink.mockImplementation(async () => ({ linked: true }));
-  State.connect = { startName: "", goalName: "", game: null, photos: {}, ids: {}, frontier: null, rivalBanner: null, par: null, submitted: false };
+  State.connect = {
+    startName: "",
+    goalName: "",
+    game: null,
+    photos: {},
+    ids: {},
+    frontier: null,
+    rivalBanner: null,
+    par: null,
+    submitted: false,
+  };
   setupConnectMode();
 });
 
@@ -247,7 +280,7 @@ describe("setStartArtist / setGoalArtist", () => {
     commitHop("Rihanna");
     commitHop("Adele");
     const rows = [...els.connectLineList.querySelectorAll(".clp-row")];
-    const goalRow = rows.find(r => r.querySelector(".clp-row-name").textContent === "Adele");
+    const goalRow = rows.find((r) => r.querySelector(".clp-row-name").textContent === "Adele");
     expect(goalRow.querySelector(".clp-row-sub").textContent).toBe("reached");
   });
 
@@ -255,14 +288,22 @@ describe("setStartArtist / setGoalArtist", () => {
     setStartArtist("Drake");
     setGoalArtist("Adele");
     commitHop("Rihanna"); // focus Rihanna
-    const drakeRow = [...els.connectLineList.querySelectorAll(".clp-row")]
-      .find(r => r.dataset.name === "Drake");
+    const drakeRow = [...els.connectLineList.querySelectorAll(".clp-row")].find(
+      (r) => r.dataset.name === "Drake",
+    );
     drakeRow.click();
     expect(_currentChain().focus).toBe("Drake");
   });
 
   it("[design: PAR pill] shows the challenge's ideal length once the challenge resolves", async () => {
-    createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 3 }));
+    createChallenge.mockImplementation(async () => ({
+      id: 7,
+      from: 100,
+      to: 900,
+      role_mask: 0,
+      kind: "custom",
+      optimal_len: 3,
+    }));
     startPair(["Drake", 100], ["Adele", 900]);
     await flush();
     expect(els.connectParPill.hidden).toBe(false);
@@ -288,7 +329,7 @@ describe("setStartArtist / setGoalArtist", () => {
     commitHop("Rihanna");
     els.connectEndpointsSummary.click();
     expect(els.connectEndpoints.hidden).toBe(false);
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake", "Rihanna"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake", "Rihanna"]);
   });
 
   it("[fix] re-expanding (Change) fills both fields with the CURRENT endpoints, not blank placeholders", () => {
@@ -333,7 +374,7 @@ describe("[SF-GAME-48] явный старт с экрана настройки"
     els.connectStartBtn.click();
     await flush();
     expect(createChallenge).toHaveBeenCalledWith(100, 900, 0);
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake"]);
   });
 
   it("Start недоступен, пока не выбраны оба конца", () => {
@@ -362,7 +403,14 @@ describe("challenge creation (design: real backend)", () => {
   });
 
   it("stores the returned challenge id on the model", async () => {
-    createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 2 }));
+    createChallenge.mockImplementation(async () => ({
+      id: 7,
+      from: 100,
+      to: 900,
+      role_mask: 0,
+      kind: "custom",
+      optimal_len: 2,
+    }));
     startPair(["Drake", 100], ["Adele", 900]);
     await flush();
     expect(_currentChain().challengeId).toBe(7);
@@ -418,15 +466,29 @@ describe("commitHop", () => {
 
 describe("reaching the goal + Lock in (design: real backend submit)", () => {
   beforeEach(async () => {
-    createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 1 }));
+    createChallenge.mockImplementation(async () => ({
+      id: 7,
+      from: 100,
+      to: 900,
+      role_mask: 0,
+      kind: "custom",
+      optimal_len: 1,
+    }));
     startPair(["Drake", 100], ["Adele", 900]);
     await flush();
   });
 
   it("Lock in submits the real id chain and renders a revealed score", async () => {
     submitChain.mockImplementation(async () => ({
-      valid: true, player_len: 1, optimal_len: 1, optimal_path: [100, 900],
-      score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14,
+      valid: true,
+      player_len: 1,
+      optimal_len: 1,
+      optimal_path: [100, 900],
+      score: 1000,
+      max_score: 1000,
+      elo_before: 1200,
+      elo_after: 1214,
+      elo_delta: 14,
     }));
     commitHop("Adele");
     lockIn();
@@ -439,8 +501,15 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
 
   it("clicking the Lock in button submits, same as calling lockIn()", async () => {
     submitChain.mockImplementation(async () => ({
-      valid: true, player_len: 1, optimal_len: 1, optimal_path: [100, 900],
-      score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14,
+      valid: true,
+      player_len: 1,
+      optimal_len: 1,
+      optimal_path: [100, 900],
+      score: 1000,
+      max_score: 1000,
+      elo_before: 1200,
+      elo_after: 1214,
+      elo_delta: 14,
     }));
     commitHop("Adele");
     els.connectLockin.click();
@@ -457,8 +526,15 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
 
   it("fetches and renders the leaderboard after a valid submit", async () => {
     submitChain.mockImplementation(async () => ({
-      valid: true, player_len: 1, optimal_len: 1, optimal_path: [100, 900],
-      score: 1000, max_score: 1000, elo_before: 1200, elo_after: 1214, elo_delta: 14,
+      valid: true,
+      player_len: 1,
+      optimal_len: 1,
+      optimal_path: [100, 900],
+      score: 1000,
+      max_score: 1000,
+      elo_before: 1200,
+      elo_after: 1214,
+      elo_delta: 14,
     }));
     fetchLeaderboard.mockImplementation(async () => ({
       entries: [{ user_id: 1, display_name: "Alice", score: 1000, hops: 1, ts: 1 }],
@@ -473,7 +549,11 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
   });
 
   it("renders a rejected verdict honestly when the server disagrees", async () => {
-    submitChain.mockImplementation(async () => ({ valid: false, reason: "invalid_hop", invalid_hop_index: 0 }));
+    submitChain.mockImplementation(async () => ({
+      valid: false,
+      reason: "invalid_hop",
+      invalid_hop_index: 0,
+    }));
     commitHop("Adele");
     lockIn();
     await flush();
@@ -508,7 +588,14 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
 
 describe("[game #2] commitTypedHop — live connection check", () => {
   beforeEach(async () => {
-    createChallenge.mockImplementation(async () => ({ id: 7, from: 100, to: 900, role_mask: 0, kind: "custom", optimal_len: 2 }));
+    createChallenge.mockImplementation(async () => ({
+      id: 7,
+      from: 100,
+      to: 900,
+      role_mask: 0,
+      kind: "custom",
+      optimal_len: 2,
+    }));
     startPair(["Drake", 100], ["Adele", 900]);
     await flush();
     checkLink.mockClear();
@@ -516,37 +603,50 @@ describe("[game #2] commitTypedHop — live connection check", () => {
   });
 
   it("blocks a typed artist the server says isn't connected, without adding", async () => {
-    apiFetch.mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ id: 500, name: "Beyonce", image: null }] }) });
+    apiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ id: 500, name: "Beyonce", image: null }] }),
+    });
     checkLink.mockResolvedValue({ linked: false });
     await commitTypedHop("Beyonce");
     await flush();
     expect(checkLink).toHaveBeenCalledWith(100, 500);
     expect(showToast).toHaveBeenCalled();
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake"]); // not added
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake"]); // not added
   });
 
   it("adds a typed artist the server confirms is connected", async () => {
-    apiFetch.mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ id: 200, name: "Rihanna", image: null }] }) });
+    apiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ id: 200, name: "Rihanna", image: null }] }),
+    });
     checkLink.mockResolvedValue({ linked: true });
     await commitTypedHop("Rihanna");
     await flush();
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake", "Rihanna"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake", "Rihanna"]);
   });
 
   it("fails OPEN (adds anyway) when the check is unavailable (linked null)", async () => {
-    apiFetch.mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ id: 200, name: "Rihanna", image: null }] }) });
+    apiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ id: 200, name: "Rihanna", image: null }] }),
+    });
     checkLink.mockResolvedValue({ linked: null });
     await commitTypedHop("Rihanna");
     await flush();
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake", "Rihanna"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake", "Rihanna"]);
   });
 
   it("skips the server check for a collaborator already shown in the frontier (fast path)", async () => {
-    State.connect.frontier = { centerName: "Drake", loading: false, neighbours: [{ id: 200, name: "Rihanna", image: null }] };
+    State.connect.frontier = {
+      centerName: "Drake",
+      loading: false,
+      neighbours: [{ id: 200, name: "Rihanna", image: null }],
+    };
     await commitTypedHop("Rihanna");
     await flush();
     expect(checkLink).not.toHaveBeenCalled();
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake", "Rihanna"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake", "Rihanna"]);
   });
 });
 
@@ -585,13 +685,13 @@ describe("undoLast / resetGame", () => {
 
   it("undoLast removes the last-added node", () => {
     undoLast();
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake"]);
     expect(els.connectUndo.disabled).toBe(true);
   });
 
   it("resetGame clears the web back to just the start", () => {
     resetGame();
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake"]);
     expect(els.connectReset.disabled).toBe(true);
   });
 });
@@ -611,8 +711,12 @@ describe("browse (secondary click-to-expand)", () => {
 
   it("fetches and renders real neighbours once the tail has a numeric id", async () => {
     fetchNeighbours.mockImplementation(async () => ({
-      seedId: 100, seedName: "Drake",
-      neighbours: [{ id: 200, name: "Rihanna", image: null }, { id: 900, name: "Adele", image: null }],
+      seedId: 100,
+      seedName: "Drake",
+      neighbours: [
+        { id: 200, name: "Rihanna", image: null },
+        { id: 900, name: "Adele", image: null },
+      ],
     }));
     const startCb = attachGeniusAutocomplete.mock.calls[0][2];
     startCb("Drake", null, 100);
@@ -623,11 +727,12 @@ describe("browse (secondary click-to-expand)", () => {
 
   it("marks the goal's own chip distinctly", async () => {
     fetchNeighbours.mockImplementation(async () => ({
-      seedId: 100, seedName: "Drake",
+      seedId: 100,
+      seedName: "Drake",
       neighbours: [{ id: 900, name: "Adele", image: null }],
     }));
     const startCb = attachGeniusAutocomplete.mock.calls[0][2];
-    const goalCb  = attachGeniusAutocomplete.mock.calls[1][2];
+    const goalCb = attachGeniusAutocomplete.mock.calls[1][2];
     goalCb("Adele", null, 900);
     startCb("Drake", null, 100);
     await flush();
@@ -636,7 +741,8 @@ describe("browse (secondary click-to-expand)", () => {
 
   it("clicking a chip commits it as a hop via the same pipeline as typed entry", async () => {
     fetchNeighbours.mockImplementation(async () => ({
-      seedId: 100, seedName: "Drake",
+      seedId: 100,
+      seedName: "Drake",
       neighbours: [{ id: 200, name: "Rihanna", image: null }],
     }));
     const startCb = attachGeniusAutocomplete.mock.calls[0][2];
@@ -645,7 +751,7 @@ describe("browse (secondary click-to-expand)", () => {
     const chip = els.connectBrowseChips.querySelector(".cb-chip");
     expect(chip).not.toBeNull();
     chip.click();
-    expect(_currentChain().nodes.map(n => n.name)).toEqual(["Drake", "Rihanna"]);
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake", "Rihanna"]);
   });
 
   it("hides once the round is over", async () => {
@@ -657,8 +763,12 @@ describe("browse (secondary click-to-expand)", () => {
 });
 
 describe("stopwatch", () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("shows 0:00 with no active chain", () => {
     expect(els.connectTimerValue.textContent).toBe("0:00");
@@ -739,17 +849,29 @@ describe("[SF-GAME-05] shareCurrentChallenge", () => {
 describe("[SF-GAME-05] deep-link load — #/game?from=..&to=.. pre-fills on setup", () => {
   const realLocation = window.location;
 
-  afterEach(() => { window.location = realLocation; });
+  afterEach(() => {
+    window.location = realLocation;
+  });
 
   it("pre-fills both fields and creates the challenge, same as typing them", async () => {
     delete window.location;
     window.location = new URL("https://example.test/?from=Drake&to=Adele#/game");
-    apiFetch.mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ id: 1, name: "Drake" }] }) });
+    apiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ id: 1, name: "Drake" }] }),
+    });
     createChallenge.mockResolvedValue({ id: 7, from: 1, to: 2, optimal_len: 2 });
 
     document.body.innerHTML = fixtureHtml();
     bindEls();
-    State.connect = { startName: "", goalName: "", game: null, photos: {}, ids: {}, frontier: null };
+    State.connect = {
+      startName: "",
+      goalName: "",
+      game: null,
+      photos: {},
+      ids: {},
+      frontier: null,
+    };
     setupConnectMode();
     await flush();
 
@@ -766,7 +888,14 @@ describe("[SF-GAME-05] deep-link load — #/game?from=..&to=.. pre-fills on setu
 
     document.body.innerHTML = fixtureHtml();
     bindEls();
-    State.connect = { startName: "", goalName: "", game: null, photos: {}, ids: {}, frontier: null };
+    State.connect = {
+      startName: "",
+      goalName: "",
+      game: null,
+      photos: {},
+      ids: {},
+      frontier: null,
+    };
     setupConnectMode();
     await flush();
 
@@ -799,30 +928,38 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
 
   function bindGameEls() {
     els.heroGameFromAvatar = document.getElementById("hero-game-from-avatar");
-    els.heroGameFromInput  = document.getElementById("hero-game-from-input");
-    els.heroGameFromAc     = document.getElementById("hero-game-from-ac");
-    els.heroGameToAvatar   = document.getElementById("hero-game-to-avatar");
-    els.heroGameToInput    = document.getElementById("hero-game-to-input");
-    els.heroGameToAc       = document.getElementById("hero-game-to-ac");
+    els.heroGameFromInput = document.getElementById("hero-game-from-input");
+    els.heroGameFromAc = document.getElementById("hero-game-from-ac");
+    els.heroGameToAvatar = document.getElementById("hero-game-to-avatar");
+    els.heroGameToInput = document.getElementById("hero-game-to-input");
+    els.heroGameToAc = document.getElementById("hero-game-to-ac");
     els.btnHeroStartChallenge = document.getElementById("btn-hero-start-challenge");
-    els.heroGameDaily            = document.getElementById("hero-game-daily");
-    els.heroGameDailyPair        = document.getElementById("hero-game-daily-pair");
-    els.heroGameDailyState       = document.getElementById("hero-game-daily-state");
-    els.btnHeroDailyRetry        = document.getElementById("btn-hero-daily-retry");
-    els.heroGameDailyFromAvatar  = document.getElementById("hero-game-daily-from-avatar");
-    els.heroGameDailyFromName    = document.getElementById("hero-game-daily-from-name");
-    els.heroGameDailyToAvatar    = document.getElementById("hero-game-daily-to-avatar");
-    els.heroGameDailyToName      = document.getElementById("hero-game-daily-to-name");
-    els.btnHeroPlayDaily         = document.getElementById("btn-hero-play-daily");
-    els.heroGameRivals           = document.getElementById("hero-game-rivals");
-    els.heroGameRivalsList       = document.getElementById("hero-game-rivals-list");
-    els.heroGameDivider          = document.getElementById("hero-game-divider");
+    els.heroGameDaily = document.getElementById("hero-game-daily");
+    els.heroGameDailyPair = document.getElementById("hero-game-daily-pair");
+    els.heroGameDailyState = document.getElementById("hero-game-daily-state");
+    els.btnHeroDailyRetry = document.getElementById("btn-hero-daily-retry");
+    els.heroGameDailyFromAvatar = document.getElementById("hero-game-daily-from-avatar");
+    els.heroGameDailyFromName = document.getElementById("hero-game-daily-from-name");
+    els.heroGameDailyToAvatar = document.getElementById("hero-game-daily-to-avatar");
+    els.heroGameDailyToName = document.getElementById("hero-game-daily-to-name");
+    els.btnHeroPlayDaily = document.getElementById("btn-hero-play-daily");
+    els.heroGameRivals = document.getElementById("hero-game-rivals");
+    els.heroGameRivalsList = document.getElementById("hero-game-rivals-list");
+    els.heroGameDivider = document.getElementById("hero-game-divider");
   }
 
   beforeEach(() => {
     document.body.innerHTML = gameFixtureHtml();
     bindGameEls();
-    State.connect = { startName: "", goalName: "", game: null, photos: {}, ids: {}, frontier: null, rivalBanner: null };
+    State.connect = {
+      startName: "",
+      goalName: "",
+      game: null,
+      photos: {},
+      ids: {},
+      frontier: null,
+      rivalBanner: null,
+    };
     setupGameLandingPanel();
   });
 
@@ -844,7 +981,9 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
 
   it("Enter in the 'from' field moves focus to 'to' instead of submitting", () => {
     els.heroGameFromInput.value = "Drake";
-    els.heroGameFromInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    els.heroGameFromInput.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    );
     expect(document.activeElement).toBe(els.heroGameToInput);
     expect(navigateToSurface).not.toHaveBeenCalled();
   });
@@ -852,15 +991,21 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
   it("Enter in the 'to' field submits, same as clicking Start challenge", () => {
     els.heroGameFromInput.value = "Drake";
     els.heroGameToInput.value = "Adele";
-    els.heroGameToInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    els.heroGameToInput.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    );
     expect(navigateToSurface).toHaveBeenCalledWith("game");
   });
 
   it("attaches autocomplete to both fields and renders a photo avatar on pick", async () => {
     expect(attachGeniusAutocomplete).toHaveBeenCalledWith(
-      els.heroGameFromInput, els.heroGameFromAc, expect.any(Function),
+      els.heroGameFromInput,
+      els.heroGameFromAc,
+      expect.any(Function),
     );
-    const onSelect = attachGeniusAutocomplete.mock.calls.find(c => c[0] === els.heroGameFromInput)[2];
+    const onSelect = attachGeniusAutocomplete.mock.calls.find(
+      (c) => c[0] === els.heroGameFromInput,
+    )[2];
     onSelect("Drake", "https://example.test/drake.jpg", 42);
     expect(els.heroGameFromInput.value).toBe("Drake");
     expect(els.heroGameFromAvatar.innerHTML).toContain("img");
@@ -868,20 +1013,29 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
   });
 
   it("falls back to an initial letter when a pick has no photo", () => {
-    const onSelect = attachGeniusAutocomplete.mock.calls.find(c => c[0] === els.heroGameToInput)[2];
+    const onSelect = attachGeniusAutocomplete.mock.calls.find(
+      (c) => c[0] === els.heroGameToInput,
+    )[2];
     onSelect("Adele", null, 7);
     expect(els.heroGameToAvatar.textContent).toBe("A");
   });
 
   describe("[design: Today's Challenge + or pick a rival]", () => {
     const DAILY = {
-      id: 77, from: 100, to: 900, role_mask: 15, kind: "daily", optimal_len: 2,
-      from_name: "Drake", from_image: "https://example.test/drake.jpg", to_name: "Adele",
+      id: 77,
+      from: 100,
+      to: 900,
+      role_mask: 15,
+      kind: "daily",
+      optimal_len: 2,
+      from_name: "Drake",
+      from_image: "https://example.test/drake.jpg",
+      to_name: "Adele",
     };
 
     // См. комментарий у внешнего flush() выше — та же причина.
     async function flush() {
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     // [SF-GAME-60] Слот дейли больше не исчезает молча ни в одном случае: он
@@ -898,12 +1052,15 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
       expect(els.heroGameDailyPair.hidden).toBe(true);
       expect(els.heroGameDailyState.hidden).toBe(false);
       expect(els.heroGameDailyState.textContent).toMatch(/not published|no challenge published/i);
-      expect(els.btnHeroDailyRetry.hidden).toBe(true);   // повторять нечего
+      expect(els.btnHeroDailyRetry.hidden).toBe(true); // повторять нечего
       expect(els.heroGameRivals.hidden).toBe(true);
     });
 
     it("[SF-GAME-60] сбой сервиса — другая формулировка и кнопка Retry", async () => {
-      fetchDailyChallengeState.mockImplementation(async () => ({ status: "unavailable", daily: null }));
+      fetchDailyChallengeState.mockImplementation(async () => ({
+        status: "unavailable",
+        daily: null,
+      }));
       document.body.innerHTML = gameFixtureHtml();
       bindGameEls();
       setupGameLandingPanel();
@@ -916,7 +1073,10 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
     });
 
     it("[SF-GAME-60] Retry перезапрашивает дейли и показывает пару", async () => {
-      fetchDailyChallengeState.mockImplementation(async () => ({ status: "unavailable", daily: null }));
+      fetchDailyChallengeState.mockImplementation(async () => ({
+        status: "unavailable",
+        daily: null,
+      }));
       document.body.innerHTML = gameFixtureHtml();
       bindGameEls();
       setupGameLandingPanel();

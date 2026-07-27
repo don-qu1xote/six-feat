@@ -1,4 +1,3 @@
-# Safe defaults for a direct (non-Docker) run. In the container this file is
-# entirely overwritten by docker-entrypoint.sh from ENV (DB_HOST/DB_PORT/...).
+
 logging_level: info
 db_connection_string: postgresql://CHANGEME_user:CHANGEME_password@localhost:5432/CHANGEME_db

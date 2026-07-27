@@ -1,16 +1,26 @@
-// ════════════════════════════════════════════════════════════════════════════
-// state/motion.test.js — SF-WEB-47 (motion): MOTION/VIS_EASING/
-// prefersReducedMotion/visAnimation — the JS half of the converged motion
-// system (styles/tokens.css is the CSS half). Same
-// document.documentElement.style.setProperty pattern helpers.test.js
-// already uses for COLOR's theme-dependent test, since MOTION is a live
-// getter onto the same kind of CSS custom property.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { MOTION, VIS_EASING, prefersReducedMotion, visAnimation, scaledDuration, State } from "./state.js";
+import {
+  MOTION,
+  VIS_EASING,
+  prefersReducedMotion,
+  visAnimation,
+  scaledDuration,
+  State,
+} from "./state.js";
 
 afterEach(() => {
-  for (const key of ["fast", "base", "med", "slow", "slower", "xslow", "flight", "camera", "xxslow", "loop"]) {
+  for (const key of [
+    "fast",
+    "base",
+    "med",
+    "slow",
+    "slower",
+    "xslow",
+    "flight",
+    "camera",
+    "xxslow",
+    "loop",
+  ]) {
     document.documentElement.style.removeProperty(`--duration-${key}`);
   }
   vi.unstubAllGlobals();
@@ -22,7 +32,7 @@ describe("MOTION", () => {
     document.documentElement.style.setProperty("--duration-base", "999ms");
     expect(MOTION.base).toBe(999);
     document.documentElement.style.setProperty("--duration-base", "111ms");
-    expect(MOTION.base).toBe(111); // re-reads on every access, not cached at import time
+    expect(MOTION.base).toBe(111);
   });
 
   it("tolerates a bare-seconds value (Ns, not just Nms)", () => {
@@ -72,10 +82,6 @@ describe("visAnimation", () => {
   });
 });
 
-// [SF-WEB-53] Duration scales with the current network zoom (getScale()) —
-// more "cropped" (zoomed-in) views get longer/smoother durations, more
-// zoomed-out views stay short/snappy, since a given graph-space movement
-// covers proportionally more/fewer screen pixels per frame.
 describe("scaledDuration (zoom-aware)", () => {
   it("leaves duration unchanged with no network mounted (baseline scale)", () => {
     State.network = null;

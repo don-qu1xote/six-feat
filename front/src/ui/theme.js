@@ -1,22 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/theme.js — IDEA-23: dark/light theme toggle.
-//
-// Session-only: the starting theme comes from prefers-color-scheme; the
-// toggle button flips it in memory only (State.theme / <html data-theme>)
-// — nothing is written to localStorage, so a reload goes back to
-// prefers-color-scheme instead of remembering the last click. This has to
-// run from here (main.js's init(), called on DOMContentLoaded) rather than
-// an inline <head> script — the page's Content-Security-Policy is
-// script-src 'self' with no 'unsafe-inline', so an inline
-// script is simply never executed (silently blocked, no console throw to
-// even notice). init() calls setupThemeToggle() first, before any other
-// setup, to keep the unstyled/wrong-theme window as short as possible.
-// COLOR/ROLE_STYLE (state.js) read the resulting CSS custom properties
-// live, so vis-adapter's node/edge colours follow automatically on the
-// *next* graph build; for a graph already on screen we also force a
-// recolor pass here, otherwise already-drawn nodes/edges would keep the old
-// theme's baked-in colours until the next search/expand.
-// ════════════════════════════════════════════════════════════════════════════
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { refreshNodeDimBorders } from "../graph.js";
@@ -26,26 +7,22 @@ function applyThemeToButton(theme) {
   if (!els.themeToggle) return;
   const isLight = theme === "light";
   els.themeToggle.setAttribute("aria-pressed", String(isLight));
-  els.themeToggle.setAttribute("aria-label", isLight ? "Switch to dark theme" : "Switch to light theme");
+  els.themeToggle.setAttribute(
+    "aria-label",
+    isLight ? "Switch to dark theme" : "Switch to light theme",
+  );
   const use = els.themeToggle.querySelector("use");
   if (use) use.setAttribute("href", isLight ? "#icon-moon" : "#icon-sun");
 }
 
-// A graph already drawn has its node/edge colours baked into vis.js's
-// DataSet — flipping the CSS variables alone won't repaint it. SF-WEB-13:
-// used to reuse refreshNetwork() (clear()+add() on both DataSets, then
-// nudgePhysics) for this, but that re-enables physics and lets expanded
-// clusters/leaves drift, just to repaint colours on what should be a purely
-// cosmetic toggle. recolorInPlace (vis-adapter/highlight.js) only patches
-// colour fields of the already-drawn nodes/edges — no clear()/add(), no
-// physics — so positions stay exactly where the user left them.
-// refreshNetwork itself is untouched — still used for real new searches.
 function recolorRenderedGraph() {
   if (!State.network || !State.graphNodes.length) return;
   refreshNodeDimBorders();
   invalidateColorCache();
   const nameById = {};
-  State.graphNodes.forEach(n => { nameById[n.id] = n.name; });
+  State.graphNodes.forEach((n) => {
+    nameById[n.id] = n.name;
+  });
   recolorInPlace(nameById);
 }
 
@@ -57,8 +34,8 @@ export function setTheme(theme) {
 }
 
 export function setupThemeToggle() {
-  const prefersLight = window.matchMedia &&
-    window.matchMedia("(prefers-color-scheme: light)").matches;
+  const prefersLight =
+    window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
   const initial = prefersLight ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", initial);
   State.theme = initial;
