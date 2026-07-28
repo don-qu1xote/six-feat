@@ -212,6 +212,26 @@ ENV_PROFILE=prod    docker compose up -d
 python3 scripts/verify-env-profiles.py
 ```
 
+### Паритет docker-compose между окружениями (SF-CFG-02)
+
+Единственный источник правды — этот `docker-compose.yml`. **Правило**: никаких `docker-compose.staging.yml` / `docker-compose.prod.yml` с дублирующими service-блоками — разница между dev/staging/prod только в `ENV_PROFILE`, сам YAML не трогаем.
+
+Одна и та же команда для всех трёх окружений:
+
+```bash
+ENV_PROFILE=dev     docker compose up -d
+ENV_PROFILE=staging docker compose up -d
+ENV_PROFILE=prod    docker compose up -d
+```
+
+`scripts/verify-env-parity.py` сверяет `docker compose config` (без реального `up`) для всех трёх профилей: набор сервисов, image/build, volumes, healthcheck и т.д. должны совпадать один в один. Расхождение допускается только в переменных из allow-list (`ENV_PROFILE`, `LOGGING_LEVEL`, `COOKIE_SECURE`, `DB_REPLICA_HOST` — та же таблица, что выше) — любое другое расхождение (лишняя переменная, другой image, другой сервис) — ошибка:
+
+```bash
+python3 scripts/verify-env-parity.py
+```
+
+Гоняется в CI на каждый PR (шаг `verify-env-parity`, до интеграционных тестов) — ловит расхождение сразу, а не когда staging уже разъехался с dev.
+
 ---
 
 ## Postgres cluster topology
