@@ -93,7 +93,7 @@ ENRICHMENT_PORT = int(os.environ.get("SIX_FEAT_ENRICHMENT_PORT", "18082"))
 ENRICHMENT_BINARY = Path(
     os.environ.get(
         "SIX_FEAT_ENRICHMENT_BINARY",
-        SRC_ROOT / "build" / "services" / "enrichment" / "six_feat_enrichment",
+        SRC_ROOT / "build" / "services" / "six-feat-enrichment" / "six_feat_enrichment",
     )
 )
 TEST_ENRICHMENT_INTERNAL_SECRET = "test-enrichment-internal-secret"
