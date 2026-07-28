@@ -142,7 +142,7 @@ jobs:
       # A local composite action can't check itself out, so this has to stay
       # a separate step ahead of the composite call below (see the NOTE in
       # .github/actions/setup/action.yml).
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -276,7 +276,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -323,7 +323,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install PyYAML
         run: pip install pyyaml
@@ -351,7 +351,7 @@ jobs:
       PROMETHEUS_VERSION: "3.9.1"
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install promtool
         run: |
@@ -381,7 +381,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -413,7 +413,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: build-and-test
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - uses: ./.github/actions/setup
         with:
@@ -443,7 +443,7 @@ jobs:
     needs: build-and-test
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -508,7 +508,7 @@ jobs:
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       - uses: ./.github/actions/setup
@@ -624,7 +624,7 @@ jobs:
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # ── Toolchain setup (composite, SF-CI-01) ───────────────────────────────
       # node-version needed for the front-end build below — scripts/
@@ -774,7 +774,7 @@ jobs:
       # ── Checkout ────────────────────────────────────────────────────────────
       # No apt/node/python setup needed here, so no composite call — just
       # the checkout that the composite action in other jobs also requires.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
@@ -853,7 +853,7 @@ jobs:
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
@@ -917,13 +917,13 @@ jobs:
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7  # v4.5.1
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
