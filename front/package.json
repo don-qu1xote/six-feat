@@ -20,6 +20,6 @@
     "eslint": "^10.8.0",
     "@eslint/js": "^10.0.1",
     "globals": "^17.7.0",
-    "@playwright/test": "^1.48.0"
+    "@playwright/test": "^1.62.0"
   }
 }
