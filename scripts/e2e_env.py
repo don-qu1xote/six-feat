@@ -20,6 +20,7 @@ six_feat бинарник, обслуживающий *настоящий* со�
 в фоне (`python3 scripts/e2e_env.py up &`) и опрашивайте появление ENV_FILE,
 затем запустите Playwright, затем `python3 scripts/e2e_env.py down`.
 """
+
 from __future__ import annotations
 
 import json
@@ -40,46 +41,46 @@ import session_crypto  # noqa: E402
 
 ENV_FILE = Path(os.environ.get("E2E_ENV_FILE", "/tmp/six_feat_e2e_env.json"))
 
-SERVICE_PORT    = int(os.environ.get("E2E_SERVICE_PORT", "18180"))
-MOCK_PORT       = int(os.environ.get("E2E_MOCK_PORT", "18181"))
-MONITOR_PORT    = int(os.environ.get("E2E_MONITOR_PORT", "18185"))
+SERVICE_PORT = int(os.environ.get("E2E_SERVICE_PORT", "18180"))
+MOCK_PORT = int(os.environ.get("E2E_MOCK_PORT", "18181"))
+MONITOR_PORT = int(os.environ.get("E2E_MONITOR_PORT", "18185"))
 ENRICHMENT_PORT = int(os.environ.get("E2E_ENRICHMENT_PORT", "18182"))
-    # Доступ к Genius API вынесен из six_feat в отдельный
-    # six-feat-genius-gateway сервис — этот процесс направлен на
-    # суррогатный mock Genius сервер ниже; GeniusGatewayClient от six_feat
-    # общается с ним вместо прямого вызова.
-GATEWAY_PORT         = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
+# Доступ к Genius API вынесен из six_feat в отдельный
+# six-feat-genius-gateway сервис — этот процесс направлен на
+# суррогатный mock Genius сервер ниже; GeniusGatewayClient от six_feat
+# общается с ним вместо прямого вызова.
+GATEWAY_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
 GATEWAY_MONITOR_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_MONITOR_PORT", "18186"))
-    # Цель AppSecretParityChecker. Как и ENRICHMENT_PORT выше,
-    # никто реально не слушает здесь в этом smoke-тесте — проверка деградирует
-    # до "unreachable" (мягкая зависимость, никогда не роняет /readyz сама) и
-    # просто логирует предупреждение, как EnqueueIfNeeded()/IsEnriching()
-    # деградирует, когда никто не слушает на ENRICHMENT_PORT.
+# Цель AppSecretParityChecker. Как и ENRICHMENT_PORT выше,
+# никто реально не слушает здесь в этом smoke-тесте — проверка деградирует
+# до "unreachable" (мягкая зависимость, никогда не роняет /readyz сама) и
+# просто логирует предупреждение, как EnqueueIfNeeded()/IsEnriching()
+# деградирует, когда никто не слушает на ENRICHMENT_PORT.
 AUTH_PORT = int(os.environ.get("E2E_AUTH_PORT", "18184"))
 
-APP_SECRET                  = "e" * 64
-GENIUS_CLIENT_SECRET        = "e2e-genius-client-secret"
-ENRICHMENT_INTERNAL_SECRET  = "e2e-enrichment-internal-secret"
+APP_SECRET = "e" * 64
+GENIUS_CLIENT_SECRET = "e2e-genius-client-secret"
+ENRICHMENT_INTERNAL_SECRET = "e2e-enrichment-internal-secret"
 
 # Два артиста с одной общей песней — граф из 2 узлов и путь в 1 шаг
-SEED_ARTIST_ID      = 90101
-SEED_ARTIST_NAME    = "Aurora Vale"
-TARGET_ARTIST_ID    = 90102
-TARGET_ARTIST_NAME  = "Kessler Vane"
-SHARED_SONG_ID      = 70001
+SEED_ARTIST_ID = 90101
+SEED_ARTIST_NAME = "Aurora Vale"
+TARGET_ARTIST_ID = 90102
+TARGET_ARTIST_NAME = "Kessler Vane"
+SHARED_SONG_ID = 70001
 
-BINARY      = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
-FRONT_DIST  = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
+BINARY = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
+FRONT_DIST = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
 FRONT_INDEX = Path(os.environ.get("E2E_FRONT_INDEX", REPO_ROOT / "front" / "index.html"))
-    # Настоящий vendored vis-network бандл — это окружение обслуживает
-    # реальный собранный фронтенд для настоящего браузера, поэтому
-    # (в отличие от заглушки /dev/null в tests/conftest.py) это должен
-    # быть настоящий файл, иначе граф никогда не отрисуется.
+# Настоящий vendored vis-network бандл — это окружение обслуживает
+# реальный собранный фронтенд для настоящего браузера, поэтому
+# (в отличие от заглушки /dev/null в tests/conftest.py) это должен
+# быть настоящий файл, иначе граф никогда не отрисуется.
 VENDOR_VIS_NETWORK = Path(
     os.environ.get("E2E_VENDOR_VIS_NETWORK", REPO_ROOT / "front" / "vendor" / "vis-network.min.js")
 )
-    # Зафиксированный в репозитории статический OpenAPI 3.1 документ — тот же
-    # файл, который OpenApiHandler из static_handler.hpp отдаёт в реальном образе.
+# Зафиксированный в репозитории статический OpenAPI 3.1 документ — тот же
+# файл, который OpenApiHandler из static_handler.hpp отдаёт в реальном образе.
 OPENAPI_JSON = Path(
     os.environ.get("E2E_OPENAPI_JSON", REPO_ROOT / "schemas" / "openapi" / "openapi.json")
 )
@@ -337,16 +338,28 @@ def _resolve_style_bundle() -> tuple[str, Path]:
 
 def _program_mock(mock_state: "it_conftest._MockState") -> None:
     mock = it_conftest.GeniusMock(mock_state)
-    mock.resolve(SEED_ARTIST_NAME, [{"id": SEED_ARTIST_ID, "name": SEED_ARTIST_NAME, "score": 0.99}])
-    mock.resolve(TARGET_ARTIST_NAME, [{"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "score": 0.99}])
+    mock.resolve(
+        SEED_ARTIST_NAME, [{"id": SEED_ARTIST_ID, "name": SEED_ARTIST_NAME, "score": 0.99}]
+    )
+    mock.resolve(
+        TARGET_ARTIST_NAME, [{"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "score": 0.99}]
+    )
     mock.artist(SEED_ARTIST_ID, {"id": SEED_ARTIST_ID, "name": SEED_ARTIST_NAME})
     mock.artist(TARGET_ARTIST_ID, {"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME})
     mock.songs(SEED_ARTIST_ID, [SHARED_SONG_ID])
     mock.songs(TARGET_ARTIST_ID, [SHARED_SONG_ID])
-    mock.song_detail(SHARED_SONG_ID, it_conftest._build_song_detail(
-        SHARED_SONG_ID, "Neon Static", SEED_ARTIST_ID, SEED_ARTIST_NAME,
-        collaborators=[{"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "role": "featured"}],
-    ))
+    mock.song_detail(
+        SHARED_SONG_ID,
+        it_conftest._build_song_detail(
+            SHARED_SONG_ID,
+            "Neon Static",
+            SEED_ARTIST_ID,
+            SEED_ARTIST_NAME,
+            collaborators=[
+                {"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "role": "featured"}
+            ],
+        ),
+    )
 
 
 def cmd_up() -> None:
@@ -383,13 +396,15 @@ def cmd_up() -> None:
     # mock Genius сервером — GeniusGatewayClient от six_feat общается с
     # этим процессом вместо прямого обращения к Genius (или mock).
     gateway_cfg_path = tmp_dir / "genius_gateway_static_config.yaml"
-    gateway_cfg_path.write_text(it_conftest._GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE.format(
-        gateway_port=GATEWAY_PORT,
-        gateway_monitor_port=GATEWAY_MONITOR_PORT,
-        mock_port=MOCK_PORT,
-        backoff_max_attempts=1,
-        cb_failure_threshold=100,
-    ))
+    gateway_cfg_path.write_text(
+        it_conftest._GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE.format(
+            gateway_port=GATEWAY_PORT,
+            gateway_monitor_port=GATEWAY_MONITOR_PORT,
+            mock_port=MOCK_PORT,
+            backoff_max_attempts=1,
+            cb_failure_threshold=100,
+        )
+    )
 
     gateway_proc = subprocess.Popen(
         [str(it_conftest.GENIUS_GATEWAY_BINARY), "--config", str(gateway_cfg_path)],
@@ -402,25 +417,29 @@ def cmd_up() -> None:
         gateway_proc.terminate()
         stderr = gateway_proc.stderr.read().decode(errors="replace") if gateway_proc.stderr else ""
         mock_srv.shutdown()
-        sys.exit(f"[e2e_env] genius-gateway service did not start within timeout.\nstderr:\n{stderr}")
+        sys.exit(
+            f"[e2e_env] genius-gateway service did not start within timeout.\nstderr:\n{stderr}"
+        )
 
     cfg_path = tmp_dir / "static_config.yaml"
-    cfg_path.write_text(_STATIC_CONFIG_TEMPLATE.format(
-        service_port=SERVICE_PORT,
-        monitor_port=MONITOR_PORT,
-        mock_port=MOCK_PORT,
-        gateway_port=GATEWAY_PORT,
-        enrichment_port=ENRICHMENT_PORT,
-        auth_port=AUTH_PORT,
-        db_connection_string=it_conftest.DB_CONNECTION_STRING,
-        front_index_path=str(FRONT_INDEX),
-        script_url_path=f"/{script_name}",
-        script_file_path=str(script_path),
-        style_url_path=f"/{style_name}",
-        style_file_path=str(style_path),
-        vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
-        openapi_json_path=str(OPENAPI_JSON),
-    ))
+    cfg_path.write_text(
+        _STATIC_CONFIG_TEMPLATE.format(
+            service_port=SERVICE_PORT,
+            monitor_port=MONITOR_PORT,
+            mock_port=MOCK_PORT,
+            gateway_port=GATEWAY_PORT,
+            enrichment_port=ENRICHMENT_PORT,
+            auth_port=AUTH_PORT,
+            db_connection_string=it_conftest.DB_CONNECTION_STRING,
+            front_index_path=str(FRONT_INDEX),
+            script_url_path=f"/{script_name}",
+            script_file_path=str(script_path),
+            style_url_path=f"/{style_name}",
+            style_file_path=str(style_path),
+            vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
+            openapi_json_path=str(OPENAPI_JSON),
+        )
+    )
 
     proc = subprocess.Popen(
         [str(BINARY), "--config", str(cfg_path)],
@@ -448,14 +467,20 @@ def cmd_up() -> None:
         name="E2E Smoke User",
     )
 
-    ENV_FILE.write_text(json.dumps({
-        "pid": os.getpid(),
-        "base_url": f"http://127.0.0.1:{SERVICE_PORT}",
-        "session_cookie": cookie,
-        "seed_artist": SEED_ARTIST_NAME,
-        "target_artist": TARGET_ARTIST_NAME,
-    }))
-    print(f"[e2e_env] up — {ENV_FILE} written, service on :{SERVICE_PORT}, mock genius on :{MOCK_PORT}")
+    ENV_FILE.write_text(
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "base_url": f"http://127.0.0.1:{SERVICE_PORT}",
+                "session_cookie": cookie,
+                "seed_artist": SEED_ARTIST_NAME,
+                "target_artist": TARGET_ARTIST_NAME,
+            }
+        )
+    )
+    print(
+        f"[e2e_env] up — {ENV_FILE} written, service on :{SERVICE_PORT}, mock genius on :{MOCK_PORT}"
+    )
 
     stop_event = threading.Event()
 

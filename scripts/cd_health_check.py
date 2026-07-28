@@ -171,12 +171,22 @@ def self_test() -> int:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--base-url", help="публичный base URL задеплоенного окружения")
-    p.add_argument("--timeout", type=float, default=180.0, help="общий бюджет, секунд (по умолч. 180)")
-    p.add_argument("--interval", type=float, default=5.0, help="секунд между запросами (по умолч. 5)")
-    p.add_argument("--probe-timeout", type=float, default=10.0, help="таймаут одного запроса (по умолч. 10)")
-    p.add_argument("--self-test", action="store_true", help="запустить на in-process заглушке (dry-run)")
+    p.add_argument(
+        "--timeout", type=float, default=180.0, help="общий бюджет, секунд (по умолч. 180)"
+    )
+    p.add_argument(
+        "--interval", type=float, default=5.0, help="секунд между запросами (по умолч. 5)"
+    )
+    p.add_argument(
+        "--probe-timeout", type=float, default=10.0, help="таймаут одного запроса (по умолч. 10)"
+    )
+    p.add_argument(
+        "--self-test", action="store_true", help="запустить на in-process заглушке (dry-run)"
+    )
     args = p.parse_args()
 
     if args.self_test:

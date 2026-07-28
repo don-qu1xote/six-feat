@@ -9,6 +9,7 @@ six-feat-genius-gateway/six-feat-auth/six-feat-game и отсутствует
 
 Завершается с ненулевым кодом при любой ошибке.
 """
+
 from __future__ import annotations
 
 import sys

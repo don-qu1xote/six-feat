@@ -9,6 +9,7 @@ config/profiles/{dev,staging,prod}.env реально парсятся как sh
 
 Завершается с ненулевым кодом при любой ошибке.
 """
+
 from __future__ import annotations
 
 import re

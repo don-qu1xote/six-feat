@@ -35,6 +35,7 @@ JSON_HEADERS = {"Accept": "application/json"}
 
 # ── Сценарии ─────────────────────────────────────────────────────────────────
 
+
 def _favicon_scenario(base_url: str) -> tuple[bool, str]:
     """favicon / robots.txt — самые базовые роуты entrypoint."""
     url = base_url.rstrip("/") + "/favicon.ico"
@@ -89,6 +90,7 @@ SCENARIOS: list[tuple[str, ...]] = [
 
 # ── Runner ───────────────────────────────────────────────────────────────────
 
+
 def run_smoke(base_url: str, annotate: bool = True) -> int:
     """Запустить все 5 сценариев. Возвращает 0, если все успешны."""
     failures = []
@@ -115,6 +117,7 @@ def run_smoke(base_url: str, annotate: bool = True) -> int:
 
 
 # ── Self-test ────────────────────────────────────────────────────────────────
+
 
 def self_test() -> int:
     """Заглушечный сервер, проверяющий, что smoke runner корректно различает
@@ -161,16 +164,24 @@ def self_test() -> int:
     if rc == 0 and n_requests["favicon"] >= 1 and n_requests["readyz"] >= 1:
         print("самотест ПРОЙДЕН")
         return 0
-    print(f"::error::самотест НЕ ПРОЙДЕН (rc={rc}, favicon={n_requests['favicon']}, readyz={n_requests['readyz']})", file=sys.stderr)
+    print(
+        f"::error::самотест НЕ ПРОЙДЕН (rc={rc}, favicon={n_requests['favicon']}, readyz={n_requests['readyz']})",
+        file=sys.stderr,
+    )
     return 1
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> int:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--base-url", help="публичный base URL задеплоенного окружения")
-    p.add_argument("--self-test", action="store_true", help="запустить на in-process заглушке (dry-run)")
+    p.add_argument(
+        "--self-test", action="store_true", help="запустить на in-process заглушке (dry-run)"
+    )
     args = p.parse_args()
     if args.self_test:
         return self_test()

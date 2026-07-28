@@ -68,7 +68,9 @@ def compare_configs(configs: dict[str, dict]) -> list[str]:
             ref_rest = {k: v for k, v in ref_svc.items() if k != "environment"}
             rest = {k: v for k, v in svc.items() if k != "environment"}
             if ref_rest != rest:
-                changed = sorted(k for k in ref_rest.keys() | rest.keys() if ref_rest.get(k) != rest.get(k))
+                changed = sorted(
+                    k for k in ref_rest.keys() | rest.keys() if ref_rest.get(k) != rest.get(k)
+                )
                 failures.append(
                     f"{profile}/{svc_name}: конфиг (кроме environment) отличается от {ref_profile} в ключах {changed}"
                 )
