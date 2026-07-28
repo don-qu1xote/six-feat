@@ -22,7 +22,7 @@ inputs:
   python-testenv:
     description: >-
       If "true", create the /opt/testenv venv and pip install
-      -r requirements-test.txt into it. Default "false" skips the step.
+      -r config/requirements-test.txt into it. Default "false" skips the step.
     required: false
     default: "false"
   node-version:
@@ -59,4 +59,4 @@ runs:
       run: |
         python3 -m venv /opt/testenv
         /opt/testenv/bin/pip install --upgrade pip
-        /opt/testenv/bin/pip install -r requirements-test.txt
+        /opt/testenv/bin/pip install -r config/requirements-test.txt

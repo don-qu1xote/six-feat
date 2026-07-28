@@ -13,7 +13,7 @@
 #     Dependabot's docker ecosystem watches the FROM base image tag/digest
 #     in a given directory's Dockerfile, so each service needs its own
 #     directory entry rather than one shared one.
-#   - pip: requirements-test.txt lives at the repo root (see
+#   - pip: config/requirements-test.txt (see
 #     .github/actions/setup/action.yml's python-testenv input).
 #   - npm: front/package.json (front-end toolchain — vitest, eslint,
 #     esbuild, playwright).
@@ -54,7 +54,7 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: "pip"
-    directory: "/"
+    directory: "/config"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
