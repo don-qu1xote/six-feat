@@ -78,6 +78,49 @@ services:
           cpus: "1"
           memory: 512M
 
+  # [SF-INF-08] backup — только через --profile backup, как postgres-replica.
+  postgres-backup:
+    image: postgres:16-alpine
+    container_name: six-feat-postgres-backup
+    profiles: ["backup"]
+    environment:
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:?Set DB_NAME}
+      DB_USER: ${DB_USER:?Set DB_USER}
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
+      BACKUP_DIR: /backups
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 3 * * *}
+      BACKUP_S3_URL: ${BACKUP_S3_URL:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+      - ${BACKUP_HOST_DIR:-./.backups}:/backups
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        export -p > /tmp/backup.env
+        mkdir -p /tmp/crontabs
+        echo "$$BACKUP_SCHEDULE . /tmp/backup.env; /usr/local/bin/backup-postgres.sh" \
+          > /tmp/crontabs/root
+        echo "[backup] scheduled: $$BACKUP_SCHEDULE (keep $$BACKUP_KEEP)"
+        exec crond -f -d 8 -c /tmp/crontabs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    <<: *hardening
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
   six-feat:
     platform: linux/amd64
     pull_policy: build

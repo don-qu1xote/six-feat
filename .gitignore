@@ -17,3 +17,5 @@ front/dist/
 # [SF-CI-07] Оверрайд docker-compose, генерируемый scripts/cd_deploy.sh при деплое —
 # всегда результат генерации, никогда не авторский файл.
 /docker-compose.images.yml
+# [SF-INF-08] Каталог по умолчанию из BACKUP_HOST_DIR — дампы БД не коммитим.
+/.backups/

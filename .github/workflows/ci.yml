@@ -223,6 +223,77 @@ jobs:
             tests/test_game_migrations.py \
             -v --tb=short
 
+  # [SF-INF-08] Бэкап/восстановление Postgres. Своя job, а не строчка в
+  # test-six-feat: этим тестам нужен Postgres, но НЕ нужны бинарники сервисов,
+  # поэтому они не должны ждать стадию сборки. Здесь же они не удлиняют
+  # test-six-feat, который и так самый долгий на Stage 3.
+  test-backup:
+    name: "Test — backup/restore (SF-INF-08)"
+    runs-on: ubuntu-22.04
+    needs: detect-changes
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+        env:
+          POSTGRES_DB: six_feat_test
+          POSTGRES_USER: six_feat
+          POSTGRES_PASSWORD: six_feat_test_password
+        options: >-
+          --health-cmd "pg_isready -U six_feat -d six_feat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: six_feat_test
+      DB_USER: six_feat
+      DB_PASSWORD: six_feat_test_password
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          python-testenv: "true"
+
+      # tests/test_backup_restore.py вызывает pg_dump/pg_restore. pg_dump
+      # ОТКАЗЫВАЕТСЯ дампить сервер новее себя, а контейнер этой job —
+      # Ubuntu 22.04 (jammy), где `postgresql-client` версии 14: против
+      # postgres:16 выше это жёсткое несовпадение, и тесты скипались бы на
+      # каждом прогоне. В PGDG есть сборка 16 под jammy.
+      #
+      # continue-on-error намеренно: шаг ходит на apt.postgresql.org, и его
+      # недоступность не должна красить сборку из-за стороннего репозитория.
+      # Если установка не удалась, тесты скипаются с явной причиной (см.
+      # _skip_reason в модуле) — ровно как до появления этого шага.
+      - name: Install postgresql-client matching the server major
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if command -v pg_dump >/dev/null && [ "$(pg_dump --version | sed -E 's/.* ([0-9]+).*/\1/')" -ge 16 ]; then
+            echo "pg_dump $(pg_dump --version) already sufficient"; exit 0
+          fi
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates gnupg
+          install -d /usr/share/keyrings
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" \
+            > /etc/apt/sources.list.d/pgdg.list
+          apt-get update
+          apt-get install -y --no-install-recommends postgresql-client-16
+          pg_dump --version
+
+      - name: Run backup/restore tests
+        run: |
+          /opt/testenv/bin/pytest \
+            tests/test_backup_restore.py \
+            -v --tb=short \
+            --timeout=300
+
   # ══════════════════════════════════════════════════════════════════════════
   # Stage 2 — Сборка сервисов (параллельно, каждый ~3 мин, загрузка артефактов)
   # ══════════════════════════════════════════════════════════════════════════
