@@ -20,7 +20,9 @@ add_custom_target(six_feat_enrichment_service_schema_headers DEPENDS
 
 add_executable(six_feat_enrichment_service
     src/main.cpp
-    src/internal_handlers.cpp
+    src/internal/enqueue_handler.cpp
+    src/internal/status_handler.cpp
+    src/system/readiness_handler.cpp
 )
 
 set_target_properties(six_feat_enrichment_service PROPERTIES OUTPUT_NAME six_feat_enrichment)
