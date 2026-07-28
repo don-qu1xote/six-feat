@@ -27,6 +27,7 @@ WORKDIR /src
 COPY cmake ./cmake
 COPY schemas ./schemas
 COPY libs ./libs
+COPY services/.base ./services/.base
 COPY services/auth ./services/auth
 
 # CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 4 Dockerfile'ов —
@@ -96,6 +97,7 @@ WORKDIR /app
 COPY --from=builder /install/bin/six_feat_auth ./six_feat_auth
 COPY --from=builder /install/etc/six_feat_auth/static_config.yaml ./static_config.yaml
 
+COPY services/.base /app/services/.base
 COPY services/auth/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

@@ -28,6 +28,7 @@ WORKDIR /src
 COPY cmake ./cmake
 COPY schemas ./schemas
 COPY libs ./libs
+COPY services/.base ./services/.base
 COPY services/game ./services/game
 
 # CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех Dockerfile'ов —
@@ -99,6 +100,7 @@ WORKDIR /app
 COPY --from=builder /install/bin/six_feat_game ./six_feat_game
 COPY --from=builder /install/etc/six_feat_game/static_config.yaml ./static_config.yaml
 
+COPY services/.base /app/services/.base
 COPY services/game/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

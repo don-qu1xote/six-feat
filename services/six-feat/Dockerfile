@@ -37,6 +37,7 @@ WORKDIR /src
 COPY cmake ./cmake
 COPY schemas ./schemas
 COPY libs ./libs
+COPY services/.base ./services/.base
 COPY services/six-feat ./services/six-feat
 
 # CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 4 Dockerfile'ов —
@@ -194,6 +195,7 @@ COPY front/vendor/vis-network.min.js /usr/share/six_feat/vendor/vis-network.min.
 # в static_handler.hpp.
 COPY schemas/openapi/openapi.json /usr/share/six_feat/openapi.json
 
+COPY services/.base /app/services/.base
 COPY services/six-feat/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

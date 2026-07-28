@@ -2,23 +2,17 @@
 
 set -euo pipefail
 
-# ── Env-профиль ──────────────────────────────────────────────────────────────
-# Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
-ENV_PROFILE="${ENV_PROFILE:-dev}"
-PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"
-if [[ ! -f "$PROFILE_FILE" ]]; then
-  echo "[entrypoint] ERROR: ENV_PROFILE=${ENV_PROFILE} but ${PROFILE_FILE} not found (expected dev, staging, or prod — see config/profiles/)" >&2
+readonly COMMON_ENTRYPOINT="/app/services/.base/docker-entrypoint-common.sh"
+if [[ ! -f "$COMMON_ENTRYPOINT" ]]; then
+  echo "[entrypoint] ERROR: ${COMMON_ENTRYPOINT} not found — check Dockerfile or volume mount" >&2
   exit 1
 fi
-echo "[entrypoint] ENV_PROFILE=${ENV_PROFILE} (${PROFILE_FILE})"
-set -a
 # shellcheck disable=SC1090
-source "$PROFILE_FILE"
-set +a
+source "$COMMON_ENTRYPOINT"
 
-# six-feat-genius-gateway не имеет OAuth/сессий и не работает с БД — берёт
-# user_token из пересылаемого вызывающими (six_feat, six-feat-enrichment).
-# Единственный секрет при старте — общий внутренний ключ.
+load_env_profile
+
+# six-feat-genius-gateway не имеет OAuth/сессий и не работает с БД.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat / six-feat-enrichment, generate with: openssl rand -hex 32}"
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
