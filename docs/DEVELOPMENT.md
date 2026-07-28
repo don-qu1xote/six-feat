@@ -271,6 +271,8 @@ DB_REPLICA_HOST=postgres-replica
 
 `scripts/backup-postgres.sh` снимает логический дамп (`pg_dump -Fc`, custom format), `scripts/restore-postgres.sh` разворачивает его обратно. Расписание — сервис `postgres-backup` в `docker-compose.yml` за профилем `backup`.
 
+Пошаговый порядок действий при потере базы — [`docs/runbooks/disaster-recovery.md`](runbooks/disaster-recovery.md) (SF-INF-09). Он же ежемесячно проверяется автоматически: `scripts/dr-drill.py` восстанавливает последний дамп в чистый Postgres и проверяет данные (`.github/workflows/dr-drill.yml`).
+
 **Реплика — это не бэкап.** `postgres-replica` (SF-INF-02, профиль `prod-like`) защищает от нагрузки и от потери хоста с мастером. От потери *данных* она не защищает вообще: любой `DELETE`, любая неудачная миграция, любой `DROP TABLE` приезжают на standby за миллисекунды. Восстановиться из такого можно только из дампа. Это две разные задачи, и нужны обе.
 
 **Два разных «профиля», не перепутайте.** `ENV_PROFILE=dev|staging|prod` (SF-CFG-01, раздел «Env-профили» выше) выбирает *значения* переменных и на состав сервисов не влияет. Compose-ключ `profiles:` решает, *запускается* ли сервис вообще. Бэкапы — второе: `postgres-backup` стоит за compose-профилем `backup` и не поднимается обычным `docker compose up`, независимо от `ENV_PROFILE`. Включать его надо там, где он нужен — на staging и prod:

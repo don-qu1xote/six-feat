@@ -291,6 +291,7 @@ jobs:
         run: |
           /opt/testenv/bin/pytest \
             tests/test_backup_restore.py \
+            tests/test_dr_drill.py \
             -v --tb=short \
             --timeout=300
 

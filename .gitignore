@@ -19,3 +19,5 @@ front/dist/
 /docker-compose.images.yml
 # [SF-INF-08] Каталог по умолчанию из BACKUP_HOST_DIR — дампы БД не коммитим.
 /.backups/
+# [SF-INF-09] Baseline-дампы, которые drill снимает сам.
+/.drill-backups/
