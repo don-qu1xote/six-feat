@@ -1,3 +1,5 @@
+#include "core/game_store.hpp"
+
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-http/health_handler.hpp>
 #include <userver/clients/dns/component.hpp>
@@ -8,19 +10,18 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
-#include "admin_handler.hpp"
-#include "challenge_handler.hpp"
-#include "challenges_handler.hpp"
-#include "daily_challenge_task.hpp"
-#include "game_store.hpp"
-#include "internal_handlers.hpp"
-#include "leaderboard_handler.hpp"
-#include "link_handler.hpp"
-#include "neighbours_client.hpp"
-#include "profile_handler.hpp"
-#include "season_handler.hpp"
-#include "submit_handler.hpp"
-#include "validate_handler.hpp"
+#include "api/v1/game/admin_handler.hpp"
+#include "api/v1/game/challenge_handler.hpp"
+#include "api/v1/game/challenges_handler.hpp"
+#include "api/v1/game/leaderboard_handler.hpp"
+#include "api/v1/game/link_handler.hpp"
+#include "api/v1/game/profile_handler.hpp"
+#include "api/v1/game/season_handler.hpp"
+#include "api/v1/game/submit_handler.hpp"
+#include "api/v1/game/validate_handler.hpp"
+#include "infrastructure/neighbours_client.hpp"
+#include "scheduler/daily_challenge_task.hpp"
+#include "system/readiness_handler.hpp"
 
 using namespace userver;
 

@@ -7,7 +7,11 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
-#include "internal_handlers.hpp"
+#include "internal/genius/artist_handler.hpp"
+#include "internal/genius/candidates_handler.hpp"
+#include "internal/genius/song_handler.hpp"
+#include "internal/genius/song_list_handler.hpp"
+#include "system/readiness_handler.hpp"
 
 using namespace userver;
 

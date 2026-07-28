@@ -51,19 +51,21 @@ add_custom_target(six_feat_game_schema_headers DEPENDS
 
 add_executable(six_feat_game
     src/main.cpp
-    src/internal_handlers.cpp
-    src/game_store.cpp
-    src/profile_handler.cpp
-    src/neighbours_client.cpp
-    src/validate_handler.cpp
-    src/submit_handler.cpp
-    src/challenge_handler.cpp
-    src/daily_challenge_task.cpp
-    src/leaderboard_handler.cpp
-    src/link_handler.cpp
-    src/challenges_handler.cpp
-    src/season_handler.cpp
-    src/admin_handler.cpp
+    src/core/game_store.cpp
+    src/core/ideal_finder.hpp
+    src/core/chain_validator.hpp
+    src/infrastructure/neighbours_client.cpp
+    src/scheduler/daily_challenge_task.cpp
+    src/system/readiness_handler.cpp
+    src/api/v1/game/admin_handler.cpp
+    src/api/v1/game/challenge_handler.cpp
+    src/api/v1/game/challenges_handler.cpp
+    src/api/v1/game/leaderboard_handler.cpp
+    src/api/v1/game/link_handler.cpp
+    src/api/v1/game/profile_handler.cpp
+    src/api/v1/game/season_handler.cpp
+    src/api/v1/game/submit_handler.cpp
+    src/api/v1/game/validate_handler.cpp
 )
 
 target_link_libraries(six_feat_game
@@ -74,7 +76,10 @@ target_link_libraries(six_feat_game
         OpenSSL::Crypto
 )
 
-target_include_directories(six_feat_game PRIVATE ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(six_feat_game PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/generated
+)
 
 add_dependencies(six_feat_game six_feat_game_schema_headers)
 

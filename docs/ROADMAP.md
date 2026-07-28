@@ -120,7 +120,7 @@
 
 | ID | Спринт·шаг | Тип | Приоритет | Статус | Файлы (ключевые) | Тест |
 |---|---|---|---|---|---|---|
-| SF-API-01 | — | refactor | — | done | `services/six-feat/src/http/authenticated_handler_base.hpp` | — |
+| SF-API-01 | — | refactor | — | done | `services/six-feat/src/api/v1/authenticated_handler_base.hpp` | — |
 | SF-API-02 | — | test | — | done | — | `tests/test_api_auth_headers.py` |
 | SF-API-04 | S7 · 2/6* | perf | — | done | `libs/six-feat-core/src/http_cache.{hpp,cpp}`, `graph_handler.cpp`, `path_handler.{cpp,hpp}`, `search_handler.cpp` | `tests/test_path.py::TestPathETag`, `tests/test_search.py::TestSearchETag` |
 | SF-API-06 | S7 · 3/6 | refactor | P2 | done | `graph_handler.cpp`, `path_handler.cpp`, `search_handler.cpp`, `status_handler.cpp` | `tests/test_graph.py`, `tests/test_path.py`, `tests/test_search.py`, `tests/test_status.py` (классы `*RequestId`/`*ETag`) |
@@ -166,7 +166,7 @@
 
 | ID | Тип | Приоритет | Статус | Файлы (ключевые) | Тест |
 |---|---|---|---|---|---|
-| SF-PERF-01 | perf | — | done | `services/six-feat/src/http/graph_handler.cpp` (`edges.count()`) | `tests/test_graph.py::TestGraphGoldenNodeEdgeOrder` |
+| SF-PERF-01 | perf | — | done | `services/six-feat/src/api/v1/graph_handler.cpp` (`edges.count()`) | `tests/test_graph.py::TestGraphGoldenNodeEdgeOrder` |
 | SF-PERF-02 | perf | — | done | `libs/six-feat-domain/src/role_mask.cpp` (ASCII fast-path) | `tests/test_role_mask.py` |
 | SF-PERF-03 | test | — | done, 1 хотфикс | `tests/test_graph.py` | `tests/test_graph.py::TestGraphGoldenNodeEdgeOrder` |
 | SF-PERF-04 | perf | — | done | `nginx/default.conf.template` (gzip) | — |
@@ -176,7 +176,7 @@
 | ID | Тип | Приоритет | Статус | Файлы (ключевые) | Тест |
 |---|---|---|---|---|---|
 | SF-SEC-01 | sec | — | done | `libs/six-feat-auth-lib/src/session_crypto.cpp`, `services/six-feat/src/auth/app_secret_parity_checker.*` | `tests/test_app_secret_parity.py` |
-| SF-SEC-02 | sec | — | done | `front/vendor/vis-network.min.js`, `services/six-feat/src/http/static_handler.cpp` | `tests/test_static_handlers.py` |
+| SF-SEC-02 | sec | — | done | `front/vendor/vis-network.min.js`, `services/six-feat/src/api/v1/static_handler.cpp` | `tests/test_static_handlers.py` |
 
 ### SF-SCH — схемы хендлеров/компонентов
 
@@ -374,17 +374,25 @@ _▸ model: Opus 4.8_
 services/six-feat/src/
 ├── main.cpp
 ├── application/
-│   └── collab_service.{hpp,cpp}           # было core/
+│   └── collab_service.{hpp,cpp}
 ├── infrastructure/
-│   ├── interfaces/                         # абстрактные контракты (SF-ARCH-01)
-│   │   ├── IArtistDataSource.hpp
-│   │   ├── IExternalArtistLookup.hpp
-│   │   └── music_source_provider.hpp
-│   ├── artist_repository.{hpp,cpp}
-│   ├── genius_gateway_client.{hpp,cpp}
 │   ├── enrichment_client.{hpp,cpp}
-│   └── genius_error_mapping.cpp
-├── http/                                    # HTTP handlers
+│   └── genius_error_mapping.{hpp,cpp}
+├── api/
+│   └── v1/                                  # /api/v1/* handlers
+│       ├── authenticated_handler_base.hpp
+│       ├── artist_handler.{hpp,cpp}
+│       ├── graph_handler.{hpp,cpp}
+│       ├── path_handler.{hpp,cpp}
+│       ├── search_handler.{hpp,cpp}
+│       ├── status_handler.{hpp,cpp}
+│       ├── sse_status_handler.{hpp,cpp}
+│       ├── image_proxy_handler.{hpp,cpp}
+│       └── static_handler.{hpp,cpp}
+├── internal/                                # /internal/* handlers
+│   └── neighbours_handler.{hpp,cpp}
+├── system/                                  # /healthz, /readyz
+│   └── readiness_handler.{hpp,cpp}
 ├── auth/
 │   └── app_secret_parity_checker.{hpp,cpp}
 └── token_router.hpp

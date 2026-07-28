@@ -16,7 +16,8 @@ add_custom_target(six_feat_auth_schema_headers DEPENDS
 
 add_executable(six_feat_auth
     src/main.cpp
-    src/internal_handlers.cpp
+    src/internal/key_fingerprint_handler.cpp
+    src/system/readiness_handler.cpp
 )
 
 target_link_libraries(six_feat_auth

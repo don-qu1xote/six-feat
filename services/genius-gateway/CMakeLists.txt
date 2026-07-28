@@ -24,7 +24,11 @@ add_custom_target(six_feat_genius_gateway_schema_headers DEPENDS
 
 add_executable(six_feat_genius_gateway
     src/main.cpp
-    src/internal_handlers.cpp
+    src/internal/genius/artist_handler.cpp
+    src/internal/genius/song_list_handler.cpp
+    src/internal/genius/song_handler.cpp
+    src/internal/genius/candidates_handler.cpp
+    src/system/readiness_handler.cpp
 )
 
 target_link_libraries(six_feat_genius_gateway

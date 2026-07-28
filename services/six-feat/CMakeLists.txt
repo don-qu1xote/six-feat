@@ -42,16 +42,16 @@ add_executable(six_feat
     src/infrastructure/enrichment_client.cpp
     src/application/collab_service.cpp
     src/auth/app_secret_parity_checker.cpp
-    src/http/artist_handler.cpp
-    src/http/graph_handler.cpp
-    src/http/path_handler.cpp
-    src/http/search_handler.cpp
-    src/http/readiness_handler.cpp
-    src/http/status_handler.cpp
-    src/http/static_handler.cpp
-    src/http/sse_status_handler.cpp
-    src/http/image_proxy_handler.cpp
-    src/http/internal_neighbours_handler.cpp
+    src/api/v1/artist_handler.cpp
+    src/api/v1/graph_handler.cpp
+    src/api/v1/path_handler.cpp
+    src/api/v1/search_handler.cpp
+    src/api/v1/status_handler.cpp
+    src/api/v1/static_handler.cpp
+    src/api/v1/sse_status_handler.cpp
+    src/api/v1/image_proxy_handler.cpp
+    src/internal/neighbours_handler.cpp
+    src/system/readiness_handler.cpp
 )
 
 target_include_directories(six_feat PRIVATE

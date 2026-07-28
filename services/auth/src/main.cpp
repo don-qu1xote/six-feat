@@ -7,7 +7,8 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
-#include "internal_handlers.hpp"
+#include "internal/key_fingerprint_handler.hpp"
+#include "system/readiness_handler.hpp"
 
 using namespace userver;
 

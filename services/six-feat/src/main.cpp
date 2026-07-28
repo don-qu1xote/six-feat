@@ -1,14 +1,3 @@
-#include "http/artist_handler.hpp"
-#include "http/graph_handler.hpp"
-#include "http/image_proxy_handler.hpp"
-#include "http/internal_neighbours_handler.hpp"
-#include "http/path_handler.hpp"
-#include "http/readiness_handler.hpp"
-#include "http/search_handler.hpp"
-#include "http/sse_status_handler.hpp"
-#include "http/static_handler.hpp"
-#include "http/status_handler.hpp"
-
 #include "auth/app_secret_parity_checker.hpp"
 
 #include <six-feat-auth-lib/oauth_handler.hpp>
@@ -25,8 +14,18 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#include "api/v1/artist_handler.hpp"
+#include "api/v1/graph_handler.hpp"
+#include "api/v1/image_proxy_handler.hpp"
+#include "api/v1/path_handler.hpp"
+#include "api/v1/search_handler.hpp"
+#include "api/v1/sse_status_handler.hpp"
+#include "api/v1/static_handler.hpp"
+#include "api/v1/status_handler.hpp"
 #include "application/collab_service.hpp"
 #include "infrastructure/enrichment_client.hpp"
+#include "internal/neighbours_handler.hpp"
+#include "system/readiness_handler.hpp"
 
 using namespace userver;
 
