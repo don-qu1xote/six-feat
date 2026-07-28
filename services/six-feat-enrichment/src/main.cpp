@@ -1,13 +1,9 @@
-#include <six-feat-http/health_handler.hpp>
-
-#include <six-feat-storage/artist_repository.hpp>
-#include <six-feat-storage/persistent_store.hpp>
-
-#include <six-feat-genius/genius_gateway_client.hpp>
-
 #include <six-feat-enrichment/enrichment_worker.hpp>
 #include <six-feat-enrichment/prune_task.hpp>
-
+#include <six-feat-genius/genius_gateway_client.hpp>
+#include <six-feat-http/health_handler.hpp>
+#include <six-feat-storage/artist_repository.hpp>
+#include <six-feat-storage/persistent_store.hpp>
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/minimal_server_component_list.hpp>

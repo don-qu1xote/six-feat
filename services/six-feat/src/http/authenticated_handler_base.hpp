@@ -1,16 +1,15 @@
 #pragma once
 
+#include <optional>
+#include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-core/request_id.hpp>
 #include <six-feat-core/security_headers.hpp>
-
-#include <six-feat-auth-lib/oauth_handler.hpp>
-#include "token_router.hpp"
-
-#include <optional>
 #include <string>
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/server/http/http_request.hpp>
+
+#include "token_router.hpp"
 
 namespace six_feat {
 

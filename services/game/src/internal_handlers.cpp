@@ -1,12 +1,10 @@
 #include "internal_handlers.hpp"
 
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
-#include <six-feat-http/readiness_common.hpp>
-
 #include "schemas/handlers/game/readiness_handler_schema.hpp"
 
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
+#include <six-feat-http/readiness_common.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

@@ -1,14 +1,12 @@
 #include "validate_handler.hpp"
 
-#include <six-feat-core/error_response.hpp>
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
-#include <six-feat-auth-lib/session_crypto.hpp>
-
 #include "schemas/handlers/game/validate_handler_schema.hpp"
 
 #include <cstdint>
+#include <six-feat-auth-lib/session_crypto.hpp>
+#include <six-feat-core/error_response.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

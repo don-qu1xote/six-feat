@@ -1,5 +1,4 @@
 #include <six-feat-http/readiness_common.hpp>
-
 #include <userver/formats/json/serialize.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/http/content_type.hpp>

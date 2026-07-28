@@ -1,11 +1,10 @@
 
-#include <six-feat-enrichment/enrichment_worker.hpp>
-
 #include "schemas/components/enrichment_worker_schema.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <optional>
+#include <six-feat-enrichment/enrichment_worker.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>

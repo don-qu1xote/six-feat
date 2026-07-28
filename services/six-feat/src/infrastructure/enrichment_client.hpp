@@ -1,10 +1,9 @@
 #pragma once
 
-#include <six-feat-domain/domain_types.hpp>
-
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <six-feat-domain/domain_types.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>

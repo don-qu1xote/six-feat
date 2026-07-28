@@ -27,7 +27,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PERSISTENT_STORE_CPP = (
-    REPO_ROOT / "libs" / "six-feat-common" / "src" / "storage" / "persistent_store.cpp"
+    REPO_ROOT / "libs" / "six-feat-storage" / "src" / "persistent_store.cpp"
 )
 MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations"
 

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <six-feat-storage/artist_repository.hpp>
-
 #include <string>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>

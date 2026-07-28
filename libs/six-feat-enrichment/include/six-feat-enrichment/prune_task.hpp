@@ -1,9 +1,8 @@
 #pragma once
 
-#include <six-feat-storage/persistent_store.hpp>
-
 #include <chrono>
 #include <cstdint>
+#include <six-feat-storage/persistent_store.hpp>
 #include <string_view>
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>

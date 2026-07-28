@@ -1,14 +1,13 @@
 
 #include "http/image_proxy_handler.hpp"
 
-#include <six-feat-core/request_id.hpp>
-
 #include "schemas/handlers/six-feat/image_proxy_handler_schema.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <optional>
+#include <six-feat-core/request_id.hpp>
 #include <string>
 #include <string_view>
 #include <userver/clients/http/component.hpp>

@@ -1,10 +1,4 @@
 
-#include <six-feat-genius/genius_gateway.hpp>
-
-#include <six-feat-core/request_id.hpp>
-
-#include <six-feat-domain/role_mask.hpp>
-
 #include "schemas/components/genius_gateway_schema.hpp"
 
 #include <algorithm>
@@ -13,6 +7,9 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-domain/role_mask.hpp>
+#include <six-feat-genius/genius_gateway.hpp>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>

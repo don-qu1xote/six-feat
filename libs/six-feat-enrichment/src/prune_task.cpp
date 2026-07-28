@@ -1,10 +1,9 @@
 
-#include <six-feat-enrichment/prune_task.hpp>
-
 #include "schemas/components/prune_task_schema.hpp"
 
 #include <cstdlib>
 #include <exception>
+#include <six-feat-enrichment/prune_task.hpp>
 #include <stdexcept>
 #include <string>
 #include <userver/components/component_config.hpp>

@@ -1,6 +1,5 @@
 
 #include <six-feat-enrichment/enrichment_queue.hpp>
-
 #include <userver/logging/log.hpp>
 
 namespace six_feat {

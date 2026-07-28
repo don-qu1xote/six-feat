@@ -1,20 +1,15 @@
 #include "http/path_handler.hpp"
 
-#include <six-feat-core/http_cache.hpp>
-#include <six-feat-core/rate_limit_store_component.hpp>
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
-#include <six-feat-domain/role_mask.hpp>
-
-#include <six-feat-storage/analytics.hpp>
-
-#include "infrastructure/genius_error_mapping.hpp"
-
 #include "schemas/handlers/six-feat/path_handler_schema.hpp"
 
 #include <algorithm>
 #include <charconv>
+#include <six-feat-core/http_cache.hpp>
+#include <six-feat-core/rate_limit_store_component.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
+#include <six-feat-domain/role_mask.hpp>
+#include <six-feat-storage/analytics.hpp>
 #include <string>
 #include <unordered_set>
 #include <userver/components/component_config.hpp>
@@ -28,6 +23,8 @@
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <variant>
 #include <vector>
+
+#include "infrastructure/genius_error_mapping.hpp"
 
 namespace six_feat {
 

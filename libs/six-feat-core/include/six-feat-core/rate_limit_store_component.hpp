@@ -1,8 +1,7 @@
 #pragma once
 
-#include <six-feat-core/rate_limit_store.hpp>
-
 #include <memory>
+#include <six-feat-core/rate_limit_store.hpp>
 #include <string>
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>

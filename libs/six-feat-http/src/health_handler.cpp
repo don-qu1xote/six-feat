@@ -1,12 +1,10 @@
 
-#include <six-feat-http/health_handler.hpp>
-
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
 #include "schemas/handlers/shared/health_handler_schema.hpp"
 
 #include <chrono>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
+#include <six-feat-http/health_handler.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

@@ -1,12 +1,10 @@
 
-#include <six-feat-core/resilience.hpp>
-
-#include <six-feat-core/request_id.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <mutex>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/resilience.hpp>
 #include <stdexcept>
 #include <thread>
 #include <userver/engine/condition_variable.hpp>

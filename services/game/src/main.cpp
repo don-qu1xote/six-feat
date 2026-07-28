@@ -1,7 +1,5 @@
 #include <six-feat-core/rate_limit_store_component.hpp>
-
 #include <six-feat-http/health_handler.hpp>
-
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/minimal_server_component_list.hpp>

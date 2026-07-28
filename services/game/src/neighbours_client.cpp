@@ -1,12 +1,11 @@
 #include "neighbours_client.hpp"
 
-#include <six-feat-core/internal_auth.hpp>
-#include <six-feat-core/internal_http.hpp>
-#include <six-feat-core/request_id.hpp>
-
 #include "schemas/components/neighbours_client_schema.hpp"
 
 #include <algorithm>
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/internal_http.hpp>
+#include <six-feat-core/request_id.hpp>
 #include <stdexcept>
 #include <string>
 #include <userver/clients/http/component.hpp>

@@ -1,7 +1,6 @@
-#include <six-feat-core/security_headers.hpp>
-
 #include <cstdlib>
 #include <cstring>
+#include <six-feat-core/security_headers.hpp>
 #include <string_view>
 #include <userver/server/http/http_response.hpp>
 

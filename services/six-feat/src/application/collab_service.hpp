@@ -1,15 +1,10 @@
 #pragma once
 
-#include <six-feat-domain/domain_types.hpp>
-
-#include <six-feat-storage/artist_repository.hpp>
-
-#include <six-feat-genius/genius_gateway_client.hpp>
-
-#include "infrastructure/enrichment_client.hpp"
-
 #include <cstdint>
 #include <optional>
+#include <six-feat-domain/domain_types.hpp>
+#include <six-feat-genius/genius_gateway_client.hpp>
+#include <six-feat-storage/artist_repository.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -21,6 +16,8 @@
 #include <userver/yaml_config/schema.hpp>
 #include <variant>
 #include <vector>
+
+#include "infrastructure/enrichment_client.hpp"
 
 namespace six_feat {
 

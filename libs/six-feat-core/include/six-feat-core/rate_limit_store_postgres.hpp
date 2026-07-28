@@ -1,7 +1,6 @@
 #pragma once
 
 #include <six-feat-core/rate_limit_store.hpp>
-
 #include <userver/storages/postgres/cluster.hpp>
 
 namespace six_feat {

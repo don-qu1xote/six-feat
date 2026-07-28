@@ -1,10 +1,3 @@
-#include <six-feat-auth-lib/oauth_handler.hpp>
-
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
-#include <six-feat-auth-lib/session_crypto.hpp>
-
 #include "schemas/handlers/shared/oauth_handler_schema.hpp"
 
 #include <chrono>
@@ -12,6 +5,10 @@
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-auth-lib/session_crypto.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 #include <stdexcept>
 #include <userver/clients/http/client.hpp>
 #include <userver/clients/http/component.hpp>

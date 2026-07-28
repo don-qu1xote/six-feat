@@ -1,7 +1,6 @@
-#include <six-feat-core/internal_auth.hpp>
-
 #include <cstdlib>
 #include <openssl/crypto.h>
+#include <six-feat-core/internal_auth.hpp>
 #include <stdexcept>
 
 namespace six_feat::internal_api {

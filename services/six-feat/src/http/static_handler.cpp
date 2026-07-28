@@ -1,10 +1,9 @@
 #include "http/static_handler.hpp"
 
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
 #include "schemas/handlers/six-feat/static_handler_schema.hpp"
 
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
 #include <userver/fs/blocking/read.hpp>

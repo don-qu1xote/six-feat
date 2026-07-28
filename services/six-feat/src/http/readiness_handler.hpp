@@ -3,7 +3,6 @@
 #include "auth/app_secret_parity_checker.hpp"
 
 #include <six-feat-storage/persistent_store.hpp>
-
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>

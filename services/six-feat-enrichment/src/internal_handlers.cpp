@@ -1,15 +1,13 @@
 #include "internal_handlers.hpp"
 
-#include <six-feat-core/internal_auth.hpp>
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
-#include <six-feat-http/readiness_common.hpp>
-
 #include "schemas/handlers/enrichment/enqueue_handler_schema.hpp"
 #include "schemas/handlers/enrichment/internal_status_handler_schema.hpp"
 #include "schemas/handlers/enrichment/readiness_handler_schema.hpp"
 
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
+#include <six-feat-http/readiness_common.hpp>
 #include <stdexcept>
 #include <string>
 #include <userver/components/component_config.hpp>

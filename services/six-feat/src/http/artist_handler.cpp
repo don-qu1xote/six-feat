@@ -1,11 +1,10 @@
 
 #include "http/artist_handler.hpp"
 
-#include <six-feat-core/error_response.hpp>
-#include <six-feat-core/http_cache.hpp>
-
 #include "schemas/handlers/six-feat/artist_handler_schema.hpp"
 
+#include <six-feat-core/error_response.hpp>
+#include <six-feat-core/http_cache.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

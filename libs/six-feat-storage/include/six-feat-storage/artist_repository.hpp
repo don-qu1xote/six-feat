@@ -1,12 +1,10 @@
 #pragma once
 
-#include <six-feat-domain/domain_types.hpp>
-
-#include <six-feat-storage/analytics.hpp>
-#include <six-feat-storage/persistent_store.hpp>
-
 #include <cstdint>
 #include <optional>
+#include <six-feat-domain/domain_types.hpp>
+#include <six-feat-storage/analytics.hpp>
+#include <six-feat-storage/persistent_store.hpp>
 #include <string>
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>

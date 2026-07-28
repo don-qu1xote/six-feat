@@ -1,7 +1,6 @@
 
-#include <six-feat-domain/role_mask.hpp>
-
 #include <cstdint>
+#include <six-feat-domain/role_mask.hpp>
 #include <string>
 #include <string_view>
 

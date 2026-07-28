@@ -1,12 +1,10 @@
 #include "auth/app_secret_parity_checker.hpp"
 
-#include <six-feat-core/internal_auth.hpp>
-#include <six-feat-core/internal_http.hpp>
-
-#include <six-feat-auth-lib/session_crypto.hpp>
-
 #include "schemas/components/app_secret_parity_checker_schema.hpp"
 
+#include <six-feat-auth-lib/session_crypto.hpp>
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/internal_http.hpp>
 #include <stdexcept>
 #include <userver/clients/http/component.hpp>
 #include <userver/components/component_config.hpp>

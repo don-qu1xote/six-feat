@@ -1,7 +1,6 @@
 #pragma once
 
 #include <six-feat-core/resilience.hpp>
-
 #include <string>
 #include <userver/server/http/http_response.hpp>
 

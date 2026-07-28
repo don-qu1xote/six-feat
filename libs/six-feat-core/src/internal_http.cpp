@@ -1,6 +1,5 @@
-#include <six-feat-core/internal_http.hpp>
-
 #include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/internal_http.hpp>
 #include <six-feat-core/request_id.hpp>
 
 namespace six_feat::internal_http {

@@ -1,8 +1,7 @@
 #pragma once
 
-#include <six-feat-auth-lib/session_crypto.hpp>
-
 #include <array>
+#include <six-feat-auth-lib/session_crypto.hpp>
 #include <string>
 #include <userver/clients/http/client.hpp>
 #include <userver/components/component_base.hpp>

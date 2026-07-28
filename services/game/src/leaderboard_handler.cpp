@@ -1,14 +1,13 @@
 #include "leaderboard_handler.hpp"
 
-#include <six-feat-core/error_response.hpp>
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
 #include "schemas/handlers/game/leaderboard_handler_schema.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <six-feat-core/error_response.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

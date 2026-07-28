@@ -1,10 +1,9 @@
 
 #include "http/status_handler.hpp"
 
-#include <six-feat-core/request_id.hpp>
-
 #include "schemas/handlers/six-feat/status_handler_schema.hpp"
 
+#include <six-feat-core/request_id.hpp>
 #include <stdexcept>
 #include <string>
 #include <userver/components/component_config.hpp>

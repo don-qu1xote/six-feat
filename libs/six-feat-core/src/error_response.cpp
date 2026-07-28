@@ -1,7 +1,5 @@
 #include <six-feat-core/error_response.hpp>
-
 #include <six-feat-core/request_id.hpp>
-
 #include <string_view>
 #include <userver/formats/json/serialize.hpp>
 #include <userver/formats/json/value_builder.hpp>

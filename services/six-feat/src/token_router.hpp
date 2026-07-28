@@ -1,10 +1,9 @@
 #pragma once
 
-#include <six-feat-auth-lib/oauth_handler.hpp>
-#include <six-feat-auth-lib/session_crypto.hpp>
-
 #include <array>
 #include <optional>
+#include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-auth-lib/session_crypto.hpp>
 #include <string>
 #include <userver/logging/log.hpp>
 #include <userver/server/http/http_request.hpp>

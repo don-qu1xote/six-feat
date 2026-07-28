@@ -1,9 +1,8 @@
 
-#include <six-feat-storage/analytics.hpp>
-
 #include <algorithm>
 #include <deque>
 #include <limits>
+#include <six-feat-storage/analytics.hpp>
 #include <stack>
 #include <unordered_map>
 #include <unordered_set>

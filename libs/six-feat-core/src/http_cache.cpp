@@ -1,5 +1,4 @@
 #include <six-feat-core/http_cache.hpp>
-
 #include <string_view>
 
 namespace six_feat {

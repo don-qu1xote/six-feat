@@ -1,11 +1,10 @@
 #include "season_handler.hpp"
 
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/security_headers.hpp>
-
 #include "schemas/handlers/game/season_handler_schema.hpp"
 
 #include <optional>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

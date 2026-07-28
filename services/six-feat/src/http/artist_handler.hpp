@@ -3,14 +3,13 @@
 #include "http/authenticated_handler_base.hpp"
 
 #include <six-feat-auth-lib/oauth_handler.hpp>
-#include "token_router.hpp"
-
 #include <six-feat-storage/artist_repository.hpp>
 #include <six-feat-storage/persistent_store.hpp>
-
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
 #include <userver/yaml_config/schema.hpp>
+
+#include "token_router.hpp"
 
 namespace six_feat {
 

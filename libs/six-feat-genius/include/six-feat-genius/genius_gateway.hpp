@@ -1,12 +1,10 @@
 #pragma once
 
-#include <six-feat-core/resilience.hpp>
-
-#include <six-feat-domain/domain_types.hpp>
-
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <six-feat-core/resilience.hpp>
+#include <six-feat-domain/domain_types.hpp>
 #include <string>
 #include <userver/clients/http/client.hpp>
 #include <userver/components/component_base.hpp>

@@ -27,7 +27,7 @@ from typing import List, Tuple
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-GAME_STORE_CPP = REPO_ROOT / "services" / "game" / "game_store.cpp"
+GAME_STORE_CPP = REPO_ROOT / "services" / "game" / "src" / "game_store.cpp"
 MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations" / "game"
 
 

@@ -1,8 +1,7 @@
 
-#include <six-feat-storage/artist_repository.hpp>
-
 #include "schemas/components/artist_repository_schema.hpp"
 
+#include <six-feat-storage/artist_repository.hpp>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
 #include <userver/logging/log.hpp>

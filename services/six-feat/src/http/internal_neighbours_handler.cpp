@@ -1,12 +1,10 @@
 #include "http/internal_neighbours_handler.hpp"
 
-#include <six-feat-core/internal_auth.hpp>
-#include <six-feat-core/request_id.hpp>
-
-#include <six-feat-domain/domain_types.hpp>
-
 #include "schemas/handlers/six-feat/internal_neighbours_handler_schema.hpp"
 
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-domain/domain_types.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

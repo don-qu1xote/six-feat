@@ -1,12 +1,5 @@
 #include "internal_handlers.hpp"
 
-#include <six-feat-core/internal_auth.hpp>
-#include <six-feat-core/request_id.hpp>
-#include <six-feat-core/resilience.hpp>
-#include <six-feat-core/security_headers.hpp>
-
-#include <six-feat-http/readiness_common.hpp>
-
 #include "schemas/handlers/genius-gateway/artist_handler_schema.hpp"
 #include "schemas/handlers/genius-gateway/candidates_handler_schema.hpp"
 #include "schemas/handlers/genius-gateway/readiness_handler_schema.hpp"
@@ -14,6 +7,11 @@
 #include "schemas/handlers/genius-gateway/song_list_handler_schema.hpp"
 
 #include <optional>
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/resilience.hpp>
+#include <six-feat-core/security_headers.hpp>
+#include <six-feat-http/readiness_common.hpp>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

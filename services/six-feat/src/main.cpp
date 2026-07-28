@@ -1,9 +1,5 @@
-#include "application/collab_service.hpp"
-#include <six-feat-core/rate_limit_store_component.hpp>
-
 #include "http/artist_handler.hpp"
 #include "http/graph_handler.hpp"
-#include <six-feat-http/health_handler.hpp>
 #include "http/image_proxy_handler.hpp"
 #include "http/internal_neighbours_handler.hpp"
 #include "http/path_handler.hpp"
@@ -14,15 +10,13 @@
 #include "http/status_handler.hpp"
 
 #include "auth/app_secret_parity_checker.hpp"
-#include <six-feat-auth-lib/oauth_handler.hpp>
 
+#include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-core/rate_limit_store_component.hpp>
+#include <six-feat-genius/genius_gateway_client.hpp>
+#include <six-feat-http/health_handler.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <six-feat-storage/persistent_store.hpp>
-
-#include <six-feat-genius/genius_gateway_client.hpp>
-
-#include "infrastructure/enrichment_client.hpp"
-
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
@@ -30,6 +24,9 @@
 #include <userver/storages/postgres/component.hpp>
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
+
+#include "application/collab_service.hpp"
+#include "infrastructure/enrichment_client.hpp"
 
 using namespace userver;
 

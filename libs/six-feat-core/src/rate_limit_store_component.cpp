@@ -1,9 +1,7 @@
-#include <six-feat-core/rate_limit_store_component.hpp>
-
-#include <six-feat-core/rate_limit_store_postgres.hpp>
-
 #include "schemas/components/rate_limit_store_schema.hpp"
 
+#include <six-feat-core/rate_limit_store_component.hpp>
+#include <six-feat-core/rate_limit_store_postgres.hpp>
 #include <stdexcept>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>

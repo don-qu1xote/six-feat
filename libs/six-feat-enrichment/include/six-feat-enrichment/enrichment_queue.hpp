@@ -1,10 +1,9 @@
 #pragma once
 
-#include <six-feat-domain/domain_types.hpp>
-
 #include <cstddef>
 #include <deque>
 #include <optional>
+#include <six-feat-domain/domain_types.hpp>
 #include <userver/engine/condition_variable.hpp>
 #include <userver/engine/mutex.hpp>
 

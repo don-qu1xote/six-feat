@@ -1,6 +1,4 @@
 
-#include <six-feat-storage/persistent_store.hpp>
-
 #include "schemas/components/persistent_store_schema.hpp"
 
 #include <algorithm>
@@ -8,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <optional>
+#include <six-feat-storage/persistent_store.hpp>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>

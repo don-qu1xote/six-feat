@@ -1,5 +1,4 @@
 #include <six-feat-core/request_id.hpp>
-
 #include <userver/engine/task/inherited_variable.hpp>
 #include <userver/server/http/http_response.hpp>
 #include <userver/tracing/span.hpp>

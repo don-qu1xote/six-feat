@@ -1,8 +1,7 @@
 #pragma once
 
-#include <six-feat-core/rate_limiter.hpp>
-
 #include <array>
+#include <six-feat-core/rate_limiter.hpp>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>

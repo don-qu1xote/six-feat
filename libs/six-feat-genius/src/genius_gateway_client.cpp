@@ -1,11 +1,9 @@
-#include <six-feat-genius/genius_gateway_client.hpp>
+#include "schemas/components/genius_gateway_client_schema.hpp"
 
 #include <six-feat-core/internal_auth.hpp>
 #include <six-feat-core/internal_http.hpp>
 #include <six-feat-core/request_id.hpp>
-
-#include "schemas/components/genius_gateway_client_schema.hpp"
-
+#include <six-feat-genius/genius_gateway_client.hpp>
 #include <stdexcept>
 #include <string>
 #include <userver/clients/http/component.hpp>

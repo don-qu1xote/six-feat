@@ -1,13 +1,10 @@
 #pragma once
 
-#include <six-feat-storage/artist_repository.hpp>
-
-#include <six-feat-genius/genius_gateway_client.hpp>
-
-#include <six-feat-enrichment/enrichment_queue.hpp>
-
 #include <chrono>
 #include <cstdint>
+#include <six-feat-enrichment/enrichment_queue.hpp>
+#include <six-feat-genius/genius_gateway_client.hpp>
+#include <six-feat-storage/artist_repository.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_set>
