@@ -271,7 +271,7 @@ jobs:
 
       - name: Build & install
         run: |
-          cmake -S services/enrichment -B build \
+          cmake -S services/six-feat-enrichment -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/install
           cmake --build build -j"$(nproc)"
@@ -781,7 +781,7 @@ jobs:
           - name: six-feat-auth
             dockerfile: services/auth/Dockerfile
           - name: six-feat-enrichment
-            dockerfile: services/enrichment/Dockerfile
+            dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
           - name: six-feat-game
@@ -1052,7 +1052,7 @@ jobs:
           - name: six-feat-auth
             dockerfile: services/auth/Dockerfile
           - name: six-feat-enrichment
-            dockerfile: services/enrichment/Dockerfile
+            dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
           - name: six-feat-game
@@ -1117,7 +1117,7 @@ jobs:
           - name: six-feat-auth
             dockerfile: services/auth/Dockerfile
           - name: six-feat-enrichment
-            dockerfile: services/enrichment/Dockerfile
+            dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
           - name: six-feat-game

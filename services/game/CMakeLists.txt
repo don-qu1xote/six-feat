@@ -50,20 +50,20 @@ add_custom_target(six_feat_game_schema_headers DEPENDS
 )
 
 add_executable(six_feat_game
-    main.cpp
-    internal_handlers.cpp
-    game_store.cpp
-    profile_handler.cpp
-    neighbours_client.cpp
-    validate_handler.cpp
-    submit_handler.cpp
-    challenge_handler.cpp
-    daily_challenge_task.cpp
-    leaderboard_handler.cpp
-    link_handler.cpp
-    challenges_handler.cpp
-    season_handler.cpp
-    admin_handler.cpp
+    src/main.cpp
+    src/internal_handlers.cpp
+    src/game_store.cpp
+    src/profile_handler.cpp
+    src/neighbours_client.cpp
+    src/validate_handler.cpp
+    src/submit_handler.cpp
+    src/challenge_handler.cpp
+    src/daily_challenge_task.cpp
+    src/leaderboard_handler.cpp
+    src/link_handler.cpp
+    src/challenges_handler.cpp
+    src/season_handler.cpp
+    src/admin_handler.cpp
 )
 
 target_link_libraries(six_feat_game

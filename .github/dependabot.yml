@@ -42,7 +42,7 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: "docker"
-    directory: "/services/enrichment"
+    directory: "/services/six-feat-enrichment"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5

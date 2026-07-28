@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 #
 # Автономный Dockerfile для six-feat-enrichment. Собирает только
-# services/enrichment/ — контекст сборки — корень репозитория (libs/,
+# services/six-feat-enrichment/ — контекст сборки — корень репозитория (libs/,
 # schemas/, cmake/ — общие соседние каталоги — полное обоснование в
 # services/six-feat/Dockerfile). См. docker-compose.yml: context: . /
-# dockerfile: services/enrichment/Dockerfile.
+# dockerfile: services/six-feat-enrichment/Dockerfile.
 
 ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
 
@@ -28,14 +28,14 @@ COPY cmake ./cmake
 COPY schemas ./schemas
 COPY libs ./libs
 COPY services/.base ./services/.base
-COPY services/enrichment ./services/enrichment
+COPY services/six-feat-enrichment ./services/six-feat-enrichment
 
 # CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 4 Dockerfile'ов —
 # полное обоснование в services/six-feat/Dockerfile.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
     --mount=type=cache,id=six-feat-enrichment-build,target=/src/build,sharing=locked \
-    cmake -S services/enrichment -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
+    cmake -S services/six-feat-enrichment -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
  && cmake --build build -j"${BUILD_JOBS}" \
  && cmake --install build --strip
 
@@ -99,7 +99,7 @@ COPY --from=builder /install/bin/six_feat_enrichment ./six_feat_enrichment
 COPY --from=builder /install/etc/six_feat_enrichment/static_config.yaml ./static_config.yaml
 
 COPY services/.base /app/services/.base
-COPY services/enrichment/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY services/six-feat-enrichment/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN mkdir -p /var/lib/six_feat_enrichment \

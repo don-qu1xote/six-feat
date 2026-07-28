@@ -4,7 +4,7 @@
 # services/game/ — контекст сборки — корень репозитория (libs/, schemas/,
 # cmake/ — общие соседние каталоги — полное обоснование в
 # services/six-feat/Dockerfile). См. docker-compose.yml: context: . /
-# dockerfile: services/game/Dockerfile. Аналогичен services/enrichment/Dockerfile
+# dockerfile: services/game/Dockerfile. Аналогичен services/six-feat-enrichment/Dockerfile
 # (использует тот же Postgres-кластер и тот же набор runtime-пакетов,
 # включая postgresql-client для pg_isready в entrypoint).
 

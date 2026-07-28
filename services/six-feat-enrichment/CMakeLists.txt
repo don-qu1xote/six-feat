@@ -19,8 +19,8 @@ add_custom_target(six_feat_enrichment_schema_headers DEPENDS
 )
 
 add_executable(six_feat_enrichment
-    main.cpp
-    internal_handlers.cpp
+    src/main.cpp
+    src/internal_handlers.cpp
 )
 
 target_link_libraries(six_feat_enrichment

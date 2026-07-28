@@ -32,7 +32,7 @@ elif echo "$CHANGED_FILES" | grep -q "^services/six-feat/"; then
   SERVICES="$SERVICES six-feat"
 fi
 
-if echo "$CHANGED_FILES" | grep -q "^services/enrichment/"; then
+if echo "$CHANGED_FILES" | grep -q "^services/six-feat-enrichment/"; then
   SERVICES="$SERVICES enrichment"
 fi
 

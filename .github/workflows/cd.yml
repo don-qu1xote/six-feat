@@ -222,7 +222,7 @@ jobs:
           - name: six-feat-auth
             dockerfile: services/auth/Dockerfile
           - name: six-feat-enrichment
-            dockerfile: services/enrichment/Dockerfile
+            dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
           - name: six-feat-game
@@ -270,7 +270,7 @@ jobs:
           - name: six-feat-auth
             dockerfile: services/auth/Dockerfile
           - name: six-feat-enrichment
-            dockerfile: services/enrichment/Dockerfile
+            dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
           - name: six-feat-game

@@ -22,7 +22,7 @@
 ## Решение
 
 Вынести `EnrichmentWorker` в отдельный процесс/сервис
-`six-feat-enrichment` (`services/enrichment/`, порт 8081), с собственным
+`six-feat-enrichment` (`services/six-feat-enrichment/`, порт 8081), с собственным
 внутренним HTTP API:
 
 - `POST /internal/enqueue` — поставить артиста в очередь на глубокий скан.

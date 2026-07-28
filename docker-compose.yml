@@ -163,7 +163,7 @@ services:
     pull_policy: build
     build:
       context: .
-      dockerfile: services/enrichment/Dockerfile
+      dockerfile: services/six-feat-enrichment/Dockerfile
       args:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-enrichment:latest
