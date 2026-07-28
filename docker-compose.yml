@@ -92,14 +92,28 @@ services:
 
     expose:
       - "${SIX_FEAT_PORT:-8080}"
+    # [SF-CFG-01] Read-only bind-mount profiles — ENV_PROFILE-выбранный
+    # файл sourced docker-entrypoint.sh при старте.
+    volumes:
+      - ./config/profiles:/app/config/profiles:ro
     environment:
-
+      # Из shell-окружения или .env (см. .env.example)
+      # [ТЗ-6] Серверный токен Genius больше не нужен — auth только OAuth.
       GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
       GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
 
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # [SF-CFG-01] Пусто (не захардкоженный дефолт) — чтобы не заданное
+      # значение из .env/shell падало в config/profiles/${ENV_PROFILE}.env.
+      # Явное COOKIE_SECURE/LOGGING_LEVEL в .env по-прежнему перекрывает
+      # профиль (docker-entrypoint.sh source-ит профиль через ${VAR:-default}).
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
+      # [SF-CFG-01] Выбирает config/profiles/${ENV_PROFILE().env, sourced
+      # docker-entrypoint.sh — см. DEVELOPMENT.md «Env-профили».
+      # Единственное различие между dev/staging/prod для этого compose.yml.
+      ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
@@ -154,6 +168,9 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-enrichment:latest
     container_name: six-feat-enrichment
+    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
+    volumes:
+      - ./config/profiles:/app/config/profiles:ro
     environment:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
 
@@ -164,7 +181,10 @@ services:
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
-      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
+      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
+      ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
     depends_on:
@@ -233,6 +253,9 @@ services:
 
     ports:
       - "${SIX_FEAT_AUTH_PORT:-8083}:${SIX_FEAT_AUTH_PORT:-8083}"
+    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
+    volumes:
+      - ./config/profiles:/app/config/profiles:ro
     environment:
 
       GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
@@ -240,8 +263,11 @@ services:
 
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [SF-CFG-01] Пусто — см. комментарий к six-feat COOKIE_SECURE/
+      # LOGGING_LEVEL выше; config/profiles/${ENV_PROFILE}.env теперь владеет.
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
+      ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
     healthcheck:
@@ -269,9 +295,15 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-genius-gateway:latest
     container_name: six-feat-genius-gateway
+    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
+    volumes:
+      - ./config/profiles:/app/config/profiles:ro
     environment:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
-      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
+      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
+      ENV_PROFILE: ${ENV_PROFILE:-dev}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}/healthz"]
       interval: 15s
@@ -305,6 +337,9 @@ services:
     container_name: six-feat-game
     ports:
       - "${SIX_FEAT_GAME_PORT:-8084}:${SIX_FEAT_GAME_PORT:-8084}"
+    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
+    volumes:
+      - ./config/profiles:/app/config/profiles:ro
     environment:
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
@@ -315,7 +350,10 @@ services:
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
-      LOGGING_LEVEL: ${LOGGING_LEVEL:-info}
+      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
+      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
+      ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       SIX_FEAT_BASE_URL: ${SIX_FEAT_BASE_URL:-http://six-feat:${SIX_FEAT_PORT:-8080}}
 

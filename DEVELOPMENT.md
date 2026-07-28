@@ -167,6 +167,53 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./docs/adr/0004-auth-service
 
 ---
 
+## Env-профили: dev/staging/prod (SF-CFG-01)
+
+До этого раздела различия между dev/staging/prod (уровень логов, `COOKIE_SECURE`, `DB_REPLICA_HOST`) были просто разрозненными `${VAR:-default}`-хардкодами в каждом `docker-entrypoint.sh`. `config/profiles/{dev,staging,prod}.env` формализуют именно эти дефолты — сами файлы ничего нового не добавляют, только называют то, что уже было неявным.
+
+**Единственная команда запуска для всех трёх окружений** — `docker-compose.yml` один и тот же, различие только в `ENV_PROFILE`:
+
+```bash
+ENV_PROFILE=dev     docker compose up -d   # по умолчанию, если ENV_PROFILE не задан
+ENV_PROFILE=staging docker compose up -d
+ENV_PROFILE=prod    docker compose up -d
+```
+
+**Правило на будущее** (важно для SF-CFG-02, который проверяет это автоматически): никаких `docker-compose.staging.yml` / `docker-compose.prod.yml` с дублирующими service-блоками. Единственный источник правды — этот `docker-compose.yml`; любое различие между окружениями идёт **только** через переменные (`ENV_PROFILE` + `.env`), никогда через второй YAML.
+
+Как это работает:
+
+1. `ENV_PROFILE` (по умолчанию `dev`) — обычная переменная окружения, пробрасывается в каждый из 5 app-контейнеров через `docker-compose.yml`'s `environment:` (как и любая другая), плюс read-only bind-mount `./config/profiles:/app/config/profiles:ro` — тот же приём, что уже используется для `nginx/default.conf.template`, `observability/prometheus/rules` и т.д.
+2. Каждый `docker-entrypoint.sh` в самом начале (до секретов `${VAR:?...}`) проверяет `/app/config/profiles/${ENV_PROFILE}.env` — **fail-fast**, если файла нет (та же строгость, что уже используют `${VAR:?Set VAR}` для секретов):
+   ```
+   [entrypoint] ERROR: ENV_PROFILE=typo but /app/config/profiles/typo.env not found (expected dev, staging, or prod — see config/profiles/)
+   ```
+3. Найденный файл `source`-ится (`set -a; source ...; set +a`), а не просто читается — потому что сами профили написаны в том же идиоме `VAR="${VAR:-default}"`, что и дефолты в `docker-entrypoint.sh`. Это даёт конкретный порядок приоритета:
+
+   **явное значение в `.env`/shell → профиль → встроенный дефолт `docker-entrypoint.sh`**
+
+   Если вы вручную выставили `LOGGING_LEVEL=debug` в своём `.env` для отладки — эта переменная приходит в контейнер уже непустой (`docker-compose.yml` теперь пробрасывает `LOGGING_LEVEL: ${LOGGING_LEVEL:-}`, т.е. пусто, если не задано явно), и `${LOGGING_LEVEL:-info}` внутри профиля её не тронет. Профиль подставляет значение только там, где до него ничего не было задано.
+
+Что входит в профиль сейчас (см. сами файлы в `config/profiles/` — там же и обоснование каждого значения):
+
+| Переменная | dev | staging | prod |
+|---|---|---|---|
+| `LOGGING_LEVEL` | `info` | `info` | `warning` |
+| `COOKIE_SECURE` | `false` | `true` | `true` |
+| `DB_REPLICA_HOST` | *(пусто)* | *(пусто)* | `postgres-replica` |
+
+`dev.env` намеренно совпадает с прежними дефолтами `docker-entrypoint.sh` один в один — `ENV_PROFILE` не меняет поведение по умолчанию, только называет его. `prod.env`'s `DB_REPLICA_HOST=postgres-replica` — рабочее значение для собственного `prod-like` compose-профиля этого репозитория (SF-INF-02, `docker compose --profile prod-like up`); для реального внешнего кластера переопределяйте `DB_REPLICA_HOST` напрямую в `.env`.
+
+**Rate-limit пороги пока не входят в профиль**: на момент SF-CFG-01 они не env-конфигурируемы вообще (захардкожены как литералы прямо в конструкторах хендлеров, например `rate_limit_("graph", 50, 1, ...)` в `graph_handler.cpp`) — заводить под них переменные профиля значило бы придумывать конфигурацию, которой ничего не пользуется. Если/когда они станут env-конфигурируемыми — их место здесь, в этой же таблице.
+
+**Тест**: `scripts/verify-env-profiles.py` — проверяет, что все три файла профиля реально парсятся (`bash source` в чистом окружении) и что ни один не пытается задать одну из required-переменных `docker-compose.yml` (`${VAR:?...}`: `GENIUS_CLIENT_ID`, `GENIUS_CLIENT_SECRET`, `APP_SECRET`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `ENRICHMENT_INTERNAL_SECRET`) — профили формализуют только опциональные ручки, никогда секреты:
+
+```bash
+python3 scripts/verify-env-profiles.py
+```
+
+---
+
 ## Postgres cluster topology
 
 `PersistentStore` (`src/storage/persistent_store.cpp`) routes every write through `storages::postgres::ClusterHostType::kMaster` — intentional isolation, not decoration. Reads route through `kSlave` **only when a replica is actually configured** (`DB_REPLICA_HOST` set — see `ReadHostType()` in that file), otherwise straight through `kMaster` too. `userver::storages::postgres::Cluster` discovers which DSN host is which **dynamically**, by running `SELECT pg_is_in_recovery()` against each host in `dbconnection` (topology refreshed every ~1s): a host that answers `false` is Master, everything else is Slave.

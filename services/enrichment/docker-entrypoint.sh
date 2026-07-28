@@ -2,23 +2,34 @@
 
 set -euo pipefail
 
-# six-feat-enrichment has no OAuth/session concerns of its own — it borrows
-# the user_token forwarded by six_feat on every /internal/enqueue call. The
-# only credentials this service needs at boot are the inter-service shared
-# secret and the (shared) Postgres connection.
+# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
+ENV_PROFILE="${ENV_PROFILE:-dev}"
+PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"
+if [[ ! -f "$PROFILE_FILE" ]]; then
+  echo "[entrypoint] ERROR: ENV_PROFILE=${ENV_PROFILE} but ${PROFILE_FILE} not found (expected dev, staging, or prod — see config/profiles/)" >&2
+  exit 1
+fi
+echo "[entrypoint] ENV_PROFILE=${ENV_PROFILE} (${PROFILE_FILE})"
+set -a
+# shellcheck disable=SC1090
+source "$PROFILE_FILE"
+set +a
+
+# six-feat-enrichment не имеет собственных OAuth/сессий — берёт user_token
+# из пересылаемого six_feat на каждом /internal/enqueue. Единственные
+# необходимые при старте секреты — общий внутренний ключ и (общий) Postgres.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat, generate with: openssl rand -hex 32}"
 
-# [IDEA-46] Genius API access moved to the standalone six-feat-genius-gateway
-# service — GeniusGatewayClient talks to it over HTTP, gated by the same
-# ENRICHMENT_INTERNAL_SECRET checked above.
+# [IDEA-46] Genius API — через отдельный six-feat-genius-gateway
+# (GeniusGatewayClient, HTTP, тот же ENRICHMENT_INTERNAL_SECRET).
 GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}"
 
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
-# Optional — see the matching comment in the root docker-entrypoint.sh:
-# leave unset for a single Postgres instance, or point at a real streaming
-# replica for genuine kMaster/kSlave read isolation. Never point this at the
-# same host as DB_HOST — see DEVELOPMENT.md, "Postgres cluster topology".
+# Опционально — оставить пустым для одного инстанса, задать реальный хост
+# реплики для kMaster/kSlave. НЕ указывать тот же хост, что и DB_HOST
+# (см. DEVELOPMENT.md, «Postgres cluster topology»).
 DB_REPLICA_HOST="${DB_REPLICA_HOST:-}"
 DB_REPLICA_PORT="${DB_REPLICA_PORT:-5432}"
 : "${DB_NAME:?DB_NAME env var is required — Postgres database name}"
@@ -39,26 +50,11 @@ else
   echo "[entrypoint] six-feat-enrichment Postgres target: ${DB_HOST}:${DB_PORT} (single instance, no replica), db=${DB_NAME}"
 fi
 
-# ── Wait for Postgres to actually be ready ─────────────────────────────────
-# See the matching comment in the main service's docker-entrypoint.sh: on a
-# Postgres restart that lands close to this container's own restart,
-# postgres-db-1's synchronous pool bootstrap (static_config.yaml's
-# sync-start: true) races Postgres coming back up, and persistent-store's own
-# single-shot connection attempt gets rejected outright, crashing the whole
-# process with an unhandled exception. depends_on/healthcheck in
-# docker-compose.yml only gate this container's first start, not its
-# "restart: unless-stopped" restarts, so wait here too.
-#
-# A raw TCP check is NOT sufficient: Postgres opens its TCP listener well
-# before it's ready to serve new sessions, so a check that only waits for
-# the port to accept connections can pass while the server is still
-# rejecting real sessions. pg_isready checks actual protocol-level readiness.
-#
-# Capped well under the HEALTHCHECK's own budget so a slow/absent Postgres
-# fails the container's healthcheck instead of hanging the entrypoint
-# indefinitely. The replica is a soft dependency (cluster falls back to
-# master reads without it, and some deployments of this compose file don't
-# run a replica at all), so it only gets a brief best-effort wait.
+# ── Ожидание готовности Postgres ─────────────────────────────────────────────
+# Та же логика, что в основном six-feat: depends_on/healthcheck блокируют
+# только первый старт, при рестарте нужна своя проверка. pg_isready —
+# протокольная готовность, а не TCP. Задержка меньше HEALTHCHECK-бюджета.
+# Реплика — мягкая зависимость, кратковременное ожидание.
 wait_for_postgres() {
   local host="$1" port="$2" max="$3" waited=0
   [[ -z "$host" ]] && return 0

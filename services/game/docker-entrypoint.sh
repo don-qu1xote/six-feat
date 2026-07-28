@@ -2,32 +2,42 @@
 
 set -euo pipefail
 
-# six-feat-game — competitive game service (SF-GAME-10 skeleton). It shares the
-# same Postgres cluster as the rest of the mesh (its game_* tables land in
-# SF-GAME-11). This entrypoint assembles the DSN and waits for Postgres to be
-# ready exactly like services/enrichment/docker-entrypoint.sh, so SF-GAME-11's
-# store component only has to read the already-plumbed db_connection_string.
+# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
+ENV_PROFILE="${ENV_PROFILE:-dev}"
+PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"
+if [[ ! -f "$PROFILE_FILE" ]]; then
+  echo "[entrypoint] ERROR: ENV_PROFILE=${ENV_PROFILE} but ${PROFILE_FILE} not found (expected dev, staging, or prod — see config/profiles/)" >&2
+  exit 1
+fi
+echo "[entrypoint] ENV_PROFILE=${ENV_PROFILE} (${PROFILE_FILE})"
+set -a
+# shellcheck disable=SC1090
+source "$PROFILE_FILE"
+set +a
+
+# six-feat-game — игровой сервис (SF-GAME-10). Тот же Postgres-кластер,
+# game_* таблицы в SF-GAME-11. Entry point собирает DSN и ждёт Postgres
+# аналогично services/enrichment/docker-entrypoint.sh.
 #
-# [SF-GAME-12] APP_SECRET is read directly from the environment by
-# session_crypto::KeyFromEnv() to decrypt the six_feat_session cookie locally
-# (no HTTP to six-feat-auth) — it MUST be the exact same value the rest of the
-# mesh uses, or the game service can't read sessions the other services minted.
-# Fail fast here instead of throwing deep in ProfileHandler's constructor.
+# [SF-GAME-12] APP_SECRET читается из env session_crypto::KeyFromEnv() для
+# локальной расшифровки six_feat_session cookie (без HTTP к six-feat-auth) —
+# ДОЛЖЕН совпадать со значением остального mesh, иначе game не прочитает
+# сессии, выданные другими сервисами. Проверяем здесь, а не в конструкторе
+# ProfileHandler.
 : "${APP_SECRET:?APP_SECRET env var is required for session decryption — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
 
-# [SF-GAME-13] Shared secret for internal-mesh calls to six-feat
-# (POST /internal/neighbours, see neighbours_client.cpp) — read directly from
-# the environment by internal_api::SharedSecretFromEnv(), MUST be the exact
-# same value the rest of the mesh uses. Fail fast here instead of throwing
-# deep in NeighboursClient's constructor.
+# [SF-GAME-13] Общий секрет для внутренних вызовов к six-feat
+# (POST /internal/neighbours, см. neighbours_client.cpp) — читается из env
+# через internal_api::SharedSecretFromEnv(), ДОЛЖЕН совпадать со значением
+# остального mesh. Проверяем здесь, а не в конструкторе NeighboursClient.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required for internal-mesh calls to six-feat — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
 
 DB_HOST="${DB_HOST:-postgres}"
 DB_PORT="${DB_PORT:-5432}"
-# Optional — see the matching comment in enrichment's entrypoint: leave unset
-# for a single Postgres instance, or point at a real streaming replica for
-# genuine kMaster/kSlave read isolation. Never point this at the same host as
-# DB_HOST — see DEVELOPMENT.md, "Postgres cluster topology".
+# Опционально — оставить пустым для одного инстанса, задать реальный хост
+# реплики для kMaster/kSlave. НЕ указывать тот же хост, что и DB_HOST
+# (см. DEVELOPMENT.md, «Postgres cluster topology»).
 DB_REPLICA_HOST="${DB_REPLICA_HOST:-}"
 DB_REPLICA_PORT="${DB_REPLICA_PORT:-5432}"
 : "${DB_NAME:?DB_NAME env var is required — Postgres database name}"
@@ -41,10 +51,9 @@ else
 fi
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
-# [SF-GAME-13] Where six-feat itself listens, for the anti-cheat neighbours
-# lookup (see neighbours_client.cpp). Same compose-network addressing
-# convention as ENRICHMENT_BASE_URL/GENIUS_GATEWAY_BASE_URL/AUTH_BASE_URL in
-# six-feat's own entrypoint.
+# [SF-GAME-13] Адрес основного six-feat для античита (neighbours_client.cpp).
+# Тот же compose-network формат, что ENRICHMENT_BASE_URL/GENIUS_GATEWAY_BASE_URL
+# в основном entrypoint.
 SIX_FEAT_BASE_URL="${SIX_FEAT_BASE_URL:-http://six-feat:8080}"
 
 if [[ -n "$DB_REPLICA_HOST" ]]; then
@@ -53,14 +62,11 @@ else
   echo "[entrypoint] six-feat-game Postgres target: ${DB_HOST}:${DB_PORT} (single instance, no replica), db=${DB_NAME}"
 fi
 
-# ── Wait for Postgres to actually be ready ─────────────────────────────────
-# Same rationale as enrichment's entrypoint: depends_on/healthcheck only gate
-# this container's first start, not its "restart: unless-stopped" restarts, so
-# wait here too. A raw TCP check isn't sufficient (Postgres opens its listener
-# before it can serve sessions) — pg_isready checks protocol-level readiness.
-# Capped under the HEALTHCHECK budget so a slow/absent Postgres fails the
-# healthcheck instead of hanging the entrypoint. The replica is a soft
-# dependency, so it gets only a brief best-effort wait.
+# ── Ожидание готовности Postgres ─────────────────────────────────────────────
+# Та же логика, что в enrichment: depends_on/healthcheck блокируют только
+# первый старт, при рестарте нужна своя проверка. pg_isready — протокольная
+# готовность, а не TCP. Задержка меньше HEALTHCHECK-бюджета.
+# Реплика — мягкая зависимость, кратковременное ожидание.
 wait_for_postgres() {
   local host="$1" port="$2" max="$3" waited=0
   [[ -z "$host" ]] && return 0

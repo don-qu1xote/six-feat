@@ -2,10 +2,23 @@
 
 set -euo pipefail
 
-# six-feat-genius-gateway has no OAuth/session concerns of its own and no
-# database — it borrows the user_token forwarded by its callers (six_feat,
-# six-feat-enrichment) on every /internal/genius/* call. The only credential
-# this service needs at boot is the inter-service shared secret.
+# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
+ENV_PROFILE="${ENV_PROFILE:-dev}"
+PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"
+if [[ ! -f "$PROFILE_FILE" ]]; then
+  echo "[entrypoint] ERROR: ENV_PROFILE=${ENV_PROFILE} but ${PROFILE_FILE} not found (expected dev, staging, or prod — see config/profiles/)" >&2
+  exit 1
+fi
+echo "[entrypoint] ENV_PROFILE=${ENV_PROFILE} (${PROFILE_FILE})"
+set -a
+# shellcheck disable=SC1090
+source "$PROFILE_FILE"
+set +a
+
+# six-feat-genius-gateway не имеет OAuth/сессий и не работает с БД — берёт
+# user_token из пересылаемого вызывающими (six_feat, six-feat-enrichment).
+# Единственный секрет при старте — общий внутренний ключ.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat / six-feat-enrichment, generate with: openssl rand -hex 32}"
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
