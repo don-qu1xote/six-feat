@@ -2,7 +2,7 @@
 
 #include "http/authenticated_handler_base.hpp"
 
-#include "auth/oauth_handler.hpp"
+#include <six-feat-auth-lib/oauth_handler.hpp>
 
 #include <chrono>
 #include <string>

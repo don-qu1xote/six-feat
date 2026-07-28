@@ -1,6 +1,6 @@
-#include "http/health_handler.hpp"
+#include <six-feat-http/health_handler.hpp>
 
-#include "genius/genius_gateway.hpp"
+#include <six-feat-genius/genius_gateway.hpp>
 
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>

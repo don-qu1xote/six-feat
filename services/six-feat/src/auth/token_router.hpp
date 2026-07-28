@@ -1,7 +1,7 @@
 #pragma once
 
-#include "auth/oauth_handler.hpp"
-#include "auth/session_crypto.hpp"
+#include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-auth-lib/session_crypto.hpp>
 
 #include <array>
 #include <optional>

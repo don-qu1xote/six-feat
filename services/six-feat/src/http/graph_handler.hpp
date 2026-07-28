@@ -1,14 +1,14 @@
 #pragma once
 
 #include "core/collab_service.hpp"
-#include "core/rate_limiter.hpp"
+#include <six-feat-core/rate_limiter.hpp>
 
 #include "http/authenticated_handler_base.hpp"
 
-#include "auth/oauth_handler.hpp"
+#include <six-feat-auth-lib/oauth_handler.hpp>
 #include "auth/token_router.hpp"
 
-#include "storage/persistent_store.hpp"
+#include <six-feat-storage/persistent_store.hpp>
 
 #include <string>
 #include <string_view>

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/request_id.hpp"
-#include "core/security_headers.hpp"
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 
-#include "auth/oauth_handler.hpp"
+#include <six-feat-auth-lib/oauth_handler.hpp>
 #include "auth/token_router.hpp"
 
 #include <optional>

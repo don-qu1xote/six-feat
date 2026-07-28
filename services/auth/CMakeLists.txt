@@ -21,9 +21,13 @@ add_executable(six_feat_auth
 
 target_link_libraries(six_feat_auth
     PRIVATE
-        six_feat_common
+        six_feat_core
+        six_feat_auth_lib
+        six_feat_http
         OpenSSL::Crypto
 )
+
+target_include_directories(six_feat_auth PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 add_dependencies(six_feat_auth six_feat_auth_schema_headers)
 

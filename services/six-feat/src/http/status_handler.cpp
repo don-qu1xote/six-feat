@@ -1,7 +1,7 @@
 
 #include "http/status_handler.hpp"
 
-#include "core/request_id.hpp"
+#include <six-feat-core/request_id.hpp>
 
 #include "schemas/handlers/six-feat/status_handler_schema.hpp"
 

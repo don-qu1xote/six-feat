@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/rate_limiter.hpp"
+#include <six-feat-core/rate_limiter.hpp>
 
 #include <array>
 #include <string_view>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "domain/domain_types.hpp"
+#include <six-feat-domain/domain_types.hpp>
 
 #include <chrono>
 #include <cstdint>

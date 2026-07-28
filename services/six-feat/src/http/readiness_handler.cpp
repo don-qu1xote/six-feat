@@ -1,10 +1,10 @@
 
 #include "http/readiness_handler.hpp"
 
-#include "core/request_id.hpp"
-#include "core/security_headers.hpp"
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 
-#include "http/readiness_common.hpp"
+#include <six-feat-http/readiness_common.hpp>
 
 #include "schemas/handlers/six-feat/readiness_handler_schema.hpp"
 

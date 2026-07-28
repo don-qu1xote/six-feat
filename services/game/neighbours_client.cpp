@@ -1,8 +1,8 @@
 #include "neighbours_client.hpp"
 
-#include "core/internal_auth.hpp"
-#include "core/internal_http.hpp"
-#include "core/request_id.hpp"
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/internal_http.hpp>
+#include <six-feat-core/request_id.hpp>
 
 #include "schemas/components/neighbours_client_schema.hpp"
 

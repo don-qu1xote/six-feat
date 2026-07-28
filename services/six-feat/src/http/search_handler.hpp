@@ -1,13 +1,13 @@
 #pragma once
 
-#include "core/rate_limiter.hpp"
+#include <six-feat-core/rate_limiter.hpp>
 
 #include "http/authenticated_handler_base.hpp"
 
-#include "auth/oauth_handler.hpp"
+#include <six-feat-auth-lib/oauth_handler.hpp>
 #include "auth/token_router.hpp"
 
-#include "genius/genius_gateway_client.hpp"
+#include <six-feat-genius/genius_gateway_client.hpp>
 
 #include <string>
 #include <string_view>

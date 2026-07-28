@@ -1,10 +1,10 @@
 #pragma once
 
-#include "domain/domain_types.hpp"
+#include <six-feat-domain/domain_types.hpp>
 
-#include "storage/artist_repository.hpp"
+#include <six-feat-storage/artist_repository.hpp>
 
-#include "genius/genius_gateway_client.hpp"
+#include <six-feat-genius/genius_gateway_client.hpp>
 
 #include "enrichment/enrichment_client.hpp"
 

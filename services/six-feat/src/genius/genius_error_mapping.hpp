@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/resilience.hpp"
+#include <six-feat-core/resilience.hpp>
 
 #include <string>
 #include <userver/server/http/http_response.hpp>

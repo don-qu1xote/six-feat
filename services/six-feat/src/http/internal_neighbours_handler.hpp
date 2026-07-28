@@ -1,6 +1,6 @@
 #pragma once
 
-#include "storage/artist_repository.hpp"
+#include <six-feat-storage/artist_repository.hpp>
 
 #include <string>
 #include <string_view>

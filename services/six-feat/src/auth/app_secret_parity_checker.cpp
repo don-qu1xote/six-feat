@@ -1,9 +1,9 @@
 #include "auth/app_secret_parity_checker.hpp"
 
-#include "core/internal_auth.hpp"
-#include "core/internal_http.hpp"
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/internal_http.hpp>
 
-#include "auth/session_crypto.hpp"
+#include <six-feat-auth-lib/session_crypto.hpp>
 
 #include "schemas/components/app_secret_parity_checker_schema.hpp"
 

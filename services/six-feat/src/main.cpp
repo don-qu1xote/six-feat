@@ -1,9 +1,9 @@
 #include "core/collab_service.hpp"
-#include "core/rate_limit_store_component.hpp"
+#include <six-feat-core/rate_limit_store_component.hpp>
 
 #include "http/artist_handler.hpp"
 #include "http/graph_handler.hpp"
-#include "http/health_handler.hpp"
+#include <six-feat-http/health_handler.hpp>
 #include "http/image_proxy_handler.hpp"
 #include "http/internal_neighbours_handler.hpp"
 #include "http/path_handler.hpp"
@@ -14,12 +14,12 @@
 #include "http/status_handler.hpp"
 
 #include "auth/app_secret_parity_checker.hpp"
-#include "auth/oauth_handler.hpp"
+#include <six-feat-auth-lib/oauth_handler.hpp>
 
-#include "storage/artist_repository.hpp"
-#include "storage/persistent_store.hpp"
+#include <six-feat-storage/artist_repository.hpp>
+#include <six-feat-storage/persistent_store.hpp>
 
-#include "genius/genius_gateway_client.hpp"
+#include <six-feat-genius/genius_gateway_client.hpp>
 
 #include "enrichment/enrichment_client.hpp"
 

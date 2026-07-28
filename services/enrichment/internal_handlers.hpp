@@ -1,9 +1,9 @@
 #pragma once
 
-#include "storage/artist_repository.hpp"
-#include "storage/persistent_store.hpp"
+#include <six-feat-storage/artist_repository.hpp>
+#include <six-feat-storage/persistent_store.hpp>
 
-#include "enrichment/enrichment_worker.hpp"
+#include <six-feat-enrichment/enrichment_worker.hpp>
 
 #include <string_view>
 #include <userver/components/component_fwd.hpp>

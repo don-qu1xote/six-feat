@@ -1,7 +1,7 @@
 
 #include "http/image_proxy_handler.hpp"
 
-#include "core/request_id.hpp"
+#include <six-feat-core/request_id.hpp>
 
 #include "schemas/handlers/six-feat/image_proxy_handler_schema.hpp"
 

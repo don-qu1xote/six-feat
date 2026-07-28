@@ -1,6 +1,6 @@
 #pragma once
 
-#include "genius/genius_gateway.hpp"
+#include <six-feat-genius/genius_gateway.hpp>
 
 #include <string_view>
 #include <userver/components/component_fwd.hpp>

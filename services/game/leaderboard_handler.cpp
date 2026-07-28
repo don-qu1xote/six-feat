@@ -1,8 +1,8 @@
 #include "leaderboard_handler.hpp"
 
-#include "core/error_response.hpp"
-#include "core/request_id.hpp"
-#include "core/security_headers.hpp"
+#include <six-feat-core/error_response.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 
 #include "schemas/handlers/game/leaderboard_handler_schema.hpp"
 

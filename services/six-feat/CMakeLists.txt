@@ -54,11 +54,20 @@ add_executable(six_feat
     src/http/internal_neighbours_handler.cpp
 )
 
-target_include_directories(six_feat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(six_feat PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/generated
+)
 
 target_link_libraries(six_feat
     PRIVATE
-        six_feat_common
+        six_feat_domain
+        six_feat_core
+        six_feat_storage
+        six_feat_genius
+        six_feat_enrichment
+        six_feat_auth_lib
+        six_feat_http
         OpenSSL::Crypto
 )
 

@@ -1,12 +1,12 @@
 #include "internal_handlers.hpp"
 
-#include "core/internal_auth.hpp"
-#include "core/request_id.hpp"
-#include "core/security_headers.hpp"
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/request_id.hpp>
+#include <six-feat-core/security_headers.hpp>
 
-#include "http/readiness_common.hpp"
+#include <six-feat-http/readiness_common.hpp>
 
-#include "auth/session_crypto.hpp"
+#include <six-feat-auth-lib/session_crypto.hpp>
 
 #include "schemas/handlers/auth/key_fingerprint_handler_schema.hpp"
 #include "schemas/handlers/auth/readiness_handler_schema.hpp"

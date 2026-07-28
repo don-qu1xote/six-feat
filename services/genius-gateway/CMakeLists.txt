@@ -28,8 +28,13 @@ add_executable(six_feat_genius_gateway
 )
 
 target_link_libraries(six_feat_genius_gateway
-    PRIVATE six_feat_common
+    PRIVATE
+        six_feat_core
+        six_feat_genius
+        six_feat_http
 )
+
+target_include_directories(six_feat_genius_gateway PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 add_dependencies(six_feat_genius_gateway six_feat_genius_gateway_schema_headers)
 

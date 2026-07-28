@@ -1,9 +1,9 @@
 
 #include "core/collab_service.hpp"
 
-#include "domain/role_mask.hpp"
+#include <six-feat-domain/role_mask.hpp>
 
-#include "storage/analytics.hpp"
+#include <six-feat-storage/analytics.hpp>
 
 #include "schemas/components/collab_service_schema.hpp"
 

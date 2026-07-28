@@ -1,6 +1,6 @@
 #pragma once
 
-#include "auth/session_crypto.hpp"
+#include <six-feat-auth-lib/session_crypto.hpp>
 
 #include <array>
 #include <cstdint>

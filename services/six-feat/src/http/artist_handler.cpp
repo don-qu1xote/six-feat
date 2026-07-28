@@ -1,8 +1,8 @@
 
 #include "http/artist_handler.hpp"
 
-#include "core/error_response.hpp"
-#include "core/http_cache.hpp"
+#include <six-feat-core/error_response.hpp>
+#include <six-feat-core/http_cache.hpp>
 
 #include "schemas/handlers/six-feat/artist_handler_schema.hpp"
 

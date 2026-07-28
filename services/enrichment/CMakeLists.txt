@@ -24,8 +24,15 @@ add_executable(six_feat_enrichment
 )
 
 target_link_libraries(six_feat_enrichment
-    PRIVATE six_feat_common
+    PRIVATE
+        six_feat_core
+        six_feat_storage
+        six_feat_genius
+        six_feat_enrichment
+        six_feat_http
 )
+
+target_include_directories(six_feat_enrichment PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 add_dependencies(six_feat_enrichment six_feat_enrichment_schema_headers)
 
