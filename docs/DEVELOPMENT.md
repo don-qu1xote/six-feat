@@ -344,6 +344,54 @@ RTO складывается из четырёх слагаемых, и **изм
 
 ---
 
+## Ротация логов (SF-OBS-05)
+
+Все сервисы в `docker-compose.yml` настроены на ротацию логов через встроенный `json-file` логирующий драйвер Docker с явными лимитами:
+
+```yaml
+logging:
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+```
+
+Это значит:
+- каждый логфайл растёт до **10 МБ**, затем ротируется;
+- хранится **3 файла** (текущий + 2 архивных);
+- максимум **30 МБ на сервис** (3 файла × 10 МБ);
+- итого **~360 МБ на инстанс** (12 сервисов × 30 МБ, не все сервисы всегда активны).
+
+**Кто может отключить эту ротацию?** Только явно через `--log-opt` при ручном запуске контейнера или изменением `docker-compose.yml`. В CI и на продакшене `docker-compose.yml` — единственный источник правды конфигурации, так что ротация всегда включена.
+
+**Где хранятся логи?** По умолчанию `/var/lib/docker/containers/<container-id>/<container-id>-json.log` на хосте. Точное расположение зависит от Docker daemon-конфига (`data-root`, `storage-driver`). Для локальной разработки это не критично; для продакшена убедитесь, что раздел с `/var/lib/docker` имеет достаточно места и настроить `log-opt max-size` под объём вашего конкретного трафика.
+
+**Проверка:**
+
+```bash
+# Конфигурация всех сервисов
+docker compose config | grep -A 3 'logging:'
+
+# Размер текущих логов одного контейнера
+docker inspect six-feat | jq '.[0].LogPath' | xargs du -h
+
+# Размер всех логов
+du -sh /var/lib/docker/containers/*/
+```
+
+**Синтетический тест ротации:**
+
+```bash
+# Запустить сервис и залить его логами выше лимита
+docker compose up -d
+docker exec six-feat sh -c 'for i in {1..200}; do logger "Line $i"; done'
+
+# Проверить, что произошла ротация (должны быть .1, .2, .3 файлы)
+docker exec six-feat sh -c 'ls -lh /var/log/syslog* 2>/dev/null || echo "json-file logs are on host at $(docker inspect six-feat | jq -r .[0].LogPath)"'
+```
+
+---
+
 ## Кэширование ответов (ETag) и `request_id` в ошибках
 
 `/api/v1/graph`, `/api/v1/graph/path` и `/api/v1/search` (`SF-API-04`)

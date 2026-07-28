@@ -8,6 +8,13 @@ x-hardening: &hardening
   security_opt:
     - "no-new-privileges:true"
 
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
 
   postgres:
@@ -42,6 +49,7 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
+    <<: *logging
 
     deploy:
       resources:
@@ -72,6 +80,7 @@ services:
       retries: 30
       start_period: 10s
     restart: unless-stopped
+    <<: *logging
     deploy:
       resources:
         limits:
@@ -114,7 +123,7 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    <<: *hardening
+    <<: [*hardening, *logging]
     deploy:
       resources:
         limits:
@@ -192,8 +201,7 @@ services:
 
       start_period: 120s
     restart: unless-stopped
-
-    <<: *hardening
+    <<: [*hardening, *logging]
 
     deploy:
       resources:
@@ -251,7 +259,7 @@ services:
       - ALL
     security_opt:
       - "no-new-privileges:true"
-    <<: *hardening
+    <<: [*hardening, *logging]
     deploy:
       resources:
         limits:
@@ -282,6 +290,7 @@ services:
       six-feat-game:
         condition: service_healthy
     restart: unless-stopped
+    <<: *logging
 
   six-feat-auth:
     platform: linux/amd64
@@ -321,7 +330,7 @@ services:
 
       start_period: 120s
     restart: unless-stopped
-    <<: *hardening
+    <<: [*hardening, *logging]
     deploy:
       resources:
         limits:
@@ -361,7 +370,7 @@ services:
       - ALL
     security_opt:
       - "no-new-privileges:true"
-    <<: *hardening
+    <<: [*hardening, *logging]
     deploy:
       resources:
         limits:
@@ -415,7 +424,7 @@ services:
 
       start_period: 120s
     restart: unless-stopped
-    <<: *hardening
+    <<: [*hardening, *logging]
     deploy:
       resources:
         limits:
@@ -439,6 +448,7 @@ services:
     depends_on:
       - alertmanager
     restart: unless-stopped
+    <<: *logging
 
   alertmanager:
     image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
@@ -451,6 +461,7 @@ services:
     ports:
       - "${ALERTMANAGER_PORT:-9093}:9093"
     restart: unless-stopped
+    <<: *logging
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -469,6 +480,7 @@ services:
     depends_on:
       - prometheus
     restart: unless-stopped
+    <<: *logging
 
 volumes:
   prometheus-data:
