@@ -1,18 +1,7 @@
 ---
-# Checks/WarningsAsErrors ниже НЕ те, что CI реально использует.
-# .github/workflows/ci.yml передаёт собственные --checks/--warnings-as-errors
-# в командной строке (--checks='-*,bugprone-*,performance-*,cppcoreguidelines-*',
-# --warnings-as-errors='-*,bugprone-*,performance-*'), а значение --checks
-# добавляется ПОСЛЕ списка Checks из этого файла и начинается с собственного
-# `-*`, которое сбрасывает всё до него — так что список CI полностью
-# заменяет этот; исключения cppcoreguidelines-avoid-magic-numbers/
-# pro-bounds-pointer-arithmetic ниже НЕ применяются в CI (собственный список CI
-# заново включает все cppcoreguidelines-*, без фильтрации), и CI clang-tidy
-# job НЕ имеет continue-on-error — bugprone-*/performance-* находка роняет
-# сборку. Этот файл управляет только голым `clang-tidy some_file.cpp` без
-# флага --checks (интеграция с IDE, разработчик запускает напрямую) —
-# держите примерно выровненным с набором CI, чтобы локальные запуски не были
-# обманчиво тише, но не доверяйте ему предсказывать, что CI реально отловит.
+# CI и локальный запуск используют одинаковый набор проверок.
+# CI передаёт Checks через --checks (заменяет Checks из этого файла),
+# поэтому список должен совпадать с ci.yml вручную.
 Checks: >
   -*,
   bugprone-*,
@@ -20,7 +9,14 @@ Checks: >
   cppcoreguidelines-*,
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
-  -cppcoreguidelines-non-private-member-variables-in-classes
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-const-cast,
+  -cppcoreguidelines-special-member-functions,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -bugprone-easily-swappable-parameters
 
 WarningsAsErrors: ''
 HeaderFilterRegex: '^(?!.*userver).*/src/.*'

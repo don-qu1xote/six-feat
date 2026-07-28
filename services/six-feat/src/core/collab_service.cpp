@@ -396,8 +396,8 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
           edge_dominant_role;
 
       struct RoleProbe {
-        const char* name;
-        RoleMask single;
+        const char* name = nullptr;
+        RoleMask single = {};
       };
       const std::array<RoleProbe, 4> kProbes{{{"producer", ParseRoleMask("producer")},
                                               {"writer", ParseRoleMask("writer")},

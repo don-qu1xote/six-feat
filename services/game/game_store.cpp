@@ -495,7 +495,7 @@ std::vector<Achievement> GameStore::ListAchievements(std::int64_t user_id) const
 // Два вызывающих кода всегда вычисляют одинаковые [starts_ts, ends_ts) без
 // координации; EXCLUSIVE блокировка арбитрирует только кто вставит запись.
 constexpr std::int64_t kSeasonEpoch = 1704067200;
-constexpr std::int64_t kSeasonLenSeconds = 30 * 24 * 3600;
+constexpr std::int64_t kSeasonLenSeconds = 30LL * 24 * 3600;
 
 Season GameStore::EnsureCurrentSeason() const {
   const auto now = NowUnix();

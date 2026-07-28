@@ -90,7 +90,7 @@ std::string RedactUrl(std::string_view url) {
 }
 
 std::string UrlEncode(std::string_view value) {
-  static constexpr char kHex[] = "0123456789ABCDEF";
+  static constexpr const char* kHex = "0123456789ABCDEF";
   std::string out;
   out.reserve(value.size() * 3);
   for (unsigned char c : value) {

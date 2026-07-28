@@ -327,7 +327,7 @@ std::pair<std::string, std::string> CallbackHandler::ExchangeCode(
                              std::to_string(resp->status_code()));
 
   const auto json = formats::json::FromString(resp->body());
-  const auto token = json["access_token"].As<std::string>("");
+  auto token = json["access_token"].As<std::string>("");
   if (token.empty()) throw std::runtime_error("access_token missing in Genius response");
 
   std::string name;

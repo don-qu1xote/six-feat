@@ -304,7 +304,7 @@ struct PersistentStore::Impl {
       std::vector<CollabEdge> out;
       out.reserve(res.Size());
       for (const auto& row : res) {
-        CollabEdge e;
+        CollabEdge e{};
         e.neighbour = row["artist_id"].As<std::int64_t>();
         e.weight = static_cast<int>(row["w"].As<std::int64_t>());
         out.push_back(e);

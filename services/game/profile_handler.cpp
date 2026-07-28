@@ -36,7 +36,7 @@ namespace {
 
 constexpr std::size_t kMaxDisplayName = 32;
 
-const char* const kBlocked[] = {"nigger", "faggot", "retard"};
+constexpr std::array kBlocked = {"nigger", "faggot", "retard"};
 
 std::optional<std::string> ValidateDisplayName(const std::string& raw, std::string& error) {
   std::size_t b = raw.find_first_not_of(" \t\r\n");

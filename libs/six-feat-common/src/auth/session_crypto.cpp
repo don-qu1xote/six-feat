@@ -1,5 +1,8 @@
 #include "session_crypto.hpp"
 
+// Шифрование/дешифрование сессионных токенов (AES-256-GCM), кодирование Base64/HEX.
+
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -12,7 +15,7 @@
 
 namespace {
 
-static constexpr char kB64Chars[] =
+static constexpr const char* kB64Chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 std::string Base64UrlEncode(const unsigned char* data, std::size_t len) {
@@ -87,8 +90,8 @@ std::string JsonEscape(std::string_view s) {
         break;
       default:
         if (c < 0x20) {
-          char buf[7];
-          std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+          std::array<char, 7> buf{};
+          std::snprintf(buf.data(), buf.size(), "\\u%04x", c);
           out += buf;
         } else {
           out += static_cast<char>(c);
@@ -334,7 +337,7 @@ std::string KeyFingerprint(const std::array<unsigned char, 32>& key) {
   std::array<unsigned char, 32> digest{};
   SHA256(salted.data(), salted.size(), digest.data());
 
-  static constexpr char kHex[] = "0123456789abcdef";
+  static constexpr const char* kHex = "0123456789abcdef";
   std::string out;
   out.reserve(64);
   for (unsigned char b : digest) {

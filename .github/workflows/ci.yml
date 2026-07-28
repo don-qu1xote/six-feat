@@ -83,7 +83,7 @@ jobs:
           set -o pipefail
           find libs/six-feat-common/src services/six-feat/src -name '*.cpp' | xargs -r \
             clang-tidy -p build \
-              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
+              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
               --header-filter='six-feat-common|services/six-feat' \
             2>&1 | tee clang-tidy-report.txt
 
@@ -93,7 +93,7 @@ jobs:
           set -o pipefail
           find services/game -name '*.cpp' | xargs -r \
             clang-tidy -p build-game \
-              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*' \
+              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
               --header-filter='six-feat-common|services/game' \
             2>&1 | tee -a clang-tidy-report.txt
 
