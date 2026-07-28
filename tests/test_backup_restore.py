@@ -159,7 +159,7 @@ def _read_all(dbname: str) -> dict[str, list[tuple]]:
 SEED_ARTISTS = [
     (1, "Drake", "https://img.example/1.jpg", "https://genius.com/artists/1"),
     (2, "Ólafur Arnalds", None, None),
-    (3, "O'Brien \"Quote\" Test", "https://img.example/3.jpg", None),
+    (3, 'O\'Brien "Quote" Test', "https://img.example/3.jpg", None),
     (9_007_199_254_740_993, "Big Id", None, None),
 ]
 SEED_SONGS = [(10, "Life Is Good"), (11, "Случайное название")]
@@ -216,7 +216,9 @@ class TestBackupCreatesFile:
         assert checksum.is_file(), "no .sha256 written next to the dump"
         verify = subprocess.run(
             ["sha256sum", "-c", "--status", checksum.name],
-            cwd=str(tmp_path), capture_output=True, text=True,
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
         )
         assert verify.returncode == 0, "checksum does not match the dump"
 
@@ -285,7 +287,8 @@ class TestRotation:
         runs = 5
         for i in range(runs):
             res = _run(
-                BACKUP_SCRIPT, [],
+                BACKUP_SCRIPT,
+                [],
                 _script_env(source_db, BACKUP_DIR=str(tmp_path), BACKUP_KEEP=str(keep)),
             )
             assert res.returncode == 0, f"run {i} failed:\n{res.stdout}\n{res.stderr}"
@@ -303,7 +306,8 @@ class TestRotation:
         self, source_db: str, tmp_path: Path
     ):
         res = _run(
-            BACKUP_SCRIPT, [],
+            BACKUP_SCRIPT,
+            [],
             _script_env(source_db, BACKUP_DIR=str(tmp_path), BACKUP_KEEP="0"),
         )
         assert res.returncode != 0
@@ -327,9 +331,7 @@ class TestRestoreRequiresConfirmation:
         assert "--yes-i-am-sure" in res.stderr
         assert not _db_exists(clean_target_db), "refused restore still created the database"
 
-    def test_dry_run_changes_nothing(
-        self, source_db: str, clean_target_db: str, tmp_path: Path
-    ):
+    def test_dry_run_changes_nothing(self, source_db: str, clean_target_db: str, tmp_path: Path):
         backup = _run(BACKUP_SCRIPT, [], _script_env(source_db, BACKUP_DIR=str(tmp_path)))
         assert backup.returncode == 0
         dump = _dump_files(tmp_path)[0]

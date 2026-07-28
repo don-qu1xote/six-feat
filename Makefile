@@ -18,9 +18,13 @@ lint:
 
 .PHONY: fmt
 fmt:
-	clang-format -i --style=file src/**/*.cpp src/**/*.hpp 2>/dev/null || true
+	find libs services -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i --style=file
 	ruff format .
 	cd front && npm run format
+
+.PHONY: install-hooks
+install-hooks:
+	git config core.hooksPath .githooks
 
 .PHONY: dev
 dev:
