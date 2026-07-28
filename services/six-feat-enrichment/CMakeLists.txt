@@ -12,18 +12,22 @@ six_feat_embed_schema(handlers/enrichment/internal_status_handler kInternalStatu
 # checks differ per service), hence its own schema below.
 six_feat_embed_schema(handlers/enrichment/readiness_handler       kEnrichmentReadinessHandlerSchema ENRICHMENT_READINESS_HANDLER_SCHEMA_HEADER)
 
-add_custom_target(six_feat_enrichment_schema_headers DEPENDS
+add_custom_target(six_feat_enrichment_service_schema_headers DEPENDS
     ${ENRICHMENT_ENQUEUE_HANDLER_SCHEMA_HEADER}
     ${ENRICHMENT_INTERNAL_STATUS_HANDLER_SCHEMA_HEADER}
     ${ENRICHMENT_READINESS_HANDLER_SCHEMA_HEADER}
 )
 
-add_executable(six_feat_enrichment
+add_executable(six_feat_enrichment_service
     src/main.cpp
-    src/internal_handlers.cpp
+    src/internal/enqueue_handler.cpp
+    src/internal/status_handler.cpp
+    src/system/readiness_handler.cpp
 )
 
-target_link_libraries(six_feat_enrichment
+set_target_properties(six_feat_enrichment_service PROPERTIES OUTPUT_NAME six_feat_enrichment)
+
+target_link_libraries(six_feat_enrichment_service
     PRIVATE
         six_feat_core
         six_feat_storage
@@ -32,8 +36,8 @@ target_link_libraries(six_feat_enrichment
         six_feat_http
 )
 
-target_include_directories(six_feat_enrichment PRIVATE ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(six_feat_enrichment_service PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
-add_dependencies(six_feat_enrichment six_feat_enrichment_schema_headers)
+add_dependencies(six_feat_enrichment_service six_feat_enrichment_service_schema_headers)
 
-six_feat_install_service(six_feat_enrichment six_feat_enrichment)
+six_feat_install_service(six_feat_enrichment_service six_feat_enrichment)
