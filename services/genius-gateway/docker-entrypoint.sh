@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# ── Env-профиль ──────────────────────────────────────────────────────────────
 # Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
 ENV_PROFILE="${ENV_PROFILE:-dev}"
 PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"

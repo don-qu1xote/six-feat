@@ -1,20 +1,18 @@
 ---
-# [SF-CI-05 fix] This file's Checks/WarningsAsErrors below are NOT what CI
-# actually runs with. .github/workflows/ci.yml's clang-tidy job passes its
-# own --checks/--warnings-as-errors on the command line
-# (--checks='-*,bugprone-*,performance-*,cppcoreguidelines-*'
-# --warnings-as-errors='-*,bugprone-*,performance-*'), and a command-line
-# --checks value is appended AFTER this file's Checks list and starts with
-# its own `-*`, which resets everything before it — so CI's list fully
-# supersedes this one; the cppcoreguidelines-avoid-magic-numbers/
-# pro-bounds-pointer-arithmetic exclusions below do NOT apply to CI (CI's
-# own list re-enables all of cppcoreguidelines-*, unfiltered), and CI's
-# clang-tidy job has NOT been continue-on-error since [SF-CI-05] — a
-# bugprone-*/performance-* finding fails the build. This file only governs
-# a bare `clang-tidy some_file.cpp` invocation with no --checks flag (IDE
-# integration, a developer running it directly) — keep it roughly aligned
-# with CI's set so local runs aren't misleadingly quieter, but don't trust
-# it to predict what CI will actually flag.
+# Checks/WarningsAsErrors ниже НЕ те, что CI реально использует.
+# .github/workflows/ci.yml передаёт собственные --checks/--warnings-as-errors
+# в командной строке (--checks='-*,bugprone-*,performance-*,cppcoreguidelines-*',
+# --warnings-as-errors='-*,bugprone-*,performance-*'), а значение --checks
+# добавляется ПОСЛЕ списка Checks из этого файла и начинается с собственного
+# `-*`, которое сбрасывает всё до него — так что список CI полностью
+# заменяет этот; исключения cppcoreguidelines-avoid-magic-numbers/
+# pro-bounds-pointer-arithmetic ниже НЕ применяются в CI (собственный список CI
+# заново включает все cppcoreguidelines-*, без фильтрации), и CI clang-tidy
+# job НЕ имеет continue-on-error — bugprone-*/performance-* находка роняет
+# сборку. Этот файл управляет только голым `clang-tidy some_file.cpp` без
+# флага --checks (интеграция с IDE, разработчик запускает напрямую) —
+# держите примерно выровненным с набором CI, чтобы локальные запуски не были
+# обманчиво тише, но не доверяйте ему предсказывать, что CI реально отловит.
 Checks: >
   -*,
   bugprone-*,

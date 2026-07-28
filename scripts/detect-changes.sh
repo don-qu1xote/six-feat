@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# detect-changes.sh — Determine which services/tests are affected by changes.
+# detect-changes.sh — определяет, какие сервисы/тесты затронуты изменениями.
 #
-# Usage: source this file, then check the outputs:
+# Использование: source этого файла, затем проверка переменных:
 #   source scripts/detect-changes.sh
-#   echo "$SERVICES"      # space-separated list: six-feat enrichment auth game genius-gateway libs
-#   echo "$TESTS"         # space-separated list: unit integration six-feat auth genius-gateway enrichment bg-resilience health
-#   echo "$LINT"          # space-separated list: clang-tidy eslint format yaml promtool
-#   echo "$FRONTEND"      # "true" or "false"
-#   echo "$DOCKER"        # "true" or "false"
+#   echo "$SERVICES"      # список через пробел
+#   echo "$TESTS"         # список через пробел
+#   echo "$LINT"          # список через пробел: clang-tidy eslint format yaml promtool
+#   echo "$FRONTEND"      # "true" или "false"
+#   echo "$DOCKER"        # "true" или "false"
 #
-# Exit codes are not used — this is meant to be sourced, not executed.
+# Коды возврата не используются — предназначен для source, не для exec.
 
 set -euo pipefail
 
 BASE_REF="${1:-HEAD~1}"
 
-# Get changed files (fall back to empty list on first commit)
+# Список изменённых файлов (пустой на первом коммите)
 CHANGED_FILES=$(git diff --name-only "$BASE_REF" 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || echo "")
 
-# --- Initialize outputs ---
+# --- Инициализация выходных переменных ---
 SERVICES=""
 TESTS=""
 LINT=""
 FRONTEND="false"
 DOCKER="false"
 
-# --- Detect services ---
+# --- Определение затронутых сервисов ---
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
   SERVICES="six-feat enrichment auth game genius-gateway"
 elif echo "$CHANGED_FILES" | grep -q "^services/six-feat/"; then
@@ -48,15 +48,15 @@ if echo "$CHANGED_FILES" | grep -q "^services/genius-gateway/"; then
   SERVICES="$SERVICES genius-gateway"
 fi
 
-# Deduplicate
+# Дедупликация
 SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
-# --- Detect tests ---
+# --- Определение затронутых тестов ---
 if echo "$CHANGED_FILES" | grep -q "^tests/"; then
   TESTS="unit integration"
 fi
 
-# Map services to their tests
+# Сопоставление сервисов с их тестами
 if echo "$SERVICES" | grep -q "six-feat"; then
   TESTS="$TESTS six-feat"
 fi
@@ -79,7 +79,7 @@ fi
 
 TESTS=$(echo "$TESTS" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
-# --- Detect lint ---
+# --- Определение затронутых линтеров ---
 if echo "$CHANGED_FILES" | grep -qE '\.(cpp|hpp)$'; then
   LINT="$LINT clang-tidy format"
 fi
@@ -102,24 +102,24 @@ fi
 
 LINT=$(echo "$LINT" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
-# --- Detect frontend ---
+# --- Определение изменений фронтенда ---
 if echo "$CHANGED_FILES" | grep -q "^front/"; then
   FRONTEND="true"
 fi
 
-# --- Detect docker ---
+# --- Определение изменений Docker ---
 if echo "$CHANGED_FILES" | grep -qE '(Dockerfile|docker-compose)'; then
   DOCKER="true"
 fi
 
-# If libs changed, everything is affected
+# Если изменились libs — затронуто всё
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
   TESTS="unit integration six-feat auth genius-gateway enrichment bg-resilience health"
   LINT="clang-tidy eslint format yaml promtool"
   FRONTEND="true"
 fi
 
-# --- Export as GitHub Actions outputs ---
+# --- Экспорт в GitHub Actions outputs ---
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
   echo "tests=$TESTS" >> "$GITHUB_OUTPUT"
@@ -128,7 +128,7 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "docker=$DOCKER" >> "$GITHUB_OUTPUT"
 fi
 
-# --- Print for local use ---
+# --- Вывод для локального использования ---
 echo "=== Changed Services ==="
 echo "SERVICES: $SERVICES"
 echo "TESTS: $TESTS"

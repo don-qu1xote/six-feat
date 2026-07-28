@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# ── Env-профиль ──────────────────────────────────────────────────────────────
 # Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
 ENV_PROFILE="${ENV_PROFILE:-dev}"
 PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"
@@ -21,7 +21,7 @@ set +a
 # необходимые при старте секреты — общий внутренний ключ и (общий) Postgres.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat, generate with: openssl rand -hex 32}"
 
-# [IDEA-46] Genius API — через отдельный six-feat-genius-gateway
+# Genius API — через отдельный six-feat-genius-gateway
 # (GeniusGatewayClient, HTTP, тот же ENRICHMENT_INTERNAL_SECRET).
 GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}"
 

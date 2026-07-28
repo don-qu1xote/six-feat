@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Purges .env and .env.example from every commit in the repository's history.
+# Удаляет .env и .env.example из каждого коммита в истории репозитория.
 #
-# Requires: git-filter-repo (https://github.com/newren/git-filter-repo)
+# Требует: git-filter-repo (https://github.com/newren/git-filter-repo)
 #   pip install git-filter-repo
 #
-# Fallback (if git-filter-repo is unavailable): use BFG Repo-Cleaner instead:
+# Запасной вариант (если git-filter-repo недоступен): BFG Repo-Cleaner:
 #   java -jar bfg.jar --delete-files .env --delete-files .env.example <repo>.git
 #   cd <repo>.git && git reflog expire --expire=now --all && git gc --prune=now --aggressive
 #
-# Idempotent: safe to re-run; filter-repo is a no-op on paths that no longer
-# appear in history.
+# Идемпотентно: безопасно перезапускать; filter-repo — no-op для путей,
+# которые больше не появляются в истории.
 #
-# DANGER: this rewrites history. After running this script:
-#   1. Force-push every affected branch:
+# ОПАСНО: переписывает историю. После запуска этого скрипта:
+#   1. Force-push каждой затронутой ветки:
 #        git push --force --all
 #        git push --force --tags
-#   2. Every other developer MUST re-clone the repository (or hard-reset
-#      their local clones to the new history) — old clones are incompatible
-#      and must not be pushed/merged back.
-#   3. Rotate any credentials that were ever present in the removed files.
+#   2. Каждый разработчик ДОЛЖЕН переклонировать репозиторий (или hard-reset
+#      свои локальные копии на новую историю) — старые клоны несовместимы
+#      и не должны пушиться/мержиться обратно.
+#   3. Ротировать любые учётные данные, которые когда-либо были в удалённых файлах.
 set -euo pipefail
 
 if ! command -v git-filter-repo >/dev/null 2>&1; then

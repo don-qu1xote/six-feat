@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-scripts/verify-yaml-anchors.py — SF-SCH-03: verify that the YAML-anchor
-deduplication of task_processor in services/*/static_config.yaml
-(SF-SCH-02) left the effective config unchanged, and that
-docker-compose.yml's hardening block (SF-INF-01) — once it exists — is
-applied identically across six-feat/six-feat-enrichment/
-six-feat-genius-gateway/six-feat-auth/six-feat-game and absent from
-postgres/nginx.
+verify-yaml-anchors.py — проверяет, что YAML-anchor дедупликация
+task_processor в services/*/static_config.yaml оставила эффективную
+конфигурацию неизменной, и что hardening-блок docker-compose.yml
+применён идентично ко всем сервисам six-feat/six-feat-enrichment/
+six-feat-genius-gateway/six-feat-auth/six-feat-game и отсутствует
+у postgres/nginx.
 
-Exits non-zero if any check fails.
+Завершается с ненулевым кодом при любой ошибке.
 """
 from __future__ import annotations
 
@@ -51,10 +50,9 @@ EXPECTED: dict[str, dict[str, str]] = {
         "server.listener-monitor": MONITOR_TP,
         "handler-internal-enqueue": MAIN_TP,
         "handler-internal-status": MAIN_TP,
-        # [SF-INF-03] Was handler-internal-healthz — now the shared
-        # six_feat::HealthHandler (kName "handler-healthz"), same as every
-        # other service. handler-readyz is new (enrichment-specific
-        # database check).
+        # Был handler-internal-healthz — теперь общий six_feat::HealthHandler
+        # (kName "handler-healthz"), как и в каждом другом сервисе.
+        # handler-readyz новый (проверка БД, специфичная для enrichment).
         "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
@@ -66,8 +64,8 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-internal-genius-song-list": MAIN_TP,
         "handler-internal-genius-song": MAIN_TP,
         "handler-internal-genius-candidates": MAIN_TP,
-        # [SF-INF-03] Was handler-internal-healthz — see the matching
-        # comment in the enrichment block above.
+        # Был handler-internal-healthz — см. соответствующий комментарий
+        # в блоке enrichment выше.
         "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
@@ -80,7 +78,7 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-auth-logout": MAIN_TP,
         "handler-auth-me": MAIN_TP,
         "handler-healthz": MAIN_TP,
-        # [SF-INF-03] New — auth-specific (always-empty-checks) readiness.
+        # Новый — readiness, специфичный для auth (всегда пустые проверки).
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },

@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-scripts/e2e_env.py — IDEA-33: environment for the Playwright browser smoke
-test (front/e2e/smoke.spec.js).
+scripts/e2e_env.py — окружение для Playwright smoke-теста
+браузера (front/e2e/smoke.spec.js).
 
-Unlike tests/conftest.py's `service_proc` fixture (which points
-handler-index/handler-script at /dev/null since the API-only integration
-suite never loads a page), this starts the compiled six_feat binary
-serving the *real* built front-end (front/index.html + front/dist's hashed
-JS bundle) so a real browser can load it — plus the same in-process mock
-Genius HTTP server machinery from tests/conftest.py, reused rather than
-reimplemented, programmed with two artists that share one song (so both a
-graph search and a from/to path search have something to show).
+В отличие от фикстуры tests/conftest.py `service_proc` (которая направляет
+handler-index/handler-script в /dev/null, т.к. API-интеграционные тесты
+никогда не загружают страницу), этот скрипт запускает скомпилированный
+six_feat бинарник, обслуживающий *настоящий* собранный фронтенд
+(front/index.html + front/dist's хешированный JS-бандл), чтобы реальный
+браузер мог его загрузить — плюс тот же in-process mock Genius HTTP сервер
+из tests/conftest.py, переиспользованный, а не переписанный,
+запрограммированный на двух артистах, у которых есть один общий трек.
 
-Usage:
-    python3 scripts/e2e_env.py up      # start everything, write ENV_FILE, block
-    python3 scripts/e2e_env.py down    # stop a previously-started `up`
+Использование:
+    python3 scripts/e2e_env.py up      # запустить всё, записать ENV_FILE, блокироваться
+    python3 scripts/e2e_env.py down    # остановить ранее запущенный `up`
 
-`up` blocks in the foreground until it receives SIGTERM/SIGINT — run it
-backgrounded (`python3 scripts/e2e_env.py up &`) and poll for ENV_FILE to
-appear, then run the Playwright suite, then `python3 scripts/e2e_env.py down`.
+`up` блокируется на переднем плане до получения SIGTERM/SIGINT — запускайте
+в фоне (`python3 scripts/e2e_env.py up &`) и опрашивайте появление ENV_FILE,
+затем запустите Playwright, затем `python3 scripts/e2e_env.py down`.
 """
 from __future__ import annotations
 
@@ -44,25 +44,24 @@ SERVICE_PORT    = int(os.environ.get("E2E_SERVICE_PORT", "18180"))
 MOCK_PORT       = int(os.environ.get("E2E_MOCK_PORT", "18181"))
 MONITOR_PORT    = int(os.environ.get("E2E_MONITOR_PORT", "18185"))
 ENRICHMENT_PORT = int(os.environ.get("E2E_ENRICHMENT_PORT", "18182"))
-# [IDEA-46] Genius API access moved out of six_feat into the standalone
-# six-feat-genius-gateway service — this is the process actually pointed at
-# the surrogate mock Genius server below; six_feat's GeniusGatewayClient
-# talks to it instead.
+    # Доступ к Genius API вынесен из six_feat в отдельный
+    # six-feat-genius-gateway сервис — этот процесс направлен на
+    # суррогатный mock Genius сервер ниже; GeniusGatewayClient от six_feat
+    # общается с ним вместо прямого вызова.
 GATEWAY_PORT         = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
 GATEWAY_MONITOR_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_MONITOR_PORT", "18186"))
-# [SF-SEC-01] AppSecretParityChecker's target. Like ENRICHMENT_PORT above,
-# nothing actually listens here for this smoke test — the checker degrades
-# to "unreachable" (a soft dependency, never fails /readyz on its own) and
-# just logs a warning, same as EnqueueIfNeeded()/IsEnriching() degrade when
-# nothing listens on ENRICHMENT_PORT.
+    # Цель AppSecretParityChecker. Как и ENRICHMENT_PORT выше,
+    # никто реально не слушает здесь в этом smoke-тесте — проверка деградирует
+    # до "unreachable" (мягкая зависимость, никогда не роняет /readyz сама) и
+    # просто логирует предупреждение, как EnqueueIfNeeded()/IsEnriching()
+    # деградирует, когда никто не слушает на ENRICHMENT_PORT.
 AUTH_PORT = int(os.environ.get("E2E_AUTH_PORT", "18184"))
 
 APP_SECRET                  = "e" * 64
 GENIUS_CLIENT_SECRET        = "e2e-genius-client-secret"
 ENRICHMENT_INTERNAL_SECRET  = "e2e-enrichment-internal-secret"
 
-# Two artists sharing exactly one song — enough for a graph with 2 nodes
-# and a 1-hop from/to path (the two scenarios the smoke test exercises).
+# Два артиста с одной общей песней — граф из 2 узлов и путь в 1 шаг
 SEED_ARTIST_ID      = 90101
 SEED_ARTIST_NAME    = "Aurora Vale"
 TARGET_ARTIST_ID    = 90102
@@ -72,14 +71,15 @@ SHARED_SONG_ID      = 70001
 BINARY      = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
 FRONT_DIST  = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
 FRONT_INDEX = Path(os.environ.get("E2E_FRONT_INDEX", REPO_ROOT / "front" / "index.html"))
-# [SF-SEC-02] The real vendored vis-network bundle — this env serves the
-# actual built front-end to a real browser, so (unlike tests/conftest.py's
-# /dev/null stub) it must be the genuine file or the graph never renders.
+    # Настоящий vendored vis-network бандл — это окружение обслуживает
+    # реальный собранный фронтенд для настоящего браузера, поэтому
+    # (в отличие от заглушки /dev/null в tests/conftest.py) это должен
+    # быть настоящий файл, иначе граф никогда не отрисуется.
 VENDOR_VIS_NETWORK = Path(
     os.environ.get("E2E_VENDOR_VIS_NETWORK", REPO_ROOT / "front" / "vendor" / "vis-network.min.js")
 )
-# [SF-API-05] Checked-in static OpenAPI 3.1 document — same file
-# static_handler.hpp's OpenApiHandler serves in the real image.
+    # Зафиксированный в репозитории статический OpenAPI 3.1 документ — тот же
+    # файл, который OpenApiHandler из static_handler.hpp отдаёт в реальном образе.
 OPENAPI_JSON = Path(
     os.environ.get("E2E_OPENAPI_JSON", REPO_ROOT / "schemas" / "openapi" / "openapi.json")
 )
@@ -122,8 +122,8 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
-          # [SF-OBS-03] Matches the production static_config.yaml templates'
-          # own logging block (format: json).
+          # Совпадает с production static_config.yaml templates'
+          # собственным logging block (format: json).
           format: json
 
     testsuite-support:
@@ -141,10 +141,10 @@ components_manager:
     persistent-store:
       dbname: postgres-db-1
 
-    # [IDEA-46] HTTP client for the standalone six-feat-genius-gateway
-    # service — see GATEWAY_PORT / the genius_gateway_proc started in
-    # cmd_up() below. The surrogate mock Genius server is configured
-    # directly on that process now, not here.
+    # HTTP-клиент для отдельного six-feat-genius-gateway сервиса —
+    # см. GATEWAY_PORT / genius_gateway_proc, запущенный в cmd_up() ниже.
+    # Суррогатный mock Genius сервер теперь сконфигурирован напрямую
+    # на этом процессе, а не здесь.
     genius-gateway-client:
       genius-gateway-base-url: http://127.0.0.1:{gateway_port}
       timeout-ms: 5000
@@ -154,10 +154,10 @@ components_manager:
 
     artist-repository: {{}}
 
-    # [SF-SEC-01] Nothing listens on {auth_port} in this smoke-test env —
-    # AppSecretParityChecker degrades to "unreachable" (soft dependency,
-    # never fails /readyz on its own), same posture as enrichment-client
-    # below with nothing on enrichment_port.
+    # Никто не слушает на {auth_port} в этом smoke-test окружении —
+    # AppSecretParityChecker деградирует до "unreachable" (мягкая зависимость,
+    # никогда не роняет /readyz сама), та же логика, что и у enrichment-client
+    # ниже с пустым enrichment_port.
     app-secret-parity-checker:
       auth-base-url: http://127.0.0.1:{auth_port}
       timeout-ms: 2000
@@ -171,8 +171,8 @@ components_manager:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
 
-    # [SF-SEC-04] backend: single — e2e doesn't exercise the shared/
-    # Postgres backend, only the default production shape.
+    # backend: single — e2e не использует shared/Postgres backend,
+    # только стандартную production-конфигурацию.
     rate-limit-store:
       backend: single
       dbname: postgres-db-1
@@ -199,8 +199,9 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # Real static assets (unlike tests/conftest.py's /dev/null stubs) so a
-    # headless browser has an actual page + JS bundle to load.
+    # Настоящие статические ресурсы (в отличие от заглушек /dev/null
+    # в tests/conftest.py), чтобы безголовый браузер имел реальную
+    # страницу + JS-бандл для загрузки.
     handler-index:
       path: /
       method: GET
@@ -218,9 +219,10 @@ components_manager:
       file-path: {script_file_path}
       content-type: application/javascript; charset=utf-8
 
-    # [SF-WEB-40] Real hashed CSS bundle — a real browser loads this page, so
-    # the design system must be served (unlike tests/conftest.py's /dev/null
-    # stub) or the page renders unstyled.
+    # Настоящий хешированный CSS-бандл — реальный браузер загружает эту
+    # страницу, поэтому дизайн-система должна быть доступна (в отличие от
+    # заглушки /dev/null в tests/conftest.py), иначе страница отрисуется
+    # без стилей.
     handler-style:
       path: {style_url_path}
       method: GET
@@ -228,9 +230,10 @@ components_manager:
       file-path: {style_file_path}
       content-type: text/css; charset=utf-8
 
-    # [SF-SEC-02] Real vendored vis-network bundle (see VENDOR_VIS_NETWORK
-    # above) — a real browser loads this page, so unlike tests/conftest.py's
-    # /dev/null stub, this must be the genuine file or the graph never draws.
+    # Настоящий vendored vis-network бандл (см. VENDOR_VIS_NETWORK выше) —
+    # реальный браузер загружает эту страницу, поэтому в отличие от заглушки
+    # /dev/null в tests/conftest.py, это должен быть настоящий файл,
+    # иначе граф никогда не отрисуется.
     handler-vendor-vis-network:
       path: /vendor/vis-network.min.js
       method: GET
@@ -253,23 +256,21 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — see
-    # services/six-feat/src/http/artist_handler.hpp. Every static config
-    # that boots this binary needs a matching section, same as every other
-    # handler here (see the handler-image comment below for the same
-    # failure mode this fixes).
+    # Метаданные артиста + fetch_state, только L1/L2 — см.
+    # services/six-feat/src/http/artist_handler.hpp. Каждый static config,
+    # запускающий этот бинарник, требует соответствующей секции, как и
+    # каждый другой handler здесь.
     handler-artist:
       path: /api/v1/artist
       method: GET
       task_processor: main-task-processor
 
-    # [SF-GAME-13] main.cpp unconditionally registers InternalNeighboursHandler,
-    # so every static config that boots the six_feat binary needs a matching
-    # block or components::Run fails outright (InvariantError: "registered,
-    # but not present in components_manager.components section") — same
-    # reason every other handler block above/below exists here. Not exercised
-    # by the e2e smoke/load-test suites (nothing here calls six-feat-game),
-    # but must still be present for the process to start at all.
+    # main.cpp безусловно регистрирует InternalNeighboursHandler,
+    # поэтому каждый static config, запускающий six_feat бинарник, требует
+    # соответствующего блока, иначе components::Run падает с
+    # InvariantError. Не используется в e2e smoke/load-test наборах
+    # (никто не вызывает six-feat-game), но должен присутствовать,
+    # чтобы процесс вообще запустился.
     handler-internal-neighbours:
       path: /internal/neighbours
       method: POST
@@ -281,24 +282,22 @@ components_manager:
       task_processor: main-task-processor
       response-body-stream: true
 
-    # [SF-API-12] main.cpp unconditionally registers ImageProxyHandler, so
-    # every static config that boots the six_feat binary needs a matching
-    # handler-image block or components::Run fails outright at startup
-    # (InvariantError: "registered, but not present in
-    # components_manager.components section") — same reason every other
-    # handler block above exists here. No allowed-hosts override — e2e
-    # doesn't exercise /api/v1/image directly, so the compiled-in default
-    # (images.genius.com, assets.genius.com) is fine.
+    # main.cpp безусловно регистрирует ImageProxyHandler, поэтому
+    # каждый static config, запускающий six_feat бинарник, требует
+    # handler-image блок, иначе components::Run падает при старте.
+    # Нет переопределения allowed-hosts — e2e не использует
+    # /api/v1/image напрямую, поэтому встроенный по умолчанию
+    # (images.genius.com, assets.genius.com) подходит.
     handler-image:
       path: /api/v1/image
       method: GET
       task_processor: main-task-processor
       timeout-ms: 5000
 
-    # [SF-API-05] Same reasoning as handler-image above: main.cpp
-    # unconditionally registers OpenApiHandler, so this config needs a
-    # matching block too. Real file (not a stub) since it costs nothing to
-    # serve correctly here.
+    # Та же логика, что и handler-image выше: main.cpp безусловно
+    # регистрирует OpenApiHandler, поэтому этот config тоже требует
+    # соответствующего блока. Настоящий файл (не заглушка), т.к.
+    # обслуживать его правильно здесь ничего не стоит.
     handler-openapi:
       path: /api/v1/openapi.json
       method: GET
@@ -331,7 +330,7 @@ def _resolve_script_bundle() -> tuple[str, Path]:
     return _resolve_bundle("script")
 
 
-# [SF-WEB-40] The hashed CSS bundle, resolved the same way as the JS bundle.
+# Хешированный CSS-бандл, резолвится так же, как JS-бандл.
 def _resolve_style_bundle() -> tuple[str, Path]:
     return _resolve_bundle("style")
 
@@ -380,9 +379,9 @@ def cmd_up() -> None:
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="six_feat_e2e_"))
 
-    # [IDEA-46] Real six-feat-genius-gateway instance fronting the surrogate
-    # mock Genius server — six_feat's GeniusGatewayClient talks to this
-    # process instead of Genius (or the mock) directly.
+    # Реальный six-feat-genius-gateway инстанс, стоящий перед суррогатным
+    # mock Genius сервером — GeniusGatewayClient от six_feat общается с
+    # этим процессом вместо прямого обращения к Genius (или mock).
     gateway_cfg_path = tmp_dir / "genius_gateway_static_config.yaml"
     gateway_cfg_path.write_text(it_conftest._GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE.format(
         gateway_port=GATEWAY_PORT,
@@ -499,8 +498,7 @@ def cmd_down() -> None:
     except ProcessLookupError:
         print(f"[e2e_env] process {pid} already gone.")
         return
-    # Give the `up` process's own signal handler time to clean up (six_feat
-    # subprocess + mock server + ENV_FILE) before returning.
+    # Даём обработчику сигналов `up`-процесса время на уборку
     for _ in range(20):
         if not ENV_FILE.exists():
             return

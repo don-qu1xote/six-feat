@@ -1,34 +1,33 @@
 """
-session_crypto.py — Python mirror of src/auth/session_crypto.cpp
-==================================================================
+session_crypto.py — Python-отражение src/auth/session_crypto.cpp
+=================================================================
 
-This is a faithful re-implementation of the AES-256-GCM session-cookie
-format used by the C++ service (see src/auth/session_crypto.cpp), so that:
+Точная перереализация формата session-cookie AES-256-GCM, используемого
+C++ сервисом (см. src/auth/session_crypto.cpp), чтобы:
 
-  1.  Test fixtures can mint a valid `six_feat_session` cookie without a
-      real Genius OAuth round-trip (see conftest.py: `make_session_cookie`,
-      `auth_cookie`, `client` fixtures).
-  2.  tests/test_session_crypto.py can assert the wire format itself
-      (nonce/ciphertext/tag layout, base64url alphabet, expiry handling,
-      tamper detection) independently of whether the C++ binary is even
-      built — these are pure-Python unit tests.
+  1. Тестовые фикстуры могли создавать валидную `six_feat_session` cookie
+     без реального Genius OAuth round-trip (см. conftest.py: `auth_cookie`,
+     `client` фикстуры).
+  2. tests/test_session_crypto.py мог проверять wire-формат (nonce/ciphertext
+     layout, base64url, expiry, tamper detection) независимо от того,
+     собран ли C++ бинарник.
 
-Wire format (must match session_crypto.cpp exactly):
+Wire-формат (должен совпадать с session_crypto.cpp точно):
 
     cookie_value = base64url_no_pad( nonce[12] || ciphertext || tag[16] )
 
-    plaintext (JSON, minimal/handwritten — NOT a general JSON encoder,
-    mirroring the C++ string-concatenation approach byte-for-byte). The
-    tok/name values are JSON-escaped (via json.dumps) exactly like the C++
-    JsonEscape() helper, so quotes/backslashes/control chars in an
-    access_token or name can't break the format:
+    plaintext (JSON, минимальный/ручной — НЕ общий JSON-encoder,
+    зеркалирующий C++ подход конкатенации строк byte-for-byte). Значения
+    tok/name экранируются через json.dumps, как и C++ JsonEscape(), чтобы
+    кавычки/обратные слэши/control chars в access_token или name не
+    сломали формат:
 
         {"tok":"<access_token>","exp":<unix_seconds>}
         {"tok":"<access_token>","exp":<unix_seconds>,"name":"<name>"}
 
-Key derivation (mirrors auth::KeyFromEnv()):
-    - APP_SECRET is exactly 64 hex chars  → use as raw 32 bytes directly
-    - otherwise                            → SHA-256(APP_SECRET) → 32 bytes
+Вывод ключа (зеркалирует auth::KeyFromEnv()):
+    - APP_SECRET ровно 64 hex символа → используется как сырые 32 байта
+    - иначе → SHA-256(APP_SECRET) → 32 байта
 """
 
 from __future__ import annotations
@@ -49,7 +48,7 @@ TAG_LEN = 16
 
 
 def key_from_secret(app_secret: str) -> bytes:
-    """Mirror of auth::KeyFromEnv() — derive the 32-byte AES key."""
+    """Отражение auth::KeyFromEnv() — вывод 32-байтного AES-ключа."""
     if not app_secret:
         raise ValueError("APP_SECRET must be non-empty")
     is_hex64 = len(app_secret) == 64 and all(c in "0123456789abcdefABCDEF" for c in app_secret)
@@ -74,14 +73,14 @@ def _b64url_decode_nopad(s: str) -> bytes:
 
 
 def _json_escape(s: str) -> str:
-    """Mirror of the C++ JsonEscape() helper (uses json.dumps for the same
-    backslash/quote/control-char escaping, then strips the surrounding
-    quotes since we splice the result into a hand-built JSON string)."""
+    """Отражение C++ JsonEscape() (использует json.dumps для того же
+    экранирования обратных слэшей/кавычек/control-char, затем обрезает
+    окружающие кавычки, т.к. результат вставляется в ручную JSON-строку)."""
     return json.dumps(s)[1:-1]
 
 
 def encrypt(access_token: str, expires_at_unix: int, key: bytes, name: str = "") -> str:
-    """Mirror of auth::Encrypt(). Builds the same hand-rolled JSON shape."""
+    """Отражение auth::Encrypt(). Строит ту же ручную JSON-структуру."""
     if len(key) != 32:
         raise ValueError("key must be 32 bytes")
 
@@ -106,8 +105,8 @@ class SessionData:
 
 
 def decrypt(cookie_value: str, key: bytes) -> Optional[SessionData]:
-    """Mirror of auth::Decrypt(). Returns None on any failure, exactly
-    like the C++ implementation (invalid base64, bad tag, expired)."""
+    """Отражение auth::Decrypt(). Возвращает None при любой ошибке,
+    как и C++ реализация (невалидный base64, плохой tag, истекло)."""
     try:
         payload = _b64url_decode_nopad(cookie_value)
     except ValueError:
@@ -151,8 +150,8 @@ def make_cookie(
     ttl_seconds: int = 3600,
     name: str = "Test User",
 ) -> str:
-    """High-level convenience used by test fixtures: mint a fresh, valid
-    `six_feat_session` cookie value for the given APP_SECRET."""
+    """Высокоуровневое удобство для тестовых фикстур: создать свежую,
+    валидную `six_feat_session` cookie для данного APP_SECRET."""
     key = key_from_secret(app_secret)
     exp = int(time.time()) + ttl_seconds
     return encrypt(access_token, exp, key, name=name)

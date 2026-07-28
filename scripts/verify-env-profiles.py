@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/verify-env-profiles.py — SF-CFG-01: проверяет, что
+scripts/verify-env-profiles.py — проверяет, что
 config/profiles/{dev,staging,prod}.env реально парсятся как shell-фрагменты
 (source в docker-entrypoint.sh), и что ни один не задаёт обязательную
 переменную docker-compose.yml (${VAR:?...}) — профили формализуют только

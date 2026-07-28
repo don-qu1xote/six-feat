@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 #
-# Standalone Dockerfile for six-feat-game (SF-GAME-10). Only compiles
-# services/game/ — build context is still the repo root (libs/, schemas/,
-# cmake/ are shared siblings — see services/six-feat/Dockerfile for the full
-# rationale). See docker-compose.yml: context: . / dockerfile:
-# services/game/Dockerfile. Mirrors services/enrichment/Dockerfile (it shares
-# the same Postgres cluster, so it needs the same runtime package set,
-# including postgresql-client for the entrypoint's pg_isready wait).
+# Автономный Dockerfile для six-feat-game. Собирает только
+# services/game/ — контекст сборки — корень репозитория (libs/, schemas/,
+# cmake/ — общие соседние каталоги — полное обоснование в
+# services/six-feat/Dockerfile). См. docker-compose.yml: context: . /
+# dockerfile: services/game/Dockerfile. Аналогичен services/enrichment/Dockerfile
+# (использует тот же Postgres-кластер и тот же набор runtime-пакетов,
+# включая postgresql-client для pg_isready в entrypoint).
 
 ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
 
@@ -15,8 +15,8 @@ ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f37
 # ════════════════════════════════════════════════════════════════════════════
 FROM ${USERVER_IMAGE} AS builder
 
-# BUILD_JOBS caps compiler parallelism — see services/six-feat/Dockerfile for
-# the full rationale.
+# BUILD_JOBS ограничивает параллелизм компиляции — полное обоснование в
+# services/six-feat/Dockerfile.
 ARG BUILD_JOBS=8
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -30,8 +30,8 @@ COPY schemas ./schemas
 COPY libs ./libs
 COPY services/game ./services/game
 
-# CCACHE_DIR: shared cache-mount id (six-feat-ccache) across all services'
-# Dockerfiles — see services/six-feat/Dockerfile for the full rationale.
+# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех Dockerfile'ов —
+# полное обоснование в services/six-feat/Dockerfile.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
     --mount=type=cache,id=six-feat-game-build,target=/src/build,sharing=locked \
@@ -42,15 +42,15 @@ RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
 # ════════════════════════════════════════════════════════════════════════════
 # Stage 2 — Runtime
 # ════════════════════════════════════════════════════════════════════════════
-# See services/six-feat/Dockerfile for the full rationale behind this package
-# list. postgresql-client is here (as in six-feat/enrichment) for the
-# entrypoint's pg_isready readiness wait; libpq5 is a transitive dependency of
-# the statically-linked userver framework via libs/six-feat-common
-# (userver::postgresql), same as every other service.
+# Полное обоснование списка пакетов — в services/six-feat/Dockerfile.
+# postgresql-client здесь (как и в six-feat/enrichment) для pg_isready
+# в entrypoint; libpq5 — транзитивная зависимость статически слинкованного
+# userver через libs/six-feat-common (userver::postgresql), как и в каждом
+# другом сервисе.
 FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982 AS runtime
 
-# See services/six-feat/Dockerfile for why this is needed (tzdata's
-# interactive debconf prompt hangs `docker build` forever otherwise).
+# Зачем это нужно — в services/six-feat/Dockerfile (интерактивный debconf
+# от tzdata иначе навсегда зависает в `docker build`).
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

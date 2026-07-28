@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Untracks data/ (local SQLite DB  WAL/SHM) from git, keeping the files on disk.
+# Убирает data/ (локальная SQLite БД + WAL/SHM) из git, оставляя файлы на диске.
 set -euo pipefail
 
 if git ls-files --error-unmatch -- data >/dev/null 2>&1; then

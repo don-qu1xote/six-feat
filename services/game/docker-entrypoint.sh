@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# ── Env-профиль ──────────────────────────────────────────────────────────────
 # Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
 ENV_PROFILE="${ENV_PROFILE:-dev}"
 PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"
@@ -16,18 +16,18 @@ set -a
 source "$PROFILE_FILE"
 set +a
 
-# six-feat-game — игровой сервис (SF-GAME-10). Тот же Postgres-кластер,
-# game_* таблицы в SF-GAME-11. Entry point собирает DSN и ждёт Postgres
+# six-feat-game — игровой сервис. Тот же Postgres-кластер,
+# game_* таблицы. Entry point собирает DSN и ждёт Postgres
 # аналогично services/enrichment/docker-entrypoint.sh.
 #
-# [SF-GAME-12] APP_SECRET читается из env session_crypto::KeyFromEnv() для
+# APP_SECRET читается из env session_crypto::KeyFromEnv() для
 # локальной расшифровки six_feat_session cookie (без HTTP к six-feat-auth) —
 # ДОЛЖЕН совпадать со значением остального mesh, иначе game не прочитает
 # сессии, выданные другими сервисами. Проверяем здесь, а не в конструкторе
 # ProfileHandler.
 : "${APP_SECRET:?APP_SECRET env var is required for session decryption — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
 
-# [SF-GAME-13] Общий секрет для внутренних вызовов к six-feat
+# Общий секрет для внутренних вызовов к six-feat
 # (POST /internal/neighbours, см. neighbours_client.cpp) — читается из env
 # через internal_api::SharedSecretFromEnv(), ДОЛЖЕН совпадать со значением
 # остального mesh. Проверяем здесь, а не в конструкторе NeighboursClient.
@@ -51,7 +51,7 @@ else
 fi
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
-# [SF-GAME-13] Адрес основного six-feat для античита (neighbours_client.cpp).
+# Адрес основного six-feat для античита (neighbours_client.cpp).
 # Тот же compose-network формат, что ENRICHMENT_BASE_URL/GENIUS_GATEWAY_BASE_URL
 # в основном entrypoint.
 SIX_FEAT_BASE_URL="${SIX_FEAT_BASE_URL:-http://six-feat:8080}"

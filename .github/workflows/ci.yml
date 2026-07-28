@@ -16,7 +16,7 @@ env:
   K6_VERSION: "0.55.0"
 
 jobs:
-  # SF-CFG-02: паритет docker-compose между dev/staging/prod. Без needs: —
+  # Паритет docker-compose между dev/staging/prod. Без needs: —
   # намеренно ДО build-and-test (там интеграционные тесты), не после.
   verify-env-parity:
     name: "Config validation (env parity dev/staging/prod)"
@@ -28,7 +28,7 @@ jobs:
         run: python3 scripts/verify-env-parity.py
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 0 — Detect what changed (runs in ~5 seconds)
+  # Stage 0 — Определение изменений (~5 секунд)
   # ══════════════════════════════════════════════════════════════════════════
   detect-changes:
     name: "Detect changes"
@@ -49,7 +49,7 @@ jobs:
         run: bash scripts/detect-changes.sh HEAD~1
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 1 — Lint jobs (parallel, no dependencies, ~1-2 min each)
+  # Stage 1 — Линтеры (параллельно, без зависимостей, ~1-2 мин каждый)
   # ══════════════════════════════════════════════════════════════════════════
   lint-clang-tidy:
     name: "Lint — clang-tidy"
@@ -195,7 +195,7 @@ jobs:
         run: promtool check config prometheus.yml
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 1 — Unit tests (no binary needed, ~30 sec)
+  # Stage 1 — Модульные тесты (бинарник не нужен, ~30 сек)
   # ══════════════════════════════════════════════════════════════════════════
   unit-tests:
     name: "Unit tests"
@@ -224,7 +224,7 @@ jobs:
             -v --tb=short
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 2 — Build services (parallel, each ~3 min, upload artifacts)
+  # Stage 2 — Сборка сервисов (параллельно, каждый ~3 мин, загрузка артефактов)
   # ══════════════════════════════════════════════════════════════════════════
   build-six-feat:
     name: "Build — six-feat"
@@ -372,7 +372,7 @@ jobs:
           retention-days: 1
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 3 — Integration tests (depends on builds, parallel per service)
+  # Stage 3 — Интеграционные тесты (зависят от сборки, параллельно по сервису)
   # ══════════════════════════════════════════════════════════════════════════
   test-six-feat:
     name: "Test — six-feat"
@@ -693,7 +693,7 @@ jobs:
             --timeout=120
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 3 — Frontend (parallel)
+  # Stage 3 — Фронтенд (параллельно)
   # ══════════════════════════════════════════════════════════════════════════
   frontend-test:
     name: "Frontend — tests"
@@ -765,7 +765,7 @@ jobs:
         run: npm run check-bundle-size
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 4 — Docker build + scan (parallel matrix)
+  # Stage 4 — Docker сборка + сканирование (параллельная матрица)
   # ══════════════════════════════════════════════════════════════════════════
   docker-build-scan:
     name: "Docker — ${{ matrix.service.name }}"
@@ -817,7 +817,7 @@ jobs:
           ignore-unfixed: true
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 5 — E2E & load tests (parallel)
+  # Stage 5 — E2E и нагрузочные тесты (параллельно)
   # ══════════════════════════════════════════════════════════════════════════
   e2e-smoke:
     name: "E2E smoke (Playwright)"
@@ -1022,7 +1022,7 @@ jobs:
           retention-days: 14
 
   # ══════════════════════════════════════════════════════════════════════════
-  # Stage 6 — Publish (push/tag only, depends on all blocking jobs)
+  # Stage 6 — Публикация (только push/tag, зависит от всех блокирующих задач)
   # ══════════════════════════════════════════════════════════════════════════
   sbom:
     name: "SBOM"

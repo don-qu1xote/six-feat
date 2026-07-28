@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# ── Env-профиль ──────────────────────────────────────────────────────────────
 # Аналогичный блок — см. services/six-feat/docker-entrypoint.sh.
 ENV_PROFILE="${ENV_PROFILE:-dev}"
 PROFILE_FILE="/app/config/profiles/${ENV_PROFILE}.env"
@@ -16,7 +16,7 @@ set -a
 source "$PROFILE_FILE"
 set +a
 
-# six-feat-auth владеет всем OAuth 2.0 флоу (IDEA-53). Нужны: OAuth
+# six-feat-auth владеет всем OAuth 2.0 флоу. Нужны: OAuth
 # client_id/client_secret (https://genius.com/api-clients) и APP_SECRET —
 # тот же ключ шифрования сессий, что и у основного six_feat (он расшифровывает
 # cookie, которую этот сервис выставляет — локально, без HTTP-вызова обратно,
@@ -25,7 +25,7 @@ set +a
 : "${GENIUS_CLIENT_SECRET:?GENIUS_CLIENT_SECRET env var is required for OAuth — keep it secret}"
 : "${APP_SECRET:?APP_SECRET env var is required for session encryption — generate with: openssl rand -hex 32, and MUST match the main six_feat services APP_SECRET}"
 
-# [SF-SEC-01] Gates GET /internal/key-fingerprint — тот же общий секрет
+# Gates GET /internal/key-fingerprint — тот же общий секрет
 # что и у остального internal-mesh (six-feat's EnrichmentClient/GeniusGatewayClient).
 # Читается из env через internal_api::SharedSecretFromEnv(), в config_vars.yaml не пишется.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six-feat/six-feat-enrichment, generate with: openssl rand -hex 32}"

@@ -2,22 +2,22 @@
 mock_genius_gateway.py
 ======================
 
-Python-level mock for the GeniusGateway interface.  Used in unit-style
-tests that test algorithm logic (BetweennessCentrality, BidirectionalBFS)
-without a running service process.
+Python-уровневый mock для интерфейса GeniusGateway. Используется в
+unit-стиле тестах, проверяющих логику алгоритмов (BetweennessCentrality,
+BidirectionalBFS) без запущенного процесса сервиса.
 
-The mock mirrors the four public methods of GeniusGateway:
+Mock отражает четыре публичных метода GeniusGateway:
   - ResolveCandidates(query) → List[Candidate]
   - FetchArtistById(id)      → Optional[ArtistRef]
   - FetchSongList(artist_id, limit, lane) → List[int]
   - FetchSongDetail(song_id, lane)        → Optional[SongRecord]
 
-Each method can be programmed with:
-  - a fixed return value (set_*_response)
-  - a callable side-effect (set_*_side_effect)
-  - an exception to raise (set_*_error)
+Каждый метод можно запрограммировать:
+  - фиксированным возвращаемым значением (set_*_response)
+  - callable side-effect (set_*_side_effect)
+  - исключением (set_*_error)
 
-Call history is recorded in `.calls` for assertion.
+История вызовов записывается в `.calls` для assert'ов.
 """
 
 from __future__ import annotations
@@ -65,9 +65,9 @@ class GeniusHttpError(Exception):
 
 class MockGeniusGateway:
     """
-    Programmable mock for the GeniusGateway interface.
+    Программируемый mock для интерфейса GeniusGateway.
 
-    Usage::
+    Использование::
 
         mock = MockGeniusGateway()
         mock.set_resolve_response("Drake", [Candidate(id=1, name="Drake", score=0.99)])
@@ -168,7 +168,7 @@ class MockGeniusGateway:
         return self
 
     def set_song_detail_slow(self, song_id: int, delay_s: float = 30.0) -> "MockGeniusGateway":
-        """Returns None after sleeping — simulates a timeout scenario."""
+        """Возвращает None после сна — симулирует сценарий таймаута."""
         import time
 
         def _slow(sid: int, lane: str):
@@ -223,9 +223,9 @@ def make_song(
     collaborators: Optional[List[Dict[str, Any]]] = None,
 ) -> SongRecord:
     """
-    Build a SongRecord with a primary credit + optional collaborators.
+    Создаёт SongRecord с primary credit + опциональными collaborator'ами.
 
-    collaborators: list of dicts with keys artist (ArtistRef) and role (str).
+    collaborators: список dict с ключами artist (ArtistRef) и role (str).
     """
     credits = [TrackCredit(artist=primary, role="primary")]
     for c in collaborators or []:

@@ -2,25 +2,26 @@
 mock_persistent_store.py
 ========================
 
-InMemoryStore — SQLite :memory: backed mock for PersistentStore.
+InMemoryStore — mock для PersistentStore на базе SQLite :memory:.
 
-Implements the same read/write API as PersistentStore so algorithm-level
-unit tests can pre-seed data and verify reads without a running service.
+Реализует тот же read/write API, что и PersistentStore, чтобы unit-тесты
+на уровне алгоритмов могли предзаполнять данные и проверять чтения без
+запущенного сервиса.
 
-Schema mirrors persistent_store.cpp exactly so query logic is validated
-against the real schema.
+Схема зеркалирует persistent_store.cpp точно, чтобы логика запросов
+валидировалась против реальной схемы.
 
-Public API (mirrors PersistentStore):
+Публичный API (зеркалирует PersistentStore):
   LoadArtistSongs(artist_id, want_depth) → Optional[ArtistSongs]
   LoadArtistRef(artist_id)              → Optional[ArtistRef]
   LoadNeighbours(artist_id, mask)       → List[CollabEdge]
   GetFetchDepth(artist_id)              → Depth
   UpsertArtistSongs(data, new_depth)    → None
 
-Additional test helpers:
-  seed_artist(...)     — directly insert an artist row
-  seed_song(...)       — directly insert a song + credits
-  seed_fetch_state(...)— directly set fetch_state
+Дополнительные тестовые хелперы:
+  seed_artist(...)     — напрямую вставить строку артиста
+  seed_song(...)       — напрямую вставить песню + credits
+  seed_fetch_state(...)— напрямую установить fetch_state
 """
 
 from __future__ import annotations
@@ -152,9 +153,10 @@ class RoleMask:
 
 class InMemoryStore:
     """
-    SQLite :memory: backed persistent store mock.
+    Mock persistent store на базе SQLite :memory:.
 
-    Each instance gets its own in-memory database so tests are fully isolated.
+    Каждый экземпляр получает свою in-memory базу, чтобы тесты были
+    полностью изолированы.
     """
 
     def __init__(self) -> None:
@@ -184,7 +186,7 @@ class InMemoryStore:
         title: str,
         credits: List[Tuple[int, str]],
     ) -> None:
-        """Insert a song and its credits.  Artists must exist first."""
+        """Вставить песню и её credits. Артисты должны существовать."""
         self._conn.execute(
             "INSERT OR IGNORE INTO songs(id, title) VALUES (?,?)",
             (song_id, title),
@@ -268,7 +270,7 @@ class InMemoryStore:
         return ArtistSongs(seed=ref, songs=songs)
 
     def LoadNeighbours(self, artist_id: int, mask: RoleMask) -> List[CollabEdge]:
-        """Return one-hop neighbours filtered by role mask, with collaboration weight."""
+        """Возвращает одношаговых соседей, отфильтрованных по role mask, с весом коллаборации."""
         allowed = mask.allowed_ints()
         if not allowed:
             return []

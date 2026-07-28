@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 #
-# Standalone Dockerfile for six-feat-enrichment (IDEA-25). Only compiles
-# services/enrichment/ — build context is still the repo root (libs/,
-# schemas/, cmake/ are shared siblings — see services/six-feat/Dockerfile
-# for the full rationale). See docker-compose.yml: context: . / dockerfile:
-# services/enrichment/Dockerfile.
+# Автономный Dockerfile для six-feat-enrichment. Собирает только
+# services/enrichment/ — контекст сборки — корень репозитория (libs/,
+# schemas/, cmake/ — общие соседние каталоги — полное обоснование в
+# services/six-feat/Dockerfile). См. docker-compose.yml: context: . /
+# dockerfile: services/enrichment/Dockerfile.
 
 ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
 
@@ -13,9 +13,9 @@ ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f37
 # ════════════════════════════════════════════════════════════════════════════
 FROM ${USERVER_IMAGE} AS builder
 
-# BUILD_JOBS caps compiler parallelism — see services/six-feat/Dockerfile
-# for the full rationale (parallel `docker compose up -d` across 4 services
-# oversubscribes memory at raw nproc parallelism).
+# BUILD_JOBS ограничивает параллелизм компиляции — полное обоснование в
+# services/six-feat/Dockerfile (параллельный `docker compose up -d` 4 сервисов
+# превышает лимиты памяти при полном nproc parallelism).
 ARG BUILD_JOBS=8
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -29,8 +29,8 @@ COPY schemas ./schemas
 COPY libs ./libs
 COPY services/enrichment ./services/enrichment
 
-# CCACHE_DIR: shared cache-mount id (six-feat-ccache) across all 4 services'
-# Dockerfiles — see services/six-feat/Dockerfile for the full rationale.
+# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 4 Dockerfile'ов —
+# полное обоснование в services/six-feat/Dockerfile.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
     --mount=type=cache,id=six-feat-enrichment-build,target=/src/build,sharing=locked \
@@ -41,14 +41,14 @@ RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
 # ════════════════════════════════════════════════════════════════════════════
 # Stage 2 — Runtime
 # ════════════════════════════════════════════════════════════════════════════
-# See services/six-feat/Dockerfile for the full rationale behind this
-# package list (libpq5/boost/etc. transitive deps of the statically-linked
-# userver framework, re-derived from `ldd` — re-run against this stage's
-# builder if the binary's dependencies ever change).
+# Полное обоснование списка пакетов — в services/six-feat/Dockerfile
+# (libpq5/boost/и т.д. — транзитивные зависимости статически слинкованного
+# userver, выведены из `ldd` — перезапустите против builder этого стейджа,
+# если зависимости бинарного файла изменятся).
 FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982 AS runtime
 
-# See services/six-feat/Dockerfile for why this is needed (tzdata's
-# interactive debconf prompt hangs `docker build` forever otherwise).
+# Зачем это нужно — в services/six-feat/Dockerfile (интерактивный debconf
+# от tzdata иначе навсегда зависает в `docker build`).
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -105,12 +105,11 @@ RUN mkdir -p /var/lib/six_feat_enrichment \
 
 EXPOSE 8081
 
-# start-period covers docker-entrypoint.sh's bounded wait for Postgres to
-# report ready via pg_isready (up to ~131s worst case: 120s master + 10s
-# replica + 1s settle) plus normal app startup time, so a merely-slow-but-
-# healthy boot — including one that's genuinely waiting out a slow Postgres
-# bootstrap — isn't flagged unhealthy before it's had a real chance to come
-# up.
+# start-period покрывает ограниченное ожидание Postgres в docker-entrypoint.sh
+# через pg_isready (до ~131с в худшем случае: 120s master + 10s replica + 1s
+# settle) плюс нормальное время старта приложения, чтобы медленная, но
+# здоровая загрузка не помечалась как нездоровая, пока у неё не было
+# реального шанса запуститься.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=150s --retries=3 \
   CMD curl -f http://localhost:8081/healthz || exit 1
 

@@ -59,10 +59,9 @@ const std::vector<const char*> kGameMigrationV1 = {
         created_ts     BIGINT NOT NULL,
         UNIQUE (from_artist_id, to_artist_id, role_mask, kind)
     ))SQL",
-    // [SF-GAME-11] season_id is denormalized onto attempts (in addition to
-    // living on the challenge) so the season leaderboard top-N is a direct
-    // (season_id, score DESC) index scan on this table — the ticket's third
-    // requested index. Set at submit time (SF-GAME-17/18); nullable until then.
+    // season_id денормализован в attempts для прямого индексного сканирования
+    // лидерборда сезона по (season_id, score DESC). Устанавливается при
+    // отправке; до этого NULL.
     R"SQL(CREATE TABLE IF NOT EXISTS game_attempts (
         id           BIGSERIAL PRIMARY KEY,
         challenge_id BIGINT NOT NULL REFERENCES game_challenges(id),
@@ -92,11 +91,9 @@ const std::vector<const char*> kGameMigrationV1 = {
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts)",
 };
 
-// [SF-GAME-19] Seeds the fixed achievement catalog — game_achievements is a
-// lookup table (code is its own PRIMARY KEY, game_user_achievements.code has
-// a FK to it), so every code EvaluateAndAwardAchievements can ever award
-// must exist here FIRST. ON CONFLICT DO NOTHING makes re-running this
-// harmless (same posture as every other CREATE ... IF NOT EXISTS in V1).
+// Каталог достижений; код обязан существовать до того, как
+// EvaluateAndAwardAchievements сможет его выдать. ON CONFLICT DO NOTHING
+// делает повторный запуск безопасным.
 const std::vector<const char*> kGameMigrationV2 = {
     R"SQL(INSERT INTO game_achievements (code, title, descr) VALUES
         ('first_win', 'First Blood', 'Complete your first challenge'),
@@ -107,7 +104,6 @@ const std::vector<const char*> kGameMigrationV2 = {
     ON CONFLICT (code) DO NOTHING)SQL",
 };
 
-// Ordered by version; add new entries here as the game schema evolves.
 const std::vector<Migration> game_migrations = {
     {1, kGameMigrationV1},
     {2, kGameMigrationV2},
@@ -115,10 +111,8 @@ const std::vector<Migration> game_migrations = {
 
 constexpr int kGameTargetSchemaVersion = 2;
 
-// Applies pending migrations sequentially inside one transaction, from the
-// DB's current game_schema_version up to kGameTargetSchemaVersion. An
-// EXCLUSIVE lock on game_schema_version serializes racing instances (the
-// second one blocks, then observes the bumped version and no-ops). Idempotent.
+// Применяет миграции последовательно в одной транзакции. EXCLUSIVE блокировка
+// сериализует конкурирующие инстансы. Идемпотентно.
 void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,
                    "CREATE TABLE IF NOT EXISTS game_schema_version ("
@@ -148,10 +142,9 @@ void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
   trx.Commit();
 }
 
-// Same background-retry posture as PersistentStore (postgres-db-1 has
-// sync-start: false): absorb transient "pool not ready yet" failures during a
-// startup race; a genuinely unreachable Postgres just leaves the schema
-// unmigrated (logged, not fatal) until it recovers.
+// Та же стратегия повторных попыток, что и в PersistentStore: поглощает
+// временные ошибки «пул ещё не готов» при старте. Недоступный Postgres
+// оставляет схему немигрированной (логируется, но не фатально).
 constexpr int kMigrationMaxAttempts = 10;
 constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
 constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
@@ -179,15 +172,13 @@ void RunGameMigrationsWithRetry(const storages::postgres::ClusterPtr& cluster) {
 
 }  // namespace
 
-// Component
-
 struct GameStore::Impl {
   storages::postgres::ClusterPtr cluster;
 
-  // One unretried attempt up front (fast path: Postgres already reachable →
-  // schema ready before the constructor returns). RunGameMigrations is
-  // idempotent, so OnAllComponentsLoaded's background retry is a cheap
-  // re-check when this already succeeded.
+  // Одна попытка миграции в конструкторе (быстрый путь: Postgres уже
+  // доступен → схема готова до возврата). RunGameMigrations идемпотентна,
+  // поэтому фоновая повторная попытка в OnAllComponentsLoaded — дешёвая
+  // перепроверка.
   explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
     try {
       RunGameMigrations(cluster);
@@ -233,8 +224,6 @@ bool GameStore::Ping() const {
   }
 }
 
-// Profile API — [SF-GAME-12]
-
 namespace {
 
 std::int64_t NowUnix() {
@@ -243,9 +232,8 @@ std::int64_t NowUnix() {
       .count();
 }
 
-// 1-based leaderboard rank by elo descending: how many profiles strictly
-// out-rank this one, plus one. Ties share the higher rank (COUNT of strictly
-// greater elo), which is fine for a display rank.
+// Ранг в лидерборде по elo (1-based): количество профилей со строго
+// бо́льшим elo + 1.
 int RankFor(const storages::postgres::ClusterPtr& cluster, int elo) {
   auto res = cluster->Execute(storages::postgres::ClusterHostType::kMaster,
                               "SELECT COUNT(*) FROM game_profiles WHERE elo > $1",
@@ -258,7 +246,7 @@ Profile ReadProfile(const storages::postgres::ClusterPtr& cluster, std::int64_t 
                               "SELECT user_id, display_name, avatar_url, elo, games "
                               "FROM game_profiles WHERE user_id = $1",
                               user_id);
-  const auto row = res.Front();  // caller guarantees the row exists
+  const auto row = res.Front();
   Profile p;
   p.user_id = row[0].As<std::int64_t>();
   p.display_name = row[1].As<std::optional<std::string>>().value_or("");
@@ -275,7 +263,6 @@ Profile GameStore::EnsureAndGetProfile(std::int64_t user_id,
                                        const std::string& display_name_default,
                                        const std::string& avatar_url_default) const {
   const std::int64_t now = NowUnix();
-  // First-sight create; existing rows keep their stored values (DO NOTHING).
   impl_->cluster->Execute(
       storages::postgres::ClusterHostType::kMaster,
       "INSERT INTO game_profiles (user_id, display_name, avatar_url, created_ts) "
@@ -295,8 +282,6 @@ Profile GameStore::SetDisplayName(std::int64_t user_id, const std::string& displ
                           display_name);
   return ReadProfile(impl_->cluster, user_id);
 }
-
-// Public profile lookup + history — [SF-GAME-17]
 
 std::optional<Profile> GameStore::GetProfileIfExists(std::int64_t user_id) const {
   auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kSlave,
@@ -327,8 +312,6 @@ std::vector<AttemptSummary> GameStore::ListRecentAttempts(std::int64_t user_id, 
   }
   return out;
 }
-
-// Challenge + submission API — [SF-GAME-15]
 
 std::optional<Challenge> GameStore::GetChallenge(std::int64_t challenge_id) const {
   auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
@@ -375,20 +358,12 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id,
                                            std::optional<std::int64_t> season_id) const {
   const int player_len = static_cast<int>(chain.size()) - 1;
 
-  // One transaction for the whole read-score-write sequence, per the
-  // ticket's explicit requirement — a crash partway through must never
-  // leave the attempt row and the profile's elo/games disagreeing. The
-  // attempt row this INSERT writes IS the leaderboard update: there is no
-  // separate leaderboard table to keep in sync — GetLeaderboard reads
-  // straight off game_attempts (see its own comment) — so writing it here
-  // already satisfies "пишет attempt + обновляет лидерборд в одной
-  // транзакции" without a second write.
+  // Транзакция: запись attempt и обновление профиля атомарны.
+  // Строка attempt = запись в лидерборд (GetLeaderboard читает game_attempts).
   auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
-                                   storages::postgres::TransactionOptions{});
+                                    storages::postgres::TransactionOptions{});
 
-  // Counted BEFORE this attempt's own INSERT below, so it only reflects
-  // attempts strictly earlier than this one (see scoring.hpp's own
-  // comment on prior_attempts).
+  // Счётчик ДО вставки — учитывает только предыдущие попытки.
   const auto prior_res =
       trx.Execute("SELECT COUNT(*) FROM game_attempts WHERE challenge_id = $1 AND user_id = $2",
                   challenge_id,
@@ -397,20 +372,14 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id,
 
   const int score = ComputeScore(optimal_len, player_len, prior_attempts, elapsed_ms);
 
-  // FOR UPDATE: serializes concurrent submits by the same player (e.g. two
-  // browser tabs) against a read-then-write elo race. The caller
-  // (submit_handler.cpp) ensures this row already exists (EnsureAndGetProfile)
-  // before starting the attempt, same convention SetDisplayName relies on.
+  // FOR UPDATE: сериализует конкурентные отправки одного игрока (две
+  // вкладки браузера), предотвращая гонку read-then-write elo.
   const auto elo_res =
       trx.Execute("SELECT elo FROM game_profiles WHERE user_id = $1 FOR UPDATE", user_id);
   const int elo_before = elo_res.IsEmpty() ? 1200 : elo_res.Front()[0].As<int>();
 
-  // [fix: анти-абуз повторного челленджа] Only the player's FIRST valid
-  // attempt at a challenge moves their Elo / games count. Replaying the same
-  // challenge still records the attempt (the leaderboard already keeps a
-  // player's single best score, so a repeat can't inflate it either) but
-  // never farms Elo — without this a player could re-submit the same optimal
-  // line indefinitely and climb forever.
+  // [fix: анти-абуз] Только первая успешная попытка меняет Elo/счётчик игр.
+  // Повторные отправки записываются, но не фармят рейтинг.
   const bool ranked = (prior_attempts == 0);
   const int elo_after =
       ranked ? UpdateElo(elo_before, optimal_len, score, kMaxScore).new_rating : elo_before;
@@ -453,8 +422,6 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id,
   return r;
 }
 
-// Achievement rule-engine — [SF-GAME-19]
-
 namespace {
 constexpr int kSpeedrunnerMaxElapsedMs = 15000;
 constexpr int kVeteranGames = 50;
@@ -463,9 +430,6 @@ constexpr int kEloMasterThreshold = 1500;
 
 std::vector<std::string> GameStore::EvaluateAndAwardAchievements(
     std::int64_t user_id, const SubmitResult& outcome, std::optional<int> elapsed_ms) const {
-  // Every rule this attempt/profile snapshot satisfies — a code appears at
-  // most once here even if awarded on an earlier attempt (the INSERT
-  // below is what actually decides "newly earned", not this list).
   std::vector<std::string> candidates;
   if (outcome.games_after == 1) candidates.emplace_back("first_win");
   if (outcome.score >= outcome.max_score) candidates.emplace_back("perfect_solve");
@@ -475,10 +439,8 @@ std::vector<std::string> GameStore::EvaluateAndAwardAchievements(
 
   std::vector<std::string> newly_awarded;
   for (const auto& code : candidates) {
-    // ON CONFLICT DO NOTHING + RETURNING is the same "only tell me what
-    // actually changed" idiom UpsertChallenge's own (xmax = 0) trick
-    // serves — a row that already existed returns zero rows here, so
-    // `newly_awarded` never re-announces an achievement earned earlier.
+    // ON CONFLICT DO NOTHING + RETURNING: существующая строка возвращает
+    // ноль строк → newly_awarded не дублирует уже полученные достижения.
     auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
                                        "INSERT INTO game_user_achievements (user_id, code, ts) "
                                        "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING code",
@@ -502,7 +464,7 @@ std::vector<Achievement> GameStore::ListAchievementCatalog() const {
     a.code = row[0].As<std::string>();
     a.title = row[1].As<std::string>();
     a.descr = row[2].As<std::optional<std::string>>().value_or(std::string{});
-    a.ts = 0;  // catalog entry — no earn time
+    a.ts = 0;
     out.push_back(a);
   }
   return out;
@@ -529,14 +491,9 @@ std::vector<Achievement> GameStore::ListAchievements(std::int64_t user_id) const
   return out;
 }
 
-// Challenge lifecycle — [SF-GAME-16]
-
-// [SF-GAME-18] Deterministic 30-day windows anchored at a fixed epoch
-// (2024-01-01T00:00:00Z) — any two callers computing "now"'s window agree
-// on its exact [starts_ts, ends_ts) boundaries without coordinating, so the
-// only thing the EXCLUSIVE lock below actually has to arbitrate is which of
-// two concurrent callers gets to INSERT it, never a disagreement about what
-// the window IS.
+// Детерминированные 30-дневные окна от фиксированной эпохи (2024-01-01).
+// Два вызывающих кода всегда вычисляют одинаковые [starts_ts, ends_ts) без
+// координации; EXCLUSIVE блокировка арбитрирует только кто вставит запись.
 constexpr std::int64_t kSeasonEpoch = 1704067200;
 constexpr std::int64_t kSeasonLenSeconds = 30 * 24 * 3600;
 
@@ -589,12 +546,9 @@ ChallengeUpsertResult GameStore::UpsertChallenge(std::int64_t from_artist_id,
                                                  const std::string& kind,
                                                  std::optional<std::int64_t> created_by,
                                                  std::optional<std::int64_t> season_id) const {
-  // "kind = game_challenges.kind" is a deliberate no-op update: the ONLY
-  // reason for a DO UPDATE clause here (instead of DO NOTHING) is that
-  // RETURNING otherwise produces zero rows on a conflict — this makes
-  // RETURNING fire whether the row was just inserted or already existed,
-  // which is exactly the "create or return existing" behaviour the ticket
-  // asks for. "(xmax = 0)" is the standard Postgres idiom for telling
+  // DO UPDATE с no-op (kind = game_challenges.kind) нужен, чтобы RETURNING
+  // срабатывал при конфликте. (xmax = 0) — идиома Postgres для определения
+  // что строка была вставлена, а не обновлена.
   auto res = impl_->cluster->Execute(
       storages::postgres::ClusterHostType::kMaster,
       "INSERT INTO game_challenges "

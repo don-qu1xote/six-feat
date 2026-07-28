@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/verify-env-parity.py — SF-CFG-02.
+# scripts/verify-env-parity.py
 # Сверяет `docker compose config` для ENV_PROFILE=dev/staging/prod:
 # один и тот же список сервисов, image/build, volumes, healthcheck и т.д.
 # Расхождение допустимо только в значениях переменных из ALLOWED_ENV_DIFF
@@ -16,7 +16,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROFILES = ["dev", "staging", "prod"]
 
-# Должен совпадать с таблицей в DEVELOPMENT.md ("Env-профили", SF-CFG-01).
+# Должен совпадать с таблицей в DEVELOPMENT.md ("Env-профили").
 ALLOWED_ENV_DIFF = {"ENV_PROFILE", "LOGGING_LEVEL", "COOKIE_SECURE", "DB_REPLICA_HOST"}
 
 # Заглушки для required-переменных docker-compose.yml (${VAR:?...}) — сами

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# ── Env-профиль (SF-CFG-01) ──────────────────────────────────────────────────
+# ── Env-профиль ──────────────────────────────────────────────────────────────
 # Источник дефолтов (LOGGING_LEVEL, COOKIE_SECURE, DB_REPLICA_HOST и т.д.)
 # — выбирается через ENV_PROFILE, см. DEVELOPMENT.md «Env-профили».
 ENV_PROFILE="${ENV_PROFILE:-dev}"
@@ -17,7 +17,7 @@ set -a
 source "$PROFILE_FILE"
 set +a
 
-# [ТЗ-6] Серверный токен Genius больше не нужен — вся авторизация через OAuth.
+# Серверный токен Genius больше не нужен — вся авторизация через OAuth.
 # Единственные секреты, необходимые при старте — OAuth- credentials
 # (зарегистрированы на https://genius.com/api-clients) и ключ шифрования сессий.
 
@@ -29,18 +29,18 @@ set +a
 : "${GENIUS_CLIENT_SECRET:?GENIUS_CLIENT_SECRET env var is required for OAuth — keep it secret}"
 : "${APP_SECRET:?APP_SECRET env var is required for session encryption — generate with: openssl rand -hex 32}"
 
-# [IDEA-26] Фоновое обогащение теперь в отдельном six-feat-enrichment.
+# Фоновое обогащение теперь в отдельном six-feat-enrichment.
 # ENRICHMENT_INTERNAL_SECRET читается из env напрямую EnrichmentClient
 # (в config_vars.yaml не пишется) — проверяется и здесь, чтобы пропуск
 # секрета падал сразу при старте контейнера, а не на первом запросе.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six-feat-enrichment, generate with: openssl rand -hex 32}"
 ENRICHMENT_BASE_URL="${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}"
 
-# [IDEA-46] Genius API — через отдельный six-feat-genius-gateway
+# Genius API — через отдельный six-feat-genius-gateway
 # (GeniusGatewayClient, HTTP, тот же ENRICHMENT_INTERNAL_SECRET).
 GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}"
 
-# [SF-SEC-01] AppSecretParityChecker — сверяет отпечаток APP_SECRET
+# AppSecretParityChecker — сверяет отпечаток APP_SECRET
 # этого процесса с six-feat-auth по HTTP, сам секрет не передаётся.
 AUTH_BASE_URL="${AUTH_BASE_URL:-http://six-feat-auth:8083}"
 
@@ -66,7 +66,6 @@ else
   DB_CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 fi
 
-# Необязательные переопределения с разумными дефолтами.
 GENIUS_REDIRECT_URI="${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}"
 # Secure по умолчанию:除非 явно отключить, cookie получает Secure-флаг.
 # COOKIE_SECURE=false — только для локальной разработки по HTTP.
@@ -91,7 +90,7 @@ SCRIPT_FILENAME="$(cat "$SCRIPT_FILENAME_FILE")"
 SCRIPT_PATH="/${SCRIPT_FILENAME}"
 SCRIPT_FILE_PATH="/usr/share/six_feat/${SCRIPT_FILENAME}"
 
-# [SF-WEB-40] То же для CSS-бандла (.style-filename из manifest.json).
+# То же для CSS-бандла (.style-filename из manifest.json).
 STYLE_FILENAME_FILE=/usr/share/six_feat/.style-filename
 if [[ ! -f "$STYLE_FILENAME_FILE" ]]; then
   echo "[entrypoint] ERROR: $STYLE_FILENAME_FILE missing — CSS bundle was not baked into the image correctly" >&2
