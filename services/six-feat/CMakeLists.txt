@@ -1,24 +1,8 @@
-# six-feat — main service, standalone CMake project.
-# Build standalone:  cd services/six-feat && cmake -S . -B build
-# (also buildable aggregated through the repo-root thin wrapper — see its
-# own comment for why that's transitional)
-
 cmake_minimum_required(VERSION 3.22)
 project(six_feat_service CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-get_filename_component(SIX_FEAT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-
-find_package(userver COMPONENTS core postgresql REQUIRED)
-find_package(OpenSSL REQUIRED)
-
-if(NOT TARGET six_feat_common)
-    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-common" "${CMAKE_BINARY_DIR}/six-feat-common")
-endif()
-
-include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/presets/service.cmake)
+six_feat_init_service()
 
 six_feat_embed_schema(handlers/six-feat/artist_handler     kArtistHandlerSchema    ARTIST_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
@@ -80,5 +64,4 @@ target_link_libraries(six_feat
 
 add_dependencies(six_feat six_feat_sixfeat_schema_headers)
 
-install(TARGETS six_feat DESTINATION bin)
-install(FILES static_config.yaml DESTINATION etc/six_feat)
+six_feat_install_service(six_feat six_feat)
