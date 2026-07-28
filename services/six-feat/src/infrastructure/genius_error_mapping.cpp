@@ -1,4 +1,4 @@
-#include "genius/genius_error_mapping.hpp"
+#include "infrastructure/genius_error_mapping.hpp"
 
 namespace six_feat {
 

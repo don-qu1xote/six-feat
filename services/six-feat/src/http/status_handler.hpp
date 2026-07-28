@@ -3,12 +3,12 @@
 #include "http/authenticated_handler_base.hpp"
 
 #include <six-feat-auth-lib/oauth_handler.hpp>
-#include "auth/token_router.hpp"
+#include "token_router.hpp"
 
 #include <six-feat-storage/artist_repository.hpp>
 #include <six-feat-storage/persistent_store.hpp>
 
-#include "enrichment/enrichment_client.hpp"
+#include "infrastructure/enrichment_client.hpp"
 
 #include <string_view>
 #include <userver/components/component_fwd.hpp>

@@ -5,7 +5,7 @@
 #include "http/authenticated_handler_base.hpp"
 
 #include <six-feat-auth-lib/oauth_handler.hpp>
-#include "auth/token_router.hpp"
+#include "token_router.hpp"
 
 #include <six-feat-genius/genius_gateway_client.hpp>
 

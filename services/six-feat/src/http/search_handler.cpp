@@ -6,7 +6,7 @@
 #include <six-feat-core/request_id.hpp>
 #include <six-feat-core/security_headers.hpp>
 
-#include "genius/genius_error_mapping.hpp"
+#include "infrastructure/genius_error_mapping.hpp"
 
 #include "schemas/handlers/six-feat/search_handler_schema.hpp"
 

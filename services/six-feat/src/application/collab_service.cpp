@@ -1,5 +1,5 @@
 
-#include "core/collab_service.hpp"
+#include "application/collab_service.hpp"
 
 #include <six-feat-domain/role_mask.hpp>
 

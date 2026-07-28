@@ -38,9 +38,9 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
 
 add_executable(six_feat
     src/main.cpp
-    src/genius/genius_error_mapping.cpp
-    src/enrichment/enrichment_client.cpp
-    src/core/collab_service.cpp
+    src/infrastructure/genius_error_mapping.cpp
+    src/infrastructure/enrichment_client.cpp
+    src/application/collab_service.cpp
     src/auth/app_secret_parity_checker.cpp
     src/http/artist_handler.cpp
     src/http/graph_handler.cpp

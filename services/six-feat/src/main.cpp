@@ -1,4 +1,4 @@
-#include "core/collab_service.hpp"
+#include "application/collab_service.hpp"
 #include <six-feat-core/rate_limit_store_component.hpp>
 
 #include "http/artist_handler.hpp"
@@ -21,7 +21,7 @@
 
 #include <six-feat-genius/genius_gateway_client.hpp>
 
-#include "enrichment/enrichment_client.hpp"
+#include "infrastructure/enrichment_client.hpp"
 
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>

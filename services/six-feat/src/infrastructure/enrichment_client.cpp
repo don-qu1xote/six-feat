@@ -1,4 +1,4 @@
-#include "enrichment/enrichment_client.hpp"
+#include "infrastructure/enrichment_client.hpp"
 
 #include <six-feat-core/internal_auth.hpp>
 #include <six-feat-core/internal_http.hpp>

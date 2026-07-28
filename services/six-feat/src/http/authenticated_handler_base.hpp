@@ -4,7 +4,7 @@
 #include <six-feat-core/security_headers.hpp>
 
 #include <six-feat-auth-lib/oauth_handler.hpp>
-#include "auth/token_router.hpp"
+#include "token_router.hpp"
 
 #include <optional>
 #include <string>

@@ -9,7 +9,7 @@
 
 #include <six-feat-storage/analytics.hpp>
 
-#include "genius/genius_error_mapping.hpp"
+#include "infrastructure/genius_error_mapping.hpp"
 
 #include "schemas/handlers/six-feat/path_handler_schema.hpp"
 

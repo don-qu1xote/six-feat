@@ -6,7 +6,7 @@
 
 #include <six-feat-genius/genius_gateway_client.hpp>
 
-#include "enrichment/enrichment_client.hpp"
+#include "infrastructure/enrichment_client.hpp"
 
 #include <cstdint>
 #include <optional>
