@@ -92,7 +92,7 @@ std::string JsonEscape(std::string_view s) {
         if (c < 0x20) {
           std::array<char, 7> buf{};
           std::snprintf(buf.data(), buf.size(), "\\u%04x", c);
-          out += buf;
+          out += buf.data();
         } else {
           out += static_cast<char>(c);
         }
