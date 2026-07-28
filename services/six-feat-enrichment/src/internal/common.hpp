@@ -7,7 +7,8 @@
 
 namespace six_feat::enrichment::detail {
 
-inline bool SecretMatches(const userver::server::http::HttpRequest& request, const std::string& expected) {
+inline bool SecretMatches(const userver::server::http::HttpRequest& request,
+                          const std::string& expected) {
   const std::string& given = request.GetHeader(internal_api::kSecretHeader);
   return internal_api::SecretEquals(given, expected);
 }

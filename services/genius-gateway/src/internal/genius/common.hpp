@@ -10,7 +10,8 @@
 
 namespace six_feat::genius_gateway::detail {
 
-inline bool SecretMatches(const userver::server::http::HttpRequest& request, const std::string& expected) {
+inline bool SecretMatches(const userver::server::http::HttpRequest& request,
+                          const std::string& expected) {
   const std::string& given = request.GetHeader(internal_api::kSecretHeader);
   return internal_api::SecretEquals(given, expected);
 }
@@ -34,7 +35,8 @@ inline std::string GeniusErrorCode(int status_code) {
   }
 }
 
-inline std::string HandleGeniusError(userver::server::http::HttpResponse& resp, const GeniusHttpError& e) {
+inline std::string HandleGeniusError(userver::server::http::HttpResponse& resp,
+                                     const GeniusHttpError& e) {
   resp.SetStatus(static_cast<userver::server::http::HttpStatus>(e.status_code));
   return ErrorJson(GeniusErrorCode(e.status_code));
 }
