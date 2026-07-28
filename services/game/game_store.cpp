@@ -361,7 +361,7 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id,
   // Транзакция: запись attempt и обновление профиля атомарны.
   // Строка attempt = запись в лидерборд (GetLeaderboard читает game_attempts).
   auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
-                                    storages::postgres::TransactionOptions{});
+                                   storages::postgres::TransactionOptions{});
 
   // Счётчик ДО вставки — учитывает только предыдущие попытки.
   const auto prior_res =
