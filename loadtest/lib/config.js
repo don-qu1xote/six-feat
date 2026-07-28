@@ -16,7 +16,7 @@ export function loadConfig() {
 
   return {
     baseUrl: (__ENV.BASE_URL || "http://127.0.0.1:8080").replace(/\/+$/, ""),
-    // Raw `six_feat_session` cookie value — see README.md for how to get
+    // Raw `six_feat_session` cookie value — see docs/README.md for how to get
     // one, either from a real browser OAuth login (docker-compose) or
     // scripts/e2e_env.py's env-file (CI / synthetic local runs).
     sessionCookie: __ENV.SESSION_COOKIE || "",
@@ -56,7 +56,7 @@ export function loadConfig() {
     isSmoke,
     // Smoke: short enough for a nightly/on-demand CI job against the
     // synthetic mock-Genius stack (scripts/e2e_env.py). Full: a real local
-    // ramp-up profile for `docker compose` runs — see README.md.
+    // ramp-up profile for `docker compose` runs — see docs/README.md.
     stages: isSmoke
       ? [
           { duration: "5s", target: 3 },

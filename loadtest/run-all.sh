@@ -3,7 +3,7 @@
 #
 # Runs all three k6 scenarios (graph_warm, path_cold, search) back to back
 # against a single running six-feat stack, writing JSON+text summaries to
-# loadtest/.output/. Used both for local dev (see README.md) and the
+# loadtest/.output/. Used both for local dev (see docs/README.md) and the
 # k6-smoke-load CI workflow (.github/workflows/loadtest.yml).
 #
 # Connection info comes from the environment (BASE_URL, SESSION_COOKIE,
@@ -52,7 +52,7 @@ export TO_ARTIST="${TO_ARTIST:-Kessler Vane}"
 export PROFILE="${PROFILE:-full}"
 
 SCENARIOS=(graph_warm path_cold search)
-# [SF-GAME-20] Opt-in — see README.md's scoping note: scripts/e2e_env.py
+# [SF-GAME-20] Opt-in — see docs/README.md's scoping note: scripts/e2e_env.py
 # doesn't boot six-feat-game yet, so the k6-smoke-load CI job (which never
 # sets this) keeps running exactly the three scenarios it always has.
 if [ "${GAME_SCENARIO:-0}" = "1" ]; then

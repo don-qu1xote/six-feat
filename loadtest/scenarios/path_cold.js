@@ -2,7 +2,7 @@
 //
 // "Cold path" GET /api/v1/graph/path: unlike graph_warm.js, path search has
 // no persistent cache of its own — every call walks the graph from
-// scratch for whatever from/to pair it's given (see DEVELOPMENT.md,
+// scratch for whatever from/to pair it's given (see docs/DEVELOPMENT.md,
 // "Кэширование ответов" — the path ETag is derived from both endpoints'
 // live fetch_state, so it changes whenever either side's data does).
 //

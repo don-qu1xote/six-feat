@@ -42,7 +42,7 @@ wait_for_postgres() {
   done
 }
 
-# Полная документация — в DEVELOPMENT.md «Postgres cluster topology».
+# Полная документация — в docs/DEVELOPMENT.md «Postgres cluster topology».
 # Собирает multi-host DSN только когда задана реплика, single-host иначе.
 build_db_connection_string() {
   DB_HOST="${DB_HOST:-postgres}"

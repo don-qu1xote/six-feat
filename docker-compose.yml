@@ -111,7 +111,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       # [SF-CFG-01] Выбирает config/profiles/${ENV_PROFILE().env, sourced
-      # docker-entrypoint.sh — см. DEVELOPMENT.md «Env-профили».
+      # docker-entrypoint.sh — см. docs/DEVELOPMENT.md «Env-профили».
       # Единственное различие между dev/staging/prod для этого compose.yml.
       ENV_PROFILE: ${ENV_PROFILE:-dev}
 

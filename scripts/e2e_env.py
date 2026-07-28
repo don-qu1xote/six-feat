@@ -360,7 +360,7 @@ def cmd_up() -> None:
     if not VENDOR_VIS_NETWORK.exists():
         sys.exit(
             f"[e2e_env] {VENDOR_VIS_NETWORK} not found — vis-network vendor "
-            f"bundle is missing (see DEVELOPMENT.md / front/vendor/)."
+            f"bundle is missing (see docs/DEVELOPMENT.md / front/vendor/)."
         )
     script_name, script_path = _resolve_script_bundle()
     style_name, style_path = _resolve_style_bundle()

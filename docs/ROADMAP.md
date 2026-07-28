@@ -246,6 +246,7 @@ _Трек: Refactor. Чистый рефакторинг без изменени
 ---
 
 #### SF-STR-01 · refactor · P0 — Общий entrypoint-скрипт
+_▸ model: Haiku 4.5_
 
 Создать `services/.base/docker-entrypoint-common.sh`. Вынести:
 - `load_env_profile()` — загрузка ENV_PROFILE + fail-fast (сейчас скопирован во все 5 entrypoint'ов)
@@ -259,6 +260,7 @@ _Трек: Refactor. Чистый рефакторинг без изменени
 ---
 
 #### SF-STR-02 · refactor · P0 — CMake preset для сервисов
+_▸ model: Haiku 4.5_
 
 Создать `cmake/presets/service.cmake` с boilerplate:
 ```cmake
@@ -279,6 +281,7 @@ include(${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake)
 ---
 
 #### SF-STR-03 · refactor · P0 — Корневой CMakeLists.txt
+_▸ model: Haiku 4.5_
 
 Создать `CMakeLists.txt` в корне репозитория. `cmake -S . -B build && cmake --build build` собирает все сервисы одной командой.
 
@@ -289,7 +292,7 @@ _Зависит от: SF-STR-02, SF-STR-05._
 ---
 
 #### SF-STR-04 · chore · P0 — Makefile
-
+_▸ model: Haiku 4.5_
 
 | Команда | Действие |
 |---|---|
@@ -328,7 +331,7 @@ _(Выполнено.)_
 ---
 
 #### SF-STR-06 · refactor · P0 — Единообразная структура сервисов
-
+_▸ model: Haiku 4.5_
 
 1. Создать `services/.base/Dockerfile.shared` — общий builder + runtime base stage:
    - FROM USERVER_IMAGE AS builder
@@ -392,7 +395,7 @@ _Зависит от: SF-STR-05 (библиотеки)._
 ---
 
 #### SF-STR-08 · docs · P1 — Обновить документацию
-
+_▸ model: Haiku 4.5_
 
 - `DEVELOPMENT.md` — новая структура сервисов, библиотек, системы сборки
 - ADR-0001 — дополнить (теперь 6 сервисов, не 4)
@@ -404,7 +407,7 @@ _Зависит от: SF-STR-05, SF-STR-06, SF-STR-07._
 ---
 
 #### SF-STR-09 · chore · P1 — Полный pyproject.toml
-
+_▸ model: Haiku 4.5_
 
 Добавить `[tool.pytest.ini_options]` в существующий `pyproject.toml`:
 ```toml

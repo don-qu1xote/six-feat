@@ -18,7 +18,7 @@ test("search artist → graph → node click → sidebar, then path search → h
   // [SF-SEC-02] vis-network must be self-hosted (front/vendor/) — regression
   // test for the old CDN <script src="https://unpkg.com/..."> tag: if it
   // ever comes back, this fails instead of silently depending on unpkg.com
-  // being reachable and byte-for-byte unchanged (see DEVELOPMENT.md).
+  // being reachable and byte-for-byte unchanged (see docs/DEVELOPMENT.md).
   const unpkgRequests = [];
   page.on("request", (request) => {
     if (new URL(request.url()).hostname === "unpkg.com") {

@@ -1,6 +1,6 @@
 // loadtest/scenarios/search.js — SF-INF-05
 //
-// GET /api/v1/search: no persistent state at all (DEVELOPMENT.md,
+// GET /api/v1/search: no persistent state at all (docs/DEVELOPMENT.md,
 // "Кэширование ответов") — every call is a live Genius API round-trip, so
 // this scenario is the harness's most direct measure of upstream Genius
 // latency/error-rate under load rather than six-feat's own DB/graph path.
