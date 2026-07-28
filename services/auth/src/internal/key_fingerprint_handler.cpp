@@ -15,6 +15,8 @@
 
 namespace six_feat::auth {
 
+using namespace userver;
+
 namespace {
 
 bool SecretMatches(const server::http::HttpRequest& request, const std::string& expected) {

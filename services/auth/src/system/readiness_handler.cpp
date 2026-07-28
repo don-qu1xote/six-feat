@@ -12,6 +12,8 @@
 
 namespace six_feat::auth {
 
+using namespace userver;
+
 ReadinessHandler::ReadinessHandler(const components::ComponentConfig& config,
                                    const components::ComponentContext& context)
     : HttpHandlerBase(config, context) {}
