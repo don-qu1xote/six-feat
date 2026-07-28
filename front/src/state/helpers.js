@@ -41,7 +41,7 @@ export function graphHash() {
 // [SF-WEB-16] Front-end defense in depth: SF-API-07 already normalizes this
 // away server-side (GeniusGateway::ParseArtistObject/ResolveCandidates/
 // FetchArtistById → NormalizeArtistImageUrl,
-// libs/six-feat-common/src/genius/genius_gateway.cpp), but if a URL like it
+// libs/six-feat-genius/src/genius_gateway.cpp), but if a URL like it
 // ever slips through unfiltered, treat it as "no photo" here too rather than
 // rendering Genius's own grey placeholder graphic. Genius's fallback image
 // is a real, resolvable URL (not a 404 or empty string) with a cache-busting

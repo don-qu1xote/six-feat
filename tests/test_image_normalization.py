@@ -7,7 +7,7 @@ a live response: https://assets.genius.com/images/default_cover_image.png
 ?1783625229 (filename is `default_cover_image.png` with a cache-busting
 query string, NOT `default_avatar_*.png`) — so it can't be told apart
 from a real photo by validity alone. Before this fix,
-GeniusGateway (libs/six-feat-common/src/genius/genius_gateway.cpp) passed
+GeniusGateway (libs/six-feat-genius/src/genius_gateway.cpp) passed
 that URL straight through into ArtistRef::image, so the front end rendered
 Genius's grey placeholder instead of its own themed one (front/src/state/
 helpers.js placeholderFor, used everywhere as `imageUrl ||

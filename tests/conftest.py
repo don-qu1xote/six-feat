@@ -46,7 +46,7 @@ conftest.py — pytest fixtures для интеграционных тестов
                                 (по умолчанию: ../build/six_feat)
     SIX_FEAT_ENRICHMENT_BINARY  путь к собранному six_feat_enrichment бинарнику,
                                 используется только BG профилем
-                                (по умолчанию: ../build/services/enrichment/six_feat_enrichment)
+                                (по умолчанию: ../build/services/six-feat-enrichment/six_feat_enrichment)
     SIX_FEAT_PORT               HTTP порт сервиса           (по умолчанию: 18080)
     MOCK_PORT                   порт суррогатного Genius API (по умолчанию: 18081)
 """

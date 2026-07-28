@@ -122,9 +122,9 @@
 |---|---|---|---|---|---|---|
 | SF-API-01 | — | refactor | — | done | `services/six-feat/src/http/authenticated_handler_base.hpp` | — |
 | SF-API-02 | — | test | — | done | — | `tests/test_api_auth_headers.py` |
-| SF-API-04 | S7 · 2/6* | perf | — | done | `libs/six-feat-common/src/core/http_cache.{hpp,cpp}`, `graph_handler.cpp`, `path_handler.{cpp,hpp}`, `search_handler.cpp` | `tests/test_path.py::TestPathETag`, `tests/test_search.py::TestSearchETag` |
+| SF-API-04 | S7 · 2/6* | perf | — | done | `libs/six-feat-core/src/http_cache.{hpp,cpp}`, `graph_handler.cpp`, `path_handler.{cpp,hpp}`, `search_handler.cpp` | `tests/test_path.py::TestPathETag`, `tests/test_search.py::TestSearchETag` |
 | SF-API-06 | S7 · 3/6 | refactor | P2 | done | `graph_handler.cpp`, `path_handler.cpp`, `search_handler.cpp`, `status_handler.cpp` | `tests/test_graph.py`, `tests/test_path.py`, `tests/test_search.py`, `tests/test_status.py` (классы `*RequestId`/`*ETag`) |
-| SF-API-07 | — | fix | — | done (3 итерации) | `libs/six-feat-common/src/genius/genius_gateway.cpp`, `front/src/graph.js`, `front/src/state/helpers.js` | `tests/test_image_normalization.py` |
+| SF-API-07 | — | fix | — | done (3 итерации) | `libs/six-feat-genius/src/genius_gateway.cpp`, `front/src/graph.js`, `front/src/state/helpers.js` | `tests/test_image_normalization.py` |
 | ~~SF-API-8~~ | — | — | — | заменено `SF-WEB-02` | `tests/test_path.py` | — дубль/опечатка номера |
 
 \* См. оговорку в §1.2 — точный шаг спринта для `SF-API-04` восстановлен по журналу выполнения.
@@ -157,7 +157,7 @@
 
 | ID | Спринт·шаг | Тип | Приоритет | Статус | Файлы (ключевые) | Тест |
 |---|---|---|---|---|---|---|
-| SF-DB-01 | — | perf | — | done | `libs/six-feat-common/src/storage/persistent_store.cpp` (`UpsertImpl` → `UNNEST`) | `tests/test_upsert_batching.py` |
+| SF-DB-01 | — | perf | — | done | `libs/six-feat-storage/src/persistent_store.cpp` (`UpsertImpl` → `UNNEST`) | `tests/test_upsert_batching.py` |
 | SF-DB-03 | — | test | — | done | — | `tests/test_upsert_batching.py` |
 | SF-DB-04 | S7 · 4/6 | perf | P2 | **audit-only** | — | — |
 | SF-DB-05 | S7 · 5/6 | refactor | P2 | done | — (только тест) | `tests/test_migrations.py` |
@@ -167,7 +167,7 @@
 | ID | Тип | Приоритет | Статус | Файлы (ключевые) | Тест |
 |---|---|---|---|---|---|
 | SF-PERF-01 | perf | — | done | `services/six-feat/src/http/graph_handler.cpp` (`edges.count()`) | `tests/test_graph.py::TestGraphGoldenNodeEdgeOrder` |
-| SF-PERF-02 | perf | — | done | `libs/six-feat-common/src/domain/role_mask.cpp` (ASCII fast-path) | `tests/test_role_mask.py` |
+| SF-PERF-02 | perf | — | done | `libs/six-feat-domain/src/role_mask.cpp` (ASCII fast-path) | `tests/test_role_mask.py` |
 | SF-PERF-03 | test | — | done, 1 хотфикс | `tests/test_graph.py` | `tests/test_graph.py::TestGraphGoldenNodeEdgeOrder` |
 | SF-PERF-04 | perf | — | done | `nginx/default.conf.template` (gzip) | — |
 
@@ -175,7 +175,7 @@
 
 | ID | Тип | Приоритет | Статус | Файлы (ключевые) | Тест |
 |---|---|---|---|---|---|
-| SF-SEC-01 | sec | — | done | `libs/six-feat-common/src/auth/session_crypto.cpp`, `services/six-feat/src/auth/app_secret_parity_checker.*` | `tests/test_app_secret_parity.py` |
+| SF-SEC-01 | sec | — | done | `libs/six-feat-auth-lib/src/session_crypto.cpp`, `services/six-feat/src/auth/app_secret_parity_checker.*` | `tests/test_app_secret_parity.py` |
 | SF-SEC-02 | sec | — | done | `front/vendor/vis-network.min.js`, `services/six-feat/src/http/static_handler.cpp` | `tests/test_static_handlers.py` |
 
 ### SF-SCH — схемы хендлеров/компонентов
@@ -194,7 +194,7 @@
 | SF-CI-01 | chore | — | done | `.github/actions/setup/action.yml`, `.github/workflows/ci.yml` | (сам является CI) |
 | SF-CI-02 | chore | — | done | `.github/workflows/ci.yml` | (сам является CI) |
 | SF-OBS-01 | feat | — | done | `observability/prometheus/**`, `observability/grafana/**` | — |
-| SF-OBS-02 | feat | — | done | `libs/six-feat-common/src/core/request_id.*` | `tests/test_trace_id.py` |
+| SF-OBS-02 | feat | — | done | `libs/six-feat-core/src/request_id.*` | `tests/test_trace_id.py` |
 | SF-INF-01 | chore | — | done | `docker-compose.yml` | — |
 
 ### SF-DOC
@@ -307,7 +307,7 @@ _Зависит от: SF-STR-03._
 
 ---
 
-#### SF-STR-05 · refactor · P0 — Декомпозиция libs/six-feat-common
+#### SF-STR-05 · refactor · P0 ✓ — Декомпозиция libs/six-feat-common
 _▸ model: Opus 4.8_
 
 Разделить монолитную `libs/six-feat-common/` на независимые STATIC-библиотеки:
@@ -324,9 +324,9 @@ _▸ model: Opus 4.8_
 
 Include path: `<six-feat-domain/domain_types.hpp>`, `<six-feat-core/resilience.hpp>`, и т.д.
 
-Старая `libs/six-feat-common/` удаляется. Каждый сервис линкует только то, что нужно.
+Старая `libs/six-feat-common/` удалена. Каждый сервис линкует только то, что нужно.
 
-Тест: `cmake --build build` проходит; все сервисы линкуются; pytest зелёные.
+_(Выполнено.)_
 
 ---
 

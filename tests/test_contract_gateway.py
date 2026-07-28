@@ -6,7 +6,7 @@ internal Genius-gateway API.
 Why this file exists
 ============================================================================
 six-feat and six-feat-enrichment both embed the SAME client component
-(GeniusGatewayClient, libs/six-feat-common/src/genius/genius_gateway_client.cpp
+(GeniusGatewayClient, libs/six-feat-genius/src/genius_gateway_client.cpp
 — see that file's own header comment: "replaces the in-process GeniusGateway
 component for six_feat and six_feat_enrichment") to call the standalone
 six-feat-genius-gateway service's internal API:

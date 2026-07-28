@@ -2,7 +2,7 @@
 test_upsert_batching.py — regression tests for SF-DB-01 (SF-DB-03)
 ====================================================================
 
-PersistentStore::Impl::UpsertImpl (libs/six-feat-common/src/storage/
+PersistentStore::Impl::UpsertImpl (libs/six-feat-storage/src/
 persistent_store.cpp) batches the whole write with UNNEST(...) arrays
 instead of one INSERT per song/credit: seed upsert, artists upsert
 (de-duped by id before being sent), songs upsert, credits upsert,

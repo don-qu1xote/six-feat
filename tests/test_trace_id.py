@@ -11,7 +11,7 @@ Chain under test (all real processes, per conftest.py's default profile):
                forwards X-Request-Id on every outbound call
 
 Before the EnsureRequestId(request) fix in
-libs/six-feat-common/src/core/request_id.cpp, every hop ignored any incoming
+libs/six-feat-core/src/request_id.cpp, every hop ignored any incoming
 X-Request-Id header and minted its own span trace id instead, so the id
 genius-gateway forwarded to Genius never matched the id six-feat itself
 reported back to the client — this test fails against that old behaviour.

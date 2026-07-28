@@ -6,7 +6,7 @@
 маппинг легаси `IDEA-N` на текущую нумерацию `SF-AREA-NN`) — в
 [ROADMAP.md](./ROADMAP.md), не здесь.
 
-Обоснование ключевых архитектурных решений (почему сервисов четыре,
+Обоснование ключевых архитектурных решений (почему сервисов пять,
 почему сессия проверяется локально, почему схемы вынесены в YAML и
 т.д.) — в [docs/adr/](./docs/adr/README.md), не здесь.
 
@@ -71,28 +71,24 @@
 
 | Сервис | Порт | Отвечает за | Postgres |
 |---|---|---|---|
-| **six-feat** (`src/`, бинарник `six_feat`) | 8080 | `/api/v1/graph`, `/api/v1/graph/path`, `/api/v1/search`, `/api/v1/status(/stream)`, `/`, `/healthz`, `/readyz` — и **локальную** проверку сессионной cookie на каждый запрос | да (L1 read-through) |
-| **six-feat-enrichment** (`services/enrichment/`) | 8081 | Фоновый глубокий скан коллабораций (IDEA-25/26) | да (тот же кластер) |
+| **six-feat** (`services/six-feat/`, бинарник `six_feat`) | 8080 | `/api/v1/graph`, `/api/v1/graph/path`, `/api/v1/search`, `/api/v1/status(/stream)`, `/`, `/healthz`, `/readyz` — и **локальную** проверку сессионной cookie на каждый запрос | да (L1 read-through) |
+| **six-feat-enrichment** (`services/six-feat-enrichment/`) | 8081 | Фоновый глубокий скан коллабораций (IDEA-25/26) | да (тот же кластер) |
 | **six-feat-genius-gateway** (`services/genius-gateway/`) | 8082 | Весь исходящий трафик к Genius API — CircuitBreaker + FG/BG rate-limiting централизованы здесь (IDEA-45/46) | нет |
 | **six-feat-auth** (`services/auth/`) | 8083 | Весь OAuth 2.0 Authorization Code Flow: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` (IDEA-53) | нет |
 | **six-feat-game** (`services/game/`) | 8084 | Игровой режим «собери цепочку»: `/api/v1/game/{profile,challenge,challenges,validate,submit,leaderboard,season,link,admin}`. Сессия читается **локально** (как в six-feat), анти-чит ходит в six-feat через internal-mesh `/internal/neighbours` (ADR-0007) | да (тот же кластер, свой реестр миграций `postgresql/migrations/game/`) |
 
-### Раскладка исходников сервиса (SF-GAME-35)
+### Раскладка исходников сервиса
 
-`services/six-feat/` разложен по слоям (`src/{http,core,auth,enrichment,genius}/`),
-остальные четыре — плоские: файлы лежат прямо в корне сервиса. Это **осознанно, а
-не недосмотр**. Слои у six-feat появились потому, что там несколько разных
-подсистем (HTTP-хендлеры, доменный сервис коллабораций, клиенты к трём соседям) и
-без них корень стал нечитаемым. У auth/enrichment/genius-gateway файлов единицы,
-у game — около тридцати, но все они одного рода: хендлер + его заголовок, плюс
-несколько header-only модулей (`scoring.hpp`, `ideal_finder.hpp`,
-`chain_validator.hpp`). Слои там дали бы каталоги на два-три файла и лишний уровень
-вложенности, а не навигацию.
-
-Правило для будущего: **плоско — норма, пока сервис остаётся одного рода**. Повод
-разложить по слоям — появление второй подсистемы (например, если у game заведётся
-собственный доменный слой поверх стора или свои клиенты к нескольким сервисам), а
-не просто рост числа файлов.
+`services/six-feat/` — единственный сервис, разложенный по слоям
+(`src/{application,infrastructure,http,auth}/`, см. SF-STR-07). Остальные
+четыре сервиса (six-feat-enrichment, genius-gateway, auth, game) — плоские
+с единой директорией `src/`: файлы лежат прямо в `src/` без подкаталогов
+(см. SF-STR-06). Это осознанно: у слоёв у six-feat появились потому, что
+там несколько разных подсистем (HTTP-хендлеры, доменный сервис коллабораций,
+клиенты к трём соседям) и без них корень стал нечитаемым. У остальных
+сервисов файлов единицы (auth/enrichment/genius-gateway) либо все они
+одного рода (game — хендлеры), и слои там дали бы каталоги на два-три
+файла и лишний уровень вложенности, а не навигацию.
 
 ### OAuth: выдача сессии (six-feat-auth) vs проверка сессии (six-feat)
 
@@ -112,7 +108,7 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./docs/adr/0004-auth-service
   `six_feat_session`. Флаг `pkce-enabled` и вся PKCE-логика (RFC 7636)
   переехали вместе с флоу.
 - **Осталось в six-feat**: проверка сессии на **каждый** запрос
-  (`auth::RequireSession`/`auth::ExtractToken`, `src/auth/token_router.hpp`).
+   (`auth::RequireSession`/`auth::ExtractToken`, `src/token_router.hpp`).
   Это принципиально: `RequireSession` расшифровывает cookie **локально**,
   тем же `APP_SECRET` (`session_crypto::KeyFromEnv()`), которым
   six-feat-auth её зашифровала — six-feat **не делает HTTP-вызов** к
@@ -298,13 +294,13 @@ DB_REPLICA_HOST=postgres-replica
 Повторный запрос с `If-None-Match: <тот же ETag>` получает `304 Not
 Modified` с пустым телом вместо повторной сборки JSON. Общая логика
 слабого сравнения (`ETagMatches`, разбор `If-None-Match` со списком через
-запятую и `*`) вынесена в `libs/six-feat-common/src/core/http_cache.{hpp,cpp}`
+запятую и `*`) вынесена в `libs/six-feat-core/src/http_cache.{hpp,cpp}`
 и используется всеми тремя хендлерами — конкретная формула тега у каждого
 своя, потому что зависит от разных данных.
 
 Отдельно от кэширования: JSON-тела ошибок `graph`/`path`/`search`/`status`
 (`SF-API-06`) содержат поле `request_id` — тот же id, что уже уходит в
-заголовке `X-Request-Id` и в теги лога (`core/request_id.hpp`,
+заголовке `X-Request-Id` и в теги лога (`libs/six-feat-core/src/request_id.{hpp,cpp}
 `EnsureRequestId`/`CurrentRequestId`). Поле добавлено только к телам
 ошибок; формат успешных ответов не менялся.
 
@@ -385,9 +381,9 @@ APP_SECRET env var is required for session encryption — generate with: openssl
 
 ### 429 / rate limit
 
-- Для анонимных запросов действует пер-IP лимит с фиксированным окном (`PerIpRateLimit`, `src/core/rate_limiter.hpp`); авторизованные пользователи его не задевают — они ограничены только собственной OAuth-квотой Genius.
+- Для анонимных запросов действует пер-IP лимит с фиксированным окном (`PerIpRateLimit`, `libs/six-feat-core/include/six-feat-core/rate_limiter.hpp`); авторизованные пользователи его не задевают — они ограничены только собственной OAuth-квотой Genius.
 - При превышении хэндлеры `graph`/`path`/`search` отвечают `429 {"error": "rate_limit_exceeded"}` с заголовком `Retry-After: 1`.
-- Если 429 приходит от самого Genius API, `GeniusGateway` включает кулдаун по `Retry-After` из ответа Genius (лог `[Pipeline] 429 — activating cooldown for ...`, `src/core/resilience.cpp`) — на это время запросы к Genius приостанавливаются автоматически.
+- Если 429 приходит от самого Genius API, `GeniusGateway` включает кулдаун по `Retry-After` из ответа Genius (лог `[Pipeline] 429 — activating cooldown for ...`, `libs/six-feat-core/src/resilience.{hpp,cpp}`) — на это время запросы к Genius приостанавливаются автоматически.
 
 ### БД недоступна / `/readyz` не проходит
 

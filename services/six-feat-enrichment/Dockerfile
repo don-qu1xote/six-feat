@@ -14,7 +14,7 @@ ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f37
 FROM ${USERVER_IMAGE} AS builder
 
 # BUILD_JOBS ограничивает параллелизм компиляции — полное обоснование в
-# services/six-feat/Dockerfile (параллельный `docker compose up -d` 4 сервисов
+# services/six-feat/Dockerfile (параллельный `docker compose up -d` 5 сервисов
 # превышает лимиты памяти при полном nproc parallelism).
 ARG BUILD_JOBS=8
 
@@ -30,7 +30,7 @@ COPY libs ./libs
 COPY services/.base ./services/.base
 COPY services/six-feat-enrichment ./services/six-feat-enrichment
 
-# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 4 Dockerfile'ов —
+# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 5 Dockerfile'ов —
 # полное обоснование в services/six-feat/Dockerfile.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \

@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 #
 # Автономный Dockerfile для six-feat (основной сервис). Собирает только
-# services/six-feat/ — не остальные 3 сервиса — через
+# services/six-feat/ — не остальные 4 сервиса — через
 # `cmake -S services/six-feat -B build`, т.к.
 # services/six-feat/CMakeLists.txt сам по себе является самостоятельным
-# CMake-проектом (см. cmake/EmbedSchema.cmake / libs/six-feat-common/CMakeLists.txt).
+# CMake-проектом (см. cmake/EmbedSchema.cmake / libs/).
 #
 # Контекст сборки — корень репозитория (не services/six-feat/ отдельно):
 # libs/, schemas/ и cmake/ — общие соседние каталоги, до которых собственный
@@ -21,8 +21,8 @@ ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f37
 FROM ${USERVER_IMAGE} AS builder
 
 # BUILD_JOBS ограничивает параллелизм компиляции на сервис. `docker compose up -d`
-# по умолчанию собирает все 4 сервиса одновременно, и каждый независимо
-# использовал -j"$(nproc)" — на N-ядерной машине получается до 4×N процессов
+# по умолчанию собирает все 5 сервисов одновременно, и каждый независимо
+# использовал -j"$(nproc)" — на N-ядерной машине получается до 5×N процессов
 # cc1plus, конкурирующих за RAM, что приводит к OOM-kill компилятора на
 # ограниченных по памяти Docker Desktop VM. Переопределить через
 # --build-arg BUILD_JOBS=<n>, если на машине достаточно RAM.
@@ -40,12 +40,12 @@ COPY libs ./libs
 COPY services/.base ./services/.base
 COPY services/six-feat ./services/six-feat
 
-# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 4 Dockerfile'ов —
+# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 5 Dockerfile'ов —
 # безопасно для совместного использования (в отличие от per-service /src/build),
 # т.к. ccache ключуется на (препроцессированный исходник, флаги компилятора),
-# а не на идентичность проекта/дерева сборки. Все 4 сервиса компилируют одни и
-# те же libs/six-feat-common исходники с идентичными флагами, поэтому после
-# сборки первого сервиса остальные 3 попадают в кеш почти для всей общей
+# а не на идентичность проекта/дерева сборки. Все 5 сервисов компилируют одни и
+# те же libs/six-feat-* исходники с идентичными флагами, поэтому после
+# сборки первого сервиса остальные 4 попадают в кеш почти для всей общей
 # работы вместо перекомпиляции с нуля.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \

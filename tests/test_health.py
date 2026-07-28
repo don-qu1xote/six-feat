@@ -10,7 +10,7 @@ handler-healthz) and does not require authentication. The 404-skip below
 is kept as defensive scaffolding in case the handler is ever un-wired.
 
 [SF-INF-03] Unified health/readiness contract across all 4 services — see
-libs/six-feat-common/src/http/readiness_common.hpp for the shared wire
+libs/six-feat-http/src/readiness_common.hpp for the shared wire
 format every service's /readyz now builds through:
 
     200 {"status":"ready",    "checks":{"<name>":{"ok":true, "status":"..."}}}

@@ -30,7 +30,7 @@
   (используется `/api/v1/status(/stream)` для поля `enriching`).
 
 `six_feat` обращается к нему через `EnrichmentClient`
-(`services/six-feat/src/enrichment/enrichment_client.hpp`) — тонкий HTTP-
+(`services/six-feat/src/infrastructure/enrichment_client.hpp`) — тонкий HTTP-
 клиент, API-совместимый со старым `EnrichmentWorker::EnqueueIfNeeded`/
 `IsPending`, так что вызывающий код (`CollabService`,
 `status_handler`/`sse_status_handler`) не изменился. Любой сбой сети/

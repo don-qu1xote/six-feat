@@ -8,7 +8,7 @@ six-feat-auth service (see services/auth/), not the main six_feat binary —
 this file drives a real six-feat-auth instance (auth_service_proc /
 auth_client / auth_anon_client fixtures in conftest.py) instead of
 service_proc/client/anon_client. six_feat itself only keeps OAuthConfig for
-LOCAL session validation now (src/auth/token_router.hpp) — it has no
+LOCAL session validation now (src/token_router.hpp) — it has no
 /auth/* routes left to test.
 
 Scenarios covered:

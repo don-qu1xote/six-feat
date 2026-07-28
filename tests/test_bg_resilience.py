@@ -22,7 +22,7 @@ Scenarios covered:
       requests fail fast without reaching the mock; after cb-open-seconds it
       moves to HalfOpen and lets exactly one probe through, which either
       trips it straight back to Open (probe fails) or resets it to Closed
-      (probe succeeds) (src/core/resilience.cpp).
+      (probe succeeds) (libs/six-feat-core/src/resilience.cpp).
   (c) Transient 5xx responses are retried with backoff and the overall
       request still succeeds once the upstream recovers
       (src/genius/genius_gateway.cpp::GeniusGet).

@@ -21,9 +21,10 @@ ROADMAP.md; если нужен ответ на вопрос "почему та�
 | [0004](./0004-auth-service-local-session-verification.md) | Вынести OAuth-флоу в six-feat-auth, но проверять сессию в six-feat локально | Принято |
 | [0005](./0005-handler-schemas-yaml-codegen.md) | Вынести схемы хендлеров/компонентов в YAML и кодогенерировать заголовки | Принято |
 | [0006](./0006-docker-compose-hardening-anchor.md) | Общий YAML-якорь хардненинга контейнеров в docker-compose.yml | Принято |
-| [0007](./0007-game-mode-as-separate-service.md) | Выделение game в отдельный сервис | Предложено |
+| [0007](./0007-game-mode-as-separate-service.md) | Выделение game в отдельный сервис | Принято |
 | [0008](./0008-game-frontend-reuses-explorer-engine.md) | Игровой фронтенд рендерит на том же движке графа, что и Explorer | Принято |
 | [0009](./0009-canonical-artist-identity-in-game.md) | Каноническая идентичность артиста в игре — реальный Genius id, без синтетических | Принято |
+| [0010](./0010-library-split-and-unified-build.md) | Разделение libs/six-feat-common на независимые STATIC-библиотеки | Принято |
 
 ## Формат
 

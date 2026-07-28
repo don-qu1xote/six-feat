@@ -1,7 +1,7 @@
 """
 test_prune.py — SF-DB-06: stale-artist/song/credit prune task.
 
-PruneTask (libs/six-feat-common/src/enrichment/prune_task.cpp) is an
+PruneTask (libs/six-feat-enrichment/src/prune_task.cpp) is an
 off-by-default background component in six-feat-enrichment: PRUNE_TTL_DAYS
 (env var, 0 = off) is read once at process startup, so toggling it requires
 a dedicated process rather than a per-request switch — enrichment_proc_prune

@@ -10,7 +10,7 @@ docker-compose stack via GAME_SERVICE_ORIGIN (default http://localhost:8080,
 nginx-proxied to six-feat-game), self-skipping if that origin isn't reachable.
 
 Real L1 collaboration data is seeded directly into the shared Postgres
-(artists/songs/credits — see libs/six-feat-common/src/storage/
+(artists/songs/credits — see libs/six-feat-storage/src/
 persistent_store.cpp's schema/role encoding) rather than through a mocked
 Genius server: unlike tests/test_internal_neighbours.py (which runs against
 the standalone service_proc + genius_mock sandbox), this harness has no mock

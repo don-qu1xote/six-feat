@@ -2,7 +2,7 @@
 test_app_secret_parity.py — SF-SEC-01 regression.
 
 six_feat decrypts the six_feat_session cookie LOCALLY with its own
-APP_SECRET (src/auth/token_router.hpp) — no HTTP call to six-feat-auth on
+APP_SECRET (src/token_router.hpp) — no HTTP call to six-feat-auth on
 every request. Before AppSecretParityChecker existed, an APP_SECRET
 mismatch between the two services surfaced only as a silent 401 on every
 session-authenticated request: no config validation, no readiness signal.

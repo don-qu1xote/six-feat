@@ -45,7 +45,7 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-status-stream": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
-    "services/enrichment/static_config.yaml": {
+    "services/six-feat-enrichment/static_config.yaml": {
         "server.listener": MAIN_TP,
         "server.listener-monitor": MONITOR_TP,
         "handler-internal-enqueue": MAIN_TP,

@@ -3,7 +3,7 @@
 scripts/cd_health_check.py — SF-CI-07 этап 4: гейт readiness после деплоя.
 
 Опрашивает контракт readiness, который SF-INF-03 уже реализует
-(libs/six-feat-common/src/http/readiness_common.cpp, доступен как /readyz
+(libs/six-feat-http/src/readiness_common.cpp, доступен как /readyz
 в каждом сервисе через static_config.yaml), пока тот не сообщит ready
 или пока не истечёт ЯВНЫЙ таймаут. Таймаут — жёсткая ошибка: гейт
 staging закрывает пайплайн ДО того, как будет затронут production,

@@ -14,7 +14,7 @@ ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f37
 FROM ${USERVER_IMAGE} AS builder
 
 # BUILD_JOBS ограничивает параллелизм компиляции — полное обоснование в
-# services/six-feat/Dockerfile (параллельный `docker compose up -d` 4 сервисов
+# services/six-feat/Dockerfile (параллельный `docker compose up -d` 5 сервисов
 # превышает лимиты памяти при полном nproc parallelism).
 ARG BUILD_JOBS=8
 
@@ -30,7 +30,7 @@ COPY libs ./libs
 COPY services/.base ./services/.base
 COPY services/genius-gateway ./services/genius-gateway
 
-# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 4 Dockerfile'ов —
+# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 5 Dockerfile'ов —
 # полное обоснование в services/six-feat/Dockerfile.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
@@ -45,7 +45,7 @@ RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
 # Полное обоснование списка пакетов — в services/six-feat/Dockerfile.
 # Нет Postgres-трафика в runtime (этот сервис только делает исходящие HTTP
 # вызовы к Genius), но libpq5 всё ещё транзитивная зависимость статически
-# слинкованного userver через libs/six-feat-common (userver::postgresql),
+# слинкованного userver через libs/six-feat-core (userver::postgresql),
 # как и в каждом другом сервисе.
 FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982 AS runtime
 
