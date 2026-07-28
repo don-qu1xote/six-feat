@@ -1,5 +1,7 @@
 #pragma once
 
+#include <six-feat-enrichment/enrichment_worker.hpp>
+#include <six-feat-storage/artist_repository.hpp>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
