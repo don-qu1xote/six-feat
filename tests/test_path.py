@@ -28,7 +28,7 @@ PATH_URL = f"{SERVICE_BASE}/api/v1/graph/path"
 
 _REQUIRED_PATH_FIELDS = {"type", "hops", "from", "to", "path", "nodes", "edges"}
 _REQUIRED_PATH_NODE_FIELDS = {"id", "betweenness", "betweenness_normalised", "is_seed"}
-_REQUIRED_PATH_EDGE_FIELDS = {"from", "to", "weight", "dominant_role", "songs"}
+_REQUIRED_PATH_EDGE_FIELDS = {"from", "to", "weight", "dominant_role", "source", "songs"}
 
 
 def _setup_direct_path(genius_mock: GeniusMock) -> None:
@@ -193,6 +193,12 @@ class TestDirectPath:
         edge = data["edges"][0]
         assert isinstance(edge["songs"], list)
         assert len(edge["songs"]) >= 1
+
+    def test_edge_source_is_genius_credit(self, client: requests.Session, genius_mock: GeniusMock):
+        _setup_direct_path(genius_mock)
+        data = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"}).json()
+        for edge in data["edges"]:
+            assert edge["source"] == "genius_credit"
 
 
 class TestTwoHopPath:

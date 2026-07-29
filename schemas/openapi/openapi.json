@@ -3,7 +3,7 @@
   "info": {
     "title": "six-feat public API",
     "description": "Artist-collaboration graph explorer, backed by Genius.com. Every endpoint below requires an authenticated Genius session (six_feat_session cookie, minted by six-feat-auth's OAuth flow) except where noted.",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "servers": [
     {
@@ -265,6 +265,204 @@
             "format": "int64"
           }
         }
+      },
+      "GraphNode": {
+        "type": "object",
+        "description": "One node in /api/v1/graph's \"nodes\" array (SF-API-14).",
+        "required": [
+          "id",
+          "name",
+          "weight",
+          "betweenness",
+          "betweenness_normalised",
+          "is_seed"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "integer",
+            "description": "Total distinct-song collaboration count with the seed"
+          },
+          "image": {
+            "type": "string",
+            "description": "Omitted when empty"
+          },
+          "url": {
+            "type": "string",
+            "description": "Omitted when empty"
+          },
+          "betweenness": {
+            "type": "number"
+          },
+          "betweenness_normalised": {
+            "type": "number"
+          },
+          "is_seed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GraphEdge": {
+        "type": "object",
+        "description": "One edge in /api/v1/graph's \"edges\" array (SF-API-14).",
+        "required": [
+          "from",
+          "to",
+          "weight",
+          "collaboration_count",
+          "dominant_role",
+          "edge_style",
+          "source",
+          "collaborations"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "weight": {
+            "type": "integer"
+          },
+          "collaboration_count": {
+            "type": "integer"
+          },
+          "dominant_role": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "producer",
+              "writer",
+              "featured"
+            ]
+          },
+          "edge_style": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "yandex_feature",
+              "genius_credit"
+            ],
+            "description": "[SF-ARCH-02] Which upstream produced this edge — \"yandex_feature\" for Yandex co-appearance (role always \"feature\", the only granularity co-appearance-on-a-track can give), \"genius_credit\" for a Genius-tagged credit role (primary/producer/writer/featured). Derived from dominant_role, not a persisted per-edge tag — see docs/adr/0011-music-source-provider-abstraction.md."
+          },
+          "collaborations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "song": {
+                  "type": "string"
+                },
+                "popularity": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "PathNode": {
+        "type": "object",
+        "description": "One node in /api/v1/graph/path's \"nodes\" array (SF-API-14).",
+        "required": [
+          "id",
+          "betweenness",
+          "betweenness_normalised",
+          "is_seed"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string",
+            "description": "Omitted if this node's artist info isn't known yet"
+          },
+          "image": {
+            "type": "string",
+            "description": "Omitted when empty/unknown"
+          },
+          "url": {
+            "type": "string",
+            "description": "Omitted when empty/unknown"
+          },
+          "betweenness": {
+            "type": "number"
+          },
+          "betweenness_normalised": {
+            "type": "number"
+          },
+          "is_seed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PathEdge": {
+        "type": "object",
+        "description": "One edge in /api/v1/graph/path's \"edges\" array (SF-API-14).",
+        "required": [
+          "from",
+          "to",
+          "weight",
+          "dominant_role",
+          "source",
+          "songs"
+        ],
+        "properties": {
+          "from": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "weight": {
+            "type": "integer"
+          },
+          "dominant_role": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "producer",
+              "writer",
+              "featured"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "yandex_feature",
+              "genius_credit"
+            ],
+            "description": "[SF-ARCH-02] Which upstream produced this edge — see GraphEdge.source."
+          },
+          "songs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   },
@@ -342,13 +540,13 @@
                     "nodes": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "$ref": "#/components/schemas/GraphNode"
                       }
                     },
                     "edges": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "$ref": "#/components/schemas/GraphEdge"
                       }
                     }
                   }
@@ -470,13 +668,13 @@
                     "nodes": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "$ref": "#/components/schemas/PathNode"
                       }
                     },
                     "edges": {
                       "type": "array",
                       "items": {
-                        "type": "object"
+                        "$ref": "#/components/schemas/PathEdge"
                       }
                     }
                   }

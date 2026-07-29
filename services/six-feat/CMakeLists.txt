@@ -56,6 +56,11 @@ add_executable(six_feat
     src/application/artist_resolver.cpp
     src/application/collab_service.cpp
     src/auth/app_secret_parity_checker.cpp
+    src/http/dto/artist_ref_dto.cpp
+    src/http/dto/candidate_dto.cpp
+    src/http/dto/edge_source_dto.cpp
+    src/http/dto/graph_edge_dto.cpp
+    src/http/dto/path_edge_dto.cpp
     src/api/v1/artist_handler.cpp
     src/api/v1/graph_handler.cpp
     src/api/v1/path_handler.cpp

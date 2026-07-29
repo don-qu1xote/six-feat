@@ -78,3 +78,38 @@ class TestOpenApiDocument:
         not_found = responses["404"]
         content_types = not_found.get("content", {})
         assert "application/problem+json" in content_types
+
+    @pytest.mark.parametrize("schema_name", ["GraphEdge", "PathEdge"])
+    def test_edge_schema_documents_source_field(
+        self, anon_client: requests.Session, schema_name: str
+    ):
+        data = anon_client.get(OPENAPI_URL).json()
+        schema = data["components"]["schemas"][schema_name]
+        assert "source" in schema["required"]
+        source_prop = schema["properties"]["source"]
+        assert set(source_prop["enum"]) == {"yandex_feature", "genius_credit"}
+
+    @pytest.mark.parametrize(
+        ("path", "node_schema", "edge_schema"),
+        [
+            ("/api/v1/graph", "GraphNode", "GraphEdge"),
+            ("/api/v1/graph/path", "PathNode", "PathEdge"),
+        ],
+    )
+    def test_nodes_and_edges_are_typed_not_opaque(
+        self,
+        anon_client: requests.Session,
+        path: str,
+        node_schema: str,
+        edge_schema: str,
+    ):
+        data = anon_client.get(OPENAPI_URL).json()
+        schema = data["paths"][path]["get"]["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]
+        assert schema["properties"]["nodes"]["items"] == {
+            "$ref": f"#/components/schemas/{node_schema}"
+        }
+        assert schema["properties"]["edges"]["items"] == {
+            "$ref": f"#/components/schemas/{edge_schema}"
+        }

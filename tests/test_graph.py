@@ -28,7 +28,7 @@ GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
 _REQUIRED_FIELDS = {"type", "nodes", "edges"}
 _REQUIRED_NODE_FIELDS = {"id", "name", "weight", "betweenness", "betweenness_normalised", "is_seed"}
-_REQUIRED_EDGE_FIELDS = {"from", "to", "weight", "dominant_role"}
+_REQUIRED_EDGE_FIELDS = {"from", "to", "weight", "dominant_role", "source"}
 
 
 def _seed_artist(artist_id: int, name: str) -> dict:
@@ -229,6 +229,19 @@ class TestGraphByName:
         for edge in data["edges"]:
             missing = _REQUIRED_EDGE_FIELDS - edge.keys()
             assert not missing, f"Edge missing fields: {missing}, edge={edge}"
+
+    def test_edge_source_is_genius_credit(self, client: requests.Session, genius_mock: GeniusMock):
+        genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
+        genius_mock.songs(1, [101])
+        genius_mock.song_detail(
+            101,
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
+        )
+
+        data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
+        assert data["edges"]
+        for edge in data["edges"]:
+            assert edge["source"] == "genius_credit"
 
 
 class TestGraphById:

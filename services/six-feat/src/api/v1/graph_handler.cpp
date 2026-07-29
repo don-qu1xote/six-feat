@@ -1,6 +1,11 @@
 
 #include "graph_handler.hpp"
 
+#include "http/dto/artist_ref_dto.hpp"
+#include "http/dto/candidate_dto.hpp"
+#include "http/dto/edge_source_dto.hpp"
+#include "http/dto/graph_edge_dto.hpp"
+
 #include "schemas/handlers/six-feat/graph_handler_schema.hpp"
 
 #include <algorithm>
@@ -176,13 +181,7 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
       out["query"] = ar.query;
       formats::json::ValueBuilder arr(formats::json::Type::kArray);
       for (const auto& c : ar.candidates) {
-        formats::json::ValueBuilder cb(formats::json::Type::kObject);
-        cb["id"] = c.id;
-        cb["name"] = c.name;
-        if (!c.image.empty()) cb["image"] = c.image;
-        if (!c.url.empty()) cb["url"] = c.url;
-        cb["score"] = c.score;
-        arr.PushBack(std::move(cb));
+        arr.PushBack(dto::ToJson(dto::ToDto(c)));
       }
       out["candidates"] = std::move(arr);
       return formats::json::ToString(out.ExtractValue());
@@ -360,12 +359,8 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
   formats::json::ValueBuilder edges_b(formats::json::Type::kArray);
 
   {
-    formats::json::ValueBuilder nb(formats::json::Type::kObject);
-    nb["id"] = seed_id;
-    nb["name"] = data.seed.name;
+    auto nb = dto::ToJson(dto::ToDto(data.seed));
     nb["weight"] = seed_weight;
-    if (!data.seed.image.empty()) nb["image"] = data.seed.image;
-    if (!data.seed.url.empty()) nb["url"] = data.seed.url;
     const double raw = bc.count(seed_id) ? bc.at(seed_id) : 0.0;
     nb["betweenness"] = raw;
     nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
@@ -376,12 +371,8 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
   for (const auto gid : order) {
     const auto& agg = edges.at(gid);
     {
-      formats::json::ValueBuilder nb(formats::json::Type::kObject);
-      nb["id"] = gid;
-      nb["name"] = agg.name;
+      auto nb = dto::ToJson(dto::ToDto(ArtistRef{gid, agg.name, agg.image, agg.url}));
       nb["weight"] = agg.weight;
-      if (!agg.image.empty()) nb["image"] = agg.image;
-      if (!agg.url.empty()) nb["url"] = agg.url;
       const double raw = bc.count(gid) ? bc.at(gid) : 0.0;
       nb["betweenness"] = raw;
       nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
@@ -389,25 +380,19 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
       nodes_b.PushBack(std::move(nb));
     }
     {
-      formats::json::ValueBuilder eb(formats::json::Type::kObject);
-      eb["from"] = seed_id;
-      eb["to"] = gid;
-      eb["weight"] = agg.weight;
-      eb["collaboration_count"] = agg.weight;
-      eb["dominant_role"] = agg.dominant_role;
-      eb["edge_style"] = std::string{EdgeStyleForRole(agg.dominant_role)};
-      formats::json::ValueBuilder cb(formats::json::Type::kArray);
+      dto::GraphEdgeDto edge_dto;
+      edge_dto.from = seed_id;
+      edge_dto.to = gid;
+      edge_dto.weight = agg.weight;
+      edge_dto.collaboration_count = agg.weight;
+      edge_dto.dominant_role = agg.dominant_role;
+      edge_dto.edge_style = std::string{EdgeStyleForRole(agg.dominant_role)};
+      edge_dto.source = dto::DeriveEdgeSource(agg.dominant_role);
+      edge_dto.collaborations.reserve(agg.collabs.size());
       for (const auto& c : agg.collabs) {
-        formats::json::ValueBuilder ci(formats::json::Type::kObject);
-        ci["song"] = c.song;
-        ci["popularity"] = c.popularity;
-        formats::json::ValueBuilder rb(formats::json::Type::kArray);
-        for (const auto& r : c.roles) rb.PushBack(r);
-        ci["roles"] = std::move(rb);
-        cb.PushBack(std::move(ci));
+        edge_dto.collaborations.push_back({c.song, c.popularity, c.roles});
       }
-      eb["collaborations"] = std::move(cb);
-      edges_b.PushBack(std::move(eb));
+      edges_b.PushBack(dto::ToJson(edge_dto));
     }
   }
 

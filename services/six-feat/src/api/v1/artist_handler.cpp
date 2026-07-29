@@ -1,6 +1,8 @@
 
 #include "artist_handler.hpp"
 
+#include "http/dto/artist_ref_dto.hpp"
+
 #include "schemas/handlers/six-feat/artist_handler_schema.hpp"
 
 #include <six-feat-core/error_response.hpp>
@@ -82,11 +84,7 @@ std::string ArtistHandler::HandleRequestThrow(const server::http::HttpRequest& r
 
   response.SetContentType(http::ContentType("application/json"));
 
-  formats::json::ValueBuilder b(formats::json::Type::kObject);
-  b["id"] = ref->id;
-  b["name"] = ref->name;
-  if (!ref->image.empty()) b["image"] = ref->image;
-  if (!ref->url.empty()) b["url"] = ref->url;
+  auto b = dto::ToJson(dto::ToDto(*ref));
 
   formats::json::ValueBuilder fs(formats::json::Type::kObject);
   fs["depth"] = static_cast<int>(fetch_state.depth);

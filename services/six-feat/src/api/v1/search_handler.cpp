@@ -1,6 +1,8 @@
 
 #include "search_handler.hpp"
 
+#include "http/dto/candidate_dto.hpp"
+
 #include "schemas/handlers/six-feat/search_handler_schema.hpp"
 
 #include <algorithm>
@@ -144,13 +146,7 @@ std::string SearchHandler::HandleRequestThrow(const server::http::HttpRequest& r
   out["query"] = query;
   formats::json::ValueBuilder arr(formats::json::Type::kArray);
   for (const auto& c : candidates) {
-    formats::json::ValueBuilder cb(formats::json::Type::kObject);
-    cb["id"] = c.id;
-    cb["name"] = c.name;
-    if (!c.image.empty()) cb["image"] = c.image;
-    if (!c.url.empty()) cb["url"] = c.url;
-    cb["score"] = c.score;
-    arr.PushBack(std::move(cb));
+    arr.PushBack(dto::ToJson(dto::ToDto(c)));
   }
   out["candidates"] = std::move(arr);
   return formats::json::ToString(out.ExtractValue());

@@ -1,5 +1,9 @@
 #include "path_handler.hpp"
 
+#include "http/dto/artist_ref_dto.hpp"
+#include "http/dto/edge_source_dto.hpp"
+#include "http/dto/path_edge_dto.hpp"
+
 #include "schemas/handlers/six-feat/path_handler_schema.hpp"
 
 #include <algorithm>
@@ -199,16 +203,8 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     b["type"] = std::string{"path"};
     b["hops"] = 0;
-    auto emit = [](const ArtistRef& r) {
-      formats::json::ValueBuilder rb(formats::json::Type::kObject);
-      rb["id"] = r.id;
-      rb["name"] = r.name;
-      if (!r.image.empty()) rb["image"] = r.image;
-      if (!r.url.empty()) rb["url"] = r.url;
-      return rb;
-    };
-    b["from"] = emit(from_ref);
-    b["to"] = emit(to_ref);
+    b["from"] = dto::ToJson(dto::ToDto(from_ref));
+    b["to"] = dto::ToJson(dto::ToDto(to_ref));
     formats::json::ValueBuilder p(formats::json::Type::kArray);
     p.PushBack(from_ref.id);
     b["path"] = std::move(p);
@@ -286,16 +282,8 @@ std::string PathHandler::BuildPathJson(const ArtistRef& from_ref,
   root["type"] = std::string{"path"};
   root["hops"] = static_cast<int>(path.size()) - 1;
 
-  const auto emit_ref = [](const ArtistRef& r) {
-    ValueBuilder b(Type::kObject);
-    b["id"] = r.id;
-    b["name"] = r.name;
-    if (!r.image.empty()) b["image"] = r.image;
-    if (!r.url.empty()) b["url"] = r.url;
-    return b;
-  };
-  root["from"] = emit_ref(from_ref);
-  root["to"] = emit_ref(to_ref);
+  root["from"] = dto::ToJson(dto::ToDto(from_ref));
+  root["to"] = dto::ToJson(dto::ToDto(to_ref));
 
   ValueBuilder path_arr(Type::kArray);
   for (const auto id : path) path_arr.PushBack(id);
@@ -329,26 +317,26 @@ std::string PathHandler::BuildPathJson(const ArtistRef& from_ref,
           w = e.weight;
           break;
         }
-    ValueBuilder eb(Type::kObject);
-    eb["from"] = a;
-    eb["to"] = b;
-    eb["weight"] = w;
     std::string dominant_role = "primary";
     if (const auto oit = ctx.edge_dominant_role.find(lo); oit != ctx.edge_dominant_role.end()) {
       if (const auto iit = oit->second.find(hi); iit != oit->second.end() && !iit->second.empty()) {
         dominant_role = iit->second;
       }
     }
-    eb["dominant_role"] = dominant_role;
-    ValueBuilder songs_arr(Type::kArray);
+
+    dto::PathEdgeDto edge_dto;
+    edge_dto.from = a;
+    edge_dto.to = b;
+    edge_dto.weight = w;
+    edge_dto.dominant_role = dominant_role;
+    edge_dto.source = dto::DeriveEdgeSource(dominant_role);
     if (const auto oit = edge_songs.find(lo); oit != edge_songs.end())
       if (const auto iit = oit->second.find(hi); iit != oit->second.end()) {
         std::unordered_set<std::string> seen;
         for (const auto& t : iit->second)
-          if (seen.insert(t).second) songs_arr.PushBack(t);
+          if (seen.insert(t).second) edge_dto.songs.push_back(t);
       }
-    eb["songs"] = std::move(songs_arr);
-    edges_arr.PushBack(std::move(eb));
+    edges_arr.PushBack(dto::ToJson(edge_dto));
   }
   root["edges"] = std::move(edges_arr);
 
