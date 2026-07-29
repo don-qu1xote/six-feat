@@ -15,10 +15,16 @@ six_feat_embed_schema(handlers/six-feat/static_handler     kStaticHandlerSchema 
 six_feat_embed_schema(handlers/six-feat/image_proxy_handler kImageProxyHandlerSchema IMAGE_PROXY_HANDLER_SCHEMA_HEADER)
 # [SF-GAME-13] Internal-mesh anti-cheat neighbours lookup.
 six_feat_embed_schema(handlers/six-feat/internal_neighbours_handler kInternalNeighboursHandlerSchema INTERNAL_NEIGHBOURS_HANDLER_SCHEMA_HEADER)
+# Internal-mesh тестовый/seam для MusicSourceProviderChain.
+six_feat_embed_schema(handlers/six-feat/music_source_edges_handler kMusicSourceEdgesHandlerSchema MUSIC_SOURCE_EDGES_HANDLER_SCHEMA_HEADER)
 
 six_feat_embed_schema(components/enrichment_client         kEnrichmentClientComponentSchema         ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/collab_service            kCollabServiceComponentSchema            COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/app_secret_parity_checker kAppSecretParityCheckerComponentSchema   APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER)
+# MusicSourceProvider: Yandex (дефолт) + Genius (углубление/fallback).
+six_feat_embed_schema(components/yandex_music_source_provider kYandexMusicSourceProviderComponentSchema YANDEX_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/genius_music_source_provider kGeniusMusicSourceProviderComponentSchema GENIUS_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/music_source_provider_chain   kMusicSourceProviderChainComponentSchema   MUSIC_SOURCE_PROVIDER_CHAIN_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${ARTIST_HANDLER_SCHEMA_HEADER}
@@ -31,15 +37,22 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${STATIC_HANDLER_SCHEMA_HEADER}
     ${IMAGE_PROXY_HANDLER_SCHEMA_HEADER}
     ${INTERNAL_NEIGHBOURS_HANDLER_SCHEMA_HEADER}
+    ${MUSIC_SOURCE_EDGES_HANDLER_SCHEMA_HEADER}
     ${ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER}
     ${COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER}
     ${APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER}
+    ${YANDEX_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER}
+    ${GENIUS_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER}
+    ${MUSIC_SOURCE_PROVIDER_CHAIN_COMPONENT_SCHEMA_HEADER}
 )
 
 add_executable(six_feat
     src/main.cpp
     src/infrastructure/genius_error_mapping.cpp
     src/infrastructure/enrichment_client.cpp
+    src/infrastructure/yandex_music_source_provider.cpp
+    src/infrastructure/genius_music_source_provider.cpp
+    src/infrastructure/music_source_provider_chain.cpp
     src/application/collab_service.cpp
     src/auth/app_secret_parity_checker.cpp
     src/api/v1/artist_handler.cpp
@@ -51,6 +64,7 @@ add_executable(six_feat
     src/api/v1/sse_status_handler.cpp
     src/api/v1/image_proxy_handler.cpp
     src/internal/neighbours_handler.cpp
+    src/internal/music_source_edges_handler.cpp
     src/system/readiness_handler.cpp
 )
 
@@ -62,9 +76,11 @@ target_include_directories(six_feat PRIVATE
 target_link_libraries(six_feat
     PRIVATE
         six_feat_domain
+        six_feat_common
         six_feat_core
         six_feat_storage
         six_feat_genius
+        six_feat_yandex
         six_feat_enrichment
         six_feat_auth_lib
         six_feat_http

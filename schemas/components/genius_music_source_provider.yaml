@@ -1,0 +1,4 @@
+type: object
+description: Genius-backed MusicSourceProvider — on-demand deepen + automatic fallback when Yandex is unavailable
+additionalProperties: false
+properties: {}

@@ -179,6 +179,10 @@ services:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
 
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
+      # Яндекс — обязательный дефолтный источник рёбер графа
+      # (MusicSourceProviderChain); сервисный токен — YANDEX_SERVICE_TOKEN
+      # на самом six-feat-yandex-gateway (SF-YM-01), не здесь.
+      YANDEX_GATEWAY_BASE_URL: ${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}}
 
       AUTH_BASE_URL: ${AUTH_BASE_URL:-http://six-feat-auth:${SIX_FEAT_AUTH_PORT:-8083}}
     depends_on:
@@ -188,6 +192,9 @@ services:
         condition: service_started
 
       six-feat-genius-gateway:
+        condition: service_started
+
+      six-feat-yandex-gateway:
         condition: service_started
 
       six-feat-auth:

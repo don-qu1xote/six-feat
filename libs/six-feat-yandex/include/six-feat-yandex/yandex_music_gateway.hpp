@@ -37,6 +37,8 @@ class YandexMusicGateway final : public userver::components::ComponentBase {
 
   std::vector<Candidate> SearchArtist(const std::string& query, Lane lane) const;
 
+  std::vector<std::int64_t> FetchArtistTracks(std::int64_t artist_id, int limit, Lane lane) const;
+
   std::vector<YandexPlaylistRef> FetchPlaylists(const std::string& personal_token,
                                                 const std::string& user_id,
                                                 Lane lane) const;

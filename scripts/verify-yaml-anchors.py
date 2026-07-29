@@ -76,6 +76,7 @@ EXPECTED: dict[str, dict[str, str]] = {
         "server.listener-monitor": MONITOR_TP,
         "handler-internal-yandex-track-artists": MAIN_TP,
         "handler-internal-yandex-search-artist": MAIN_TP,
+        "handler-internal-yandex-artist-tracks": MAIN_TP,
         "handler-internal-yandex-device-start": MAIN_TP,
         "handler-internal-yandex-device-poll": MAIN_TP,
         "handler-internal-yandex-playlists": MAIN_TP,

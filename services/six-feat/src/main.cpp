@@ -6,6 +6,7 @@
 #include <six-feat-http/health_handler.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <six-feat-storage/persistent_store.hpp>
+#include <six-feat-yandex/yandex_gateway_client.hpp>
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
@@ -24,6 +25,10 @@
 #include "api/v1/status_handler.hpp"
 #include "application/collab_service.hpp"
 #include "infrastructure/enrichment_client.hpp"
+#include "infrastructure/genius_music_source_provider.hpp"
+#include "infrastructure/music_source_provider_chain.hpp"
+#include "infrastructure/yandex_music_source_provider.hpp"
+#include "internal/music_source_edges_handler.hpp"
 #include "internal/neighbours_handler.hpp"
 #include "system/readiness_handler.hpp"
 
@@ -37,11 +42,15 @@ int main(int argc, char* argv[]) {
                                   .Append<components::Postgres>("postgres-db-1")
                                   .Append<six_feat::PersistentStore>()
                                   .Append<six_feat::GeniusGatewayClient>()
+                                  .Append<six_feat::YandexGatewayClient>()
                                   .Append<six_feat::auth::OAuthConfig>()
                                   .Append<six_feat::AppSecretParityChecker>()
                                   .Append<six_feat::ArtistRepository>()
                                   .Append<six_feat::EnrichmentClient>()
                                   .Append<six_feat::CollabService>()
+                                  .Append<six_feat::YandexMusicSourceProvider>()
+                                  .Append<six_feat::GeniusMusicSourceProvider>()
+                                  .Append<six_feat::MusicSourceProviderChain>()
                                   .Append<six_feat::RateLimitStoreComponent>()
                                   .Append<six_feat::GraphHandler>()
                                   .Append<six_feat::PathHandler>()
@@ -51,6 +60,7 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::StatusHandler>()
                                   .Append<six_feat::ArtistHandler>()
                                   .Append<six_feat::InternalNeighboursHandler>()
+                                  .Append<six_feat::MusicSourceEdgesHandler>()
                                   .Append<six_feat::SseStatusHandler>()
                                   .Append<six_feat::ImageProxyHandler>()
                                   .Append<six_feat::IndexHandler>()

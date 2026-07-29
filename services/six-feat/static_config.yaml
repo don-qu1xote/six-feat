@@ -67,6 +67,19 @@ components_manager:
       songs-limit-bg: 80
       match-threshold: 0.75
 
+    yandex-gateway-client:
+      yandex-gateway-base-url: $yandex_gateway_base_url
+      timeout-ms: 5000
+      tracks-limit: 20
+
+    yandex-music-source-provider:
+      match-threshold: 0.75
+
+    genius-music-source-provider: {}
+
+    music-source-provider-chain:
+      providers: [yandex, genius-fallback]
+
     oauth-config:
       client-id: $genius_client_id
       redirect-uri: $genius_redirect_uri
@@ -184,6 +197,11 @@ components_manager:
 
     handler-internal-neighbours:
       path: /internal/neighbours
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-music-source-edges:
+      path: /internal/music-source/collaboration-edges
       method: POST
       task_processor: *main_tp
 

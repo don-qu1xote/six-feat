@@ -23,6 +23,10 @@ macro(six_feat_init_service)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-domain"
                      "${CMAKE_BINARY_DIR}/six-feat-domain")
   endif()
+  if(NOT TARGET six_feat_common)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-common"
+                     "${CMAKE_BINARY_DIR}/six-feat-common")
+  endif()
   if(NOT TARGET six_feat_core)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-core"
                      "${CMAKE_BINARY_DIR}/six-feat-core")

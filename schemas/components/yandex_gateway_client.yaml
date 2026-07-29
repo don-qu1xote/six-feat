@@ -1,0 +1,15 @@
+type: object
+description: six-feat's client to the standalone six-feat-yandex-gateway service (service-token mode only)
+additionalProperties: false
+properties:
+    yandex-gateway-base-url:
+        type: string
+        description: Base URL of six-feat-yandex-gateway
+    timeout-ms:
+        type: integer
+        description: Per-request timeout in milliseconds
+        defaultDescription: '5000'
+    tracks-limit:
+        type: integer
+        description: Max tracks fetched per artist when building the default (Yandex) collaboration graph
+        defaultDescription: '20'

@@ -6,6 +6,8 @@ six_feat_init_service()
 
 six_feat_embed_schema(handlers/yandex-gateway/track_artists_handler  kTrackArtistsHandlerSchema  YANDEX_GATEWAY_TRACK_ARTISTS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/yandex-gateway/search_artist_handler  kSearchArtistHandlerSchema  YANDEX_GATEWAY_SEARCH_ARTIST_HANDLER_SCHEMA_HEADER)
+# Недостающее звено для построения графа через Яндекс.
+six_feat_embed_schema(handlers/yandex-gateway/artist_tracks_handler  kArtistTracksHandlerSchema  YANDEX_GATEWAY_ARTIST_TRACKS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/yandex-gateway/device_start_handler   kDeviceStartHandlerSchema   YANDEX_GATEWAY_DEVICE_START_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/yandex-gateway/device_poll_handler    kDevicePollHandlerSchema    YANDEX_GATEWAY_DEVICE_POLL_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/yandex-gateway/playlists_handler      kPlaylistsHandlerSchema     YANDEX_GATEWAY_PLAYLISTS_HANDLER_SCHEMA_HEADER)
@@ -17,6 +19,7 @@ six_feat_embed_schema(handlers/yandex-gateway/readiness_handler      kYandexGate
 add_custom_target(six_feat_yandex_gateway_schema_headers DEPENDS
     ${YANDEX_GATEWAY_TRACK_ARTISTS_HANDLER_SCHEMA_HEADER}
     ${YANDEX_GATEWAY_SEARCH_ARTIST_HANDLER_SCHEMA_HEADER}
+    ${YANDEX_GATEWAY_ARTIST_TRACKS_HANDLER_SCHEMA_HEADER}
     ${YANDEX_GATEWAY_DEVICE_START_HANDLER_SCHEMA_HEADER}
     ${YANDEX_GATEWAY_DEVICE_POLL_HANDLER_SCHEMA_HEADER}
     ${YANDEX_GATEWAY_PLAYLISTS_HANDLER_SCHEMA_HEADER}
@@ -28,6 +31,7 @@ add_executable(six_feat_yandex_gateway
     src/main.cpp
     src/internal/yandex/track_artists_handler.cpp
     src/internal/yandex/search_artist_handler.cpp
+    src/internal/yandex/artist_tracks_handler.cpp
     src/internal/yandex/device_start_handler.cpp
     src/internal/yandex/device_poll_handler.cpp
     src/internal/yandex/playlists_handler.cpp

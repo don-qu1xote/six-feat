@@ -1,0 +1,10 @@
+type: object
+description: Ordered, configurable MusicSourceProvider composition with automatic fallback — never a single hardcoded active provider
+additionalProperties: false
+properties:
+    providers:
+        type: array
+        description: Ordered provider names, tried in sequence until one succeeds
+        defaultDescription: '[yandex, genius-fallback]'
+        items:
+            type: string

@@ -116,6 +116,38 @@ class TestSearchArtistContract:
         assert resp.status_code == 401
 
 
+class TestArtistTracksContract:
+    def test_service_token_returns_mock_track_ids(self, yandex_gateway_proc, yandex_mock):
+        yandex_mock.artist_tracks(501, [111, 222, 333])
+
+        resp = _post("/internal/yandex/artist-tracks", {"artist_id": 501, "limit": 20})
+
+        assert resp.status_code == 200
+        assert resp.json() == {"track_ids": [111, 222, 333]}
+
+    def test_missing_artist_id_is_bad_request(self, yandex_gateway_proc):
+        resp = _post("/internal/yandex/artist-tracks", {"limit": 20})
+        assert resp.status_code == 400
+
+    def test_omitted_limit_falls_back_without_erroring(self, yandex_gateway_proc, yandex_mock):
+        yandex_mock.artist_tracks(502, [444])
+        resp = _post("/internal/yandex/artist-tracks", {"artist_id": 502})
+        assert resp.status_code == 200
+        assert resp.json() == {"track_ids": [444]}
+
+    def test_wrong_secret_is_unauthorized(self, yandex_gateway_proc):
+        resp = _post(
+            "/internal/yandex/artist-tracks", {"artist_id": 1}, secret="not-the-real-secret"
+        )
+        assert resp.status_code == 401
+
+    def test_upstream_error_is_explicit(self, yandex_gateway_proc, yandex_mock):
+        yandex_mock.artist_tracks_error(503, status=503)
+        resp = _post("/internal/yandex/artist-tracks", {"artist_id": 503})
+        assert resp.status_code in (502, 503, 504)
+        assert "error" in resp.json()
+
+
 class TestDeviceFlowContract:
     def test_device_start_returns_device_and_user_code(self, yandex_gateway_proc, yandex_mock):
         yandex_mock.device_code(

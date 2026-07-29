@@ -8,6 +8,7 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#include "internal/yandex/artist_tracks_handler.hpp"
 #include "internal/yandex/device_poll_handler.hpp"
 #include "internal/yandex/device_start_handler.hpp"
 #include "internal/yandex/liked_tracks_handler.hpp"
@@ -27,6 +28,7 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::YandexDeviceAuthClient>()
                                   .Append<six_feat::yandex_gateway::TrackArtistsHandler>()
                                   .Append<six_feat::yandex_gateway::SearchArtistHandler>()
+                                  .Append<six_feat::yandex_gateway::ArtistTracksHandler>()
                                   .Append<six_feat::yandex_gateway::DeviceStartHandler>()
                                   .Append<six_feat::yandex_gateway::DevicePollHandler>()
                                   .Append<six_feat::yandex_gateway::PlaylistsHandler>()

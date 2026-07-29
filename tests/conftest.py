@@ -343,6 +343,19 @@ components_manager:
       songs-limit-bg: 20
       match-threshold: 0.75
 
+    yandex-gateway-client:
+      yandex-gateway-base-url: http://127.0.0.1:{yandex_gateway_port}
+      timeout-ms: 5000
+      tracks-limit: 10
+
+    yandex-music-source-provider:
+      match-threshold: 0.75
+
+    genius-music-source-provider: {{}}
+
+    music-source-provider-chain:
+      providers: [yandex, genius-fallback]
+
     artist-repository: {{}}
 
     app-secret-parity-checker:
@@ -441,6 +454,11 @@ components_manager:
 
     handler-internal-neighbours:
       path: /internal/neighbours
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-music-source-edges:
+      path: /internal/music-source/collaboration-edges
       method: POST
       task_processor: main-task-processor
 
@@ -728,6 +746,11 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
+    handler-internal-yandex-artist-tracks:
+      path: /internal/yandex/artist-tracks
+      method: POST
+      task_processor: main-task-processor
+
     handler-internal-yandex-device-start:
       path: /internal/yandex/device/start
       method: POST
@@ -936,6 +959,7 @@ def service_proc(
     tmp_db_dir: Path,
     mock_server: _MockState,
     genius_gateway_proc: subprocess.Popen,
+    yandex_gateway_proc: subprocess.Popen,
     auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
     """
@@ -946,6 +970,11 @@ def service_proc(
     его при старте, и оба запущены с одинаковым TEST_APP_SECRET, так что
     проверка parity проходит детерминированно для каждого теста, который
     не использует намеренно несовпадающий секрет.
+
+    И от yandex_gateway_proc — MusicSourceProviderChain
+    резолвит YandexMusicSourceProvider/GeniusMusicSourceProvider из
+    ComponentContext при старте, так что оба апстрима (суррогатных)
+    должны существовать раньше, чем этот процесс поднимется.
     """
     if not BINARY.exists():
         pytest.skip(
@@ -960,6 +989,7 @@ def service_proc(
             monitor_port=MONITOR_PORT,
             mock_port=MOCK_PORT,
             genius_gateway_port=GENIUS_GATEWAY_PORT,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
             auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
@@ -2024,6 +2054,20 @@ class YandexMock:
             return status, {"error": "upstream error"}
 
         self._state.register(f"/tracks/{track_id}", _handler)
+        return self
+
+    def artist_tracks(self, artist_id: int, track_ids: List[int]) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"result": {"tracks": track_ids}}
+
+        self._state.register(f"/artists/{artist_id}/tracks", _handler)
+        return self
+
+    def artist_tracks_error(self, artist_id: int, status: int = 503) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return status, {"error": "upstream error"}
+
+        self._state.register(f"/artists/{artist_id}/tracks", _handler)
         return self
 
     def search_artist(self, query: str, candidates: List[Dict[str, Any]]) -> "YandexMock":

@@ -289,6 +289,25 @@ std::vector<std::int64_t> YandexMusicGateway::FetchLikedTracks(const std::string
   return out;
 }
 
+std::vector<std::int64_t> YandexMusicGateway::FetchArtistTracks(std::int64_t artist_id,
+                                                                int limit,
+                                                                Lane lane) const {
+  const std::string url = yandex_base_url_ + "/artists/" + std::to_string(artist_id) +
+                          "/tracks?limit=" + std::to_string(limit);
+  const auto json = formats::json::FromString(YandexGet(url, lane));
+  const auto& tracks = json["result"]["tracks"];
+
+  std::vector<std::int64_t> out;
+  if (tracks.IsArray()) {
+    out.reserve(tracks.GetSize());
+    for (const auto& t : tracks) {
+      const auto tid = t.As<std::int64_t>(0);
+      if (tid) out.push_back(tid);
+    }
+  }
+  return out;
+}
+
 yaml_config::Schema YandexMusicGateway::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<components::ComponentBase>(kYandexMusicGatewayComponentSchema);
 }
