@@ -465,7 +465,11 @@ def cmd_up() -> None:
         [str(it_conftest.YANDEX_GATEWAY_BINARY), "--config", str(yandex_gateway_cfg_path)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={**os.environ, "YANDEX_SERVICE_TOKEN": "e2e-yandex-service-token"},
+        env={
+            **os.environ,
+            "ENRICHMENT_INTERNAL_SECRET": ENRICHMENT_INTERNAL_SECRET,
+            "YANDEX_SERVICE_TOKEN": "e2e-yandex-service-token",
+        },
     )
 
     if not it_conftest._wait_for_port(YANDEX_GATEWAY_PORT):

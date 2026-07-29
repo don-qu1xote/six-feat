@@ -58,9 +58,8 @@ TEST(TryProvidersInOrder, RethrowsLastErrorWhenEveryProviderFails) {
 
   const std::vector<MusicSourceProvider*> providers{&yandex, &genius};
 
-  EXPECT_THROW(
-      { TryProvidersInOrder(providers, ArtistRef{1, "Seed", "", ""}, "token"); },
-      std::runtime_error);
+  EXPECT_THROW(TryProvidersInOrder(providers, ArtistRef{1, "Seed", "", ""}, "token"),
+               std::runtime_error);
 }
 
 TEST(TryProvidersInOrder, EmptyProviderListReturnsEmptyEdgesWithoutThrowing) {
