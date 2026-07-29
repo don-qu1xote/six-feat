@@ -34,7 +34,7 @@ COPY services/six-feat-enrichment ./services/six-feat-enrichment
 # полное обоснование в services/six-feat/Dockerfile.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
-    --mount=type=cache,id=six-feat-enrichment-build,target=/src/build,sharing=locked \
+    --mount=type=cache,id=six-feat-enrichment-build-v2,target=/src/build,sharing=locked \
     cmake -S services/six-feat-enrichment -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/install \
  && cmake --build build -j"${BUILD_JOBS}" \
  && cmake --install build --strip

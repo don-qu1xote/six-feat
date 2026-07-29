@@ -1,0 +1,83 @@
+name: Uptime Check
+
+# SF-OBS-06: внешний synthetic-мониторинг, запускается каждые 5 минут
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  check:
+    name: "External health check"
+    runs-on: ubuntu-22.04
+    env:
+      # Настраивается через secrets или переменные окружения
+      UPTIME_CHECK_URL: ${{ secrets.UPTIME_CHECK_URL || 'http://localhost:8080/api/v1/health' }}
+      UPTIME_CHECK_THRESHOLD: ${{ secrets.UPTIME_CHECK_THRESHOLD || '3' }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Set up Python
+        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c
+        with:
+          python-version: "3.11"
+
+      - name: Restore failure state
+        id: restore_state
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/uptime-check-state.json
+          key: uptime-check-state
+
+      - name: Run uptime check
+        id: check
+        continue-on-error: true
+        run: |
+          python3 scripts/uptime-check.py \
+            --url "$UPTIME_CHECK_URL" \
+            --threshold "$UPTIME_CHECK_THRESHOLD" \
+            --state-file /tmp/uptime-check-state.json \
+            --json > /tmp/uptime-result.json
+
+      - name: Parse result
+        id: result
+        run: |
+          if [ -f /tmp/uptime-result.json ]; then
+            cat /tmp/uptime-result.json | python3 -c "
+            import json, sys
+            result = json.load(sys.stdin)
+            print(f\"success={str(result['success']).lower()}\")
+            print(f\"consecutive_failures={result['consecutive_failures']}\")
+            print(f\"should_alert={str(result['should_alert']).lower()}\")
+            print(f\"message={result['message']}\")
+            " >> $GITHUB_OUTPUT
+          fi
+
+      # Сохраняем для следующего прогона (кэш actions)
+      - name: Save failure state
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: /tmp/uptime-check-state.json
+          key: uptime-check-state
+
+      # Алерт при N последовательных провалах
+      - name: Alert on threshold
+        if: steps.result.outputs.should_alert == 'true'
+        run: |
+          echo "::error::Uptime check failed: endpoint is DOWN after ${{ steps.result.outputs.consecutive_failures }} consecutive checks"
+          exit 1
+
+      - name: Log result
+        if: always()
+        run: |
+          echo "Uptime check result:"
+          echo "  Success: ${{ steps.result.outputs.success }}"
+          echo "  Consecutive failures: ${{ steps.result.outputs.consecutive_failures }}"
+          echo "  Should alert: ${{ steps.result.outputs.should_alert }}"
+          echo "  Message: ${{ steps.result.outputs.message }}"
