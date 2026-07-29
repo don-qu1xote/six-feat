@@ -28,8 +28,6 @@ using namespace userver;
 
 namespace {
 
-constexpr std::size_t kMaxAmbiguousCandidates = 6;
-
 int RequireNonNegative(std::string_view param, int value) {
   if (value < 0) {
     throw std::runtime_error("collab-service: " + std::string(param) +
@@ -66,28 +64,12 @@ yaml_config::Schema CollabService::GetStaticConfigSchema() {
 
 std::optional<ArtistRef> CollabService::ResolveById(std::int64_t id,
                                                     const std::string& user_token) const {
-  if (auto ref = repo_.Lookup(id)) return ref;
-  return gateway_.FetchArtistById(id, Lane::Foreground, user_token);
+  return ResolveArtistById(repo_, gateway_, id, user_token);
 }
 
 std::variant<ArtistRef, AmbiguousResult> CollabService::ResolveByName(
     const std::string& query, const std::string& user_token) const {
-  const auto candidates = gateway_.ResolveCandidates(query, user_token);
-  if (candidates.empty()) {
-    AmbiguousResult ar;
-    ar.query = query;
-    return ar;
-  }
-  const auto& best = candidates.front();
-  if (best.score < gateway_.MatchThreshold()) {
-    AmbiguousResult ar;
-    ar.query = query;
-    const std::size_t limit = std::min<std::size_t>(candidates.size(), kMaxAmbiguousCandidates);
-    ar.candidates.assign(candidates.begin(),
-                         candidates.begin() + static_cast<std::ptrdiff_t>(limit));
-    return ar;
-  }
-  return ArtistRef{best.id, best.name, best.image, best.url};
+  return ResolveArtistByName(gateway_, query, user_token);
 }
 
 ArtistSongs CollabService::FetchFg(const ArtistRef& ref,

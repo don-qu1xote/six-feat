@@ -1,4 +1,5 @@
 #include <six-feat-common/music_source_provider.hpp>
+#include <utility>
 
 namespace six_feat {
 
@@ -22,6 +23,23 @@ const char* ToString(DiscoverySource source) {
       return "yandex_playlist";
   }
   return "unknown";
+}
+
+std::vector<ProviderEdge> TryProvidersInOrder(const std::vector<MusicSourceProvider*>& providers,
+                                              const ArtistRef& seed,
+                                              const std::string& user_token,
+                                              const ProviderFailureLogger& on_failure) {
+  std::exception_ptr last_error;
+  for (const auto* provider : providers) {
+    try {
+      return provider->GetCollaborationEdges(seed, user_token);
+    } catch (const std::exception& ex) {
+      if (on_failure) on_failure(provider->Name(), ex);
+      last_error = std::current_exception();
+    }
+  }
+  if (last_error) std::rethrow_exception(last_error);
+  return {};
 }
 
 }  // namespace six_feat

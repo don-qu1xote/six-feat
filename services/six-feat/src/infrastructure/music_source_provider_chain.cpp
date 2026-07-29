@@ -50,19 +50,12 @@ yaml_config::Schema MusicSourceProviderChain::GetStaticConfigSchema() {
 
 std::vector<ProviderEdge> MusicSourceProviderChain::GetCollaborationEdges(
     const ArtistRef& seed, const std::string& user_token) const {
-  std::exception_ptr last_error;
-  for (const auto* provider : providers_) {
-    try {
-      return provider->GetCollaborationEdges(seed, user_token);
-    } catch (const std::exception& ex) {
-      LOG_WARNING() << "[MusicSourceProviderChain] provider=" << provider->Name()
-                    << " failed for seed=" << seed.id << ": " << ex.what()
-                    << " — falling back to next provider";
-      last_error = std::current_exception();
-    }
-  }
-  if (last_error) std::rethrow_exception(last_error);
-  return {};
+  return TryProvidersInOrder(
+      providers_, seed, user_token, [&seed](std::string_view name, const std::exception& ex) {
+        LOG_WARNING() << "[MusicSourceProviderChain] provider=" << name
+                      << " failed for seed=" << seed.id << ": " << ex.what()
+                      << " — falling back to next provider";
+      });
 }
 
 }  // namespace six_feat

@@ -53,6 +53,7 @@ add_executable(six_feat
     src/infrastructure/yandex_music_source_provider.cpp
     src/infrastructure/genius_music_source_provider.cpp
     src/infrastructure/music_source_provider_chain.cpp
+    src/application/artist_resolver.cpp
     src/application/collab_service.cpp
     src/auth/app_secret_parity_checker.cpp
     src/api/v1/artist_handler.cpp

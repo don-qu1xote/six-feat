@@ -17,14 +17,10 @@
 #include <variant>
 #include <vector>
 
+#include "application/artist_resolver.hpp"
 #include "infrastructure/enrichment_client.hpp"
 
 namespace six_feat {
-
-struct AmbiguousResult {
-  std::string query;
-  std::vector<Candidate> candidates;
-};
 
 struct PathContext {
   std::vector<std::int64_t> path;

@@ -223,6 +223,31 @@ jobs:
             tests/test_game_migrations.py \
             -v --tb=short
 
+  # unit-tests-cpp: быстрые C++ unit-тесты (нижний слой пирамиды),
+  # без Postgres, без userver, без бинарника сервиса.
+  # services/six-feat/tests/unit — независимый CMake-проект без
+  # find_package(userver), дополняет tests/*.py интеграционные тесты.
+  unit-tests-cpp:
+    name: "Unit tests (C++)"
+    runs-on: ubuntu-22.04
+    needs: detect-changes
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: build-essential cmake
+
+      - name: Configure
+        run: |
+          cmake -S services/six-feat/tests/unit -B build-unit-tests \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-unit-tests -j"$(nproc)"
+
+      - name: Run
+        run: ctest --test-dir build-unit-tests --output-on-failure
+
   # [SF-INF-08] Бэкап/восстановление Postgres. Своя job, а не строчка в
   # test-six-feat: этим тестам нужен Postgres, но НЕ нужны бинарники сервисов,
   # поэтому они не должны ждать стадию сборки. Здесь же они не удлиняют
@@ -1184,6 +1209,7 @@ jobs:
       - lint-yaml
       - lint-promtool
       - unit-tests
+      - unit-tests-cpp
       - test-six-feat
       - test-auth
       - test-genius-gateway
@@ -1248,6 +1274,7 @@ jobs:
       - lint-yaml
       - lint-promtool
       - unit-tests
+      - unit-tests-cpp
       - test-six-feat
       - test-auth
       - test-genius-gateway

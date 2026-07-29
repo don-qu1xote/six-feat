@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <six-feat-core/lane.hpp>
 #include <stdexcept>
 #include <string>
 #include <userver/engine/condition_variable.hpp>
@@ -10,8 +11,6 @@
 #include <userver/engine/semaphore.hpp>
 
 namespace six_feat {
-
-enum class Lane { Foreground, Background };
 
 class CooldownGate {
  public:
