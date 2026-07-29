@@ -377,6 +377,57 @@ services:
           cpus: "1"
           memory: 256M
 
+  # Яндекс.Музыка не имеет официального API — только
+  # реверс-инженеренные библиотеки. Хрупкость изолирована отдельным
+  # сервисом, ровно как для Genius (six-feat-genius-gateway выше). Теперь
+  # обязательный дефолтный источник рёбер графа (YandexMusicSourceProvider,
+  # SF-ARCH-02), поэтому не за отдельным compose-профилем.
+  six-feat-yandex-gateway:
+    platform: linux/amd64
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: services/yandex-gateway/Dockerfile
+      args:
+        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
+    image: six-feat-yandex-gateway:latest
+    container_name: six-feat-yandex-gateway
+    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
+    volumes:
+      - ./config/profiles:/app/config/profiles:ro
+    environment:
+      # Один OAuth-токен Яндекс.Музыки на весь деплой (НЕ per-user)
+      # — обязателен, единственный дефолтный источник рёбер графа.
+      YANDEX_SERVICE_TOKEN: "${YANDEX_SERVICE_TOKEN:?Set YANDEX_SERVICE_TOKEN — single Yandex Music OAuth token, NOT per-user}"
+      # Device-flow client-id — задел под SF-YM-04, не блокер;
+      # пусто по умолчанию, покуда персонализация не используется продуктом.
+      YANDEX_DEVICE_CLIENT_ID: ${YANDEX_DEVICE_CLIENT_ID:-}
+      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
+      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
+      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
+      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
+      ENV_PROFILE: ${ENV_PROFILE:-dev}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+    <<: [*hardening, *logging]
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
   six-feat-game:
     platform: linux/amd64
     pull_policy: build

@@ -163,6 +163,7 @@ std::string LoginHandler::HandleRequestThrow(const server::http::HttpRequest& re
   state_cookie.SetHttpOnly();
   if (oauth_.CookieSecure()) state_cookie.SetSecure();
   state_cookie.SetSameSite("Lax");
+  state_cookie.SetPath("/");
   response.SetCookie(state_cookie);
 
   std::string pkce_query;
@@ -175,6 +176,7 @@ std::string LoginHandler::HandleRequestThrow(const server::http::HttpRequest& re
     verifier_cookie.SetHttpOnly();
     if (oauth_.CookieSecure()) verifier_cookie.SetSecure();
     verifier_cookie.SetSameSite("Lax");
+    verifier_cookie.SetPath("/");
     response.SetCookie(verifier_cookie);
 
     pkce_query = "&code_challenge=" + UrlEncode(challenge) + "&code_challenge_method=S256";
@@ -286,12 +288,14 @@ std::string CallbackHandler::HandleRequestThrow(const server::http::HttpRequest&
   server::http::Cookie clear_state{"six_feat_oauth_state", ""};
   clear_state.SetMaxAge(std::chrono::seconds{0});
   clear_state.SetHttpOnly();
+  clear_state.SetPath("/");
   response.SetCookie(clear_state);
 
   if (!code_verifier.empty()) {
     server::http::Cookie clear_verifier{"six_feat_pkce_verifier", ""};
     clear_verifier.SetMaxAge(std::chrono::seconds{0});
     clear_verifier.SetHttpOnly();
+    clear_verifier.SetPath("/");
     response.SetCookie(clear_verifier);
   }
 

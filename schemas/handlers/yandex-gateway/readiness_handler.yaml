@@ -1,0 +1,4 @@
+type: object
+description: Yandex-gateway service readiness-check handler
+additionalProperties: false
+properties: {}

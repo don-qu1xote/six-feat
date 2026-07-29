@@ -35,6 +35,10 @@ macro(six_feat_init_service)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-genius"
                      "${CMAKE_BINARY_DIR}/six-feat-genius")
   endif()
+  if(NOT TARGET six_feat_yandex)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-yandex"
+                     "${CMAKE_BINARY_DIR}/six-feat-yandex")
+  endif()
   if(NOT TARGET six_feat_enrichment)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-enrichment"
                      "${CMAKE_BINARY_DIR}/six-feat-enrichment")

@@ -39,6 +39,15 @@ scrape_configs:
         labels:
           service: six-feat-genius-gateway
 
+  - job_name: six-feat-yandex-gateway
+    metrics_path: /metrics
+    params:
+      format: [prometheus]
+    static_configs:
+      - targets: ["six-feat-yandex-gateway:8091"]
+        labels:
+          service: six-feat-yandex-gateway
+
   - job_name: six-feat-auth
     metrics_path: /metrics
     params:

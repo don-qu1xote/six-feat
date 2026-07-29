@@ -1,0 +1,118 @@
+
+
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+
+    fs-task-processor:
+      worker_threads: 4
+      thread_name: fs-task-processor
+
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: 8090
+        task_processor: &main_tp main-task-processor
+
+      listener-monitor:
+        port: 8091
+        task_processor: &monitor_tp monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stdout'
+          level: $logging_level
+
+          format: json
+
+    testsuite-support:
+
+    yandex-music-gateway:
+      yandex-base-url: https://api.music.yandex.net
+      backoff-max-attempts: 4
+      backoff-base-ms: 200
+      backoff-cap-ms: 10000
+      lane-fg-tokens-per-sec: 5.0
+      lane-fg-burst: 5
+      lane-fg-max-concurrent: 5
+      lane-bg-tokens-per-sec: 2.0
+      lane-bg-burst: 2
+      lane-bg-max-concurrent: 1
+      cb-failure-threshold: 5
+      cb-open-seconds: 30
+
+    yandex-device-auth-client:
+      device-code-url: https://oauth.yandex.ru/device/code
+      token-url: https://oauth.yandex.ru/token
+      client-id: $yandex_device_client_id
+      backoff-max-attempts: 4
+      backoff-base-ms: 200
+      backoff-cap-ms: 10000
+      lane-fg-tokens-per-sec: 2.0
+      lane-fg-burst: 2
+      lane-fg-max-concurrent: 2
+      lane-bg-tokens-per-sec: 1.0
+      lane-bg-burst: 1
+      lane-bg-max-concurrent: 1
+      cb-failure-threshold: 5
+      cb-open-seconds: 30
+
+    handler-internal-yandex-track-artists:
+      path: /internal/yandex/track-artists
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-yandex-search-artist:
+      path: /internal/yandex/search-artist
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-yandex-device-start:
+      path: /internal/yandex/device/start
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-yandex-device-poll:
+      path: /internal/yandex/device/poll
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-yandex-playlists:
+      path: /internal/yandex/playlists
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-yandex-liked-tracks:
+      path: /internal/yandex/liked-tracks
+      method: POST
+      task_processor: *main_tp
+
+    handler-healthz:
+      path: /healthz
+      method: GET
+      task_processor: *main_tp
+
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: *main_tp
+
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: *monitor_tp

@@ -1,0 +1,60 @@
+type: object
+description: OAuth Device Authorization Grant client for a personal Yandex Music account (prep work for SF-YM-04, not yet used by the product)
+additionalProperties: false
+properties:
+    device-code-url:
+        type: string
+        description: Device code request endpoint
+        defaultDescription: https://oauth.yandex.ru/device/code
+    token-url:
+        type: string
+        description: Token exchange/poll endpoint
+        defaultDescription: https://oauth.yandex.ru/token
+    client-id:
+        type: string
+        description: OAuth client-id registered on oauth.yandex.ru (not a secret)
+        defaultDescription: ''
+    backoff-max-attempts:
+        type: integer
+        description: Maximum retry attempts for transient failures
+        defaultDescription: '4'
+    backoff-base-ms:
+        type: integer
+        description: Initial backoff interval in milliseconds
+        defaultDescription: '200'
+    backoff-cap-ms:
+        type: integer
+        description: Maximum backoff interval in milliseconds
+        defaultDescription: '10000'
+    lane-fg-tokens-per-sec:
+        type: number
+        description: Rate limit for foreground requests in tokens per second
+        defaultDescription: '2.0'
+    lane-fg-burst:
+        type: integer
+        description: Token bucket burst size for foreground lane
+        defaultDescription: '2'
+    lane-fg-max-concurrent:
+        type: integer
+        description: Maximum concurrent foreground requests
+        defaultDescription: '2'
+    lane-bg-tokens-per-sec:
+        type: number
+        description: Rate limit for background requests in tokens per second
+        defaultDescription: '1.0'
+    lane-bg-burst:
+        type: integer
+        description: Token bucket burst size for background lane
+        defaultDescription: '1'
+    lane-bg-max-concurrent:
+        type: integer
+        description: Maximum concurrent background requests
+        defaultDescription: '1'
+    cb-failure-threshold:
+        type: integer
+        description: Number of failures before circuit opens
+        defaultDescription: '5'
+    cb-open-seconds:
+        type: integer
+        description: Duration to keep circuit open in seconds
+        defaultDescription: '30'

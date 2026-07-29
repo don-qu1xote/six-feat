@@ -27,7 +27,7 @@ DOCKER="false"
 
 # --- Определение затронутых сервисов ---
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
-  SERVICES="six-feat enrichment auth game genius-gateway"
+  SERVICES="six-feat enrichment auth game genius-gateway yandex-gateway"
 elif echo "$CHANGED_FILES" | grep -q "^services/six-feat/"; then
   SERVICES="$SERVICES six-feat"
 fi
@@ -46,6 +46,10 @@ fi
 
 if echo "$CHANGED_FILES" | grep -q "^services/genius-gateway/"; then
   SERVICES="$SERVICES genius-gateway"
+fi
+
+if echo "$CHANGED_FILES" | grep -q "^services/yandex-gateway/"; then
+  SERVICES="$SERVICES yandex-gateway"
 fi
 
 # Дедупликация
@@ -67,6 +71,10 @@ fi
 
 if echo "$SERVICES" | grep -q "genius-gateway"; then
   TESTS="$TESTS genius-gateway"
+fi
+
+if echo "$SERVICES" | grep -q "yandex-gateway"; then
+  TESTS="$TESTS yandex-gateway"
 fi
 
 if echo "$SERVICES" | grep -q "enrichment"; then
@@ -114,7 +122,7 @@ fi
 
 # Если изменились libs — затронуто всё
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
-  TESTS="unit integration six-feat auth genius-gateway enrichment bg-resilience health"
+  TESTS="unit integration six-feat auth genius-gateway yandex-gateway enrichment bg-resilience health"
   LINT="clang-tidy eslint format yaml promtool"
   FRONTEND="true"
 fi

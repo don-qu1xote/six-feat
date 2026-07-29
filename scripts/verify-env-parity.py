@@ -29,6 +29,8 @@ DUMMY_ENV = {
     "DB_USER": "x",
     "DB_PASSWORD": "x",
     "ENRICHMENT_INTERNAL_SECRET": "x",
+    # Обязательный сервисный токен yandex-gateway.
+    "YANDEX_SERVICE_TOKEN": "x",
 }
 
 

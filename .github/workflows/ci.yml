@@ -385,6 +385,35 @@ jobs:
           path: /install/bin/six_feat_genius_gateway
           retention-days: 1
 
+  build-yandex-gateway:
+    name: "Build — yandex-gateway"
+    runs-on: ubuntu-22.04
+    needs: detect-changes
+    if: contains(needs.detect-changes.outputs.services, 'yandex-gateway')
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev
+
+      - name: Build & install
+        run: |
+          cmake -S services/yandex-gateway -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/install
+          cmake --build build -j"$(nproc)"
+          cmake --install build
+
+      - name: Upload binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: yandex-gateway-binary
+          path: /install/bin/six_feat_yandex_gateway
+          retention-days: 1
+
   build-auth:
     name: "Build — auth"
     runs-on: ubuntu-22.04
@@ -641,6 +670,45 @@ jobs:
             -v --tb=short \
             --timeout=60
 
+  # Отдельная job: yandex-gateway не зависит от Postgres/six-feat —
+  # только от своего же бинарника, ровно как test-genius-gateway.
+  test-yandex-gateway:
+    name: "Test — yandex-gateway"
+    runs-on: ubuntu-22.04
+    needs: [detect-changes, build-yandex-gateway]
+    if: |
+      always() &&
+      needs.build-yandex-gateway.result == 'success' &&
+      contains(needs.detect-changes.outputs.tests, 'yandex-gateway')
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          python-testenv: "true"
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: /install/bin
+          pattern: "*-binary"
+          merge-multiple: true
+
+      - name: Make binaries executable
+        run: chmod +x /install/bin/*
+
+      - name: Run yandex-gateway tests
+        env:
+          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
+        run: |
+          /opt/testenv/bin/pytest \
+            tests/test_contract_yandex_gateway.py \
+            -v --tb=short \
+            --timeout=60
+
   test-health:
     name: "Test — health checks"
     runs-on: ubuntu-22.04
@@ -856,6 +924,8 @@ jobs:
             dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
+          - name: six-feat-yandex-gateway
+            dockerfile: services/yandex-gateway/Dockerfile
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
@@ -1110,6 +1180,7 @@ jobs:
       - test-six-feat
       - test-auth
       - test-genius-gateway
+      - test-yandex-gateway
       - test-health
       - test-bg-resilience
       - docker-build-scan
@@ -1127,6 +1198,8 @@ jobs:
             dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
+          - name: six-feat-yandex-gateway
+            dockerfile: services/yandex-gateway/Dockerfile
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
@@ -1171,6 +1244,7 @@ jobs:
       - test-six-feat
       - test-auth
       - test-genius-gateway
+      - test-yandex-gateway
       - test-health
       - test-bg-resilience
       - docker-build-scan
@@ -1192,6 +1266,8 @@ jobs:
             dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
+          - name: six-feat-yandex-gateway
+            dockerfile: services/yandex-gateway/Dockerfile
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:

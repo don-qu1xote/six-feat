@@ -1,0 +1,52 @@
+type: object
+description: Network-only Yandex Music API client with lane-aware resilience (both service-token and personal-token calls)
+additionalProperties: false
+properties:
+    yandex-base-url:
+        type: string
+        description: Base URL
+        defaultDescription: https://api.music.yandex.net
+    backoff-max-attempts:
+        type: integer
+        description: Maximum retry attempts for transient failures
+        defaultDescription: '4'
+    backoff-base-ms:
+        type: integer
+        description: Initial backoff interval in milliseconds
+        defaultDescription: '200'
+    backoff-cap-ms:
+        type: integer
+        description: Maximum backoff interval in milliseconds
+        defaultDescription: '10000'
+    lane-fg-tokens-per-sec:
+        type: number
+        description: Rate limit for foreground requests in tokens per second
+        defaultDescription: '5.0'
+    lane-fg-burst:
+        type: integer
+        description: Token bucket burst size for foreground lane
+        defaultDescription: '5'
+    lane-fg-max-concurrent:
+        type: integer
+        description: Maximum concurrent foreground requests
+        defaultDescription: '5'
+    lane-bg-tokens-per-sec:
+        type: number
+        description: Rate limit for background requests in tokens per second
+        defaultDescription: '2.0'
+    lane-bg-burst:
+        type: integer
+        description: Token bucket burst size for background lane
+        defaultDescription: '2'
+    lane-bg-max-concurrent:
+        type: integer
+        description: Maximum concurrent background requests
+        defaultDescription: '1'
+    cb-failure-threshold:
+        type: integer
+        description: Number of failures before circuit opens
+        defaultDescription: '5'
+    cb-open-seconds:
+        type: integer
+        description: Duration to keep circuit open in seconds
+        defaultDescription: '30'

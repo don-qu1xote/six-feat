@@ -108,6 +108,20 @@ GENIUS_GATEWAY_BINARY = Path(
     )
 )
 
+YANDEX_GATEWAY_PORT = int(os.environ.get("SIX_FEAT_YANDEX_GATEWAY_PORT", "18104"))
+YANDEX_GATEWAY_MONITOR_PORT = int(os.environ.get("SIX_FEAT_YANDEX_GATEWAY_MONITOR_PORT", "18105"))
+YANDEX_GATEWAY_BASE = f"http://localhost:{YANDEX_GATEWAY_PORT}"
+YANDEX_GATEWAY_BINARY = Path(
+    os.environ.get(
+        "SIX_FEAT_YANDEX_GATEWAY_BINARY",
+        SRC_ROOT / "build" / "services" / "yandex-gateway" / "six_feat_yandex_gateway",
+    )
+)
+YANDEX_MOCK_PORT = int(os.environ.get("YANDEX_MOCK_PORT", "18106"))
+YANDEX_MOCK_BASE = f"http://localhost:{YANDEX_MOCK_PORT}"
+TEST_YANDEX_SERVICE_TOKEN = "test-yandex-service-token"
+TEST_YANDEX_DEVICE_CLIENT_ID = "test-yandex-device-client-id"
+
 AUTH_PORT = int(os.environ.get("SIX_FEAT_AUTH_PORT", "18084"))
 AUTH_MONITOR_PORT = int(os.environ.get("SIX_FEAT_AUTH_MONITOR_PORT", "18087"))
 AUTH_SERVICE_BASE = f"http://localhost:{AUTH_PORT}"
@@ -208,6 +222,57 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
 
 def _start_mock_server() -> HTTPServer:
     server = HTTPServer(("127.0.0.1", MOCK_PORT), _GeniusRequestHandler)
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
+_yandex_mock_state = _MockState()
+
+
+class _YandexRequestHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt: str, *args: Any) -> None:
+        pass
+
+    def _respond(self, path: str, params: Dict[str, List[str]]) -> None:
+        try:
+            status, body = _yandex_mock_state.dispatch(
+                path, params, self.headers.get("X-Request-Id")
+            )
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except Exception as e:
+            import traceback
+
+            error_body = json.dumps({"error": str(e), "traceback": traceback.format_exc()}).encode()
+            try:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(error_body)))
+                self.end_headers()
+                self.wfile.write(error_body)
+            except:
+                pass
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        self._respond(parsed.path, parse_qs(parsed.query))
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        raw_body = self.rfile.read(length) if length else b""
+        params = parse_qs(raw_body.decode(errors="replace"))
+        parsed = urlparse(self.path)
+        self._respond(parsed.path, params)
+
+
+def _start_yandex_mock_server() -> HTTPServer:
+    server = HTTPServer(("127.0.0.1", YANDEX_MOCK_PORT), _YandexRequestHandler)
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -583,6 +648,122 @@ components_manager:
       task_processor: monitor-task-processor
 """
 
+_YANDEX_GATEWAY_TEST_CONFIG_TEMPLATE = """\
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 2
+      thread_name: main-worker
+    fs-task-processor:
+      worker_threads: 2
+      thread_name: fs-task-processor
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: {gateway_port}
+        task_processor: main-task-processor
+      listener-monitor:
+        port: {gateway_monitor_port}
+        task_processor: monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stderr'
+          level: warning
+
+          format: json
+
+    testsuite-support:
+
+    yandex-music-gateway:
+      yandex-base-url: http://127.0.0.1:{mock_port}
+      backoff-max-attempts: {backoff_max_attempts}
+      backoff-base-ms: 10
+      backoff-cap-ms: 100
+      lane-fg-tokens-per-sec: 100.0
+      lane-fg-burst: 100
+      lane-fg-max-concurrent: 10
+      lane-bg-tokens-per-sec: 100.0
+      lane-bg-burst: 100
+      lane-bg-max-concurrent: 10
+      cb-failure-threshold: {cb_failure_threshold}
+      cb-open-seconds: 1
+
+    yandex-device-auth-client:
+      device-code-url: http://127.0.0.1:{mock_port}/device/code
+      token-url: http://127.0.0.1:{mock_port}/token
+      client-id: {device_client_id}
+      backoff-max-attempts: {backoff_max_attempts}
+      backoff-base-ms: 10
+      backoff-cap-ms: 100
+      lane-fg-tokens-per-sec: 100.0
+      lane-fg-burst: 100
+      lane-fg-max-concurrent: 10
+      lane-bg-tokens-per-sec: 100.0
+      lane-bg-burst: 100
+      lane-bg-max-concurrent: 10
+      cb-failure-threshold: {cb_failure_threshold}
+      cb-open-seconds: 1
+
+    handler-internal-yandex-track-artists:
+      path: /internal/yandex/track-artists
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-yandex-search-artist:
+      path: /internal/yandex/search-artist
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-yandex-device-start:
+      path: /internal/yandex/device/start
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-yandex-device-poll:
+      path: /internal/yandex/device/poll
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-yandex-playlists:
+      path: /internal/yandex/playlists
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-yandex-liked-tracks:
+      path: /internal/yandex/liked-tracks
+      method: POST
+      task_processor: main-task-processor
+
+    handler-healthz:
+      path: /healthz
+      method: GET
+      task_processor: main-task-processor
+
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: main-task-processor
+
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: monitor-task-processor
+"""
+
 TEST_APP_SECRET = "f" * 64
 TEST_GENIUS_CLIENT_SECRET = "test-genius-client-secret"
 
@@ -686,6 +867,60 @@ def genius_gateway_proc(
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(f"Genius-gateway service did not start within timeout.\nstderr:\n{stderr}")
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+@pytest.fixture(scope="session")
+def yandex_mock_server() -> Generator[_MockState, None, None]:
+    srv = _start_yandex_mock_server()
+    yield _yandex_mock_state
+    srv.shutdown()
+
+
+@pytest.fixture(scope="session")
+def yandex_gateway_proc(
+    tmp_db_dir: Path, yandex_mock_server: _MockState
+) -> Generator[subprocess.Popen, None, None]:
+    if not YANDEX_GATEWAY_BINARY.exists():
+        pytest.skip(
+            f"Yandex-gateway service binary not found at {YANDEX_GATEWAY_BINARY}. "
+            "Build the project first or set SIX_FEAT_YANDEX_GATEWAY_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir / "yandex_gateway_static_config.yaml"
+    cfg_path.write_text(
+        _YANDEX_GATEWAY_TEST_CONFIG_TEMPLATE.format(
+            gateway_port=YANDEX_GATEWAY_PORT,
+            gateway_monitor_port=YANDEX_GATEWAY_MONITOR_PORT,
+            mock_port=YANDEX_MOCK_PORT,
+            backoff_max_attempts=1,
+            cb_failure_threshold=100,
+            device_client_id=TEST_YANDEX_DEVICE_CLIENT_ID,
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(YANDEX_GATEWAY_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "YANDEX_SERVICE_TOKEN": TEST_YANDEX_SERVICE_TOKEN,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(YANDEX_GATEWAY_PORT):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Yandex-gateway service did not start within timeout.\nstderr:\n{stderr}")
 
     yield proc
 
@@ -1750,6 +1985,136 @@ class GeniusMock:
 @pytest.fixture()
 def genius_mock(mock_server: _MockState) -> GeniusMock:
     return GeniusMock(mock_server)
+
+
+class YandexMock:
+    def __init__(self, state: _MockState) -> None:
+        self._state = state
+
+    def track_artists(self, track_id: int, artists: List[Dict[str, Any]]) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {
+                "result": [
+                    {
+                        "id": track_id,
+                        "artists": [
+                            {
+                                "id": a["id"],
+                                "name": a["name"],
+                                "cover": {"uri": a.get("image", "")},
+                            }
+                            for a in artists
+                        ],
+                    }
+                ]
+            }
+
+        self._state.register(f"/tracks/{track_id}", _handler)
+        return self
+
+    def track_not_found(self, track_id: int) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"result": []}
+
+        self._state.register(f"/tracks/{track_id}", _handler)
+        return self
+
+    def track_artists_error(self, track_id: int, status: int = 503) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return status, {"error": "upstream error"}
+
+        self._state.register(f"/tracks/{track_id}", _handler)
+        return self
+
+    def search_artist(self, query: str, candidates: List[Dict[str, Any]]) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            q = (params.get("text") or [""])[0]
+            if q != query:
+                return 200, {"result": {"artists": {"results": []}}}
+            return 200, {
+                "result": {
+                    "artists": {
+                        "results": [
+                            {
+                                "id": c["id"],
+                                "name": c["name"],
+                                "cover": {"uri": c.get("image", "")},
+                            }
+                            for c in candidates
+                        ]
+                    }
+                }
+            }
+
+        self._state.register("/search", _handler)
+        return self
+
+    def search_artist_error(self, status: int = 503) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return status, {"error": "upstream error"}
+
+        self._state.register("/search", _handler)
+        return self
+
+    def device_code(self, response: Dict[str, Any]) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, response
+
+        self._state.register("/device/code", _handler)
+        return self
+
+    def token_pending(self, device_code: str) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            code = (params.get("code") or [""])[0]
+            if code != device_code:
+                return 400, {"error": "expired_token"}
+            return 400, {"error": "authorization_pending"}
+
+        self._state.register("/token", _handler)
+        return self
+
+    def token_success(
+        self, device_code: str, access_token: str, refresh_token: str = "refresh-1"
+    ) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            code = (params.get("code") or [""])[0]
+            if code != device_code:
+                return 400, {"error": "expired_token"}
+            return 200, {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_in": 3600,
+                "token_type": "bearer",
+            }
+
+        self._state.register("/token", _handler)
+        return self
+
+    def token_denied(self, device_code: str) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 400, {"error": "access_denied"}
+
+        self._state.register("/token", _handler)
+        return self
+
+    def playlists(self, user_id: str, playlists: List[Dict[str, Any]]) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"result": playlists}
+
+        self._state.register(f"/users/{user_id}/playlists/list", _handler)
+        return self
+
+    def liked_tracks(self, user_id: str, track_ids: List[int]) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"result": {"tracks": track_ids}}
+
+        self._state.register(f"/users/{user_id}/likes/tracks", _handler)
+        return self
+
+
+@pytest.fixture()
+def yandex_mock(yandex_mock_server: _MockState) -> YandexMock:
+    return YandexMock(yandex_mock_server)
 
 
 def _build_song_detail(

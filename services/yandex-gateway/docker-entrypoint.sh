@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly COMMON_ENTRYPOINT="/app/services/.base/docker-entrypoint-common.sh"
+if [[ ! -f "$COMMON_ENTRYPOINT" ]]; then
+  echo "[entrypoint] ERROR: ${COMMON_ENTRYPOINT} not found — check Dockerfile or volume mount" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$COMMON_ENTRYPOINT"
+
+load_env_profile
+
+# six-feat-yandex-gateway не имеет OAuth-сессий/БД — только исходящий HTTP к
+# Яндекс.Музыке. Сервисный токен — обязательный дефолтный
+# источник рёбер графа, НЕ per-user. Device-flow client-id — задел под
+# SF-YM-04, не блокер, поэтому не required.
+: "${YANDEX_SERVICE_TOKEN:?YANDEX_SERVICE_TOKEN env var is required — a single Yandex Music OAuth token for the whole deployment (NOT per-user), see docs/DEVELOPMENT.md}"
+: "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat / six-feat-enrichment, generate with: openssl rand -hex 32}"
+
+YANDEX_DEVICE_CLIENT_ID="${YANDEX_DEVICE_CLIENT_ID:-}"
+LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
+
+cat > /tmp/config_vars.yaml <<EOF
+yandex_device_client_id: ${YANDEX_DEVICE_CLIENT_ID}
+logging_level: ${LOGGING_LEVEL}
+EOF
+
+exec /app/six_feat_yandex_gateway \
+  --config /app/static_config.yaml \
+  --config_vars /tmp/config_vars.yaml

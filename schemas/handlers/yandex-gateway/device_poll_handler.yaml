@@ -1,0 +1,4 @@
+type: object
+description: Internal Yandex OAuth device-flow poll endpoint (exchanges a device code for a personal token)
+additionalProperties: false
+properties: {}
