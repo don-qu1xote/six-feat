@@ -9,16 +9,19 @@ fi
 
 cpp_files=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
 if [ -n "$cpp_files" ]; then
+    command -v clang-format >/dev/null 2>&1 || { echo "clang-format not found. Run: brew install clang-format (macOS) or apt install clang-format (Linux)"; exit 1; }
     echo "$cpp_files" | xargs -r clang-format -i --style=file
 fi
 
 py_files=$(echo "$staged" | grep -E '\.py$' || true)
 if [ -n "$py_files" ]; then
+    command -v ruff >/dev/null 2>&1 || { echo "ruff not found. Run: pip install ruff"; exit 1; }
     echo "$py_files" | xargs -r ruff format --force-exclude
 fi
 
 js_files=$(echo "$staged" | grep -E '^front/.*\.js$' || true)
 if [ -n "$js_files" ]; then
+    command -v npx >/dev/null 2>&1 || { echo "npx not found"; exit 1; }
     echo "$js_files" | while IFS= read -r file; do
         (cd front && npx prettier --write "../$file" > /dev/null 2>&1)
     done

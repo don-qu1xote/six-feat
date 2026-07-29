@@ -28,7 +28,9 @@ DOCKER="false"
 # --- Определение затронутых сервисов ---
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
   SERVICES="six-feat enrichment auth game genius-gateway yandex-gateway"
-elif echo "$CHANGED_FILES" | grep -q "^services/six-feat/"; then
+fi
+
+if echo "$CHANGED_FILES" | grep -qE "^services/six-feat/(src|tests/unit)/"; then
   SERVICES="$SERVICES six-feat yandex-gateway"
 fi
 
@@ -58,6 +60,10 @@ SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 # --- Определение затронутых тестов ---
 if echo "$CHANGED_FILES" | grep -q "^tests/"; then
   TESTS="unit integration"
+fi
+
+if echo "$CHANGED_FILES" | grep -q "^services/six-feat/tests/unit/"; then
+  TESTS="$TESTS six-feat"
 fi
 
 # Сопоставление сервисов с их тестами
