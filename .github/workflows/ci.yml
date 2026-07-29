@@ -478,7 +478,7 @@ jobs:
   test-six-feat:
     name: "Test — six-feat"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-auth]
+    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-yandex-gateway, build-auth]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -528,6 +528,7 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
+          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -546,13 +547,14 @@ jobs:
             tests/test_api_auth_headers.py \
             tests/test_internal_neighbours.py \
             tests/test_upsert_batching.py \
+            tests/test_music_source_provider.py \
             -v --tb=short \
             --timeout=60
 
   test-auth:
     name: "Test — auth"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-auth, build-genius-gateway]
+    needs: [detect-changes, build-six-feat, build-yandex-gateway, build-auth, build-genius-gateway]
     if: |
       always() &&
       needs.build-auth.result == 'success' &&
@@ -602,6 +604,7 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
+          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -712,7 +715,7 @@ jobs:
   test-health:
     name: "Test — health checks"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-auth]
+    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-yandex-gateway, build-auth]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -762,6 +765,7 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
+          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -772,7 +776,7 @@ jobs:
   test-bg-resilience:
     name: "Test — BG resilience"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-auth]
+    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-yandex-gateway, build-auth]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -822,6 +826,7 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
+          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -964,7 +969,7 @@ jobs:
   e2e-smoke:
     name: "E2E smoke (Playwright)"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-genius-gateway]
+    needs: [detect-changes, build-six-feat, build-genius-gateway, build-yandex-gateway]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -1026,6 +1031,7 @@ jobs:
         run: |
           SIX_FEAT_BINARY=/install/bin/six_feat \
           SIX_FEAT_GENIUS_GATEWAY_BINARY=/install/bin/six_feat_genius_gateway \
+          SIX_FEAT_YANDEX_GATEWAY_BINARY=/install/bin/six_feat_yandex_gateway \
           /opt/testenv/bin/python3 scripts/e2e_env.py up &
           echo $! > /tmp/e2e_env.pid
           for i in $(seq 1 60); do
@@ -1055,7 +1061,7 @@ jobs:
   load-test:
     name: "Load test (k6)"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-genius-gateway]
+    needs: [detect-changes, build-six-feat, build-genius-gateway, build-yandex-gateway]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -1121,6 +1127,7 @@ jobs:
         run: |
           SIX_FEAT_BINARY=/install/bin/six_feat \
           SIX_FEAT_GENIUS_GATEWAY_BINARY=/install/bin/six_feat_genius_gateway \
+          SIX_FEAT_YANDEX_GATEWAY_BINARY=/install/bin/six_feat_yandex_gateway \
           /opt/testenv/bin/python3 scripts/e2e_env.py up &
           echo $! > /tmp/e2e_env.pid
           for i in $(seq 1 60); do

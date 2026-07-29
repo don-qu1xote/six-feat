@@ -29,7 +29,7 @@ DOCKER="false"
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
   SERVICES="six-feat enrichment auth game genius-gateway yandex-gateway"
 elif echo "$CHANGED_FILES" | grep -q "^services/six-feat/"; then
-  SERVICES="$SERVICES six-feat"
+  SERVICES="$SERVICES six-feat yandex-gateway"
 fi
 
 if echo "$CHANGED_FILES" | grep -q "^services/six-feat-enrichment/"; then
