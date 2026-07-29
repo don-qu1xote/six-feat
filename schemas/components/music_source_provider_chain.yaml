@@ -8,3 +8,4 @@ properties:
         defaultDescription: '[yandex, genius-fallback]'
         items:
             type: string
+            description: Provider component name (yandex or genius-fallback)

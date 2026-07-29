@@ -1139,6 +1139,7 @@ def service_proc_badsecret(
     tmp_db_dir: Path,
     mock_server: _MockState,
     genius_gateway_proc: subprocess.Popen,
+    yandex_gateway_proc: subprocess.Popen,
     auth_service_proc_badsecret: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
     """
@@ -1160,6 +1161,7 @@ def service_proc_badsecret(
             monitor_port=MONITOR_PORT_BADSECRET,
             mock_port=MOCK_PORT,
             genius_gateway_port=GENIUS_GATEWAY_PORT,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
             auth_base_url=f"http://127.0.0.1:{AUTH_PORT_BADSECRET}",
@@ -1640,6 +1642,7 @@ def service_proc_bg(
     tmp_db_dir_bg: Path,
     mock_server_bg: _MockState,
     genius_gateway_proc_bg: subprocess.Popen,
+    yandex_gateway_proc: subprocess.Popen,
     enrichment_proc_bg: subprocess.Popen,
     auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
@@ -1667,6 +1670,7 @@ def service_proc_bg(
             monitor_port=MONITOR_PORT_BG,
             mock_port=MOCK_PORT_BG,
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_SERVICE_PORT_BG}",
             auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
