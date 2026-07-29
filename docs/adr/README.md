@@ -25,6 +25,8 @@ ROADMAP.md; если нужен ответ на вопрос "почему та�
 | [0008](./0008-game-frontend-reuses-explorer-engine.md) | Игровой фронтенд рендерит на том же движке графа, что и Explorer | Принято |
 | [0009](./0009-canonical-artist-identity-in-game.md) | Каноническая идентичность артиста в игре — реальный Genius id, без синтетических | Принято |
 | [0010](./0010-library-split-and-unified-build.md) | Разделение libs/six-feat-common на независимые STATIC-библиотеки | Принято |
+| [0011](./0011-music-source-provider-abstraction.md) | MusicSourceProvider: Яндекс дефолт/обязателен, Genius — углубление и fallback | Принято |
+| [0012](./0012-six-feat-as-sole-public-entry.md) | six-feat остаётся основным публичным сервисом данных — без отдельного BFF | Принято |
 
 ## Формат
 

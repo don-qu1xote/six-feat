@@ -8,7 +8,12 @@
 
 Обоснование ключевых архитектурных решений (почему сервисов пять,
 почему сессия проверяется локально, почему схемы вынесены в YAML и
-т.д.) — в [docs/adr/](./docs/adr/README.md), не здесь.
+т.д.) — в [docs/adr/](./adr/README.md), не здесь.
+
+C4-диаграммы контекста/контейнеров и sequence-диаграммы ключевых потоков
+(OAuth-логин, построение дефолтного графа, углубление, фоновое
+обогащение) — в [docs/architecture/](./architecture/README.md)
+(SF-DOC-04, Mermaid, рендерится нативно на GitHub).
 
 ---
 
@@ -58,14 +63,14 @@
 
 ## Сервисы (IDEA-25 / IDEA-45 / IDEA-53)
 
-Почему именно такое разбиение — в [ADR-0001](./docs/adr/0001-split-into-four-services.md)
-(и по каждому сервису отдельно: [ADR-0002](./docs/adr/0002-enrichment-standalone-service.md)
-для enrichment, [ADR-0003](./docs/adr/0003-genius-gateway-centralizes-rate-limiting.md)
-для genius-gateway, [ADR-0004](./docs/adr/0004-auth-service-local-session-verification.md)
-для auth, [ADR-0007](./docs/adr/0007-game-mode-as-separate-service.md) для game).
+Почему именно такое разбиение — в [ADR-0001](./adr/0001-split-into-four-services.md)
+(и по каждому сервису отдельно: [ADR-0002](./adr/0002-enrichment-standalone-service.md)
+для enrichment, [ADR-0003](./adr/0003-genius-gateway-centralizes-rate-limiting.md)
+для genius-gateway, [ADR-0004](./adr/0004-auth-service-local-session-verification.md)
+для auth, [ADR-0007](./adr/0007-game-mode-as-separate-service.md) для game).
 Здесь — только таблица портов/ответственности.
 
-Проект — не один процесс, а семь независимых userver-сервисов из одного
+Проект — не один процесс, а шесть независимых userver-сервисов из одного
 репозитория (`docker-compose.yml` поднимает их все, каждый — свой Dockerfile
 `target`):
 
@@ -88,7 +93,7 @@
 ### OAuth: выдача сессии (six-feat-auth) vs проверка сессии (six-feat)
 
 Обоснование того, почему проверка сессии осталась локальной, а не стала
-HTTP-вызовом к six-feat-auth — [ADR-0004](./docs/adr/0004-auth-service-local-session-verification.md).
+HTTP-вызовом к six-feat-auth — [ADR-0004](./adr/0004-auth-service-local-session-verification.md).
 
 [IDEA-53] До этой итерации OAuth-хэндлеры (`LoginHandler`/`CallbackHandler`/
 `LogoutHandler`/`MeHandler`, `src/auth/oauth_handler.cpp`) жили внутри
@@ -121,17 +126,22 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./docs/adr/0004-auth-service
 
 ### Маршрутизация `/auth/*`
 
-В `docker-compose.yml` из этого репозитория **нет** общего входа/обратного
-прокси перед `six-feat`/`six-feat-auth` — оба слушают собственные хостовые
-порты (`8080` и `8083`). Поэтому:
+`docker-compose.yml` из этого репозитория ставит `nginx` единственным
+общим публичным входом перед `six-feat`/`six-feat-auth`/`six-feat-game`
+(`nginx/default.conf.template`: `/auth/*` → six-feat-auth, `/api/v1/game/*`
+→ six-feat-game, всё остальное → six-feat) — см.
+[docs/architecture/c4-container.md](./architecture/c4-container.md) и
+обоснование, почему это тонкий роутер, а не отдельный BFF, в
+[ADR-0012](./adr/0012-six-feat-as-sole-public-entry.md). Поэтому:
 
-- `GENIUS_REDIRECT_URI` должен указывать на **six-feat-auth**, а не на
-  six-feat (по умолчанию `http://localhost:8083/auth/callback` — см.
-  `services/auth/docker-entrypoint.sh`), и именно это значение нужно
-  зарегистрировать как Redirect URI на https://genius.com/api-clients.
-- Если вы ставите reverse proxy (nginx/traefik/…) перед обоими сервисами в
-  продакшене — направляйте `/auth/*` на six-feat-auth, всё остальное на
-  six-feat, и укажите `GENIUS_REDIRECT_URI` на публичный origin прокси.
+- `GENIUS_REDIRECT_URI` должен указывать на **публичный origin `nginx`**
+  (по умолчанию `http://localhost:8080/auth/callback` — см.
+  `config/.env.example`), не на порт six-feat-auth напрямую (`8083`,
+  который тоже опубликован для отладки, но не для реального OAuth-обмена)
+  — и именно значение через `nginx` нужно зарегистрировать как Redirect
+  URI на https://genius.com/api-clients.
+- Полная последовательность запросов —
+  [docs/architecture/sequences/oauth-login.md](./architecture/sequences/oauth-login.md).
 
 ---
 
