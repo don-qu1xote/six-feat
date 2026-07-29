@@ -581,6 +581,52 @@ jobs:
             -v --tb=short \
             --timeout=60
 
+  # [SF-DB-08] EXPLAIN-регресс по горячим запросам persistent_store.cpp —
+  # после интеграционных (needs test-six-feat), собственный Postgres-сервис
+  # (та же схема, что и остальные test-* job'ы этого пайплайна). Не требует
+  # собранного бинарника: применяет postgresql/migrations/V*.sql напрямую.
+  # continue-on-error — предупреждение, не блокирует сборку, пока сигнал не
+  # накопит уверенность (см. docs/DEVELOPMENT.md).
+  explain-hot-queries:
+    name: "Perf — EXPLAIN hot queries (SF-DB-08)"
+    runs-on: ubuntu-22.04
+    needs: [detect-changes, test-six-feat]
+    if: |
+      always() &&
+      needs.test-six-feat.result == 'success' &&
+      contains(needs.detect-changes.outputs.tests, 'six-feat')
+    continue-on-error: true
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+        env:
+          POSTGRES_DB: six_feat_test
+          POSTGRES_USER: six_feat
+          POSTGRES_PASSWORD: six_feat_test_password
+        options: >-
+          --health-cmd "pg_isready -U six_feat -d six_feat_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: six_feat_test
+      DB_USER: six_feat
+      DB_PASSWORD: six_feat_test_password
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: python3 python3-pip python3-venv curl
+          python-testenv: "true"
+
+      - name: Run explain-hot-queries.py
+        run: /opt/testenv/bin/python3 scripts/explain-hot-queries.py
+
   test-auth:
     name: "Test — auth"
     runs-on: ubuntu-22.04
@@ -1216,6 +1262,7 @@ jobs:
       - unit-tests
       - unit-tests-cpp
       - test-six-feat
+      - explain-hot-queries
       - test-auth
       - test-genius-gateway
       - test-yandex-gateway
@@ -1281,6 +1328,7 @@ jobs:
       - unit-tests
       - unit-tests-cpp
       - test-six-feat
+      - explain-hot-queries
       - test-auth
       - test-genius-gateway
       - test-yandex-gateway
