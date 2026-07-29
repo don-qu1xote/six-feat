@@ -5,6 +5,7 @@
 #include <optional>
 #include <six-feat-core/resilience.hpp>
 #include <six-feat-domain/domain_types.hpp>
+#include <six-feat-genius/i_external_artist_lookup.hpp>
 #include <string>
 #include <userver/clients/http/client.hpp>
 #include <userver/components/component_base.hpp>
@@ -16,7 +17,8 @@
 
 namespace six_feat {
 
-class GeniusGatewayClient final : public userver::components::ComponentBase {
+class GeniusGatewayClient final : public userver::components::ComponentBase,
+                                  public IExternalArtistLookup {
  public:
   static constexpr std::string_view kName = "genius-gateway-client";
 
@@ -26,25 +28,25 @@ class GeniusGatewayClient final : public userver::components::ComponentBase {
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
   std::vector<Candidate> ResolveCandidates(const std::string& query,
-                                           const std::string& user_token) const;
+                                           const std::string& user_token) const override;
 
   std::optional<ArtistRef> FetchArtistById(std::int64_t id,
                                            Lane lane,
-                                           const std::string& user_token) const;
+                                           const std::string& user_token) const override;
 
   std::vector<std::int64_t> FetchSongList(std::int64_t artist_id,
                                           int limit,
                                           Lane lane,
-                                          const std::string& user_token) const;
+                                          const std::string& user_token) const override;
 
   std::optional<SongRecord> FetchSongDetail(std::int64_t song_id,
                                             Lane lane,
-                                            const std::string& user_token) const;
+                                            const std::string& user_token) const override;
 
-  double MatchThreshold() const {
+  double MatchThreshold() const override {
     return match_threshold_;
   }
-  int SongsLimitFg() const {
+  int SongsLimitFg() const override {
     return songs_limit_fg_;
   }
   int SongsLimitBg() const {

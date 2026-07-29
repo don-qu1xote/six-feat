@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <six-feat-domain/role_mask.hpp>
+#include <six-feat-genius/genius_gateway_client.hpp>
 #include <six-feat-storage/analytics.hpp>
+#include <six-feat-storage/artist_repository.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>

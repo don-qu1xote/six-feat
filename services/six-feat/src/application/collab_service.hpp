@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <optional>
 #include <six-feat-domain/domain_types.hpp>
-#include <six-feat-genius/genius_gateway_client.hpp>
-#include <six-feat-storage/artist_repository.hpp>
+#include <six-feat-genius/i_external_artist_lookup.hpp>
+#include <six-feat-storage/i_artist_data_source.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -93,8 +93,8 @@ class CollabService final : public userver::components::ComponentBase {
           std::unordered_map<std::int64_t, std::unordered_map<std::int64_t, std::string>>>&
           edge_songs_dedup) const;
 
-  ArtistRepository& repo_;
-  GeniusGatewayClient& gateway_;
+  IArtistDataSource& repo_;
+  IExternalArtistLookup& gateway_;
   EnrichmentClient& enrichment_;
   const int path_max_expand_rounds_;
   const int path_max_frontier_size_;
