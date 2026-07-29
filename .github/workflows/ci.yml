@@ -16,16 +16,21 @@ env:
   K6_VERSION: "0.55.0"
 
 jobs:
-  # Паритет docker-compose между dev/staging/prod. Без needs: —
-  # намеренно ДО build-and-test (там интеграционные тесты), не после.
+  # Паритет docker-compose между dev/staging/prod (SF-CFG-02) и
+  # парсимость самих config/profiles/{dev,staging,prod}.env (SF-CFG-01).
+  # Без needs: — намеренно ДО build-and-test (там интеграционные тесты),
+  # не после. Ни один из двух скриптов не требует Docker/Postgres/сборки.
   verify-env-parity:
-    name: "Config validation (env parity dev/staging/prod)"
+    name: "Config validation (env parity + profiles dev/staging/prod)"
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Run verify-env-parity.py
         run: python3 scripts/verify-env-parity.py
+
+      - name: Run verify-env-profiles.py
+        run: python3 scripts/verify-env-profiles.py
 
   # ══════════════════════════════════════════════════════════════════════════
   # Stage 0 — Определение изменений (~5 секунд)

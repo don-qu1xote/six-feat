@@ -203,6 +203,8 @@ ENV_PROFILE=prod    docker compose up -d
 python3 scripts/verify-env-profiles.py
 ```
 
+Гоняется в CI на каждый PR (тот же шаг `verify-env-parity`, теперь двумя запусками — `verify-env-parity.py` и `verify-env-profiles.py` — см. ниже).
+
 ### Паритет docker-compose между окружениями (SF-CFG-02)
 
 Единственный источник правды — этот `docker-compose.yml`. **Правило**: никаких `docker-compose.staging.yml` / `docker-compose.prod.yml` с дублирующими service-блоками — разница между dev/staging/prod только в `ENV_PROFILE`, сам YAML не трогаем.

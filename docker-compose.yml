@@ -162,7 +162,7 @@ services:
       # профиль (docker-entrypoint.sh source-ит профиль через ${VAR:-default}).
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
-      # [SF-CFG-01] Выбирает config/profiles/${ENV_PROFILE().env, sourced
+      # [SF-CFG-01] Выбирает config/profiles/${ENV_PROFILE}.env, sourced
       # docker-entrypoint.sh — см. docs/DEVELOPMENT.md «Env-профили».
       # Единственное различие между dev/staging/prod для этого compose.yml.
       ENV_PROFILE: ${ENV_PROFILE:-dev}
