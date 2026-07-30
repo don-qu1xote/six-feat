@@ -3,7 +3,7 @@
   "info": {
     "title": "six-feat public API",
     "description": "Artist-collaboration graph explorer, backed by Genius.com. Every endpoint below requires an authenticated Genius session (six_feat_session cookie, minted by six-feat-auth's OAuth flow) except where noted.",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "servers": [
     {
@@ -1107,7 +1107,7 @@
             }
           },
           "422": {
-            "description": "Session has no Genius display name to own this key with",
+            "description": "Session has no Genius display name to own this key with (also returned when Idempotency-Key is reused with a different request body)",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1116,7 +1116,18 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "SF-API-16: an opaque client-chosen key. A repeated POST with the same key returns the exact cached {status, response} from the first attempt without re-running the request's side effects (e.g. without issuing/revoking a second key); a request with the same key but a different body gets 422 instead of a mismatched replay. TTL is 24h; omit the header for the existing non-idempotent behaviour."
+          }
+        ]
       }
     },
     "/api/v1/api-keys/revoke": {
@@ -1124,6 +1135,15 @@
         "summary": "Revoke one of the caller's own API keys (SF-API-15)",
         "description": "Session-cookie-only. Only revokes when the key's owner matches the caller's own session — never another owner's key by guessing/enumerating ids.",
         "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "SF-API-16: an opaque client-chosen key. A repeated POST with the same key returns the exact cached {status, response} from the first attempt without re-running the request's side effects (e.g. without issuing/revoking a second key); a request with the same key but a different body gets 422 instead of a mismatched replay. TTL is 24h; omit the header for the existing non-idempotent behaviour."
+          },
           {
             "name": "id",
             "in": "query",
@@ -1177,6 +1197,16 @@
           },
           "404": {
             "description": "id does not exist, belongs to a different owner, or was already revoked",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Idempotency-Key reused with a different request body",
             "content": {
               "application/problem+json": {
                 "schema": {

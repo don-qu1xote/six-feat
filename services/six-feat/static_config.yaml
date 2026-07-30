@@ -63,6 +63,9 @@ components_manager:
     api-key-store:
       dbname: postgres-db-1
 
+    idempotency-store:
+      dbname: postgres-db-1
+
     genius-gateway-client:
       genius-gateway-base-url: $genius_gateway_base_url
       timeout-ms: 5000

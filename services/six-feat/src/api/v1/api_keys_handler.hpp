@@ -2,6 +2,7 @@
 
 #include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-core/idempotency.hpp>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
@@ -25,6 +26,7 @@ class ApiKeyIssueHandler final : public userver::server::handlers::HttpHandlerBa
  private:
   auth::OAuthConfig& oauth_;
   auth::ApiKeyStore& api_key_store_;
+  IdempotencyStore& idempotency_store_;
 };
 
 class ApiKeyRevokeHandler final : public userver::server::handlers::HttpHandlerBase {
@@ -42,6 +44,7 @@ class ApiKeyRevokeHandler final : public userver::server::handlers::HttpHandlerB
  private:
   auth::OAuthConfig& oauth_;
   auth::ApiKeyStore& api_key_store_;
+  IdempotencyStore& idempotency_store_;
 };
 
 }  // namespace six_feat

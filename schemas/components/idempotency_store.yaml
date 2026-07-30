@@ -1,0 +1,13 @@
+type: object
+description: >-
+    [SF-API-16] Postgres-backed Idempotency-Key replay cache for mutating
+    (POST/PUT) public-API handlers — schema migration lives in
+    PersistentStore (kMigrationV5, six-feat-storage); this component gets
+    its own cluster handle and trusts the table already exists, same split
+    as RateLimitStoreComponent/ApiKeyStore.
+additionalProperties: false
+properties:
+    dbname:
+        type: string
+        description: Name of the components::Postgres component whose cluster backs this store
+        defaultDescription: postgres-db-1

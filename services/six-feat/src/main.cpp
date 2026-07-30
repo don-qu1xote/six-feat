@@ -2,6 +2,7 @@
 
 #include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-core/idempotency_store.hpp>
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
 #include <six-feat-http/health_handler.hpp>
@@ -55,6 +56,7 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::MusicSourceProviderChain>()
                                   .Append<six_feat::RateLimitStoreComponent>()
                                   .Append<six_feat::auth::ApiKeyStore>()
+                                  .Append<six_feat::IdempotencyStore>()
                                   .Append<six_feat::GraphHandler>()
                                   .Append<six_feat::PathHandler>()
                                   .Append<six_feat::SearchHandler>()

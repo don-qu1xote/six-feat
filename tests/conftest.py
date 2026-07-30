@@ -378,6 +378,9 @@ components_manager:
     api-key-store:
       dbname: postgres-db-1
 
+    idempotency-store:
+      dbname: postgres-db-1
+
     oauth-config:
       client-id: test-client-id
       redirect-uri: http://127.0.0.1:{service_port}/auth/callback

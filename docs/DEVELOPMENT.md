@@ -174,6 +174,41 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./adr/0004-auth-service-loca
   от IP/cookie-бакетов — см. `PerIpRateLimit::AllowWithTier` в
   `six-feat-core/rate_limiter.hpp`.
 
+### Idempotency-Key на мутирующих ручках (SF-API-16)
+
+Заголовок `Idempotency-Key` на POST/PUT ручках публичного API защищает от
+повторного выполнения побочных эффектов при ретрае/двойном клике —
+`POST /api/v1/api-keys` и `POST /api/v1/api-keys/revoke` его уже
+поддерживают.
+
+- **Общий механизм** — `IdempotencyStore` + `RunIdempotent()`
+  (`six-feat-core/idempotency{,_store}.hpp`), используется ЛЮБЫМ сервисом,
+  линкующим `six_feat_core` (как и `RateLimitStoreComponent`). Это НЕ то же
+  самое, что точечная идемпотентность внутри GAME (уникальность пары
+  `(from_artist_id, to_artist_id, role_mask, kind)` у `game_challenges`,
+  `ON CONFLICT DO NOTHING` у `game_user_achievements`,
+  `services/game/src/core/game_store.cpp`) — те защищают доменные
+  инварианты независимо от клиентского ключа; `RunIdempotent` — это слой
+  НАД ними, кэширующий весь HTTP-ответ целиком, так что повторная доставка
+  вообще не доходит до тела хэндлера во второй раз. Механизмы дополняют
+  друг друга, не заменяют.
+- **Семантика** — заголовка нет → поведение хэндлера не меняется. Заголовок
+  есть и ключ новый → тело хэндлера выполняется как обычно, результат
+  ({status, body}) кэшируется на `kDefaultIdempotencyTtl` (24ч). Тот же
+  ключ + то же тело запроса → закэшированный ответ возвращается БЕЗ
+  повторного выполнения (заголовок ответа `Idempotent-Replay: true`). Тот
+  же ключ + ДРУГОЕ тело → 422 (переиспользование ключа для другого
+  запроса), не подмена ответа.
+- **Хранение** — таблица `idempotency_keys` (`kMigrationV5`,
+  `six-feat-storage/persistent_store.cpp`): `key` (PK), `request_hash`
+  (SHA-256 от `route_id + тело запроса` — `route_id` разруливает коллизию,
+  если один и тот же ключ клиент случайно использовал на двух разных
+  ручках), `status_code`, `response_body`, `created_at`, `expires_at`.
+- **Область действия сейчас** — обе ручки `/api/v1/api-keys*` в six-feat;
+  расширение на мутирующие ручки six-feat-game (`validate`/`submit`/
+  `challenge`/`admin`) той же обёрткой `RunIdempotent` — естественное
+  дальнейшее развитие, компонент уже пригоден для этого без изменений.
+
 ---
 
 ## Переменные окружения

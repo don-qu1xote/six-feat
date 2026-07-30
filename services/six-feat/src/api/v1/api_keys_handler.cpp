@@ -4,6 +4,7 @@
 #include "schemas/handlers/six-feat/api_keys_revoke_handler_schema.hpp"
 
 #include <six-feat-core/error_response.hpp>
+#include <six-feat-core/idempotency.hpp>
 #include <six-feat-core/request_id.hpp>
 #include <six-feat-core/security_headers.hpp>
 #include <stdexcept>
@@ -25,7 +26,8 @@ ApiKeyIssueHandler::ApiKeyIssueHandler(const components::ComponentConfig& config
                                        const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
-      api_key_store_(context.FindComponent<auth::ApiKeyStore>()) {}
+      api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
+      idempotency_store_(context.FindComponent<IdempotencyStore>()) {}
 
 std::string ApiKeyIssueHandler::HandleRequestThrow(const server::http::HttpRequest& request,
                                                    server::request::RequestContext&) const {
@@ -47,32 +49,43 @@ std::string ApiKeyIssueHandler::HandleRequestThrow(const server::http::HttpReque
         "session has no Genius display name to own this key with — please log in again");
   }
 
-  std::string rate_tier = "default";
-  try {
-    const auto& raw = request.RequestBody();
-    if (!raw.empty()) {
-      const auto body = formats::json::FromString(raw);
-      rate_tier = body["rate_tier"].As<std::string>("default");
-    }
-  } catch (const std::exception&) {
-    response.SetStatus(server::http::HttpStatus::kBadRequest);
-    return BuildProblemJson(request,
-                            server::http::HttpStatus::kBadRequest,
-                            "body, if present, must be JSON with an optional string rate_tier");
-  }
+  const auto result = RunIdempotent(
+      request,
+      idempotency_store_,
+      "api_keys_issue",
+      kDefaultIdempotencyTtl,
+      [&]() -> IdempotentResult {
+        std::string rate_tier = "default";
+        try {
+          const auto& raw = request.RequestBody();
+          if (!raw.empty()) {
+            const auto body = formats::json::FromString(raw);
+            rate_tier = body["rate_tier"].As<std::string>("default");
+          }
+        } catch (const std::exception&) {
+          return IdempotentResult{
+              server::http::HttpStatus::kBadRequest,
+              BuildProblemJson(request,
+                               server::http::HttpStatus::kBadRequest,
+                               "body, if present, must be JSON with an optional string rate_tier")};
+        }
 
-  const auto issued = api_key_store_.Issue(
-      session->name, session->access_token, session->expires_at_unix, rate_tier);
+        const auto issued = api_key_store_.Issue(
+            session->name, session->access_token, session->expires_at_unix, rate_tier);
 
-  formats::json::ValueBuilder b(formats::json::Type::kObject);
-  b["id"] = issued.id;
-  b["key"] = issued.raw_key;
-  b["rate_tier"] = issued.rate_tier;
-  b["created_at"] = issued.created_at;
-  b["warning"] =
-      std::string{"Store this key now — it is shown only once and cannot be retrieved again."};
-  response.SetStatus(server::http::HttpStatus::kCreated);
-  return formats::json::ToString(b.ExtractValue());
+        formats::json::ValueBuilder b(formats::json::Type::kObject);
+        b["id"] = issued.id;
+        b["key"] = issued.raw_key;
+        b["rate_tier"] = issued.rate_tier;
+        b["created_at"] = issued.created_at;
+        b["warning"] = std::string{
+            "Store this key now — it is shown only once and cannot be retrieved again."};
+        return IdempotentResult{server::http::HttpStatus::kCreated,
+                                formats::json::ToString(b.ExtractValue())};
+      });
+
+  response.SetStatus(result.status);
+  return result.body;
 }
 
 yaml_config::Schema ApiKeyIssueHandler::GetStaticConfigSchema() {
@@ -83,7 +96,8 @@ ApiKeyRevokeHandler::ApiKeyRevokeHandler(const components::ComponentConfig& conf
                                          const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
-      api_key_store_(context.FindComponent<auth::ApiKeyStore>()) {}
+      api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
+      idempotency_store_(context.FindComponent<IdempotencyStore>()) {}
 
 std::string ApiKeyRevokeHandler::HandleRequestThrow(const server::http::HttpRequest& request,
                                                     server::request::RequestContext&) const {
@@ -116,15 +130,27 @@ std::string ApiKeyRevokeHandler::HandleRequestThrow(const server::http::HttpRequ
         request, server::http::HttpStatus::kBadRequest, "id must be an integer");
   }
 
-  if (!api_key_store_.Revoke(id, session->name)) {
-    response.SetStatus(server::http::HttpStatus::kNotFound);
-    return BuildProblemJson(request, server::http::HttpStatus::kNotFound, "not_found");
-  }
+  const auto result = RunIdempotent(
+      request,
+      idempotency_store_,
+      "api_keys_revoke",
+      kDefaultIdempotencyTtl,
+      [&]() -> IdempotentResult {
+        if (!api_key_store_.Revoke(id, session->name)) {
+          return IdempotentResult{
+              server::http::HttpStatus::kNotFound,
+              BuildProblemJson(request, server::http::HttpStatus::kNotFound, "not_found")};
+        }
 
-  formats::json::ValueBuilder b(formats::json::Type::kObject);
-  b["id"] = id;
-  b["revoked"] = true;
-  return formats::json::ToString(b.ExtractValue());
+        formats::json::ValueBuilder b(formats::json::Type::kObject);
+        b["id"] = id;
+        b["revoked"] = true;
+        return IdempotentResult{server::http::HttpStatus::kOk,
+                                formats::json::ToString(b.ExtractValue())};
+      });
+
+  response.SetStatus(result.status);
+  return result.body;
 }
 
 yaml_config::Schema ApiKeyRevokeHandler::GetStaticConfigSchema() {

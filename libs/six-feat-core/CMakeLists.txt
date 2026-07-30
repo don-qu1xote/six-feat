@@ -1,8 +1,12 @@
 include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
 six_feat_embed_schema(components/rate_limit_store kRateLimitStoreComponentSchema RATE_LIMIT_STORE_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/idempotency_store kIdempotencyStoreComponentSchema IDEMPOTENCY_STORE_COMPONENT_SCHEMA_HEADER)
 
-add_custom_target(six_feat_core_schema_headers DEPENDS ${RATE_LIMIT_STORE_COMPONENT_SCHEMA_HEADER})
+add_custom_target(six_feat_core_schema_headers DEPENDS
+    ${RATE_LIMIT_STORE_COMPONENT_SCHEMA_HEADER}
+    ${IDEMPOTENCY_STORE_COMPONENT_SCHEMA_HEADER}
+)
 
 add_library(six_feat_core STATIC
     src/resilience.cpp
@@ -15,6 +19,8 @@ add_library(six_feat_core STATIC
     src/internal_auth.cpp
     src/internal_http.cpp
     src/error_response.cpp
+    src/idempotency_store.cpp
+    src/idempotency.cpp
 )
 
 target_include_directories(six_feat_core PUBLIC include)
