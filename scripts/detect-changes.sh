@@ -58,8 +58,19 @@ fi
 SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
 # --- Определение затронутых тестов ---
+# tests/ — общий каталог: один pytest-файл там может относиться к любой из
+# job'ов test-six-feat/test-auth/test-genius-gateway/test-yandex-gateway/
+# test-health/test-bg-resilience (см. их собственные списки файлов в
+# ci.yml), а detect-changes не сопоставляет файл с конкретной job. Раньше
+# при изменении ТОЛЬКО tests/ выставлялись только служебные метки "unit
+# integration", которые ни одна job не проверяет в своём if: — сами
+# интеграционные job'ы гейтятся исключительно по именам сервисов (в SERVICES
+# выше), так что правки только в tests/ ни разу не запускали ни одну из них.
+# Как и в блоке "если изменились libs — затронуто всё" ниже, при изменении
+# tests/ безопаснее считать затронутыми ВСЕ интеграционные наборы, чем
+# пытаться сопоставлять файлы поштучно и рисковать пропустить прогон.
 if echo "$CHANGED_FILES" | grep -q "^tests/"; then
-  TESTS="unit integration"
+  TESTS="unit integration six-feat auth genius-gateway yandex-gateway enrichment bg-resilience health"
 fi
 
 if echo "$CHANGED_FILES" | grep -q "^services/six-feat/tests/unit/"; then
