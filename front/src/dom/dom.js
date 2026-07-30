@@ -244,4 +244,16 @@ export const els = {
   snAchCount: $("sn-ach-count"),
   snAchHint: $("sn-ach-hint"),
   snAchGrid: $("sn-ach-grid"),
+
+  btnSettingsOpen: $("btn-settings-open"),
+  settingsPanel: $("settings-panel"),
+  settingsPanelClose: $("settings-panel-close"),
+  settingsGeniusInput: $("settings-genius-input"),
+  settingsGeniusConnectBtn: $("settings-genius-connect-btn"),
+  settingsGeniusDisconnectBtn: $("settings-genius-disconnect-btn"),
+  settingsGeniusStatus: $("settings-genius-status"),
+  settingsYandexConnectBtn: $("settings-yandex-connect-btn"),
+  settingsYandexDisconnectBtn: $("settings-yandex-disconnect-btn"),
+  settingsYandexStatus: $("settings-yandex-status"),
+  settingsYandexDeviceCode: $("settings-yandex-device-code"),
 };

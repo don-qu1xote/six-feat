@@ -103,15 +103,26 @@ const std::vector<const char*> kMigrationV5 = {
     "CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires_at ON idempotency_keys(expires_at)",
 };
 
+const std::vector<const char*> kMigrationV6 = {
+    R"SQL(CREATE TABLE IF NOT EXISTS user_provider_tokens (
+        user_id         BIGINT NOT NULL,
+        provider        TEXT NOT NULL,
+        encrypted_token TEXT NOT NULL,
+        ts              BIGINT NOT NULL,
+        PRIMARY KEY (user_id, provider)
+    ))SQL",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
     {3, kMigrationV3},
     {4, kMigrationV4},
     {5, kMigrationV5},
+    {6, kMigrationV6},
 };
 
-constexpr int kTargetSchemaVersion = 5;
+constexpr int kTargetSchemaVersion = 6;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,

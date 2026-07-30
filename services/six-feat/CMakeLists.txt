@@ -7,6 +7,12 @@ six_feat_init_service()
 six_feat_embed_schema(handlers/six-feat/artist_handler     kArtistHandlerSchema    ARTIST_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/api_keys_issue_handler  kApiKeysIssueHandlerSchema  API_KEYS_ISSUE_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/api_keys_revoke_handler kApiKeysRevokeHandlerSchema API_KEYS_REVOKE_HANDLER_SCHEMA_HEADER)
+# [SF-YM-02] Настройки: BYO Genius токен + личный Яндекс device flow.
+six_feat_embed_schema(handlers/six-feat/settings_status_handler             kSettingsStatusHandlerSchema             SETTINGS_STATUS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_genius_connect_handler     kSettingsGeniusConnectHandlerSchema      SETTINGS_GENIUS_CONNECT_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_disconnect_handler        kSettingsDisconnectHandlerSchema         SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_yandex_device_start_handler kSettingsYandexDeviceStartHandlerSchema SETTINGS_YANDEX_DEVICE_START_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_yandex_device_poll_handler  kSettingsYandexDevicePollHandlerSchema  SETTINGS_YANDEX_DEVICE_POLL_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
@@ -32,6 +38,11 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${ARTIST_HANDLER_SCHEMA_HEADER}
     ${API_KEYS_ISSUE_HANDLER_SCHEMA_HEADER}
     ${API_KEYS_REVOKE_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_STATUS_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_GENIUS_CONNECT_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_YANDEX_DEVICE_START_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_YANDEX_DEVICE_POLL_HANDLER_SCHEMA_HEADER}
     ${GRAPH_HANDLER_SCHEMA_HEADER}
     ${PATH_HANDLER_SCHEMA_HEADER}
     ${SEARCH_HANDLER_SCHEMA_HEADER}
@@ -68,6 +79,7 @@ add_executable(six_feat
     src/auth/api_key_auth.cpp
     src/api/v1/artist_handler.cpp
     src/api/v1/api_keys_handler.cpp
+    src/api/v1/settings_handler.cpp
     src/api/v1/graph_handler.cpp
     src/api/v1/path_handler.cpp
     src/api/v1/search_handler.cpp

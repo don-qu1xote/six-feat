@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <six-feat-auth-lib/user_identity.hpp>
 #include <six-feat-core/http_cache.hpp>
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-core/request_id.hpp>
@@ -134,6 +135,7 @@ PathHandler::PathHandler(const components::ComponentConfig& config,
       store_(context.FindComponent<PersistentStore>()),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
       api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
+      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()),
       rate_limit_("path", 50, 1, context.FindComponent<RateLimitStoreComponent>().MakeStore()) {}
 
 std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& request,
@@ -177,11 +179,12 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
                  std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
   if (user_token.empty()) {
-    const auto token = Prologue(request);
-    if (!token) {
+    const auto session = auth::RequireFullSession(request, oauth_);
+    if (!session) {
       return ErrorJson("not_authenticated", "Login with Genius to search for collaboration paths.");
     }
-    user_token = *token;
+    const auto connected = user_provider_tokens_.Get(auth::StableUserId(session->name), "genius");
+    user_token = connected.value_or(session->access_token);
   }
 
   const std::string& from_param = request.GetArg("from");

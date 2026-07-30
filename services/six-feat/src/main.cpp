@@ -2,6 +2,7 @@
 
 #include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-auth-lib/user_provider_token_store.hpp>
 #include <six-feat-core/idempotency_store.hpp>
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
@@ -23,6 +24,7 @@
 #include "api/v1/image_proxy_handler.hpp"
 #include "api/v1/path_handler.hpp"
 #include "api/v1/search_handler.hpp"
+#include "api/v1/settings_handler.hpp"
 #include "api/v1/sse_status_handler.hpp"
 #include "api/v1/static_handler.hpp"
 #include "api/v1/status_handler.hpp"
@@ -57,6 +59,7 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::RateLimitStoreComponent>()
                                   .Append<six_feat::auth::ApiKeyStore>()
                                   .Append<six_feat::IdempotencyStore>()
+                                  .Append<six_feat::auth::UserProviderTokenStore>()
                                   .Append<six_feat::GraphHandler>()
                                   .Append<six_feat::PathHandler>()
                                   .Append<six_feat::SearchHandler>()
@@ -66,6 +69,11 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::ArtistHandler>()
                                   .Append<six_feat::ApiKeyIssueHandler>()
                                   .Append<six_feat::ApiKeyRevokeHandler>()
+                                  .Append<six_feat::SettingsStatusHandler>()
+                                  .Append<six_feat::SettingsGeniusConnectHandler>()
+                                  .Append<six_feat::SettingsDisconnectHandler>()
+                                  .Append<six_feat::SettingsYandexDeviceStartHandler>()
+                                  .Append<six_feat::SettingsYandexDevicePollHandler>()
                                   .Append<six_feat::InternalNeighboursHandler>()
                                   .Append<six_feat::MusicSourceEdgesHandler>()
                                   .Append<six_feat::SseStatusHandler>()

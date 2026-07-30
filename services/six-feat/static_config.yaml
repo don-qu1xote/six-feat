@@ -66,6 +66,9 @@ components_manager:
     idempotency-store:
       dbname: postgres-db-1
 
+    user-provider-token-store:
+      dbname: postgres-db-1
+
     genius-gateway-client:
       genius-gateway-base-url: $genius_gateway_base_url
       timeout-ms: 5000
@@ -208,6 +211,31 @@ components_manager:
 
     handler-api-keys-revoke:
       path: /api/v1/api-keys/revoke
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-status:
+      path: /api/v1/settings/providers
+      method: GET
+      task_processor: *main_tp
+
+    handler-settings-genius-connect:
+      path: /api/v1/settings/genius-token
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-disconnect:
+      path: /api/v1/settings/disconnect
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-yandex-device-start:
+      path: /api/v1/settings/yandex/device/start
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-yandex-device-poll:
+      path: /api/v1/settings/yandex/device/poll
       method: POST
       task_processor: *main_tp
 

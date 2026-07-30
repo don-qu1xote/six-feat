@@ -102,3 +102,11 @@ export {
 export { renderGraphA11yList } from "./graph-a11y-list.js";
 
 export { setTheme, setupThemeToggle } from "./theme.js";
+
+export {
+  isSettingsPanelOpen,
+  openSettingsPanel,
+  closeSettingsPanel,
+  refreshSettingsStatus,
+  setupSettingsPanel,
+} from "./settings-panel.js";

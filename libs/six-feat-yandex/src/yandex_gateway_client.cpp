@@ -134,4 +134,39 @@ std::vector<std::int64_t> YandexGatewayClient::FetchArtistTracks(
   return out;
 }
 
+YandexDeviceFlowStart YandexGatewayClient::StartDeviceFlow() const {
+  formats::json::ValueBuilder body(formats::json::Type::kObject);
+  const auto json = PostInternal("/internal/yandex/device/start", body);
+
+  YandexDeviceFlowStart out;
+  out.device_code = json["device_code"].As<std::string>("");
+  out.user_code = json["user_code"].As<std::string>("");
+  out.verification_url = json["verification_url"].As<std::string>("");
+  out.interval_seconds = json["interval"].As<int>(5);
+  out.expires_in_seconds = json["expires_in"].As<int>(600);
+  return out;
+}
+
+YandexDeviceFlowPollResult YandexGatewayClient::PollDeviceFlow(
+    const std::string& device_code) const {
+  formats::json::ValueBuilder body(formats::json::Type::kObject);
+  body["device_code"] = device_code;
+  const auto json = PostInternal("/internal/yandex/device/poll", body);
+
+  YandexDeviceFlowPollResult out;
+  const auto status = json["status"].As<std::string>("pending");
+  if (status == "success") {
+    out.status = YandexDeviceFlowStatus::kSuccess;
+    out.access_token = json["access_token"].As<std::string>("");
+    out.expires_in_seconds = json["expires_in"].As<int>(0);
+  } else if (status == "denied") {
+    out.status = YandexDeviceFlowStatus::kDenied;
+  } else if (status == "expired") {
+    out.status = YandexDeviceFlowStatus::kExpired;
+  } else {
+    out.status = YandexDeviceFlowStatus::kPending;
+  }
+  return out;
+}
+
 }  // namespace six_feat

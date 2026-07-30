@@ -9,7 +9,10 @@ from conftest import SERVICE_BASE
 
 pytestmark = pytest.mark.openapi_endpoint
 
-_SIX_FEAT_NATIVE_PATHS = r"^/api/v1/(graph(/path)?|search|status|artist|api-keys(/revoke)?)$"
+_SIX_FEAT_NATIVE_PATHS = (
+    r"^/api/v1/(graph(/path)?|search|status|artist|api-keys(/revoke)?"
+    r"|settings/providers|settings/genius-token|settings/disconnect)$"
+)
 
 
 @pytest.fixture(scope="session")

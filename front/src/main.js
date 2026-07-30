@@ -30,6 +30,7 @@ import {
   exportGraphPng,
   exportGraphJson,
   setupThemeToggle,
+  setupSettingsPanel,
   setupDockedPanels,
   restoreSurfaceFromUrl,
   setupBubbleSetsToggle,
@@ -65,6 +66,7 @@ export function init() {
   setupFilterToggles();
   setupKeyboard();
   setupDockedPanels();
+  setupSettingsPanel();
   setupNodeSearch();
   setupPathPanel();
   setupHeroPathFinder();

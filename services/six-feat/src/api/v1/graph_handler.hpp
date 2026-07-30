@@ -2,6 +2,7 @@
 
 #include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-auth-lib/user_provider_token_store.hpp>
 #include <six-feat-core/rate_limiter.hpp>
 #include <six-feat-storage/persistent_store.hpp>
 #include <string>
@@ -37,6 +38,7 @@ class GraphHandler final : public AuthenticatedHandlerBase {
   PersistentStore& store_;
   const auth::OAuthConfig& oauth_;
   auth::ApiKeyStore& api_key_store_;
+  auth::UserProviderTokenStore& user_provider_tokens_;
   mutable PerIpRateLimit rate_limit_;
   const int max_limit_override_;
 };

@@ -381,6 +381,9 @@ components_manager:
     idempotency-store:
       dbname: postgres-db-1
 
+    user-provider-token-store:
+      dbname: postgres-db-1
+
     oauth-config:
       client-id: test-client-id
       redirect-uri: http://127.0.0.1:{service_port}/auth/callback
@@ -465,6 +468,31 @@ components_manager:
 
     handler-api-keys-revoke:
       path: /api/v1/api-keys/revoke
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-status:
+      path: /api/v1/settings/providers
+      method: GET
+      task_processor: main-task-processor
+
+    handler-settings-genius-connect:
+      path: /api/v1/settings/genius-token
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-disconnect:
+      path: /api/v1/settings/disconnect
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-yandex-device-start:
+      path: /api/v1/settings/yandex/device/start
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-yandex-device-poll:
+      path: /api/v1/settings/yandex/device/poll
       method: POST
       task_processor: main-task-processor
 

@@ -120,6 +120,12 @@
       <circle cx="21" cy="12" r="1.5" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" stroke-linecap="round"/>
     </symbol>
 
+    <symbol id="icon-gear" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.55 1.55M7.15 16.85l-1.55 1.55M18.4 18.4l-1.55-1.55M7.15 7.15L5.6 5.6"
+        stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+
     <symbol id="icon-info" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M12 8v0.01M12 12v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -593,6 +599,10 @@
 
       <div class="rail-spacer"></div>
 
+      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-settings-open" data-tip="Settings">
+        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-gear"/></svg><span class="rl">Settings</span>
+      </button>
+
       <span class="rail-btn" id="auth-status-badge" data-tip="Using your own Genius token" style="display:none">
         <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-key"/></svg><span class="rl">Authenticated</span>
       </span>
@@ -873,6 +883,47 @@
 
       </div>
 
+    </div>
+
+    <div class="settings-panel ui-panel" id="settings-panel">
+      <div class="settings-panel-header">
+        <div class="settings-title">Settings</div>
+        <button class="settings-close" id="settings-panel-close" title="Close" aria-label="Close">×</button>
+      </div>
+
+      <div class="settings-card ui-tile">
+        <div class="settings-card-title">
+          Your Genius token <span class="settings-card-sub">(find more connections)</span>
+        </div>
+        <p class="settings-card-hint">
+          Connecting your own Genius token also lets us use it to enrich the
+          shared collaboration database in the background — not just your
+          own graph.
+        </p>
+        <input class="ui-input" id="settings-genius-input" type="password"
+          placeholder="Paste your Genius token…" autocomplete="off" />
+        <div class="settings-card-actions">
+          <button type="button" class="ui-btn ui-btn--primary" id="settings-genius-connect-btn">Connect</button>
+          <button type="button" class="ui-btn ui-btn--ghost" id="settings-genius-disconnect-btn" hidden>Disconnect</button>
+        </div>
+        <div class="settings-card-status" id="settings-genius-status">Not connected</div>
+      </div>
+
+      <div class="settings-card ui-tile">
+        <div class="settings-card-title">
+          Connect your Yandex <span class="settings-card-sub">(import playlists)</span>
+        </div>
+        <p class="settings-card-hint">
+          Only used to suggest artists from your own playlists and likes —
+          never affects the default graph or anyone else's.
+        </p>
+        <div class="settings-card-actions">
+          <button type="button" class="ui-btn ui-btn--primary" id="settings-yandex-connect-btn">Connect Yandex</button>
+          <button type="button" class="ui-btn ui-btn--ghost" id="settings-yandex-disconnect-btn" hidden>Disconnect</button>
+        </div>
+        <div class="settings-card-device-code" id="settings-yandex-device-code" hidden></div>
+        <div class="settings-card-status" id="settings-yandex-status">Not connected</div>
+      </div>
     </div>
 
     <div class="overlay" id="loading">

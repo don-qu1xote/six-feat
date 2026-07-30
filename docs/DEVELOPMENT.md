@@ -246,6 +246,48 @@ gateway): здесь источник правды — сам документ `
   `kFgPathDeadline`), но ни один из них не был объявлен в схеме для
   `/api/v1/graph/path` — добавлено.
 
+### Настройки: свой Genius-токен + личный Яндекс-аккаунт (SF-YM-02)
+
+Две отдельные, опциональные персонализации поверх уже обязательного
+Яндекс-графа (SF-YM-01/SF-ARCH-02) — дефолтный граф работает на сервисном
+Яндекс-токене и не требует ничего из этого экрана.
+
+- **Свой Genius-токен** (`POST /api/v1/settings/genius-token {token}`) —
+  BYO-токен для углубления графа (producer/writer/featured роли, которых
+  Яндекс не даёт). Подключение = согласие на использование для фонового
+  обогащения ОБЩЕЙ базы, без отдельного тумблера — одна прямая строка
+  текста рядом с полем ввода на фронте (`index.html`, карточка Genius),
+  до вставки токена.
+- **Свой Яндекс-аккаунт** (`POST /api/v1/settings/yandex/device/start` +
+  `.../device/poll {device_code}`) — личный OAuth device flow
+  (oauth.yandex.ru, через six-feat-yandex-gateway), только для импорта
+  плейлистов/лайков (SF-YM-04) — никогда не подключается к дефолтному
+  графу. Согласие в том же смысле не нужно — просто feature-connect.
+- **Хранение** — таблица `user_provider_tokens` (`user_id, provider,
+  encrypted_token, ts`, `kMigrationV6`, six-feat-storage) через новый
+  `UserProviderTokenStore` (six-feat-auth-lib) — переиспользует тот же
+  AES-256-GCM `Encrypt`/`Decrypt`/`KeyFromEnv`, что и сессионная cookie, а
+  не новый механизм шифрования. `user_id` — детерминированный FNV-1a-хеш
+  Genius display name (`StableUserId`, `user_identity.hpp`) — тот же
+  приём, что уже используется в six-feat-game (`game_session.hpp`),
+  продублирован, а не расшарен между сервисами.
+- **Немедленная доступность для enrichment** — `graph_handler.cpp`/
+  `path_handler.cpp` теперь резолвят `user_token` через
+  `user_provider_tokens_.Get(user_id, "genius")`, предпочитая подключённый
+  токен обычному токену сессии; если ничего не подключено — поведение не
+  меняется. Никакого отдельного шага "активации" нет: то же самое чтение,
+  что видит `GET /api/v1/settings/providers`, видит и хэндлер на
+  следующий же запрос.
+- **Изоляция личного Яндекс-токена** — `PRIMARY KEY (user_id, provider)`
+  означает, что подключение никогда не пишется под чужим `user_id`, и
+  этот токен нигде не читается кодом дефолтного графа
+  (`YandexMusicSourceProvider`/`YandexGatewayClient`'s service-token путь) —
+  раздельно даже архитектурно, не только по данным.
+- **Фронт** — `front/src/ui/settings-panel.js` + `front/src/api/settings-api.js`:
+  докнутая панель (`ui/docked-panel.js`, тот же механизм, что и
+  `.path-panel`/`.compare-panel`) с двумя независимыми карточками
+  (`.settings-card`), триггер — новая кнопка в rail (`#btn-settings-open`).
+
 ---
 
 ## Переменные окружения
