@@ -370,4 +370,25 @@ std::array<unsigned char, 32> KeyFromEnv() {
   return key;
 }
 
+std::string HashApiKey(std::string_view raw_key) {
+  static constexpr std::string_view kApiKeySalt = "six-feat-api-key-v1";
+
+  std::vector<unsigned char> salted;
+  salted.reserve(kApiKeySalt.size() + raw_key.size());
+  salted.insert(salted.end(), kApiKeySalt.begin(), kApiKeySalt.end());
+  salted.insert(salted.end(), raw_key.begin(), raw_key.end());
+
+  std::array<unsigned char, 32> digest{};
+  SHA256(salted.data(), salted.size(), digest.data());
+
+  static constexpr const char* kHex = "0123456789abcdef";
+  std::string out;
+  out.reserve(64);
+  for (unsigned char b : digest) {
+    out += kHex[(b >> 4) & 0xF];
+    out += kHex[b & 0xF];
+  }
+  return out;
+}
+
 }  // namespace six_feat::auth

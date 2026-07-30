@@ -1,5 +1,6 @@
 #include "auth/app_secret_parity_checker.hpp"
 
+#include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
@@ -15,6 +16,7 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#include "api/v1/api_keys_handler.hpp"
 #include "api/v1/artist_handler.hpp"
 #include "api/v1/graph_handler.hpp"
 #include "api/v1/image_proxy_handler.hpp"
@@ -52,6 +54,7 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::GeniusMusicSourceProvider>()
                                   .Append<six_feat::MusicSourceProviderChain>()
                                   .Append<six_feat::RateLimitStoreComponent>()
+                                  .Append<six_feat::auth::ApiKeyStore>()
                                   .Append<six_feat::GraphHandler>()
                                   .Append<six_feat::PathHandler>()
                                   .Append<six_feat::SearchHandler>()
@@ -59,6 +62,8 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::ReadinessHandler>()
                                   .Append<six_feat::StatusHandler>()
                                   .Append<six_feat::ArtistHandler>()
+                                  .Append<six_feat::ApiKeyIssueHandler>()
+                                  .Append<six_feat::ApiKeyRevokeHandler>()
                                   .Append<six_feat::InternalNeighboursHandler>()
                                   .Append<six_feat::MusicSourceEdgesHandler>()
                                   .Append<six_feat::SseStatusHandler>()

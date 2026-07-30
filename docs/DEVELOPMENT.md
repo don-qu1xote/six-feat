@@ -143,6 +143,37 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./adr/0004-auth-service-loca
 - Полная последовательность запросов —
   [docs/architecture/sequences/oauth-login.md](./architecture/sequences/oauth-login.md).
 
+### API-ключи для сторонних интеграций (`X-Api-Key`, SF-API-15)
+
+Помимо сессионной cookie, `/api/v1/graph`, `/api/v1/graph/path`,
+`/api/v1/search` и `/api/v1/artist` принимают заголовок `X-Api-Key` —
+второй, не-браузерный способ предъявить тот же самый Genius-грант, без
+прохождения OAuth-флоу заново на каждую интеграцию:
+
+- **Выпуск/отзыв** — `POST /api/v1/api-keys` и
+  `POST /api/v1/api-keys/revoke?id=<id>` (`src/api/v1/api_keys_handler.cpp`).
+  Обе ручки сами защищены **только** сессионной cookie (`RequireFullSession`),
+  никогда не `X-Api-Key` — иначе утёкший ключ мог бы сам себе выпускать новые
+  ключи. Выпущенный ключ наследует Genius access_token и его срок жизни из
+  сессии, которой он был выпущен (тот же AES-256-GCM `Encrypt`/`Decrypt` из
+  `session_crypto.hpp`, что и у cookie); истечёт грант — `Resolve()` перестанет
+  его находить, как и просроченная cookie.
+- **Хранение** — таблица `api_keys` (`ApiKeyStore`,
+  `six-feat-auth-lib/api_key_store.{hpp,cpp}`): хранится только
+  `key_hash` = `HashApiKey(raw_key)` (SHA-256 с собственной солью, тот же
+  принцип, что и `KeyFingerprint` для `APP_SECRET`) — сырой ключ показывается
+  вызывающему один раз, в ответе на выпуск, и не восстановим впоследствии.
+- **Проверка на хэндлере** — `CheckApiKeyHeader`
+  (`src/auth/api_key_auth.{hpp,cpp}`): если заголовок присутствует, но ключ
+  не резолвится (неизвестен/отозван/просрочен) — хэндлер сразу отвечает 401,
+  **не откатывается** на проверку cookie. Если заголовка нет вовсе — путь
+  ровно тот же, что и раньше (`RequireSession`/cookie).
+- **Rate-limit по тарифу** — `rate_tier` (`"default"` или `"elevated"`,
+  таблица лимитов в `ResolveRateTier`) заменяет сессионный/IP-лимит хэндлера
+  на лимит тарифа ключа; лимит считается на бакет `apikey:<id>`, отдельный
+  от IP/cookie-бакетов — см. `PerIpRateLimit::AllowWithTier` в
+  `six-feat-core/rate_limiter.hpp`.
+
 ---
 
 ## Переменные окружения

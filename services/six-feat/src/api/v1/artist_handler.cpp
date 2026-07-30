@@ -3,6 +3,8 @@
 
 #include "http/dto/artist_ref_dto.hpp"
 
+#include "auth/api_key_auth.hpp"
+
 #include "schemas/handlers/six-feat/artist_handler_schema.hpp"
 
 #include <six-feat-core/error_response.hpp>
@@ -32,15 +34,23 @@ ArtistHandler::ArtistHandler(const components::ComponentConfig& config,
                              const components::ComponentContext& context)
     : AuthenticatedHandlerBase(config, context, context.FindComponent<auth::OAuthConfig>()),
       repo_(context.FindComponent<ArtistRepository>()),
-      store_(context.FindComponent<PersistentStore>()) {}
+      store_(context.FindComponent<PersistentStore>()),
+      api_key_store_(context.FindComponent<auth::ApiKeyStore>()) {}
 
 std::string ArtistHandler::HandleRequestThrow(const server::http::HttpRequest& request,
                                               server::request::RequestContext&) const {
-  if (!Prologue(request)) {
+  auto& response = request.GetHttpResponse();
+
+  const auto api_key_check = CheckApiKeyHeader(request, api_key_store_);
+  if (api_key_check.provided) {
+    if (!api_key_check.identity) {
+      response.SetStatus(server::http::HttpStatus::kUnauthorized);
+      return BuildProblemJson(
+          request, server::http::HttpStatus::kUnauthorized, "invalid or revoked API key");
+    }
+  } else if (!Prologue(request)) {
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
-
-  auto& response = request.GetHttpResponse();
 
   const auto& id_str = request.GetArg("id");
   if (id_str.empty()) {

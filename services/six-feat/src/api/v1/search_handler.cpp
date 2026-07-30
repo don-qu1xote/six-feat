@@ -3,6 +3,8 @@
 
 #include "http/dto/candidate_dto.hpp"
 
+#include "auth/api_key_auth.hpp"
+
 #include "schemas/handlers/six-feat/search_handler_schema.hpp"
 
 #include <algorithm>
@@ -86,6 +88,7 @@ SearchHandler::SearchHandler(const components::ComponentConfig& config,
     : AuthenticatedHandlerBase(config, context, context.FindComponent<auth::OAuthConfig>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
+      api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
       rate_limit_("search", 50, 1, context.FindComponent<RateLimitStoreComponent>().MakeStore()) {}
 
 std::string SearchHandler::HandleRequestThrow(const server::http::HttpRequest& request,
@@ -96,23 +99,45 @@ std::string SearchHandler::HandleRequestThrow(const server::http::HttpRequest& r
   auto& response = request.GetHttpResponse();
   response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
 
-  const std::string limit_key = RateLimitKey(request, oauth_);
-  if (!rate_limit_.Allow(limit_key)) {
+  std::string user_token;
+  std::string limit_key;
+  int rl_max = rate_limit_.Limit();
+  std::chrono::seconds rl_window = rate_limit_.Window();
+
+  const auto api_key_check = CheckApiKeyHeader(request, api_key_store_);
+  if (api_key_check.provided) {
+    if (!api_key_check.identity) {
+      response.SetStatus(server::http::HttpStatus::kUnauthorized);
+      return ErrorJson("invalid_api_key", "invalid or revoked API key");
+    }
+    const auto& identity = *api_key_check.identity;
+    user_token = identity.genius_token;
+    limit_key = "apikey:" + std::to_string(identity.id);
+    const auto tier = ResolveRateTier(identity.rate_tier);
+    rl_max = tier.max_per_window;
+    rl_window = tier.window;
+  } else {
+    limit_key = RateLimitKey(request, oauth_);
+  }
+
+  if (!rate_limit_.AllowWithTier(limit_key, rl_max, rl_window)) {
     response.SetStatus(server::http::HttpStatus::kTooManyRequests);
     response.SetHeader(std::string{"Retry-After"}, std::string{"1"});
-    response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+    response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rl_max));
     response.SetHeader(std::string{"X-RateLimit-Remaining"}, std::string{"0"});
     return ErrorJson("rate_limit_exceeded", "rate limit exceeded");
   }
-  response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+  response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rl_max));
   response.SetHeader(std::string{"X-RateLimit-Remaining"},
-                     std::to_string(rate_limit_.Remaining(limit_key)));
+                     std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
-  const auto token = Prologue(request);
-  if (!token) {
-    return ErrorJson("not_authenticated", "Login with Genius to search for artists.");
+  if (user_token.empty()) {
+    const auto token = Prologue(request);
+    if (!token) {
+      return ErrorJson("not_authenticated", "Login with Genius to search for artists.");
+    }
+    user_token = *token;
   }
-  const std::string& user_token = *token;
 
   const std::string& query = request.GetArg("q");
   if (query.empty()) {

@@ -78,13 +78,27 @@ const std::vector<const char*> kMigrationV3 = {
     "CREATE INDEX IF NOT EXISTS idx_rate_buckets_window_start ON rate_buckets(window_start)",
 };
 
+const std::vector<const char*> kMigrationV4 = {
+    R"SQL(CREATE TABLE IF NOT EXISTS api_keys (
+        id           BIGSERIAL PRIMARY KEY,
+        key_hash     TEXT NOT NULL UNIQUE,
+        owner        TEXT NOT NULL,
+        genius_token TEXT NOT NULL,
+        rate_tier    TEXT NOT NULL DEFAULT 'default',
+        created_at   BIGINT NOT NULL,
+        revoked_at   BIGINT
+    ))SQL",
+    "CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner)",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
     {3, kMigrationV3},
+    {4, kMigrationV4},
 };
 
-constexpr int kTargetSchemaVersion = 3;
+constexpr int kTargetSchemaVersion = 4;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,

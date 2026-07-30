@@ -6,6 +6,8 @@
 #include "http/dto/edge_source_dto.hpp"
 #include "http/dto/graph_edge_dto.hpp"
 
+#include "auth/api_key_auth.hpp"
+
 #include "schemas/handlers/six-feat/graph_handler_schema.hpp"
 
 #include <algorithm>
@@ -86,6 +88,7 @@ GraphHandler::GraphHandler(const components::ComponentConfig& config,
       service_(context.FindComponent<CollabService>()),
       store_(context.FindComponent<PersistentStore>()),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
+      api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
       rate_limit_("graph", 50, 1, context.FindComponent<RateLimitStoreComponent>().MakeStore()),
       max_limit_override_(config["max-limit-override"].As<int>(50)) {}
 
@@ -97,23 +100,45 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
   auto& response = request.GetHttpResponse();
   response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
 
-  const std::string limit_key = RateLimitKey(request, oauth_);
-  if (!rate_limit_.Allow(limit_key)) {
+  std::string user_token;
+  std::string limit_key;
+  int rl_max = rate_limit_.Limit();
+  std::chrono::seconds rl_window = rate_limit_.Window();
+
+  const auto api_key_check = CheckApiKeyHeader(request, api_key_store_);
+  if (api_key_check.provided) {
+    if (!api_key_check.identity) {
+      response.SetStatus(server::http::HttpStatus::kUnauthorized);
+      return ErrorGraph("invalid_api_key");
+    }
+    const auto& identity = *api_key_check.identity;
+    user_token = identity.genius_token;
+    limit_key = "apikey:" + std::to_string(identity.id);
+    const auto tier = ResolveRateTier(identity.rate_tier);
+    rl_max = tier.max_per_window;
+    rl_window = tier.window;
+  } else {
+    limit_key = RateLimitKey(request, oauth_);
+  }
+
+  if (!rate_limit_.AllowWithTier(limit_key, rl_max, rl_window)) {
     response.SetStatus(server::http::HttpStatus::kTooManyRequests);
     response.SetHeader(std::string{"Retry-After"}, std::string{"1"});
-    response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+    response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rl_max));
     response.SetHeader(std::string{"X-RateLimit-Remaining"}, std::string{"0"});
     return ErrorGraph("rate limit exceeded");
   }
-  response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+  response.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rl_max));
   response.SetHeader(std::string{"X-RateLimit-Remaining"},
-                     std::to_string(rate_limit_.Remaining(limit_key)));
+                     std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
-  const auto token = Prologue(request);
-  if (!token) {
-    return ErrorGraph("not_authenticated");
+  if (user_token.empty()) {
+    const auto token = Prologue(request);
+    if (!token) {
+      return ErrorGraph("not_authenticated");
+    }
+    user_token = *token;
   }
-  const std::string& user_token = *token;
 
   const RoleMask mask = ParseRoleMask(request.GetArg("roles"));
 

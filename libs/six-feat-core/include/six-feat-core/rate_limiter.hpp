@@ -27,8 +27,24 @@ class PerIpRateLimit {
     return max_;
   }
 
+  std::chrono::seconds Window() const {
+    return std::chrono::seconds{window_};
+  }
+
   int Remaining(const std::string& key) const {
     return store_->Remaining(Key(key), max_, std::chrono::seconds{window_});
+  }
+
+  bool AllowWithTier(const std::string& key,
+                     int max_per_window,
+                     std::chrono::seconds window) const {
+    return store_->Allow(Key(key), max_per_window, window);
+  }
+
+  int RemainingWithTier(const std::string& key,
+                        int max_per_window,
+                        std::chrono::seconds window) const {
+    return store_->Remaining(Key(key), max_per_window, window);
   }
 
  private:

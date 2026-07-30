@@ -1,5 +1,6 @@
 #pragma once
 
+#include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-core/rate_limiter.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
@@ -28,6 +29,7 @@ class SearchHandler final : public AuthenticatedHandlerBase {
  private:
   GeniusGatewayClient& gateway_;
   const auth::OAuthConfig& oauth_;
+  auth::ApiKeyStore& api_key_store_;
   mutable PerIpRateLimit rate_limit_;
 };
 

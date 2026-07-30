@@ -60,6 +60,9 @@ components_manager:
       backend: single
       dbname: postgres-db-1
 
+    api-key-store:
+      dbname: postgres-db-1
+
     genius-gateway-client:
       genius-gateway-base-url: $genius_gateway_base_url
       timeout-ms: 5000
@@ -193,6 +196,16 @@ components_manager:
     handler-artist:
       path: /api/v1/artist
       method: GET
+      task_processor: *main_tp
+
+    handler-api-keys-issue:
+      path: /api/v1/api-keys
+      method: POST
+      task_processor: *main_tp
+
+    handler-api-keys-revoke:
+      path: /api/v1/api-keys/revoke
+      method: POST
       task_processor: *main_tp
 
     handler-internal-neighbours:

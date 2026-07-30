@@ -25,4 +25,6 @@ std::array<unsigned char, 32> KeyFromEnv();
 
 std::string KeyFingerprint(const std::array<unsigned char, 32>& key);
 
+std::string HashApiKey(std::string_view raw_key);
+
 }  // namespace six_feat::auth

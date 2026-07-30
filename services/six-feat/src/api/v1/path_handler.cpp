@@ -4,6 +4,8 @@
 #include "http/dto/edge_source_dto.hpp"
 #include "http/dto/path_edge_dto.hpp"
 
+#include "auth/api_key_auth.hpp"
+
 #include "schemas/handlers/six-feat/path_handler_schema.hpp"
 
 #include <algorithm>
@@ -131,6 +133,7 @@ PathHandler::PathHandler(const components::ComponentConfig& config,
       service_(context.FindComponent<CollabService>()),
       store_(context.FindComponent<PersistentStore>()),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
+      api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
       rate_limit_("path", 50, 1, context.FindComponent<RateLimitStoreComponent>().MakeStore()) {}
 
 std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& request,
@@ -141,23 +144,45 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
   auto& resp = request.GetHttpResponse();
   resp.SetContentType(http::ContentType{"application/json; charset=utf-8"});
 
-  const std::string limit_key = RateLimitKey(request, oauth_);
-  if (!rate_limit_.Allow(limit_key)) {
+  std::string user_token;
+  std::string limit_key;
+  int rl_max = rate_limit_.Limit();
+  std::chrono::seconds rl_window = rate_limit_.Window();
+
+  const auto api_key_check = CheckApiKeyHeader(request, api_key_store_);
+  if (api_key_check.provided) {
+    if (!api_key_check.identity) {
+      resp.SetStatus(server::http::HttpStatus::kUnauthorized);
+      return ErrorJson("invalid_api_key", "invalid or revoked API key");
+    }
+    const auto& identity = *api_key_check.identity;
+    user_token = identity.genius_token;
+    limit_key = "apikey:" + std::to_string(identity.id);
+    const auto tier = ResolveRateTier(identity.rate_tier);
+    rl_max = tier.max_per_window;
+    rl_window = tier.window;
+  } else {
+    limit_key = RateLimitKey(request, oauth_);
+  }
+
+  if (!rate_limit_.AllowWithTier(limit_key, rl_max, rl_window)) {
     resp.SetStatus(server::http::HttpStatus::kTooManyRequests);
     resp.SetHeader(std::string{"Retry-After"}, std::string{"1"});
-    resp.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+    resp.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rl_max));
     resp.SetHeader(std::string{"X-RateLimit-Remaining"}, std::string{"0"});
     return ErrorJson("rate_limit_exceeded", "rate limit exceeded");
   }
-  resp.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rate_limit_.Limit()));
+  resp.SetHeader(std::string{"X-RateLimit-Limit"}, std::to_string(rl_max));
   resp.SetHeader(std::string{"X-RateLimit-Remaining"},
-                 std::to_string(rate_limit_.Remaining(limit_key)));
+                 std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
-  const auto token = Prologue(request);
-  if (!token) {
-    return ErrorJson("not_authenticated", "Login with Genius to search for collaboration paths.");
+  if (user_token.empty()) {
+    const auto token = Prologue(request);
+    if (!token) {
+      return ErrorJson("not_authenticated", "Login with Genius to search for collaboration paths.");
+    }
+    user_token = *token;
   }
-  const std::string& user_token = *token;
 
   const std::string& from_param = request.GetArg("from");
   const std::string& to_param = request.GetArg("to");

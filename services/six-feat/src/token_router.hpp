@@ -36,4 +36,19 @@ inline std::optional<std::string> RequireSession(const userver::server::http::Ht
   return token;
 }
 
+inline std::optional<SessionData> RequireFullSession(
+    const userver::server::http::HttpRequest& request, const OAuthConfig& oauth) {
+  const std::string cookie = request.GetCookie("six_feat_session");
+  if (cookie.empty()) {
+    request.GetHttpResponse().SetStatus(userver::server::http::HttpStatus::kUnauthorized);
+    return std::nullopt;
+  }
+  auto session = Decrypt(cookie, oauth.SessionKey());
+  if (!session) {
+    request.GetHttpResponse().SetStatus(userver::server::http::HttpStatus::kUnauthorized);
+    return std::nullopt;
+  }
+  return session;
+}
+
 }  // namespace six_feat::auth

@@ -375,6 +375,9 @@ components_manager:
       backend: single
       dbname: postgres-db-1
 
+    api-key-store:
+      dbname: postgres-db-1
+
     oauth-config:
       client-id: test-client-id
       redirect-uri: http://127.0.0.1:{service_port}/auth/callback
@@ -450,6 +453,16 @@ components_manager:
     handler-artist:
       path: /api/v1/artist
       method: GET
+      task_processor: main-task-processor
+
+    handler-api-keys-issue:
+      path: /api/v1/api-keys
+      method: POST
+      task_processor: main-task-processor
+
+    handler-api-keys-revoke:
+      path: /api/v1/api-keys/revoke
+      method: POST
       task_processor: main-task-processor
 
     handler-internal-neighbours:

@@ -5,6 +5,8 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/presets/service.cmake)
 six_feat_init_service()
 
 six_feat_embed_schema(handlers/six-feat/artist_handler     kArtistHandlerSchema    ARTIST_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/api_keys_issue_handler  kApiKeysIssueHandlerSchema  API_KEYS_ISSUE_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/api_keys_revoke_handler kApiKeysRevokeHandlerSchema API_KEYS_REVOKE_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
@@ -28,6 +30,8 @@ six_feat_embed_schema(components/music_source_provider_chain   kMusicSourceProvi
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${ARTIST_HANDLER_SCHEMA_HEADER}
+    ${API_KEYS_ISSUE_HANDLER_SCHEMA_HEADER}
+    ${API_KEYS_REVOKE_HANDLER_SCHEMA_HEADER}
     ${GRAPH_HANDLER_SCHEMA_HEADER}
     ${PATH_HANDLER_SCHEMA_HEADER}
     ${SEARCH_HANDLER_SCHEMA_HEADER}
@@ -61,7 +65,9 @@ add_executable(six_feat
     src/http/dto/edge_source_dto.cpp
     src/http/dto/graph_edge_dto.cpp
     src/http/dto/path_edge_dto.cpp
+    src/auth/api_key_auth.cpp
     src/api/v1/artist_handler.cpp
+    src/api/v1/api_keys_handler.cpp
     src/api/v1/graph_handler.cpp
     src/api/v1/path_handler.cpp
     src/api/v1/search_handler.cpp

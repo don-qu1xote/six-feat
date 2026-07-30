@@ -1,5 +1,6 @@
 #pragma once
 
+#include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <six-feat-storage/persistent_store.hpp>
@@ -27,6 +28,7 @@ class ArtistHandler final : public AuthenticatedHandlerBase {
  private:
   ArtistRepository& repo_;
   PersistentStore& store_;
+  auth::ApiKeyStore& api_key_store_;
 };
 
 }  // namespace six_feat

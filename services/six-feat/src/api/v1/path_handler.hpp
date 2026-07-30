@@ -1,5 +1,6 @@
 #pragma once
 
+#include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-core/rate_limiter.hpp>
 #include <six-feat-storage/persistent_store.hpp>
@@ -34,6 +35,7 @@ class PathHandler final : public AuthenticatedHandlerBase {
   CollabService& service_;
   PersistentStore& store_;
   const auth::OAuthConfig& oauth_;
+  auth::ApiKeyStore& api_key_store_;
   mutable PerIpRateLimit rate_limit_;
 };
 
