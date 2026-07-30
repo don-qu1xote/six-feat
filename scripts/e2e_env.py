@@ -214,6 +214,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-graph-deepen:
+      path: /api/v1/graph/deepen
+      method: GET
+      task_processor: main-task-processor
+
     handler-path:
       path: /api/v1/graph/path
       method: GET

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../graph.js", () => ({
   replaceGraph: vi.fn(),
   mergeGraph: vi.fn(),
+  mergeDeepenResult: vi.fn(),
 }));
 
 vi.mock("../ui/index.js", () => ({
@@ -22,9 +23,9 @@ vi.mock("../vis-adapter/index.js", () => ({
 }));
 
 import { State } from "../state/state.js";
-import { replaceGraph, mergeGraph } from "../graph.js";
+import { replaceGraph, mergeGraph, mergeDeepenResult } from "../graph.js";
 import { showCandidatePicker, showToast, showRetryToast, updateScanStatus } from "../ui/index.js";
-import { _doSearch, showMoreCollaborations } from "./api.js";
+import { _doSearch, showMoreCollaborations, deepenArtistConnections } from "./api.js";
 
 function jsonResponse(body, init = {}) {
   const headers = init.headers ?? { get: () => null };
@@ -44,6 +45,7 @@ function resetState() {
   State.graphEdges = [];
   State._graphCache = new Map();
   State.activeFilters = new Set(["featured", "producer", "writer"]);
+  State.deepenInFlight = false;
 }
 
 class FakeEventSource {
@@ -398,5 +400,111 @@ describe("showMoreCollaborations — transient failures show a Retry toast", () 
     expect(showRetryToast.mock.calls[0][0]).toBe(
       "Genius is temporarily unavailable — please try again in a minute.",
     );
+  });
+});
+
+describe("[SF-YM-03] deepenArtistConnections", () => {
+  it("does nothing when artistId is null/undefined", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    await deepenArtistConnections(null);
+    await deepenArtistConnections(undefined);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when a deepen request is already in flight", async () => {
+    State.deepenInFlight = true;
+    vi.stubGlobal("fetch", vi.fn());
+
+    await deepenArtistConnections(1);
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("fetches /api/v1/graph/deepen?id=<artistId> and merges the result", async () => {
+    const deepen = {
+      type: "graph_deepen",
+      seed_id: 1,
+      nodes: [{ id: 2, name: "Producer Pete" }],
+      edges: [{ from: 1, to: 2, dominant_role: "producer" }],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(deepen)));
+    mergeDeepenResult.mockReturnValue({ addedNodes: 1, addedEdges: 1, mergedEdges: 0 });
+
+    await deepenArtistConnections(1);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url] = fetch.mock.calls[0];
+    expect(url).toContain("/api/v1/graph/deepen?id=1");
+    expect(mergeDeepenResult).toHaveBeenCalledWith(deepen);
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/1 new connection/i), 2500);
+    expect(State.deepenInFlight).toBe(false);
+  });
+
+  it("shows a distinct toast when nothing new was found", async () => {
+    const deepen = { type: "graph_deepen", seed_id: 1, nodes: [], edges: [] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(deepen)));
+    mergeDeepenResult.mockReturnValue({ addedNodes: 0, addedEdges: 0, mergedEdges: 0 });
+
+    await deepenArtistConnections(1);
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/no additional/i));
+  });
+
+  it("mentions enriched edges when an existing pair got merged, not re-added", async () => {
+    const deepen = {
+      type: "graph_deepen",
+      seed_id: 1,
+      nodes: [],
+      edges: [{ from: 1, to: 2, dominant_role: "producer" }],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(deepen)));
+    mergeDeepenResult.mockReturnValue({ addedNodes: 0, addedEdges: 0, mergedEdges: 1 });
+
+    await deepenArtistConnections(1);
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/1 enriched/i), 2500);
+  });
+
+  it("redirects to /auth/login on a 401", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 401 })));
+    vi.useFakeTimers();
+
+    const p = deepenArtistConnections(1);
+    await p;
+    await vi.advanceTimersByTimeAsync(1500);
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/sign in with genius/i));
+    expect(window.location.href).toContain("/auth/login");
+    expect(mergeDeepenResult).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("offers a Retry toast on a transient 503", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 503 })));
+
+    await deepenArtistConnections(1);
+
+    expect(showRetryToast).toHaveBeenCalledTimes(1);
+    expect(showRetryToast.mock.calls[0][0]).toBe(
+      "Genius is temporarily unavailable — please try again in a minute.",
+    );
+  });
+
+  it("shows a non-retry toast on a 404 (artist not found)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 404 })));
+
+    await deepenArtistConnections(1);
+
+    expect(showToast).toHaveBeenCalledWith("Could not find that artist on Genius.");
+    expect(showRetryToast).not.toHaveBeenCalled();
+  });
+
+  it("resets deepenInFlight even when the request throws", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 404 })));
+
+    await deepenArtistConnections(1);
+
+    expect(State.deepenInFlight).toBe(false);
   });
 });

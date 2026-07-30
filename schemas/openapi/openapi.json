@@ -3,7 +3,7 @@
   "info": {
     "title": "six-feat public API",
     "description": "Artist-collaboration graph explorer, backed by Genius.com. Every endpoint below requires an authenticated Genius session (six_feat_session cookie, minted by six-feat-auth's OAuth flow) except where noted.",
-    "version": "1.6.0"
+    "version": "1.7.0"
   },
   "servers": [
     {
@@ -760,6 +760,108 @@
           },
           "502": {
             "description": "Could not reach Genius / genius-gateway"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/graph/deepen": {
+      "get": {
+        "summary": "\"Find more connections via Genius\" for one artist (SF-YM-03)",
+        "description": "On-demand deepen action for a single artist already shown in the graph (the default graph runs on Yandex features, SF-YM-01/SF-YM-02). Calls GeniusMusicSourceProvider.GetCollaborationEdges directly for the given artist id and returns any producer/writer/featured/primary edges Genius tags that co-appearance-on-a-track (Yandex) physically cannot give. Response shape mirrors GET /api/v1/graph's nodes/edges so the client can merge it into the already-rendered graph, combining sources on a same-pair edge instead of drawing a visually distinct second one.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Genius id of the artist/node to deepen — already resolved and shown in the current graph."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deepen succeeded (possibly with zero additional edges — an honest \"nothing more found\", not an error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "graph_deepen"
+                    },
+                    "seed_id": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GraphNode"
+                      }
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GraphEdge"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid 'id' parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session and no valid X-Api-Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artist id not found on Genius",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited (SF-SEC-04)"
+          },
+          "502": {
+            "description": "Could not reach Genius / genius-gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [

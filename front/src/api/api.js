@@ -7,7 +7,7 @@ import {
   GRAPH_MAX_LIMIT,
 } from "../state/state.js";
 import { debounce } from "../state/helpers.js";
-import { replaceGraph, mergeGraph } from "../graph.js";
+import { replaceGraph, mergeGraph, mergeDeepenResult } from "../graph.js";
 import { showCandidatePicker } from "../ui/index.js";
 import {
   showLoading,
@@ -209,6 +209,63 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
       State.pendingExpand = null;
       _doSearch(name, true);
     }
+  }
+}
+
+export async function deepenArtistConnections(artistId) {
+  if (artistId == null || State.deepenInFlight) return;
+  State.deepenInFlight = true;
+  showToast("Looking for more connections via Genius…", 1800, true);
+
+  try {
+    const res = await apiFetch(`/api/v1/graph/deepen?id=${encodeURIComponent(artistId)}`);
+
+    if (res.status === 401) {
+      let body = {};
+      try {
+        body = await res.json();
+      } catch (_) {}
+      redirectToLogin(showToast, body, {
+        notSignedInMessage: "Sign in with Genius to find more connections.",
+      });
+      return;
+    }
+
+    if (!res.ok) {
+      throwForStatus(res.status, {
+        404: "Could not find that artist on Genius.",
+        503: "Genius is temporarily unavailable — please try again in a minute.",
+      });
+    }
+
+    const deepen = await res.json();
+    const result = mergeDeepenResult(deepen);
+
+    if (!result.addedNodes && !result.addedEdges && !result.mergedEdges) {
+      showToast("No additional Genius-tagged connections found.");
+      return;
+    }
+
+    const parts = [];
+    if (result.addedEdges) {
+      parts.push(`${result.addedEdges} new connection${result.addedEdges === 1 ? "" : "s"}`);
+    }
+    if (result.mergedEdges) {
+      parts.push(`${result.mergedEdges} enriched`);
+    }
+    showToast(
+      `Found more connections via Genius${parts.length ? `: ${parts.join(", ")}` : ""}.`,
+      2500,
+    );
+  } catch (err) {
+    const msg = err.message || "Could not reach Genius for more connections.";
+    if (err.transient) {
+      showRetryToast(msg, () => deepenArtistConnections(artistId));
+    } else {
+      showToast(msg);
+    }
+  } finally {
+    State.deepenInFlight = false;
   }
 }
 

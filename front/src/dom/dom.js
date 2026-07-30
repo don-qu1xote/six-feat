@@ -99,6 +99,7 @@ export const els = {
 
   objectActionBar: $("object-action-bar"),
   objActionExpand: $("obj-action-expand"),
+  objActionDeepen: $("obj-action-deepen"),
   objActionFocus: $("obj-action-focus"),
   objActionGenius: $("obj-action-genius"),
 

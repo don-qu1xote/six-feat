@@ -15,7 +15,7 @@ vi.mock("./modals.js", () => ({
   closeNodeSearch: vi.fn(),
   closePathPanel: vi.fn(),
 }));
-vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
+vi.mock("../api/api.js", () => ({ searchArtist: vi.fn(), deepenArtistConnections: vi.fn() }));
 vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
 
 import { State } from "../state/state.js";
@@ -28,7 +28,7 @@ import {
   clearSelectedNode,
   clearSelectedEdge,
 } from "../vis-adapter/index.js";
-import { searchArtist } from "../api/api.js";
+import { searchArtist, deepenArtistConnections } from "../api/api.js";
 
 function freshEl(tag = "div") {
   return document.createElement(tag);
@@ -59,6 +59,7 @@ beforeEach(() => {
   els.objectActionBar = freshEl();
   els.objectActionBar.hidden = true;
   els.objActionExpand = freshEl("button");
+  els.objActionDeepen = freshEl("button");
   els.objActionFocus = freshEl("button");
   els.objActionGenius = freshEl("button");
 });
@@ -152,6 +153,13 @@ describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
     els.objActionExpand.onclick();
     expect(searchArtist).toHaveBeenCalledWith("Drake", true, true);
     expect(State._clickedNodeId).toBe(1);
+  });
+
+  it("[SF-YM-03] wires the deepen button to deepenArtistConnections(nodeId)", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    els.objActionDeepen.onclick();
+    expect(deepenArtistConnections).toHaveBeenCalledWith(1);
   });
 
   it("wires Focus to center the camera on the node", () => {

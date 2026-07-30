@@ -104,6 +104,66 @@ export function mergeGraph(graph) {
   finalizeGraphState(State.currentSeedId, nameById, savedPositions, graph, true);
 }
 
+export function mergeDeepenResult(deepen) {
+  const savedPositions = State.network ? State.network.getPositions() : {};
+
+  const existingNodeIds = new Set(State.graphNodes.map((n) => n.id));
+  const nameById = {};
+  State.graphNodes.forEach((n) => {
+    nameById[n.id] = n.name;
+  });
+
+  const newNodes = [];
+  for (const n of deepen.nodes || []) {
+    if (existingNodeIds.has(n.id)) continue;
+    newNodes.push(buildNodeState(n, null, existingNodeIds, deepen));
+    nameById[n.id] = n.name || "";
+  }
+  addNodes(newNodes);
+
+  const existingEdgeByKey = new Map(State.graphEdges.map((e) => [edgeKey(e.from, e.to), e]));
+  const newEdges = [];
+  const mergedEdges = [];
+
+  for (const e of deepen.edges || []) {
+    const key = edgeKey(e.from, e.to);
+    const existing = existingEdgeByKey.get(key);
+    if (!existing) {
+      newEdges.push(buildEdgeState(e));
+      continue;
+    }
+    existing.collaborations = [...(existing.collaborations || []), ...(e.collaborations || [])];
+    existing.dominantRole = resolveEdgeDominantRole({
+      collaborations: existing.collaborations,
+      dominantRole: existing.dominantRole,
+      dominant_role: e.dominant_role,
+    });
+    mergedEdges.push(existing);
+  }
+  addEdges(newEdges);
+
+  computeNodeSizes();
+  finalizeNodeRoleState();
+  invalidateColorCache();
+  renderGraphA11yList();
+  State._bfsAdj = null;
+
+  if (State.network) {
+    mergeNetwork(nameById, savedPositions);
+    if (State.edgesDS) {
+      for (const e of mergedEdges) {
+        if (State.edgesDS.get(e.id)) State.edgesDS.update(edgeVisual(e, nameById));
+      }
+    }
+  }
+
+  return {
+    addedNodes: newNodes.length,
+    addedEdges: newEdges.length,
+    mergedEdges: mergedEdges.length,
+  };
+}
+
 export function buildNodeState(n, seedId, existingIds, graph) {
   const isSeed = n.id === seedId;
   const domRole = "primary";

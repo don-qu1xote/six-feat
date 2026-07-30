@@ -127,6 +127,11 @@ components_manager:
 
       max-limit-override: 50
 
+    handler-graph-deepen:
+      path: /api/v1/graph/deepen
+      method: GET
+      task_processor: *main_tp
+
     handler-path:
       path: /api/v1/graph/path
       method: GET

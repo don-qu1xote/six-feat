@@ -11,7 +11,7 @@ import {
 } from "../vis-adapter/index.js";
 import { bfsPath } from "../api/analytics-client.js";
 import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
-import { searchArtist } from "../api/api.js";
+import { searchArtist, deepenArtistConnections } from "../api/api.js";
 import { showToast } from "./toast.js";
 import { closeComparePanel } from "./compare-panel.js";
 
@@ -154,6 +154,9 @@ function syncObjectActionBar(node) {
       State._clickedNodeId = node.id;
       searchArtist(node.name, true, true);
     };
+  }
+  if (els.objActionDeepen) {
+    els.objActionDeepen.onclick = () => deepenArtistConnections(node.id);
   }
   if (els.objActionFocus) {
     els.objActionFocus.onclick = () => {

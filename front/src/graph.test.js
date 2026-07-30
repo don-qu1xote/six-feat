@@ -25,6 +25,7 @@ import {
   buildEdgeState,
   edgeKey,
   mergeGraph,
+  mergeDeepenResult,
   replaceGraph,
   computeNodeDominantRoles,
   cacheNodeCollaborations,
@@ -327,6 +328,108 @@ describe("mergeGraph", () => {
 
       expect(State.graphNodes.find((n) => n.id === 2)._expandParent).toBe(999);
     });
+  });
+});
+
+describe("[SF-YM-03] mergeDeepenResult", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    State.graphNodes = [];
+    State.graphEdges = [];
+    State.network = null;
+    State.edgesDS = null;
+  });
+
+  it("adds a genuinely-new node and edge", () => {
+    State.graphNodes = [buildNodeState({ id: 1, name: "Seed" }, 1, new Set())];
+    State.graphEdges = [];
+
+    const result = mergeDeepenResult({
+      seed_id: 1,
+      nodes: [{ id: 2, name: "Producer Pete" }],
+      edges: [{ from: 1, to: 2, dominant_role: "producer", collaborations: [] }],
+    });
+
+    expect(State.graphNodes.map((n) => n.id)).toEqual([1, 2]);
+    expect(State.graphEdges).toHaveLength(1);
+    expect(State.graphEdges[0].id).toBe("1_2");
+    expect(result).toEqual({ addedNodes: 1, addedEdges: 1, mergedEdges: 0 });
+  });
+
+  it("does not draw a second edge for a pair already present — merges collaborations instead", () => {
+    State.graphNodes = [
+      buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+      buildNodeState({ id: 2, name: "Existing" }, 1, new Set()),
+    ];
+    State.graphEdges = [
+      buildEdgeState({
+        from: 1,
+        to: 2,
+        weight: 1,
+        dominant_role: "writer",
+        collaborations: [{ song: "Track A", popularity: 10, roles: ["writer"] }],
+      }),
+    ];
+
+    // ROLE_PRIORITY ranks "producer" above "writer" (state.js) — merging in
+    // a Genius-tagged "producer" credit for the same pair should promote
+    // the combined edge's dominant role, not just silently drop the new
+    // information because a "writer"-tagged edge for this pair already
+    // existed.
+    const result = mergeDeepenResult({
+      seed_id: 1,
+      nodes: [{ id: 2, name: "Existing" }],
+      edges: [
+        {
+          from: 2,
+          to: 1,
+          dominant_role: "producer",
+          collaborations: [{ song: "", popularity: 0, roles: ["producer"] }],
+        },
+      ],
+    });
+
+    expect(State.graphEdges).toHaveLength(1);
+    expect(result).toEqual({ addedNodes: 0, addedEdges: 0, mergedEdges: 1 });
+
+    const merged = State.graphEdges[0];
+    expect(merged.collaborations).toHaveLength(2);
+    expect(merged.dominantRole).toBe("producer");
+  });
+
+  it("does not add a node that already exists", () => {
+    State.graphNodes = [
+      buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+      buildNodeState({ id: 2, name: "Existing" }, 1, new Set()),
+    ];
+    State.graphEdges = [];
+
+    const result = mergeDeepenResult({
+      seed_id: 1,
+      nodes: [{ id: 2, name: "Existing" }],
+      edges: [],
+    });
+
+    expect(State.graphNodes).toHaveLength(2);
+    expect(result.addedNodes).toBe(0);
+  });
+
+  it("dedups regardless of from/to order", () => {
+    State.graphNodes = [
+      buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
+      buildNodeState({ id: 2, name: "Existing" }, 1, new Set()),
+    ];
+    State.graphEdges = [buildEdgeState({ from: 2, to: 1, weight: 1, collaborations: [] })];
+
+    const result = mergeDeepenResult({
+      seed_id: 1,
+      nodes: [],
+      edges: [{ from: 1, to: 2, dominant_role: "producer", collaborations: [] }],
+    });
+
+    expect(State.graphEdges).toHaveLength(1);
+    expect(result.addedEdges).toBe(0);
+    expect(result.mergedEdges).toBe(1);
   });
 });
 

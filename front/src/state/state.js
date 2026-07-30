@@ -245,6 +245,7 @@ const netFetchSlice = {
   inFlight: false,
   pendingExpand: null,
   pathInFlight: false,
+  deepenInFlight: false,
 
   _abortController: null,
   _pathAbortController: null,
@@ -324,6 +325,7 @@ bridge("connect", gameSlice);
 bridge("inFlight", netFetchSlice);
 bridge("pendingExpand", netFetchSlice);
 bridge("pathInFlight", netFetchSlice);
+bridge("deepenInFlight", netFetchSlice);
 bridge("_abortController", netFetchSlice);
 bridge("_pathAbortController", netFetchSlice);
 bridge("_enrichmentPoller", netFetchSlice);

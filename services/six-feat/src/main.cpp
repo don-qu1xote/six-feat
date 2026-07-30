@@ -20,6 +20,7 @@
 
 #include "api/v1/api_keys_handler.hpp"
 #include "api/v1/artist_handler.hpp"
+#include "api/v1/graph_deepen_handler.hpp"
 #include "api/v1/graph_handler.hpp"
 #include "api/v1/image_proxy_handler.hpp"
 #include "api/v1/path_handler.hpp"
@@ -61,6 +62,7 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::IdempotencyStore>()
                                   .Append<six_feat::auth::UserProviderTokenStore>()
                                   .Append<six_feat::GraphHandler>()
+                                  .Append<six_feat::GraphDeepenHandler>()
                                   .Append<six_feat::PathHandler>()
                                   .Append<six_feat::SearchHandler>()
                                   .Append<six_feat::HealthHandler>()
