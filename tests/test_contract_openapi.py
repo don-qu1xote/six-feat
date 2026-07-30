@@ -16,12 +16,17 @@ _SIX_FEAT_NATIVE_PATHS = (
 
 
 @pytest.fixture(scope="session")
-def api_schema(service_proc):  # noqa: ARG001 - dependency ensures the binary is up first
-    schema = schemathesis.openapi.from_url(f"{SERVICE_BASE}/api/v1/openapi.json")
-    return schema.include(path_regex=_SIX_FEAT_NATIVE_PATHS)
+def api_schema(service_proc):  # noqa: ARG001
+    return schemathesis.openapi.from_url(f"{SERVICE_BASE}/api/v1/openapi.json")
 
 
-schema = schemathesis.pytest.from_fixture("api_schema")
+# Фильтр путей ОБЯЗАТЕЛЬНО цепочкой на LazySchema, а не внутри фикстуры:
+# LazySchema.parametrize() разрешает фикстуру per-test через get_schema(),
+# который делает schema.clone(filter_set=merged_filter_set) — clone()
+# полностью заменяет filter_set, и вызов .include() внутри фикстуры тихо
+# отбрасывается (CI фаззил весь openapi.json, включая six-feat-game/*,
+# для которых у голого тестового бинарника нет handler-ов).
+schema = schemathesis.pytest.from_fixture("api_schema").include(path_regex=_SIX_FEAT_NATIVE_PATHS)
 
 
 @schema.parametrize()

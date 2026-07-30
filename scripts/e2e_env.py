@@ -198,6 +198,10 @@ components_manager:
     idempotency-store:
       dbname: postgres-db-1
 
+    # [SF-YM-02] main.cpp безусловно регистрирует UserProviderTokenStore.
+    user-provider-token-store:
+      dbname: postgres-db-1
+
     oauth-config:
       client-id: e2e-client-id
       redirect-uri: http://127.0.0.1:{service_port}/auth/callback
@@ -293,6 +297,32 @@ components_manager:
 
     handler-api-keys-revoke:
       path: /api/v1/api-keys/revoke
+      method: POST
+      task_processor: main-task-processor
+
+    # [SF-YM-02] main.cpp безусловно регистрирует все 5 handler-ов настроек.
+    handler-settings-status:
+      path: /api/v1/settings/providers
+      method: GET
+      task_processor: main-task-processor
+
+    handler-settings-genius-connect:
+      path: /api/v1/settings/genius-token
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-disconnect:
+      path: /api/v1/settings/disconnect
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-yandex-device-start:
+      path: /api/v1/settings/yandex/device/start
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-yandex-device-poll:
+      path: /api/v1/settings/yandex/device/poll
       method: POST
       task_processor: main-task-processor
 
