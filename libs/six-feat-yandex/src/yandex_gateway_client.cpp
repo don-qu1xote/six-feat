@@ -169,4 +169,77 @@ YandexDeviceFlowPollResult YandexGatewayClient::PollDeviceFlow(
   return out;
 }
 
+std::optional<std::string> YandexGatewayClient::FetchAccountUserId(
+    const std::string& personal_token) const {
+  formats::json::ValueBuilder body(formats::json::Type::kObject);
+  body["token"] = personal_token;
+  const auto json = PostInternal("/internal/yandex/account", body);
+  if (!json["found"].As<bool>(false)) return std::nullopt;
+  return json["user_id"].As<std::string>("");
+}
+
+std::vector<YandexPlaylistSummary> YandexGatewayClient::FetchPlaylists(
+    const std::string& personal_token, const std::string& user_id) const {
+  formats::json::ValueBuilder body(formats::json::Type::kObject);
+  body["token"] = personal_token;
+  body["user_id"] = user_id;
+
+  const auto json = PostInternal("/internal/yandex/playlists", body);
+  const auto& arr = json["playlists"];
+
+  std::vector<YandexPlaylistSummary> out;
+  if (arr.IsArray()) {
+    out.reserve(arr.GetSize());
+    for (const auto& p : arr) {
+      YandexPlaylistSummary summary;
+      summary.yandex_id = p["id"].As<std::int64_t>(0);
+      summary.title = p["title"].As<std::string>("");
+      summary.track_count = p["track_count"].As<int>(0);
+      if (summary.yandex_id) out.push_back(std::move(summary));
+    }
+  }
+  return out;
+}
+
+std::vector<std::int64_t> YandexGatewayClient::FetchLikedTracks(const std::string& personal_token,
+                                                                const std::string& user_id) const {
+  formats::json::ValueBuilder body(formats::json::Type::kObject);
+  body["token"] = personal_token;
+  body["user_id"] = user_id;
+
+  const auto json = PostInternal("/internal/yandex/liked-tracks", body);
+  const auto& arr = json["track_ids"];
+
+  std::vector<std::int64_t> out;
+  if (arr.IsArray()) {
+    out.reserve(arr.GetSize());
+    for (const auto& v : arr) {
+      const auto tid = v.As<std::int64_t>(0);
+      if (tid) out.push_back(tid);
+    }
+  }
+  return out;
+}
+
+std::vector<std::int64_t> YandexGatewayClient::FetchPlaylistTracks(
+    const std::string& personal_token, const std::string& user_id, std::int64_t playlist_id) const {
+  formats::json::ValueBuilder body(formats::json::Type::kObject);
+  body["token"] = personal_token;
+  body["user_id"] = user_id;
+  body["playlist_id"] = playlist_id;
+
+  const auto json = PostInternal("/internal/yandex/playlist-tracks", body);
+  const auto& arr = json["track_ids"];
+
+  std::vector<std::int64_t> out;
+  if (arr.IsArray()) {
+    out.reserve(arr.GetSize());
+    for (const auto& v : arr) {
+      const auto tid = v.As<std::int64_t>(0);
+      if (tid) out.push_back(tid);
+    }
+  }
+  return out;
+}
+
 }  // namespace six_feat

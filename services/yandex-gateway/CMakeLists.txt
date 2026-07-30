@@ -12,6 +12,9 @@ six_feat_embed_schema(handlers/yandex-gateway/device_start_handler   kDeviceStar
 six_feat_embed_schema(handlers/yandex-gateway/device_poll_handler    kDevicePollHandlerSchema    YANDEX_GATEWAY_DEVICE_POLL_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/yandex-gateway/playlists_handler      kPlaylistsHandlerSchema     YANDEX_GATEWAY_PLAYLISTS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/yandex-gateway/liked_tracks_handler   kLikedTracksHandlerSchema   YANDEX_GATEWAY_LIKED_TRACKS_HANDLER_SCHEMA_HEADER)
+# [SF-YM-04] Импорт плейлистов/лайков — потребление seed-подсказок.
+six_feat_embed_schema(handlers/yandex-gateway/playlist_tracks_handler kPlaylistTracksHandlerSchema YANDEX_GATEWAY_PLAYLIST_TRACKS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/yandex-gateway/account_handler        kAccountHandlerSchema       YANDEX_GATEWAY_ACCOUNT_HANDLER_SCHEMA_HEADER)
 # [SF-INF-03] /healthz uses the shared six_feat::HealthHandler — no schema of
 # its own needed here (see the same comment in genius-gateway's CMakeLists).
 six_feat_embed_schema(handlers/yandex-gateway/readiness_handler      kYandexGatewayReadinessHandlerSchema YANDEX_GATEWAY_READINESS_HANDLER_SCHEMA_HEADER)
@@ -24,6 +27,8 @@ add_custom_target(six_feat_yandex_gateway_schema_headers DEPENDS
     ${YANDEX_GATEWAY_DEVICE_POLL_HANDLER_SCHEMA_HEADER}
     ${YANDEX_GATEWAY_PLAYLISTS_HANDLER_SCHEMA_HEADER}
     ${YANDEX_GATEWAY_LIKED_TRACKS_HANDLER_SCHEMA_HEADER}
+    ${YANDEX_GATEWAY_PLAYLIST_TRACKS_HANDLER_SCHEMA_HEADER}
+    ${YANDEX_GATEWAY_ACCOUNT_HANDLER_SCHEMA_HEADER}
     ${YANDEX_GATEWAY_READINESS_HANDLER_SCHEMA_HEADER}
 )
 
@@ -36,6 +41,8 @@ add_executable(six_feat_yandex_gateway
     src/internal/yandex/device_poll_handler.cpp
     src/internal/yandex/playlists_handler.cpp
     src/internal/yandex/liked_tracks_handler.cpp
+    src/internal/yandex/playlist_tracks_handler.cpp
+    src/internal/yandex/account_handler.cpp
     src/system/readiness_handler.cpp
 )
 

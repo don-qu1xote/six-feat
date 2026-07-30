@@ -1,0 +1,4 @@
+type: object
+description: Внутренний эндпоинт треков личного плейлиста Яндекса (SF-YM-04)
+additionalProperties: false
+properties: {}

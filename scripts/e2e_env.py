@@ -331,6 +331,16 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
+    handler-settings-yandex-playlists:
+      path: /api/v1/settings/yandex/playlists
+      method: GET
+      task_processor: main-task-processor
+
+    handler-settings-yandex-import:
+      path: /api/v1/settings/yandex/import
+      method: GET
+      task_processor: main-task-processor
+
     # main.cpp безусловно регистрирует InternalNeighboursHandler,
     # поэтому каждый static config, запускающий six_feat бинарник, требует
     # соответствующего блока, иначе components::Run падает с

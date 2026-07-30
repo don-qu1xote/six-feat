@@ -37,6 +37,12 @@ struct YandexArtistRef {
   std::string image;
 };
 
+struct YandexPlaylistSummary {
+  std::int64_t yandex_id{0};
+  std::string title;
+  int track_count{0};
+};
+
 class YandexGatewayClient final : public userver::components::ComponentBase {
  public:
   static constexpr std::string_view kName = "yandex-gateway-client";
@@ -59,6 +65,23 @@ class YandexGatewayClient final : public userver::components::ComponentBase {
   YandexDeviceFlowStart StartDeviceFlow() const;
 
   YandexDeviceFlowPollResult PollDeviceFlow(const std::string& device_code) const;
+
+  // [SF-YM-04] Всё ниже требует подключённого личного Яндекс-токена
+  // (SF-YM-02) — не сервисного токена, который используют методы выше,
+  // и не входит в граф по умолчанию.
+
+  // std::nullopt — токен не резолвится в аккаунт (просрочен/невалиден).
+  std::optional<std::string> FetchAccountUserId(const std::string& personal_token) const;
+
+  std::vector<YandexPlaylistSummary> FetchPlaylists(const std::string& personal_token,
+                                                    const std::string& user_id) const;
+
+  std::vector<std::int64_t> FetchLikedTracks(const std::string& personal_token,
+                                             const std::string& user_id) const;
+
+  std::vector<std::int64_t> FetchPlaylistTracks(const std::string& personal_token,
+                                                const std::string& user_id,
+                                                std::int64_t playlist_id) const;
 
  private:
   userver::formats::json::Value PostInternal(const std::string& path,

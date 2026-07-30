@@ -396,6 +396,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-graph-deepen:
+      path: /api/v1/graph/deepen
+      method: GET
+      task_processor: main-task-processor
+
     handler-path:
       path: /api/v1/graph/path
       method: GET
@@ -494,6 +499,16 @@ components_manager:
     handler-settings-yandex-device-poll:
       path: /api/v1/settings/yandex/device/poll
       method: POST
+      task_processor: main-task-processor
+
+    handler-settings-yandex-playlists:
+      path: /api/v1/settings/yandex/playlists
+      method: GET
+      task_processor: main-task-processor
+
+    handler-settings-yandex-import:
+      path: /api/v1/settings/yandex/import
+      method: GET
       task_processor: main-task-processor
 
     handler-internal-neighbours:
@@ -812,6 +827,16 @@ components_manager:
 
     handler-internal-yandex-liked-tracks:
       path: /internal/yandex/liked-tracks
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-yandex-playlist-tracks:
+      path: /internal/yandex/playlist-tracks
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-yandex-account:
+      path: /internal/yandex/account
       method: POST
       task_processor: main-task-processor
 
@@ -2201,6 +2226,27 @@ class YandexMock:
             return 200, {"result": {"tracks": track_ids}}
 
         self._state.register(f"/users/{user_id}/likes/tracks", _handler)
+        return self
+
+    def playlist_tracks(self, user_id: str, playlist_id: int, track_ids: List[int]) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"result": {"tracks": track_ids}}
+
+        self._state.register(f"/users/{user_id}/playlists/{playlist_id}", _handler)
+        return self
+
+    def account(self, uid: str) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"result": {"account": {"uid": int(uid)}}}
+
+        self._state.register("/account/status", _handler)
+        return self
+
+    def account_error(self, status: int = 401) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return status, {"error": "upstream error"}
+
+        self._state.register("/account/status", _handler)
         return self
 
 

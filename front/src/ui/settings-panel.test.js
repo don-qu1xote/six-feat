@@ -11,7 +11,10 @@ vi.mock("../api/settings-api.js", () => ({
   disconnectProvider: vi.fn(),
   startYandexDeviceFlow: vi.fn(),
   pollYandexDeviceFlow: vi.fn(),
+  fetchYandexPlaylists: vi.fn(),
+  fetchYandexImport: vi.fn(),
 }));
+vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
 import { els } from "../dom/dom.js";
 import {
@@ -21,12 +24,15 @@ import {
   isSettingsPanelOpen,
 } from "./settings-panel.js";
 import { showToast } from "./toast.js";
+import { searchArtist } from "../api/api.js";
 import {
   fetchSettingsStatus,
   connectGeniusToken,
   disconnectProvider,
   startYandexDeviceFlow,
   pollYandexDeviceFlow,
+  fetchYandexPlaylists,
+  fetchYandexImport,
 } from "../api/settings-api.js";
 
 function renderSettingsMarkup() {
@@ -62,6 +68,12 @@ function renderSettingsMarkup() {
         <button id="settings-yandex-disconnect-btn" hidden></button>
         <div id="settings-yandex-device-code" hidden></div>
         <div id="settings-yandex-status">Not connected</div>
+
+        <div id="settings-yandex-import" hidden>
+          <button id="settings-yandex-import-btn"></button>
+          <ul id="settings-yandex-playlist-list" hidden></ul>
+          <ul id="settings-yandex-artist-list" hidden></ul>
+        </div>
       </div>
     </div>
   `;
@@ -77,6 +89,10 @@ function renderSettingsMarkup() {
   els.settingsYandexDisconnectBtn = document.getElementById("settings-yandex-disconnect-btn");
   els.settingsYandexStatus = document.getElementById("settings-yandex-status");
   els.settingsYandexDeviceCode = document.getElementById("settings-yandex-device-code");
+  els.settingsYandexImport = document.getElementById("settings-yandex-import");
+  els.settingsYandexImportBtn = document.getElementById("settings-yandex-import-btn");
+  els.settingsYandexPlaylistList = document.getElementById("settings-yandex-playlist-list");
+  els.settingsYandexArtistList = document.getElementById("settings-yandex-artist-list");
 }
 
 beforeEach(() => {
@@ -310,5 +326,130 @@ describe("[SF-YM-02] connecting a personal Yandex account (device flow)", () => 
     closeSettingsPanel();
     await vi.advanceTimersByTimeAsync(5000);
     expect(pollYandexDeviceFlow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("[SF-YM-04] Yandex playlist/likes import — seed suggestions only", () => {
+  beforeEach(() => {
+    setupSettingsPanel();
+  });
+
+  it("is hidden until a personal Yandex account is connected", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      genius: { connected: false },
+      yandex: { connected: false },
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsYandexImport.hidden).toBe(true);
+  });
+
+  it("shows the import section once connected", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      genius: { connected: false },
+      yandex: { connected: true },
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsYandexImport.hidden).toBe(false);
+  });
+
+  it("renders the playlist list (plus likes) after clicking Import", async () => {
+    fetchYandexPlaylists.mockResolvedValue({
+      type: "yandex_playlists",
+      playlists: [
+        { id: "likes", kind: "likes", title: "Liked tracks", track_count: 0 },
+        { id: "7", kind: "playlist", title: "Road Trip", track_count: 12 },
+      ],
+    });
+
+    els.settingsYandexImportBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsYandexPlaylistList.hidden).toBe(false);
+    const buttons = els.settingsYandexPlaylistList.querySelectorAll("button[data-playlist-id]");
+    expect(buttons).toHaveLength(2);
+    expect([...buttons].map((b) => b.dataset.playlistId)).toEqual(["likes", "7"]);
+  });
+
+  it("renders resolved and unresolved artists after picking a playlist, marking the unresolved one", async () => {
+    fetchYandexPlaylists.mockResolvedValue({
+      playlists: [{ id: "7", kind: "playlist", title: "Road Trip", track_count: 2 }],
+    });
+    fetchYandexImport.mockResolvedValue({
+      type: "yandex_import",
+      source: "playlist",
+      playlist_id: "7",
+      artists: [
+        { yandex_name: "Resolvable Artist", resolved: true, id: 42, name: "Resolvable Artist" },
+        { yandex_name: "Ghost Artist", resolved: false },
+      ],
+      resolved_count: 1,
+      total_count: 2,
+    });
+
+    els.settingsYandexImportBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    els.settingsYandexPlaylistList.querySelector("button[data-playlist-id='7']").click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchYandexImport).toHaveBeenCalledWith("7");
+    expect(els.settingsYandexArtistList.hidden).toBe(false);
+
+    const resolvedBtn = els.settingsYandexArtistList.querySelector(
+      "button[data-artist-name='Resolvable Artist']",
+    );
+    expect(resolvedBtn).not.toBeNull();
+
+    const unresolved = els.settingsYandexArtistList.querySelector(
+      ".settings-yandex-artist--unresolved",
+    );
+    expect(unresolved).not.toBeNull();
+    expect(unresolved.textContent).toMatch(/Ghost Artist/);
+    expect(unresolved.textContent).toMatch(/not found/i);
+    expect(unresolved.querySelector("button")).toBeNull();
+  });
+
+  it("picking a resolved artist calls the normal searchArtist() and nothing else", async () => {
+    fetchYandexPlaylists.mockResolvedValue({
+      playlists: [{ id: "7", kind: "playlist", title: "Road Trip", track_count: 1 }],
+    });
+    fetchYandexImport.mockResolvedValue({
+      artists: [
+        { yandex_name: "Resolvable Artist", resolved: true, id: 42, name: "Resolvable Artist" },
+      ],
+      resolved_count: 1,
+      total_count: 1,
+    });
+
+    els.settingsYandexImportBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    els.settingsYandexPlaylistList.querySelector("button[data-playlist-id='7']").click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    els.settingsYandexArtistList.querySelector("button[data-artist-name]").click();
+
+    expect(searchArtist).toHaveBeenCalledWith("Resolvable Artist", false, true);
+    expect(searchArtist).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a toast and does not render a list when the playlists fetch fails", async () => {
+    fetchYandexPlaylists.mockResolvedValue(null);
+
+    els.settingsYandexImportBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/couldn't load/i));
+    expect(els.settingsYandexPlaylistList.hidden).toBe(true);
   });
 });

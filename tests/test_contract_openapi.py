@@ -9,9 +9,15 @@ from conftest import SERVICE_BASE
 
 pytestmark = pytest.mark.openapi_endpoint
 
+# [SF-YM-04] settings/yandex/playlists и settings/yandex/import
+# гейтятся на «уже подключено» ДО вызова yandex-gateway (404 если не
+# подключено) — в отличие от device/start|poll, которые безусловно
+# обращаются к замоканому апстриму — поэтому фаззинг без личного токена
+# никогда не доходит до незапрограммированного мока; безопасно.
 _SIX_FEAT_NATIVE_PATHS = (
     r"^/api/v1/(graph(/path|/deepen)?|search|status|artist|api-keys(/revoke)?"
-    r"|settings/providers|settings/genius-token|settings/disconnect)$"
+    r"|settings/providers|settings/genius-token|settings/disconnect"
+    r"|settings/yandex/(playlists|import))$"
 )
 
 

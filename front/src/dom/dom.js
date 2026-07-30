@@ -257,4 +257,8 @@ export const els = {
   settingsYandexDisconnectBtn: $("settings-yandex-disconnect-btn"),
   settingsYandexStatus: $("settings-yandex-status"),
   settingsYandexDeviceCode: $("settings-yandex-device-code"),
+  settingsYandexImport: $("settings-yandex-import"),
+  settingsYandexImportBtn: $("settings-yandex-import-btn"),
+  settingsYandexPlaylistList: $("settings-yandex-playlist-list"),
+  settingsYandexArtistList: $("settings-yandex-artist-list"),
 };

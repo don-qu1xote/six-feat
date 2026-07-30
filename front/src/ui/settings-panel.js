@@ -1,12 +1,16 @@
 import { els } from "../dom/dom.js";
 import { registerDockedPanel, closeOtherDockedPanels } from "./docked-panel.js";
 import { showToast } from "./toast.js";
+import { escapeHtml } from "../state/helpers.js";
+import { searchArtist } from "../api/api.js";
 import {
   fetchSettingsStatus,
   connectGeniusToken,
   disconnectProvider,
   startYandexDeviceFlow,
   pollYandexDeviceFlow,
+  fetchYandexPlaylists,
+  fetchYandexImport,
 } from "../api/settings-api.js";
 
 let _panel = null;
@@ -54,6 +58,20 @@ function _setYandexConnected(connected) {
   if (connected && els.settingsYandexDeviceCode) {
     els.settingsYandexDeviceCode.hidden = true;
     els.settingsYandexDeviceCode.textContent = "";
+  }
+
+  // [SF-YM-04] Импорт предлагается только после подключения личного
+  // аккаунта — отключение чистит списки вместо устаревших данных.
+  if (els.settingsYandexImport) els.settingsYandexImport.hidden = !connected;
+  if (!connected) {
+    if (els.settingsYandexPlaylistList) {
+      els.settingsYandexPlaylistList.hidden = true;
+      els.settingsYandexPlaylistList.innerHTML = "";
+    }
+    if (els.settingsYandexArtistList) {
+      els.settingsYandexArtistList.hidden = true;
+      els.settingsYandexArtistList.innerHTML = "";
+    }
   }
 }
 
@@ -147,6 +165,77 @@ async function _handleYandexDisconnect() {
   _setYandexConnected(false);
 }
 
+// [SF-YM-04] Рендерит плейлисты (+ синтетическую запись «лайков»)
+// как кликабельный список — выбор загружает артистов этого источника.
+function _renderYandexPlaylists(playlists) {
+  if (!els.settingsYandexPlaylistList) return;
+  els.settingsYandexPlaylistList.innerHTML = (playlists || [])
+    .map((p) => {
+      const label =
+        p.kind === "likes"
+          ? "Liked tracks"
+          : `${p.title || "Untitled playlist"} (${p.track_count ?? 0})`;
+      return `<li><button type="button" class="ui-btn ui-btn--ghost" data-playlist-id="${escapeHtml(String(p.id))}">${escapeHtml(label)}</button></li>`;
+    })
+    .join("");
+  els.settingsYandexPlaylistList.hidden = false;
+
+  els.settingsYandexPlaylistList.querySelectorAll("button[data-playlist-id]").forEach((btn) => {
+    btn.addEventListener("click", () => _handleYandexPlaylistPick(btn.dataset.playlistId));
+  });
+}
+
+// [SF-YM-04] Рендерит разрешённых/неразрешённых артистов для источника.
+// Неразрешённые помечены (честное «не найден» по ADR-0009), не кликабельны
+// — ничто из неразрешённого имени не доходит до searchArtist()/графа/GAME.
+function _renderYandexImportResults(data) {
+  if (!els.settingsYandexArtistList) return;
+  const artists = data?.artists || [];
+  els.settingsYandexArtistList.innerHTML = artists
+    .map((a) => {
+      if (!a.resolved) {
+        return `<li class="settings-yandex-artist settings-yandex-artist--unresolved">${escapeHtml(a.yandex_name)} <span class="settings-card-sub">(not found on Genius)</span></li>`;
+      }
+      return `<li><button type="button" class="ui-btn ui-btn--ghost" data-artist-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button></li>`;
+    })
+    .join("");
+  els.settingsYandexArtistList.hidden = false;
+
+  els.settingsYandexArtistList.querySelectorAll("button[data-artist-name]").forEach((btn) => {
+    btn.addEventListener("click", () => _handleYandexArtistPick(btn.dataset.artistName));
+  });
+}
+
+async function _handleYandexImportOpen() {
+  const result = await fetchYandexPlaylists();
+  if (!result) {
+    showToast("Couldn't load your Yandex playlists — please try again.");
+    return;
+  }
+  _renderYandexPlaylists(result.playlists);
+  if (els.settingsYandexArtistList) {
+    els.settingsYandexArtistList.hidden = true;
+    els.settingsYandexArtistList.innerHTML = "";
+  }
+}
+
+async function _handleYandexPlaylistPick(playlistId) {
+  const result = await fetchYandexImport(playlistId);
+  if (!result) {
+    showToast("Couldn't import that source — please try again.");
+    return;
+  }
+  _renderYandexImportResults(result);
+}
+
+// [SF-YM-04] Единственное, что разрешено с resolv-артистом импорта —
+// тот же searchArtist(), что и везде, никогда прямой id/граф-запрос.
+function _handleYandexArtistPick(name) {
+  if (!name) return;
+  closeSettingsPanel();
+  searchArtist(name, false, true);
+}
+
 export function setupSettingsPanel() {
   if (!els.settingsPanel) return;
 
@@ -167,4 +256,5 @@ export function setupSettingsPanel() {
   els.settingsGeniusDisconnectBtn?.addEventListener("click", _handleGeniusDisconnect);
   els.settingsYandexConnectBtn?.addEventListener("click", _handleYandexConnect);
   els.settingsYandexDisconnectBtn?.addEventListener("click", _handleYandexDisconnect);
+  els.settingsYandexImportBtn?.addEventListener("click", _handleYandexImportOpen);
 }

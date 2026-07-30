@@ -926,6 +926,15 @@
         </div>
         <div class="settings-card-device-code" id="settings-yandex-device-code" hidden></div>
         <div class="settings-card-status" id="settings-yandex-status">Not connected</div>
+
+        <!-- [SF-YM-04] Только источник seed-подсказок — ничего здесь не
+             попадает в граф/GAME, пока артист не разрешён в реальный
+             Genius id И пользователь явно не выбрал его (searchArtist()). -->
+        <div class="settings-yandex-import" id="settings-yandex-import" hidden>
+          <button type="button" class="ui-btn ui-btn--ghost" id="settings-yandex-import-btn">Import my Yandex playlists</button>
+          <ul class="settings-yandex-playlist-list" id="settings-yandex-playlist-list" hidden></ul>
+          <ul class="settings-yandex-artist-list" id="settings-yandex-artist-list" hidden></ul>
+        </div>
       </div>
     </div>
 

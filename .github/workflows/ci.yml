@@ -582,6 +582,7 @@ jobs:
             tests/test_contract_openapi.py \
             tests/test_settings_tokens.py \
             tests/test_graph_deepen.py \
+            tests/test_yandex_import.py \
             tests/test_music_source_provider.py \
             -v --tb=short \
             --timeout=60

@@ -8,10 +8,12 @@
 #include <userver/testsuite/testsuite_support.hpp>
 #include <userver/utils/daemon_run.hpp>
 
+#include "internal/yandex/account_handler.hpp"
 #include "internal/yandex/artist_tracks_handler.hpp"
 #include "internal/yandex/device_poll_handler.hpp"
 #include "internal/yandex/device_start_handler.hpp"
 #include "internal/yandex/liked_tracks_handler.hpp"
+#include "internal/yandex/playlist_tracks_handler.hpp"
 #include "internal/yandex/playlists_handler.hpp"
 #include "internal/yandex/search_artist_handler.hpp"
 #include "internal/yandex/track_artists_handler.hpp"
@@ -33,6 +35,8 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::yandex_gateway::DevicePollHandler>()
                                   .Append<six_feat::yandex_gateway::PlaylistsHandler>()
                                   .Append<six_feat::yandex_gateway::LikedTracksHandler>()
+                                  .Append<six_feat::yandex_gateway::PlaylistTracksHandler>()
+                                  .Append<six_feat::yandex_gateway::AccountHandler>()
                                   .Append<six_feat::HealthHandler>()
                                   .Append<six_feat::yandex_gateway::ReadinessHandler>()
                                   .Append<server::handlers::ServerMonitor>();

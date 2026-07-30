@@ -5,7 +5,10 @@
 #include "schemas/handlers/six-feat/settings_status_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_yandex_device_poll_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_yandex_device_start_handler_schema.hpp"
+#include "schemas/handlers/six-feat/settings_yandex_import_handler_schema.hpp"
+#include "schemas/handlers/six-feat/settings_yandex_playlists_handler_schema.hpp"
 
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <six-feat-auth-lib/user_identity.hpp>
@@ -14,12 +17,15 @@
 #include <six-feat-core/resilience.hpp>
 #include <six-feat-core/security_headers.hpp>
 #include <string>
+#include <unordered_map>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
 #include <userver/formats/json/serialize.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/http/content_type.hpp>
+#include <userver/logging/log.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
+#include <variant>
 
 #include "token_router.hpp"
 
@@ -35,6 +41,20 @@ std::int64_t NowUnix() {
   return static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::seconds>(
                                        std::chrono::system_clock::now().time_since_epoch())
                                        .count());
+}
+
+// [SF-YM-04] Ограничение числа треков на один импорт — контроль
+// злоупотреблений/стоимости фан-аута (Yandex lookup + Genius resolve).
+// Меньше дефолта (20): каждый трек стоит FetchTrackArtists PLUS
+// per-unique-artist Genius resolve.
+constexpr std::size_t kImportMaxTracks = 20;
+
+bool ParseStrictNumericId(const std::string& param, std::int64_t& out_id) {
+  if (param.empty()) return false;
+  const char* begin = param.data();
+  const char* end = param.data() + param.size();
+  auto [ptr, ec] = std::from_chars(begin, end, out_id);
+  return ec == std::errc{} && ptr == end;
 }
 
 }  // namespace
@@ -279,6 +299,227 @@ std::string SettingsYandexDevicePollHandler::HandleRequestThrow(
 yaml_config::Schema SettingsYandexDevicePollHandler::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
       kSettingsYandexDevicePollHandlerSchema);
+}
+
+SettingsYandexPlaylistsHandler::SettingsYandexPlaylistsHandler(
+    const components::ComponentConfig& config, const components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      oauth_(context.FindComponent<auth::OAuthConfig>()),
+      yandex_client_(context.FindComponent<YandexGatewayClient>()),
+      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()) {}
+
+std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
+    const server::http::HttpRequest& request, server::request::RequestContext&) const {
+  EnsureRequestId(request);
+  ApplySecurityHeaders(request);
+
+  auto& response = request.GetHttpResponse();
+  response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
+
+  const auto session = auth::RequireFullSession(request, oauth_);
+  if (!session) {
+    return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
+  }
+
+  const auto personal_token =
+      user_provider_tokens_.Get(auth::StableUserId(session->name), "yandex");
+  if (!personal_token) {
+    response.SetStatus(server::http::HttpStatus::kNotFound);
+    return BuildProblemJson(request,
+                            server::http::HttpStatus::kNotFound,
+                            "no personal Yandex account connected — connect one in Settings first");
+  }
+
+  std::optional<std::string> user_id;
+  std::vector<YandexPlaylistSummary> playlists;
+  try {
+    user_id = yandex_client_.FetchAccountUserId(*personal_token);
+    if (user_id) playlists = yandex_client_.FetchPlaylists(*personal_token, *user_id);
+  } catch (const GeniusHttpError&) {
+    response.SetStatus(server::http::HttpStatus::kBadGateway);
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kBadGateway, "could not reach Yandex");
+  }
+  if (!user_id) {
+    response.SetStatus(server::http::HttpStatus::kBadGateway);
+    return BuildProblemJson(request,
+                            server::http::HttpStatus::kBadGateway,
+                            "the connected Yandex token is no longer valid — reconnect it");
+  }
+
+  formats::json::ValueBuilder out(formats::json::Type::kObject);
+  out["type"] = std::string{"yandex_playlists"};
+  formats::json::ValueBuilder arr(formats::json::Type::kArray);
+  {
+    formats::json::ValueBuilder likes(formats::json::Type::kObject);
+    likes["id"] = std::string{"likes"};
+    likes["kind"] = std::string{"likes"};
+    likes["title"] = std::string{"Liked tracks"};
+    likes["track_count"] = 0;
+    arr.PushBack(std::move(likes));
+  }
+  for (const auto& p : playlists) {
+    formats::json::ValueBuilder pb(formats::json::Type::kObject);
+    pb["id"] = std::to_string(p.yandex_id);
+    pb["kind"] = std::string{"playlist"};
+    pb["title"] = p.title;
+    pb["track_count"] = p.track_count;
+    arr.PushBack(std::move(pb));
+  }
+  out["playlists"] = std::move(arr);
+  return formats::json::ToString(out.ExtractValue());
+}
+
+yaml_config::Schema SettingsYandexPlaylistsHandler::GetStaticConfigSchema() {
+  return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
+      kSettingsYandexPlaylistsHandlerSchema);
+}
+
+SettingsYandexImportHandler::SettingsYandexImportHandler(
+    const components::ComponentConfig& config, const components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      oauth_(context.FindComponent<auth::OAuthConfig>()),
+      yandex_client_(context.FindComponent<YandexGatewayClient>()),
+      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()),
+      service_(context.FindComponent<CollabService>()) {}
+
+std::string SettingsYandexImportHandler::HandleRequestThrow(
+    const server::http::HttpRequest& request, server::request::RequestContext&) const {
+  EnsureRequestId(request);
+  ApplySecurityHeaders(request);
+
+  auto& response = request.GetHttpResponse();
+  response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
+
+  const auto session = auth::RequireFullSession(request, oauth_);
+  if (!session) {
+    return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
+  }
+
+  const auto personal_token =
+      user_provider_tokens_.Get(auth::StableUserId(session->name), "yandex");
+  if (!personal_token) {
+    response.SetStatus(server::http::HttpStatus::kNotFound);
+    return BuildProblemJson(request,
+                            server::http::HttpStatus::kNotFound,
+                            "no personal Yandex account connected — connect one in Settings first");
+  }
+
+  const std::string& playlist_arg = request.GetArg("playlist");
+  if (playlist_arg.empty()) {
+    response.SetStatus(server::http::HttpStatus::kBadRequest);
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kBadRequest, "'playlist' query parameter is required");
+  }
+  const bool is_likes = playlist_arg == "likes";
+  std::int64_t playlist_id = 0;
+  if (!is_likes && !ParseStrictNumericId(playlist_arg, playlist_id)) {
+    response.SetStatus(server::http::HttpStatus::kBadRequest);
+    return BuildProblemJson(request,
+                            server::http::HttpStatus::kBadRequest,
+                            "'playlist' must be 'likes' or a numeric id");
+  }
+
+  std::optional<std::string> user_id;
+  std::vector<std::int64_t> track_ids;
+  try {
+    user_id = yandex_client_.FetchAccountUserId(*personal_token);
+    if (user_id) {
+      track_ids = is_likes
+                      ? yandex_client_.FetchLikedTracks(*personal_token, *user_id)
+                      : yandex_client_.FetchPlaylistTracks(*personal_token, *user_id, playlist_id);
+    }
+  } catch (const GeniusHttpError&) {
+    response.SetStatus(server::http::HttpStatus::kBadGateway);
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kBadGateway, "could not reach Yandex");
+  }
+  if (!user_id) {
+    response.SetStatus(server::http::HttpStatus::kBadGateway);
+    return BuildProblemJson(request,
+                            server::http::HttpStatus::kBadGateway,
+                            "the connected Yandex token is no longer valid — reconnect it");
+  }
+  if (track_ids.size() > kImportMaxTracks) track_ids.resize(kImportMaxTracks);
+
+  // Собираем уникальных Yandex-артистов с этих треков —
+  // первый встреченный name побеждает на yandex_id, та же дедупликация,
+  // что GeniusMusicSourceProvider использует для коллабораторов.
+  std::unordered_map<std::int64_t, std::string> yandex_artists;
+  std::vector<std::int64_t> yandex_artist_order;
+  for (const auto track_id : track_ids) {
+    std::optional<std::vector<YandexArtistRef>> artists;
+    try {
+      artists = yandex_client_.FetchTrackArtists(track_id);
+    } catch (const std::exception& ex) {
+      LOG_WARNING() << "[SettingsYandexImportHandler] track " << track_id << ": " << ex.what();
+      continue;
+    }
+    if (!artists) continue;
+    for (const auto& a : *artists) {
+      if (!a.yandex_id || a.name.empty()) continue;
+      if (yandex_artists.emplace(a.yandex_id, a.name).second) {
+        yandex_artist_order.push_back(a.yandex_id);
+      }
+    }
+  }
+
+  // [SF-YM-02] Тот же приоритет BYO-токена, что в graph_handler.cpp —
+  // подключённый личный Genius-токен приоритетнее голого session token.
+  const auto connected_genius =
+      user_provider_tokens_.Get(auth::StableUserId(session->name), "genius");
+  const std::string genius_token = connected_genius.value_or(session->access_token);
+
+  formats::json::ValueBuilder artists_b(formats::json::Type::kArray);
+  int resolved_count = 0;
+  for (const auto yid : yandex_artist_order) {
+    const std::string& yandex_name = yandex_artists.at(yid);
+
+    formats::json::ValueBuilder ab(formats::json::Type::kObject);
+    ab["yandex_name"] = yandex_name;
+
+    // [ADR-0009] Резолв происходит только здесь, на границе — имя, не
+    // находящее реальный Genius id, честно помечается resolved=false
+    // (без поля id) и никогда не становится кандидатом для графа/GAME;
+    // одно плохое имя не роняет весь импорт.
+    std::variant<ArtistRef, AmbiguousResult> resolved;
+    try {
+      resolved = service_.ResolveByName(yandex_name, genius_token);
+    } catch (const std::exception& ex) {
+      LOG_WARNING() << "[SettingsYandexImportHandler] resolve '" << yandex_name
+                    << "': " << ex.what();
+      ab["resolved"] = false;
+      artists_b.PushBack(std::move(ab));
+      continue;
+    }
+
+    if (std::holds_alternative<ArtistRef>(resolved)) {
+      const auto& ref = std::get<ArtistRef>(resolved);
+      ab["resolved"] = true;
+      ab["id"] = ref.id;
+      ab["name"] = ref.name;
+      if (!ref.image.empty()) ab["image"] = ref.image;
+      if (!ref.url.empty()) ab["url"] = ref.url;
+      ++resolved_count;
+    } else {
+      ab["resolved"] = false;
+    }
+    artists_b.PushBack(std::move(ab));
+  }
+
+  formats::json::ValueBuilder out(formats::json::Type::kObject);
+  out["type"] = std::string{"yandex_import"};
+  out["source"] = is_likes ? std::string{"likes"} : std::string{"playlist"};
+  out["playlist_id"] = playlist_arg;
+  out["artists"] = std::move(artists_b);
+  out["resolved_count"] = resolved_count;
+  out["total_count"] = static_cast<int>(yandex_artist_order.size());
+  return formats::json::ToString(out.ExtractValue());
+}
+
+yaml_config::Schema SettingsYandexImportHandler::GetStaticConfigSchema() {
+  return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
+      kSettingsYandexImportHandlerSchema);
 }
 
 }  // namespace six_feat

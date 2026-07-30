@@ -244,6 +244,16 @@ components_manager:
       method: POST
       task_processor: *main_tp
 
+    handler-settings-yandex-playlists:
+      path: /api/v1/settings/yandex/playlists
+      method: GET
+      task_processor: *main_tp
+
+    handler-settings-yandex-import:
+      path: /api/v1/settings/yandex/import
+      method: GET
+      task_processor: *main_tp
+
     handler-internal-neighbours:
       path: /internal/neighbours
       method: POST

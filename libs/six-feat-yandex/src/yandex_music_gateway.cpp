@@ -289,6 +289,35 @@ std::vector<std::int64_t> YandexMusicGateway::FetchLikedTracks(const std::string
   return out;
 }
 
+std::vector<std::int64_t> YandexMusicGateway::FetchPlaylistTracks(const std::string& personal_token,
+                                                                  const std::string& user_id,
+                                                                  std::int64_t playlist_id,
+                                                                  Lane lane) const {
+  const std::string url =
+      yandex_base_url_ + "/users/" + user_id + "/playlists/" + std::to_string(playlist_id);
+  const auto json = formats::json::FromString(YandexGetWithToken(url, lane, personal_token));
+  const auto& tracks = json["result"]["tracks"];
+
+  std::vector<std::int64_t> out;
+  if (tracks.IsArray()) {
+    out.reserve(tracks.GetSize());
+    for (const auto& t : tracks) {
+      const auto tid = t.As<std::int64_t>(0);
+      if (tid) out.push_back(tid);
+    }
+  }
+  return out;
+}
+
+std::optional<std::string> YandexMusicGateway::FetchAccountUserId(const std::string& personal_token,
+                                                                  Lane lane) const {
+  const std::string url = yandex_base_url_ + "/account/status";
+  const auto json = formats::json::FromString(YandexGetWithToken(url, lane, personal_token));
+  const auto uid = json["result"]["account"]["uid"].As<std::int64_t>(0);
+  if (!uid) return std::nullopt;
+  return std::to_string(uid);
+}
+
 std::vector<std::int64_t> YandexMusicGateway::FetchArtistTracks(std::int64_t artist_id,
                                                                 int limit,
                                                                 Lane lane) const {

@@ -76,6 +76,8 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::SettingsDisconnectHandler>()
                                   .Append<six_feat::SettingsYandexDeviceStartHandler>()
                                   .Append<six_feat::SettingsYandexDevicePollHandler>()
+                                  .Append<six_feat::SettingsYandexPlaylistsHandler>()
+                                  .Append<six_feat::SettingsYandexImportHandler>()
                                   .Append<six_feat::InternalNeighboursHandler>()
                                   .Append<six_feat::MusicSourceEdgesHandler>()
                                   .Append<six_feat::SseStatusHandler>()

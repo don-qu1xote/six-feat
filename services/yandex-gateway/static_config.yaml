@@ -107,6 +107,16 @@ components_manager:
       method: POST
       task_processor: *main_tp
 
+    handler-internal-yandex-playlist-tracks:
+      path: /internal/yandex/playlist-tracks
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-yandex-account:
+      path: /internal/yandex/account
+      method: POST
+      task_processor: *main_tp
+
     handler-healthz:
       path: /healthz
       method: GET

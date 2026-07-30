@@ -3,7 +3,7 @@
   "info": {
     "title": "six-feat public API",
     "description": "Artist-collaboration graph explorer, backed by Genius.com. Every endpoint below requires an authenticated Genius session (six_feat_session cookie, minted by six-feat-auth's OAuth flow) except where noted.",
-    "version": "1.7.0"
+    "version": "1.8.0"
   },
   "servers": [
     {
@@ -1673,6 +1673,210 @@
           },
           "502": {
             "description": "Could not reach Yandex",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/yandex/playlists": {
+      "get": {
+        "summary": "List the caller's own Yandex playlists + a synthetic \"likes\" entry (SF-YM-04)",
+        "description": "Personal-import seed-suggestion source — never wired into the default graph, which stays on the service-level Yandex token (SF-YM-01) regardless of whether this is connected. Requires a connected personal Yandex account (SF-YM-02); metadata only, no track/artist fan-out (see GET .../import for that).",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Playlists (plus the synthetic \"likes\" entry) listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "yandex_playlists"
+                    },
+                    "playlists": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "likes",
+                              "playlist"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "track_count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No personal Yandex account connected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Could not reach Yandex, or the connected token is no longer valid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/yandex/import": {
+      "get": {
+        "summary": "Import artists from one Yandex playlist or liked tracks, resolved to real Genius ids (SF-YM-04)",
+        "description": "Reads the given playlist's (or the likes collection's) tracks through the caller's connected personal Yandex token, collects the distinct Yandex-space artists credited on them, and resolves each by name through the same fuzzy-search path used for a typed-in seed (ADR-0009). An unresolvable name is reported honestly (resolved=false, no id field) rather than dropped or given a placeholder id — one bad name never fails the whole import.",
+        "parameters": [
+          {
+            "name": "playlist",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "'likes' for the liked-tracks collection, or a numeric playlist id from GET .../playlists"
+          }
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Import completed (possibly with zero resolved artists — an honest result, not an error)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "yandex_import"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "likes",
+                        "playlist"
+                      ]
+                    },
+                    "playlist_id": {
+                      "type": "string"
+                    },
+                    "artists": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "yandex_name": {
+                            "type": "string"
+                          },
+                          "resolved": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "resolved_count": {
+                      "type": "integer"
+                    },
+                    "total_count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing/invalid 'playlist' parameter",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No personal Yandex account connected",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemJson"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Could not reach Yandex, or the connected token is no longer valid",
             "content": {
               "application/problem+json": {
                 "schema": {

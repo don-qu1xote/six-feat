@@ -243,6 +243,34 @@ class TestPlaylistsAndLikedTracksContract:
         resp = _post("/internal/yandex/liked-tracks", {"user_id": "12345"})
         assert resp.status_code == 400
 
+    def test_playlist_tracks_returns_mock_data(self, yandex_gateway_proc, yandex_mock):
+        yandex_mock.playlist_tracks("12345", 7, [111, 222])
+        resp = _post(
+            "/internal/yandex/playlist-tracks",
+            {"token": "personal-tok", "user_id": "12345", "playlist_id": 7},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"track_ids": [111, 222]}
+
+    def test_playlist_tracks_missing_fields_is_bad_request(self, yandex_gateway_proc):
+        resp = _post("/internal/yandex/playlist-tracks", {"token": "x", "user_id": "12345"})
+        assert resp.status_code == 400
+
+    def test_account_returns_mock_uid(self, yandex_gateway_proc, yandex_mock):
+        yandex_mock.account("98765")
+        resp = _post("/internal/yandex/account", {"token": "personal-tok"})
+        assert resp.status_code == 200
+        assert resp.json() == {"found": True, "user_id": "98765"}
+
+    def test_account_missing_token_is_bad_request(self, yandex_gateway_proc):
+        resp = _post("/internal/yandex/account", {})
+        assert resp.status_code == 400
+
+    def test_account_upstream_error_is_propagated(self, yandex_gateway_proc, yandex_mock):
+        yandex_mock.account_error(503)
+        resp = _post("/internal/yandex/account", {"token": "personal-tok"})
+        assert resp.status_code == 503
+
 
 class TestUpstreamUnavailable:
     def test_track_artists_upstream_5xx_is_explicit_error(self, yandex_gateway_proc, yandex_mock):

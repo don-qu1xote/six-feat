@@ -1,0 +1,6 @@
+type: object
+description: >-
+    Список собственных плейлистов Яндекса + синтетическая запись «likes»
+    (SF-YM-04). Требует сессию и подключённый личный Яндекс-токен (SF-YM-02).
+additionalProperties: false
+properties: {}
