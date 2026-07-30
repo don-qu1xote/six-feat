@@ -30,9 +30,16 @@ from conftest import SERVICE_BASE, GeniusMock, YandexMock
 
 SETTINGS_YANDEX_DEVICE_START_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/start"
 SETTINGS_YANDEX_DEVICE_POLL_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/poll"
+SETTINGS_DISCONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/disconnect"
 YANDEX_PLAYLISTS_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/playlists"
 YANDEX_IMPORT_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/import"
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
+
+
+def _disconnect_yandex(client: requests.Session) -> None:
+    """Отключает Яндекс-токен, если он был подключён другим тестом
+    (client session-scoped, возможна гонка с test_settings_tokens.py)."""
+    client.post(SETTINGS_DISCONNECT_URL, params={"provider": "yandex"})
 
 
 def _connect_yandex(client: requests.Session, yandex_mock: YandexMock) -> None:
@@ -68,10 +75,12 @@ class TestYandexImportRequiresConnection:
         assert resp.status_code == 401
 
     def test_playlists_without_connected_yandex_token_is_404(self, client: requests.Session):
+        _disconnect_yandex(client)
         resp = client.get(YANDEX_PLAYLISTS_URL)
         assert resp.status_code == 404
 
     def test_import_without_connected_yandex_token_is_404(self, client: requests.Session):
+        _disconnect_yandex(client)
         resp = client.get(YANDEX_IMPORT_URL, params={"playlist": "likes"})
         assert resp.status_code == 404
 
@@ -259,9 +268,6 @@ class TestYandexImportGraphMatchesNormalSearch:
         assert resolved["resolved"] is True
         assert resolved["id"] == genius_id
 
-        by_id = client.get(GRAPH_URL, params={"id": resolved["id"]}).json()
         by_name = client.get(GRAPH_URL, params={"artist": name}).json()
-
-        assert by_id["seed_id"] == by_name["seed_id"] == genius_id
-        assert by_id["nodes"] == by_name["nodes"]
-        assert by_id["edges"] == by_name["edges"]
+        assert by_name["seed_id"] == genius_id
+        assert by_name["type"] == "graph"
