@@ -22,6 +22,11 @@ cryptography>=49.0.0
 # across tests.
 psycopg2-binary>=2.9.12
 
+# [SF-API-18] Contract-тесты (test_contract_openapi.py) публичного API v1
+# против schemas/openapi/openapi.json — через schemathesis, транзитивно
+# подтягивает Hypothesis.
+schemathesis>=4.24.3
+
 # Optional — uncomment if async test support is needed
 # pytest-asyncio>=0.23.0
 

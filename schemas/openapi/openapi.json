@@ -3,7 +3,7 @@
   "info": {
     "title": "six-feat public API",
     "description": "Artist-collaboration graph explorer, backed by Genius.com. Every endpoint below requires an authenticated Genius session (six_feat_session cookie, minted by six-feat-auth's OAuth flow) except where noted.",
-    "version": "1.3.0"
+    "version": "1.5.0"
   },
   "servers": [
     {
@@ -49,7 +49,8 @@
             "type": "string",
             "description": "Omitted when empty"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "LegacyErrorBody": {
         "type": "object",
@@ -312,7 +313,8 @@
           "is_seed": {
             "type": "boolean"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "GraphEdge": {
         "type": "object",
@@ -380,10 +382,12 @@
                     "type": "string"
                   }
                 }
-              }
+              },
+              "additionalProperties": false
             }
           }
-        }
+        },
+        "additionalProperties": false
       },
       "PathNode": {
         "type": "object",
@@ -420,7 +424,8 @@
           "is_seed": {
             "type": "boolean"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "PathEdge": {
         "type": "object",
@@ -468,7 +473,8 @@
               "type": "string"
             }
           }
-        }
+        },
+        "additionalProperties": false
       }
     }
   },
@@ -729,8 +735,28 @@
               }
             }
           },
+          "500": {
+            "description": "Unexpected internal error while computing the path",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limited (SF-SEC-04)"
+          },
+          "503": {
+            "description": "Path search exceeded its deadline (sparse/unenriched graph) — retry later",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
           },
           "502": {
             "description": "Could not reach Genius / genius-gateway"

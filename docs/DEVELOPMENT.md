@@ -209,6 +209,43 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./adr/0004-auth-service-loca
   `challenge`/`admin`) той же обёрткой `RunIdempotent` — естественное
   дальнейшее развитие, компонент уже пригоден для этого без изменений.
 
+### Contract-тесты публичного API v1 против OpenAPI (SF-API-18)
+
+`tests/test_contract_openapi.py` — отдельный слой от `test_contract_gateway.py`/
+`test_contract_yandex_gateway.py` (SF-TST-01, внутренний контракт six-feat↔
+gateway): здесь источник правды — сам документ `/api/v1/openapi.json`
+(SF-API-05), а не другой C++-сервис.
+
+- **Инструмент** — [schemathesis](https://schemathesis.readthedocs.io/)
+  (property-based, на базе Hypothesis; уже используемый pytest/pytest-timeout
+  стек, без dredd/newman и Node-зависимостей). Схема грузится с РЕАЛЬНОГО
+  запущенного `six_feat` (`schemathesis.openapi.from_url`), не напрямую из
+  файла — так проверяется и раздача документа, а не только его внутренняя
+  согласованность.
+- **Проверки** — только `status_code_conformance` и
+  `response_schema_conformance` (реальный статус/тело соответствуют тому,
+  что объявлено в схеме для этого статуса). Остальные встроенные проверки
+  schemathesis (`not_a_server_error` и т.п.) намеренно не используются — они
+  проверяют другое (например "хэндлер никогда не должен отвечать 5xx", что
+  неверно для `path_handler.cpp`'s легитимных 500/503 — оба теперь
+  задокументированы).
+- **Область действия** — только собственные ручки six-feat
+  (`/api/v1/graph`, `/api/v1/graph/path`, `/api/v1/search`, `/api/v1/status`,
+  `/api/v1/artist`, `/api/v1/api-keys(+/revoke)`), отфильтровано через
+  `schema.include(path_regex=...)`. В общем `openapi.json` также
+  задокументированы `/api/v1/game/*` (свой бинарник six-feat-game) — их
+  фаззинг против голого `service_proc` (без nginx) давал бы 404 не из-за
+  реального расхождения, а просто потому что этот процесс их не обслуживает.
+- **Предпосылка, без которой негативный кейс не ловится**: `ArtistRef`,
+  `GraphNode`, `GraphEdge` (и его `collaborations`-элементы), `PathNode`,
+  `PathEdge` теперь имеют `additionalProperties: false` — без этого JSON
+  Schema по умолчанию разрешает любые лишние поля, и "поле есть в коде, но
+  не описано в OpenAPI" осталось бы необнаружимым независимо от раннера.
+- **Реальный, найденный этим тикетом разрыв** — `path_handler.cpp` уже умел
+  отвечать 500 (необработанное исключение в `FindPath`) и 503 (превышен
+  `kFgPathDeadline`), но ни один из них не был объявлен в схеме для
+  `/api/v1/graph/path` — добавлено.
+
 ---
 
 ## Переменные окружения
