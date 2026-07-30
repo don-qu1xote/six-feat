@@ -3,7 +3,6 @@
 
 #include "http/dto/artist_ref_dto.hpp"
 #include "http/dto/candidate_dto.hpp"
-#include "http/dto/edge_source_dto.hpp"
 #include "http/dto/graph_edge_dto.hpp"
 
 #include "auth/api_key_auth.hpp"
@@ -12,6 +11,7 @@
 
 #include <algorithm>
 #include <six-feat-auth-lib/user_identity.hpp>
+#include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-core/http_cache.hpp>
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-core/request_id.hpp>
@@ -217,9 +217,9 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     seed = std::get<ArtistRef>(resolved);
   }
 
-  ArtistSongs data;
+  RadialGraphResult radial_result;
   try {
-    data = service_.BuildRadialGraph(seed, user_token, limit_override);
+    radial_result = service_.BuildRadialGraphWithSource(seed, user_token, limit_override);
   } catch (const GeniusHttpError& e) {
     return GeniusErrorGraph(e, response);
   } catch (...) {
@@ -227,6 +227,7 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     return ErrorGraph("could not reach Genius");
   }
 
+  const auto& data = radial_result.data;
   const int song_limit = limit_override.value_or(service_.SongsLimitFg());
   const bool truncated = static_cast<int>(data.songs.size()) >= song_limit;
 
@@ -241,13 +242,14 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     return {};
   }
 
-  return BuildGraphJson(data, mask, truncated, song_limit);
+  return BuildGraphJson(radial_result, mask, truncated, song_limit);
 }
 
-std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
+std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
                                          const RoleMask& mask,
                                          bool truncated,
                                          int song_limit) const {
+  const auto& data = result.data;
   const std::int64_t seed_id = data.seed.id;
 
   struct EdgeAgg {
@@ -330,8 +332,8 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
 
   for (const auto gid : order) {
     const int w = edges.at(gid).weight;
-    adj[seed_id].push_back({gid, w});
-    adj[gid].push_back({seed_id, w});
+    adj[seed_id].push_back({gid, w, EdgeSource::GeniusCredit});
+    adj[gid].push_back({seed_id, w, EdgeSource::GeniusCredit});
     node_ids.push_back(gid);
   }
 
@@ -354,8 +356,8 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
           auto a = collabs_in_song[i];
           auto b = collabs_in_song[j];
 
-          adj[a].push_back({b, 1});
-          adj[b].push_back({a, 1});
+          adj[a].push_back({b, 1, EdgeSource::GeniusCredit});
+          adj[b].push_back({a, 1, EdgeSource::GeniusCredit});
         }
       }
     }
@@ -415,7 +417,21 @@ std::string GraphHandler::BuildGraphJson(const ArtistSongs& data,
       edge_dto.collaboration_count = agg.weight;
       edge_dto.dominant_role = agg.dominant_role;
       edge_dto.edge_style = std::string{EdgeStyleForRole(agg.dominant_role)};
-      edge_dto.source = dto::DeriveEdgeSource(agg.dominant_role);
+
+      const std::int64_t lo = std::min(seed_id, gid);
+      const std::int64_t hi = std::max(seed_id, gid);
+      auto src_it = result.edge_sources.find(lo);
+      if (src_it != result.edge_sources.end()) {
+        auto src_it2 = src_it->second.find(hi);
+        if (src_it2 != src_it->second.end()) {
+          edge_dto.source = ToString(src_it2->second);
+        } else {
+          edge_dto.source = ToString(EdgeSource::GeniusCredit);
+        }
+      } else {
+        edge_dto.source = ToString(EdgeSource::GeniusCredit);
+      }
+
       edge_dto.collaborations.reserve(agg.collabs.size());
       for (const auto& c : agg.collabs) {
         edge_dto.collaborations.push_back({c.song, c.popularity, c.roles});

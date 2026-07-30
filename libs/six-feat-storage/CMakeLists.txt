@@ -22,6 +22,7 @@ target_link_libraries(six_feat_storage PUBLIC
     userver::postgresql
     six_feat_domain
     six_feat_core
+    six_feat_common
 )
 
 add_dependencies(six_feat_storage six_feat_storage_schema_headers)

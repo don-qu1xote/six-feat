@@ -4,6 +4,7 @@
 #include "schemas/components/collab_service_schema.hpp"
 
 #include <algorithm>
+#include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-domain/role_mask.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
 #include <six-feat-storage/analytics.hpp>
@@ -21,6 +22,8 @@
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <variant>
 #include <vector>
+
+#include "infrastructure/music_source_provider_chain.hpp"
 
 namespace six_feat {
 
@@ -50,6 +53,7 @@ CollabService::CollabService(const components::ComponentConfig& config,
     : ComponentBase(config, context),
       repo_(context.FindComponent<ArtistRepository>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
+      chain_(context.FindComponent<MusicSourceProviderChain>()),
       enrichment_(context.FindComponent<EnrichmentClient>()),
       path_max_expand_rounds_(RequireNonNegative("path-max-expand-rounds",
                                                  config["path-max-expand-rounds"].As<int>(3))),
@@ -156,8 +160,8 @@ void CollabService::AppendAdjFromL1(
     id_adj.reserve(id_adj.size() + neighbours.size());
     for (const auto& edge : neighbours) {
       const std::int64_t nid = edge.neighbour;
-      id_adj.push_back(edge);
-      adj[nid].push_back({id, edge.weight});
+      id_adj.push_back({edge.neighbour, edge.weight, edge.source});
+      adj[nid].push_back({id, edge.weight, edge.source});
       neighbour_ids.insert(nid);
 
       if (!node_info.count(nid)) {
@@ -487,6 +491,27 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
 
   LOG_INFO() << "[Service] no path found between " << from.id << " and " << to.id;
   return PathFindResult{{}, false};
+}
+
+RadialGraphResult CollabService::BuildRadialGraphWithSource(
+    const ArtistRef& seed, const std::string& user_token, std::optional<int> limit_override) const {
+  RadialGraphResult result;
+  result.data = BuildRadialGraph(seed, user_token, limit_override);
+
+  try {
+    const auto provider_edges = chain_.GetCollaborationEdges(seed, user_token);
+    for (const auto& pe : provider_edges) {
+      if (pe.to == seed.id) continue;
+      const std::int64_t lo = std::min(seed.id, pe.to);
+      const std::int64_t hi = std::max(seed.id, pe.to);
+      result.edge_sources[lo][hi] = pe.source;
+    }
+  } catch (const std::exception& ex) {
+    LOG_WARNING() << "[Service] chain edge source lookup failed for seed=" << seed.id << ": "
+                  << ex.what() << " — edges will default to genius_credit";
+  }
+
+  return result;
 }
 
 }  // namespace six_feat

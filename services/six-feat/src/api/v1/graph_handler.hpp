@@ -29,7 +29,7 @@ class GraphHandler final : public AuthenticatedHandlerBase {
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
  private:
-  std::string BuildGraphJson(const ArtistSongs& data,
+  std::string BuildGraphJson(const RadialGraphResult& result,
                              const RoleMask& mask,
                              bool truncated,
                              int song_limit) const;

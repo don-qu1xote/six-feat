@@ -4,10 +4,8 @@
 
 namespace six_feat::dto {
 
-std::string DeriveEdgeSource(const std::string& dominant_role) {
-  const EdgeSource source =
-      dominant_role == "feature" ? EdgeSource::YandexFeature : EdgeSource::GeniusCredit;
-  return ToString(source);
+std::string DeriveEdgeSource(const std::string& /*dominant_role*/) {
+  return ToString(EdgeSource::GeniusCredit);
 }
 
 }  // namespace six_feat::dto

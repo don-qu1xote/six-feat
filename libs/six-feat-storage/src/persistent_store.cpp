@@ -344,6 +344,7 @@ struct PersistentStore::Impl {
         CollabEdge e{};
         e.neighbour = row["artist_id"].As<std::int64_t>();
         e.weight = static_cast<int>(row["w"].As<std::int64_t>());
+        e.source = EdgeSource::GeniusCredit;
         out.push_back(e);
       }
       return out;

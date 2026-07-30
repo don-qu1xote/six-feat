@@ -1,7 +1,6 @@
 #include "graph_deepen_handler.hpp"
 
 #include "http/dto/artist_ref_dto.hpp"
-#include "http/dto/edge_source_dto.hpp"
 #include "http/dto/graph_edge_dto.hpp"
 
 #include "auth/api_key_auth.hpp"
@@ -67,6 +66,7 @@ struct NeighbourAgg {
   int weight{0};
   int best_rank{-1};
   std::string dominant_role{"featured"};
+  std::string source{"genius_credit"};
   std::vector<std::string> roles;
 };
 
@@ -185,6 +185,7 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
       agg.best_rank = rank;
       agg.dominant_role = pe.role;
     }
+    agg.source = ToString(pe.source);
   }
 
   formats::json::ValueBuilder nodes_b(formats::json::Type::kArray);
@@ -216,7 +217,7 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
     edge_dto.collaboration_count = agg.weight;
     edge_dto.dominant_role = agg.dominant_role;
     edge_dto.edge_style = std::string{EdgeStyleForRole(agg.dominant_role)};
-    edge_dto.source = dto::DeriveEdgeSource(agg.dominant_role);
+    edge_dto.source = agg.source;
     edge_dto.collaborations.push_back({"", 0, agg.roles});
     edges_b.PushBack(dto::ToJson(edge_dto));
   }
