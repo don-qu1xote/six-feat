@@ -86,14 +86,15 @@ std::vector<ProviderEdge> YandexMusicSourceProvider::GetCollaborationEdges(
       if (!resolved) continue;
       if (!seen_genius_ids.insert(resolved->id).second) continue;
 
-      edges.push_back({seed.id, resolved->id, EdgeSource::YandexFeature, "feature"});
+      // "featured" — единственная форма роли, которую знают фильтры/персист.
+      edges.push_back({seed.id, resolved->id, EdgeSource::YandexFeature, "featured"});
     }
   }
 
   return edges;
 }
 
-// Тот же обход, но треки целиком (нужны для веса рёбер); роль — "feature"
+// Тот же обход, но треки целиком (нужны для веса рёбер); роль — "featured"
 // (Яндекс не различает кредиты, ADR-0011).
 ArtistSongs YandexMusicSourceProvider::GetArtistSongs(const ArtistRef& seed,
                                                       int songs_limit,
@@ -141,7 +142,7 @@ ArtistSongs YandexMusicSourceProvider::GetArtistSongs(const ArtistRef& seed,
         }
       }
       if (!resolved) continue;
-      song.credits.push_back({*resolved, "feature"});
+      song.credits.push_back({*resolved, "featured"});
     }
 
     // Трек без опознанных соучастников не несёт рёбер.

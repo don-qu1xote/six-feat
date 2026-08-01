@@ -6,7 +6,7 @@ test_music_source_provider.py — MusicSourceProvider (SF-ARCH-02).
 суррогатными апстримами.
 
 Сценарии:
-   1. YandexMusicSourceProvider (дефолт) -> role="feature"
+   1. YandexMusicSourceProvider (дефолт) -> role="featured"
    2. Yandex недоступен -> GeniusMusicSourceProvider (fallback)
    3. Нерезолвящийся артист -> явное "не найдено", не id=0
 """
@@ -70,7 +70,8 @@ class TestYandexDefaultProvider:
         for e in edges:
             assert e["from"] == 9001
             assert e["source"] == "yandex_feature"
-            assert e["role"] == "feature"
+            # Каноническая роль — "featured"; source="yandex_feature" — имя источника.
+            assert e["role"] == "featured"
         assert {e["to"] for e in edges} == {9002, 9003}
 
     def test_seed_not_found_on_yandex_is_empty_not_an_error(

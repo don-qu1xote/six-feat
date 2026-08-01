@@ -340,7 +340,7 @@ std::string PathHandler::BuildPathJson(const ArtistRef& from_ref,
     const std::int64_t lo = std::min(a, b), hi = std::max(a, b);
     int w = 1;
     // Источник из самого ребра (CollabEdge::source), а не из роли:
-    // dominant_role=="feature" не означает «пришло из Яндекса».
+    // dominant_role=="featured" не означает «пришло из Яндекса».
     EdgeSource edge_source = EdgeSource::GeniusCredit;
     if (const auto it = adj.find(a); it != adj.end())
       for (const auto& e : it->second)

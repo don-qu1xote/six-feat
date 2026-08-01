@@ -8,7 +8,7 @@ namespace {
 
 TEST(TryProvidersInOrder, ReturnsFirstProviderResultWhenItSucceeds) {
   FakeMusicSourceProvider yandex("yandex");
-  yandex.SucceedWith({ProviderEdge{1, 2, EdgeSource::YandexFeature, "feature"}});
+  yandex.SucceedWith({ProviderEdge{1, 2, EdgeSource::YandexFeature, "featured"}});
   FakeMusicSourceProvider genius("genius-fallback");
   genius.SucceedWith({ProviderEdge{1, 3, EdgeSource::GeniusCredit, "producer"}});
 

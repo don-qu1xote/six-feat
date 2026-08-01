@@ -24,10 +24,12 @@ enable_testing()
 add_executable(six_feat_unit_tests
   ${SIX_FEAT_ROOT}/libs/six-feat-storage/src/analytics.cpp
   ${SIX_FEAT_ROOT}/libs/six-feat-common/src/music_source_provider.cpp
+  ${SIX_FEAT_ROOT}/libs/six-feat-domain/src/role_mask.cpp
   ${SIX_FEAT_ROOT}/services/six-feat/src/application/artist_resolver.cpp
   test_artist_resolver.cpp
   test_bidirectional_bfs.cpp
   test_music_source_provider_chain.cpp
+  test_yandex_edge_role.cpp
 )
 
 target_include_directories(six_feat_unit_tests PRIVATE
