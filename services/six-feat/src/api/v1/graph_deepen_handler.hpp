@@ -4,6 +4,7 @@
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-auth-lib/user_provider_token_store.hpp>
 #include <six-feat-core/rate_limiter.hpp>
+#include <six-feat-sources/genius_music_source_provider.hpp>
 #include <string>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
@@ -11,7 +12,6 @@
 
 #include "application/collab_service.hpp"
 #include "authenticated_handler_base.hpp"
-#include "infrastructure/genius_music_source_provider.hpp"
 #include "token_router.hpp"
 
 namespace six_feat {

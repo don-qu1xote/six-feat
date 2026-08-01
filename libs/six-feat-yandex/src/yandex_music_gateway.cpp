@@ -207,25 +207,34 @@ std::string YandexMusicGateway::YandexGet(const std::string& url, Lane lane) con
   return YandexGetWithToken(url, lane, service_token_);
 }
 
-std::optional<std::vector<ArtistRef>> YandexMusicGateway::FetchTrackArtists(std::int64_t track_id,
-                                                                            Lane lane) const {
+std::optional<YandexTrack> YandexMusicGateway::FetchTrack(std::int64_t track_id, Lane lane) const {
   const std::string url = yandex_base_url_ + "/tracks/" + std::to_string(track_id);
   const auto json = formats::json::FromString(YandexGet(url, lane));
   const auto& result = json["result"];
   if (!result.IsArray() || result.GetSize() == 0) return std::nullopt;
 
   const auto& track = result[0];
-  const auto& artists_arr = track["artists"];
 
-  std::vector<ArtistRef> out;
+  YandexTrack out;
+  out.id = track["id"].As<std::int64_t>(track_id);
+  out.title = track["title"].As<std::string>("");
+
+  const auto& artists_arr = track["artists"];
   if (artists_arr.IsArray()) {
-    out.reserve(artists_arr.GetSize());
+    out.artists.reserve(artists_arr.GetSize());
     for (const auto& a : artists_arr) {
       auto ref = ParseYandexArtist(a);
-      if (ref.id) out.push_back(std::move(ref));
+      if (ref.id) out.artists.push_back(std::move(ref));
     }
   }
   return out;
+}
+
+std::optional<std::vector<ArtistRef>> YandexMusicGateway::FetchTrackArtists(std::int64_t track_id,
+                                                                            Lane lane) const {
+  auto track = FetchTrack(track_id, lane);
+  if (!track) return std::nullopt;
+  return std::move(track->artists);
 }
 
 std::vector<Candidate> YandexMusicGateway::SearchArtist(const std::string& query, Lane lane) const {

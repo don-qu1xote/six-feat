@@ -3,10 +3,14 @@
 #include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-auth-lib/user_provider_token_store.hpp>
+#include <six-feat-core/fg_fanout_limiter.hpp>
 #include <six-feat-core/idempotency_store.hpp>
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
 #include <six-feat-http/health_handler.hpp>
+#include <six-feat-sources/genius_music_source_provider.hpp>
+#include <six-feat-sources/music_source_provider_chain.hpp>
+#include <six-feat-sources/yandex_music_source_provider.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <six-feat-storage/persistent_store.hpp>
 #include <six-feat-yandex/yandex_gateway_client.hpp>
@@ -31,9 +35,6 @@
 #include "api/v1/status_handler.hpp"
 #include "application/collab_service.hpp"
 #include "infrastructure/enrichment_client.hpp"
-#include "infrastructure/genius_music_source_provider.hpp"
-#include "infrastructure/music_source_provider_chain.hpp"
-#include "infrastructure/yandex_music_source_provider.hpp"
 #include "internal/music_source_edges_handler.hpp"
 #include "internal/neighbours_handler.hpp"
 #include "system/readiness_handler.hpp"
@@ -53,6 +54,10 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::AppSecretParityChecker>()
                                   .Append<six_feat::ArtistRepository>()
                                   .Append<six_feat::EnrichmentClient>()
+                                  // [SF-ARCH-03] Общий ограничитель фан-аута —
+                                  // до CollabService и провайдеров: оба фанятся
+                                  // в одну foreground-полосу гейтвея.
+                                  .Append<six_feat::FgFanoutLimiter>()
                                   .Append<six_feat::CollabService>()
                                   .Append<six_feat::YandexMusicSourceProvider>()
                                   .Append<six_feat::GeniusMusicSourceProvider>()

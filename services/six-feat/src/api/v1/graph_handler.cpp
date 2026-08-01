@@ -40,8 +40,14 @@ using namespace userver;
 
 namespace {
 
-std::string EmptyGraph() {
-  return R"({"type":"graph","seed":"","seed_id":0,"nodes":[],"edges":[]})";
+std::string EmptyGraph(std::int64_t seed_id = 0, const std::string& seed_name = "") {
+  formats::json::ValueBuilder b(formats::json::Type::kObject);
+  b["type"] = std::string{"graph"};
+  b["seed"] = seed_name;
+  b["seed_id"] = seed_id;
+  b["nodes"] = formats::json::ValueBuilder(formats::json::Type::kArray);
+  b["edges"] = formats::json::ValueBuilder(formats::json::Type::kArray);
+  return formats::json::ToString(b.ExtractValue());
 }
 
 std::string ErrorGraph(const std::string& msg) {
@@ -322,7 +328,9 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     }
   }
 
-  if (order.empty()) return EmptyGraph();
+  // Пустой граф, но seed уже разрешён: id/имя обязаны дойти до клиента,
+  // иначе /api/v1/graph?artist=X и граф по resolved id выглядят по-разному.
+  if (order.empty()) return EmptyGraph(seed_id, data.seed.name);
 
   AdjList adj;
   std::vector<std::int64_t> node_ids;
@@ -330,15 +338,31 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   node_ids.push_back(seed_id);
   adj[seed_id];
 
+  // Источник ребра — реальное происхождение треков (result.edge_sources),
+  // а не хардкод genius_credit.
+  const auto source_for = [&result](std::int64_t x, std::int64_t y) {
+    const auto lo = std::min(x, y);
+    const auto hi = std::max(x, y);
+    if (const auto oit = result.edge_sources.find(lo); oit != result.edge_sources.end()) {
+      if (const auto iit = oit->second.find(hi); iit != oit->second.end()) return iit->second;
+    }
+    return EdgeSource::GeniusCredit;
+  };
+
   for (const auto gid : order) {
     const int w = edges.at(gid).weight;
-    adj[seed_id].push_back({gid, w, EdgeSource::GeniusCredit});
-    adj[gid].push_back({seed_id, w, EdgeSource::GeniusCredit});
+    const auto src = source_for(seed_id, gid);
+    adj[seed_id].push_back({gid, w, src});
+    adj[gid].push_back({seed_id, w, src});
     node_ids.push_back(gid);
   }
 
   {
     for (const auto& song : data.songs) {
+      // Источник ребра между коллабораторами — у породившего его трека.
+      const auto song_source =
+          IsYandexSongId(song.id) ? EdgeSource::YandexFeature : EdgeSource::GeniusCredit;
+
       std::vector<std::int64_t> collabs_in_song;
       collabs_in_song.reserve(song.credits.size());
 
@@ -356,8 +380,8 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
           auto a = collabs_in_song[i];
           auto b = collabs_in_song[j];
 
-          adj[a].push_back({b, 1, EdgeSource::GeniusCredit});
-          adj[b].push_back({a, 1, EdgeSource::GeniusCredit});
+          adj[a].push_back({b, 1, song_source});
+          adj[b].push_back({a, 1, song_source});
         }
       }
     }
@@ -367,12 +391,20 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   }
 
   for (auto& [node, neighbours] : adj) {
-    std::unordered_map<std::int64_t, int> merged;
+    // Слияние дублей сохраняет источник; яндексовым остаётся ребро, все
+    // вклады в которое яндексовые.
+    std::unordered_map<std::int64_t, CollabEdge> merged;
     merged.reserve(neighbours.size());
-    for (const auto& e : neighbours) merged[e.neighbour] += e.weight;
+    for (const auto& e : neighbours) {
+      auto [it, inserted] = merged.try_emplace(e.neighbour, e);
+      if (!inserted) {
+        it->second.weight += e.weight;
+        if (it->second.source != e.source) it->second.source = EdgeSource::GeniusCredit;
+      }
+    }
     neighbours.clear();
     neighbours.reserve(merged.size());
-    for (const auto& [nb, w] : merged) neighbours.push_back({nb, w});
+    for (const auto& [nb, e] : merged) neighbours.push_back(e);
   }
 
   const auto bc = BetweennessCentrality(adj, node_ids);
@@ -418,19 +450,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
       edge_dto.dominant_role = agg.dominant_role;
       edge_dto.edge_style = std::string{EdgeStyleForRole(agg.dominant_role)};
 
-      const std::int64_t lo = std::min(seed_id, gid);
-      const std::int64_t hi = std::max(seed_id, gid);
-      auto src_it = result.edge_sources.find(lo);
-      if (src_it != result.edge_sources.end()) {
-        auto src_it2 = src_it->second.find(hi);
-        if (src_it2 != src_it->second.end()) {
-          edge_dto.source = ToString(src_it2->second);
-        } else {
-          edge_dto.source = ToString(EdgeSource::GeniusCredit);
-        }
-      } else {
-        edge_dto.source = ToString(EdgeSource::GeniusCredit);
-      }
+      edge_dto.source = ToString(source_for(seed_id, gid));
 
       edge_dto.collaborations.reserve(agg.collabs.size());
       for (const auto& c : agg.collabs) {

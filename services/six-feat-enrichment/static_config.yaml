@@ -68,6 +68,26 @@ components_manager:
 
     artist-repository: {}
 
+    # [SF-ARCH-03] Тот же общий потолок фан-аута, что и в six-feat: провайдер
+    # графа фанится по деталям треков и здесь, в фоновом обогащении.
+    fg-fanout-limiter:
+      max-concurrent: 6
+
+    # Тот же состав провайдеров, что в services/six-feat/static_config.yaml:
+    # иначе кэш воркера расходился бы по источнику с пользовательским графом.
+    yandex-gateway-client:
+      yandex-gateway-base-url: $yandex_gateway_base_url
+      timeout-ms: 5000
+      tracks-limit: 20
+
+    yandex-music-source-provider:
+      match-threshold: 0.75
+
+    genius-music-source-provider: {}
+
+    music-source-provider-chain:
+      providers: [yandex, genius-fallback]
+
     enrichment-worker:
       queue-capacity: 1024
       drain-timeout-ms: 5000

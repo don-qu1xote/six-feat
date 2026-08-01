@@ -120,6 +120,13 @@ components_manager:
       path-max-expand-rounds: 3
       path-max-frontier-size: 6
 
+    # [SF-ARCH-03] Один потолок на всю foreground-полосу: его делят сборка
+    # графа (genius-music-source-provider) и проверка прямого ребра
+    # (collab-service). Держим на уровне lane-fg-max-concurrent гейтвея (8),
+    # чтобы этот сервис не топил полосу, общую с другими вызывающими.
+    fg-fanout-limiter:
+      max-concurrent: 6
+
     handler-graph:
       path: /api/v1/graph
       method: GET

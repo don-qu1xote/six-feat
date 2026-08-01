@@ -5,7 +5,7 @@ include_guard(GLOBAL)
 #   - CMAKE_CXX_STANDARD 20
 #   - SIX_FEAT_ROOT (относительно services/<name>/)
 #   - find_package(userver / OpenSSL)
-#   - add_subdirectory для всех libs/six-feat-* (7 библиотек)
+#   - add_subdirectory для всех libs/six-feat-* (10 библиотек)
 #   - include(cmake/EmbedSchema.cmake)
 #
 # Вызывается ПОСЛЕ project() в каждом services/<name>/CMakeLists.txt.
@@ -42,6 +42,12 @@ macro(six_feat_init_service)
   if(NOT TARGET six_feat_yandex)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-yandex"
                      "${CMAKE_BINARY_DIR}/six-feat-yandex")
+  endif()
+  # Источники графа (провайдеры + цепочка) — общая библиотека: фоновое
+  # обогащение использует тот же набор провайдеров, что и foreground-граф.
+  if(NOT TARGET six_feat_sources)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-sources"
+                     "${CMAKE_BINARY_DIR}/six-feat-sources")
   endif()
   if(NOT TARGET six_feat_enrichment)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-enrichment"

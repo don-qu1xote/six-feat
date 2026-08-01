@@ -2,4 +2,4 @@ add_library(six_feat_common STATIC src/music_source_provider.cpp)
 
 target_include_directories(six_feat_common PUBLIC include)
 
-target_link_libraries(six_feat_common PUBLIC six_feat_domain)
+target_link_libraries(six_feat_common PUBLIC six_feat_domain six_feat_core)

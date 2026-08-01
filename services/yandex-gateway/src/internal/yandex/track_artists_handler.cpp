@@ -53,15 +53,17 @@ std::string TrackArtistsHandler::HandleRequestThrow(const server::http::HttpRequ
   }
 
   try {
-    const auto found = gateway_.FetchTrackArtists(track_id, *lane);
+    const auto found = gateway_.FetchTrack(track_id, *lane);
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     if (!found) {
       b["found"] = false;
       return formats::json::ToString(b.ExtractValue());
     }
     b["found"] = true;
+    // `title` — новое поле; старые потребители читают только `artists`.
+    b["title"] = found->title;
     formats::json::ValueBuilder arr(formats::json::Type::kArray);
-    for (const auto& a : *found) arr.PushBack(detail::ArtistJson(a).ExtractValue());
+    for (const auto& a : found->artists) arr.PushBack(detail::ArtistJson(a).ExtractValue());
     b["artists"] = std::move(arr);
     return formats::json::ToString(b.ExtractValue());
   } catch (const GeniusHttpError& e) {

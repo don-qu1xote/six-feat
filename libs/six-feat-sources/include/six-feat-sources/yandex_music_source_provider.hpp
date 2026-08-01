@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-genius/i_external_artist_lookup.hpp>
 #include <six-feat-yandex/yandex_gateway_client.hpp>
@@ -29,7 +30,18 @@ class YandexMusicSourceProvider final : public userver::components::ComponentBas
   std::vector<ProviderEdge> GetCollaborationEdges(const ArtistRef& seed,
                                                   const std::string& user_token) const override;
 
+  ArtistSongs GetArtistSongs(const ArtistRef& seed,
+                             int songs_limit,
+                             Lane lane,
+                             const std::string& user_token) const override;
+
  private:
+  // Резолв яндексового соартиста в канонический Genius id (ADR-0009);
+  // std::nullopt — не разрешился, ребро пропускается.
+  std::optional<ArtistRef> ResolveToGeniusArtist(const std::string& yandex_name,
+                                                 std::int64_t seed_id,
+                                                 const std::string& user_token) const;
+
   YandexGatewayClient& yandex_;
   IExternalArtistLookup& genius_lookup_;
   const double match_threshold_;

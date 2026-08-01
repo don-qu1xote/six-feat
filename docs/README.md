@@ -208,10 +208,12 @@ pytest tests/ -v
 Подробно про архитектуру, все переменные, troubleshooting — см. **DEVELOPMENT.md** в репо 
 (там полный гайд, не пожалеешь).
 
-Под капотом это не один процесс, а четыре сервиса (`docker compose up` поднимает все разом):
+Под капотом это не один процесс, а шесть сервисов (`docker compose up` поднимает все разом):
 **six-feat** (главный, отдаёт граф/путь/поиск и локально проверяет твою сессию),
-**six-feat-enrichment** (фоновый сканер), **six-feat-genius-gateway** (весь трафик в Genius API)
-и **six-feat-auth** (весь OAuth-логин: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me`).
+**six-feat-enrichment** (фоновый сканер), **six-feat-genius-gateway** (весь трафик в Genius API),
+**six-feat-yandex-gateway** (весь трафик в Яндекс.Музыку — основной источник графа),
+**six-feat-game** (игровой режим) и **six-feat-auth** (весь OAuth-логин: `/auth/login`,
+`/auth/callback`, `/auth/logout`, `/auth/me`).
 Про то, зачем OAuth-флоу выделен отдельно — в DEVELOPMENT.md.
 
 ---

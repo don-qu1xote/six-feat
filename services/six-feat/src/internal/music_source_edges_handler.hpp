@@ -1,12 +1,11 @@
 #pragma once
 
+#include <six-feat-sources/music_source_provider_chain.hpp>
 #include <string>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
 #include <userver/yaml_config/schema.hpp>
-
-#include "infrastructure/music_source_provider_chain.hpp"
 
 namespace six_feat {
 

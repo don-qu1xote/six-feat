@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <six-feat-core/lane.hpp>
 #include <six-feat-domain/domain_types.hpp>
 #include <string>
 #include <string_view>
@@ -25,6 +26,18 @@ struct ProviderEdge {
   std::string role;
 };
 
+// Яндексовые track id уводятся в старший бит: Genius song id и Яндекс
+// track id нумеруются независимо в общем BIGINT-пространстве songs.id.
+inline constexpr std::int64_t kYandexSongIdOffset = std::int64_t{1} << 62;
+
+inline std::int64_t NamespacedYandexSongId(std::int64_t yandex_track_id) {
+  return kYandexSongIdOffset | yandex_track_id;
+}
+
+inline bool IsYandexSongId(std::int64_t song_id) {
+  return (song_id & kYandexSongIdOffset) != 0;
+}
+
 class MusicSourceProvider {
  public:
   virtual ~MusicSourceProvider() = default;
@@ -33,6 +46,12 @@ class MusicSourceProvider {
 
   virtual std::vector<ProviderEdge> GetCollaborationEdges(const ArtistRef& seed,
                                                           const std::string& user_token) const = 0;
+
+  // Song-level срез: треки с составом — для веса ребра и collaborations.
+  virtual ArtistSongs GetArtistSongs(const ArtistRef& seed,
+                                     int songs_limit,
+                                     Lane lane,
+                                     const std::string& user_token) const = 0;
 };
 
 using ProviderFailureLogger =
@@ -42,5 +61,13 @@ std::vector<ProviderEdge> TryProvidersInOrder(const std::vector<MusicSourceProvi
                                               const ArtistRef& seed,
                                               const std::string& user_token,
                                               const ProviderFailureLogger& on_failure = {});
+
+// Song-level fallback: первый провайдер без ошибки выигрывает.
+ArtistSongs TrySongsProvidersInOrder(const std::vector<MusicSourceProvider*>& providers,
+                                     const ArtistRef& seed,
+                                     int songs_limit,
+                                     Lane lane,
+                                     const std::string& user_token,
+                                     const ProviderFailureLogger& on_failure = {});
 
 }  // namespace six_feat

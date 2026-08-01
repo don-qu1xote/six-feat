@@ -346,7 +346,7 @@ components_manager:
     yandex-gateway-client:
       yandex-gateway-base-url: http://127.0.0.1:{yandex_gateway_port}
       timeout-ms: 5000
-      tracks-limit: 10
+      tracks-limit: 20
 
     yandex-music-source-provider:
       match-threshold: 0.75
@@ -370,6 +370,9 @@ components_manager:
     collab-service:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
+
+    fg-fanout-limiter:
+      max-concurrent: 6
 
     rate-limit-store:
       backend: single
@@ -1409,6 +1412,22 @@ components_manager:
 
     artist-repository: {{}}
 
+    fg-fanout-limiter:
+      max-concurrent: 6
+
+    yandex-gateway-client:
+      yandex-gateway-base-url: http://127.0.0.1:{yandex_gateway_port}
+      timeout-ms: 5000
+      tracks-limit: 20
+
+    yandex-music-source-provider:
+      match-threshold: 0.75
+
+    genius-music-source-provider: {{}}
+
+    music-source-provider-chain:
+      providers: [yandex, genius-fallback]
+
     enrichment-worker:
       queue-capacity: {queue_capacity}
       drain-timeout-ms: {drain_timeout_ms}
@@ -1523,6 +1542,7 @@ def enrichment_proc_bg(
             enrichment_port=ENRICHMENT_SERVICE_PORT_BG,
             enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_BG,
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT,
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=8,
             drain_timeout_ms=5000,
@@ -1597,6 +1617,7 @@ def enrichment_proc_baddb(
             enrichment_port=ENRICHMENT_SERVICE_PORT_BADDB,
             enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_BADDB,
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT,
             db_connection_string=_BAD_DB_CONNECTION_STRING,
             queue_capacity=8,
             drain_timeout_ms=5000,
@@ -1670,6 +1691,7 @@ def enrichment_proc_prune(
             enrichment_port=ENRICHMENT_SERVICE_PORT_PRUNE,
             enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_PRUNE,
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT,
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=8,
             drain_timeout_ms=5000,
@@ -2094,12 +2116,21 @@ class YandexMock:
     def __init__(self, state: _MockState) -> None:
         self._state = state
 
-    def track_artists(self, track_id: int, artists: List[Dict[str, Any]]) -> "YandexMock":
+    def track_artists(
+        self,
+        track_id: int,
+        artists: List[Dict[str, Any]],
+        title: Optional[str] = None,
+    ) -> "YandexMock":
+        # `title` — реальное поле апстрима /tracks/{id}; дефолт сохраняет старые вызовы.
+        track_title = title if title is not None else f"Yandex Track {track_id}"
+
         def _handler(path: str, params: Dict) -> tuple:
             return 200, {
                 "result": [
                     {
                         "id": track_id,
+                        "title": track_title,
                         "artists": [
                             {
                                 "id": a["id"],

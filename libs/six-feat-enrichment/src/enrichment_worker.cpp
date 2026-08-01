@@ -6,6 +6,7 @@
 #include <optional>
 #include <six-feat-enrichment/enrichment_worker.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
+#include <six-feat-sources/music_source_provider_chain.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -41,6 +42,7 @@ EnrichmentWorker::EnrichmentWorker(const components::ComponentConfig& config,
     : ComponentBase(config, context),
       repo_(context.FindComponent<ArtistRepository>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
+      source_(context.FindComponent<MusicSourceProviderChain>()),
       capacity_(static_cast<std::size_t>(
           RequireNonNegative("queue-capacity", config["queue-capacity"].As<int>(1024)))),
       queue_(capacity_),
@@ -201,36 +203,21 @@ void EnrichmentWorker::WorkerLoop() {
 
     try {
       const int limit = gateway_.SongsLimitBg();
-      const auto song_ids = gateway_.FetchSongList(ref.id, limit, Lane::Background, job.user_token);
+      engine::current_task::CancellationPoint();
 
-      ArtistSongs full;
+      // Тот же источник, что у дефолтного графа, но в background-полосе.
+      auto full = source_.GetArtistSongs(ref, limit, Lane::Background, job.user_token);
       full.seed = ref;
-      full.songs.reserve(song_ids.size());
-      bool all_details_ok = true;
-      for (const auto sid : song_ids) {
-        engine::current_task::CancellationPoint();
-        if (auto rec = gateway_.FetchSongDetail(sid, Lane::Background, job.user_token)) {
-          full.songs.push_back(std::move(*rec));
-        } else {
-          all_details_ok = false;
-        }
-      }
 
-      const bool scan_complete = all_details_ok && full.songs.size() == song_ids.size();
-      if (scan_complete) {
+      // Провайдер проглотил единичные сбои деталей внутри себя: отличить
+      // частичный скан от полного здесь нельзя — повышаем непустую выборку.
+      if (!full.songs.empty()) {
         repo_.WriteThrough(full, Depth::Full);
         LOG_INFO() << "[EnrichmentWorker] completed artist " << ref.id << " '" << ref.name << "'"
                    << " songs=" << full.songs.size();
-      } else if (!full.songs.empty()) {
-        repo_.WriteThrough(full, Depth::Foreground);
-        LOG_WARNING() << "[EnrichmentWorker] partial scan for artist " << ref.id << " '" << ref.name
-                      << "'"
-                      << " songs=" << full.songs.size() << "/" << song_ids.size()
-                      << " — not promoting to Depth::Full";
       } else {
-        LOG_WARNING() << "[EnrichmentWorker] no song details fetched "
-                         "for artist "
-                      << ref.id << " '" << ref.name << "' — leaving depth unchanged";
+        LOG_WARNING() << "[EnrichmentWorker] no songs fetched for artist " << ref.id << " '"
+                      << ref.name << "' — leaving depth unchanged";
       }
 
     } catch (const GeniusHttpError& e) {

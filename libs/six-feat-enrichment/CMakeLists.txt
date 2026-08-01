@@ -23,6 +23,8 @@ target_link_libraries(six_feat_enrichment PUBLIC
     six_feat_core
     six_feat_storage
     six_feat_genius
+    six_feat_common
+    six_feat_sources
 )
 
 add_dependencies(six_feat_enrichment six_feat_enrichment_schema_headers)

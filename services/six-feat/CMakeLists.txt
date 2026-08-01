@@ -34,10 +34,7 @@ six_feat_embed_schema(handlers/six-feat/music_source_edges_handler kMusicSourceE
 six_feat_embed_schema(components/enrichment_client         kEnrichmentClientComponentSchema         ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/collab_service            kCollabServiceComponentSchema            COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/app_secret_parity_checker kAppSecretParityCheckerComponentSchema   APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER)
-# MusicSourceProvider: Yandex (дефолт) + Genius (углубление/fallback).
-six_feat_embed_schema(components/yandex_music_source_provider kYandexMusicSourceProviderComponentSchema YANDEX_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER)
-six_feat_embed_schema(components/genius_music_source_provider kGeniusMusicSourceProviderComponentSchema GENIUS_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER)
-six_feat_embed_schema(components/music_source_provider_chain   kMusicSourceProviderChainComponentSchema   MUSIC_SOURCE_PROVIDER_CHAIN_COMPONENT_SCHEMA_HEADER)
+# Схемы провайдеров встраивает libs/six-feat-sources.
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${ARTIST_HANDLER_SCHEMA_HEADER}
@@ -64,24 +61,17 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER}
     ${COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER}
     ${APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER}
-    ${YANDEX_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER}
-    ${GENIUS_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER}
-    ${MUSIC_SOURCE_PROVIDER_CHAIN_COMPONENT_SCHEMA_HEADER}
 )
 
 add_executable(six_feat
     src/main.cpp
     src/infrastructure/genius_error_mapping.cpp
     src/infrastructure/enrichment_client.cpp
-    src/infrastructure/yandex_music_source_provider.cpp
-    src/infrastructure/genius_music_source_provider.cpp
-    src/infrastructure/music_source_provider_chain.cpp
     src/application/artist_resolver.cpp
     src/application/collab_service.cpp
     src/auth/app_secret_parity_checker.cpp
     src/http/dto/artist_ref_dto.cpp
     src/http/dto/candidate_dto.cpp
-    src/http/dto/edge_source_dto.cpp
     src/http/dto/graph_edge_dto.cpp
     src/http/dto/path_edge_dto.cpp
     src/auth/api_key_auth.cpp
@@ -114,6 +104,7 @@ target_link_libraries(six_feat
         six_feat_storage
         six_feat_genius
         six_feat_yandex
+        six_feat_sources
         six_feat_enrichment
         six_feat_auth_lib
         six_feat_http

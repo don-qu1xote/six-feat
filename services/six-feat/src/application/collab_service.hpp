@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <six-feat-common/music_source_provider.hpp>
+#include <six-feat-core/fg_fanout_limiter.hpp>
 #include <six-feat-domain/domain_types.hpp>
 #include <six-feat-genius/i_external_artist_lookup.hpp>
 #include <six-feat-storage/i_artist_data_source.hpp>
@@ -13,7 +14,6 @@
 #include <userver/components/component_base.hpp>
 #include <userver/components/component_fwd.hpp>
 #include <userver/engine/deadline.hpp>
-#include <userver/engine/semaphore.hpp>
 #include <userver/yaml_config/schema.hpp>
 #include <variant>
 #include <vector>
@@ -106,9 +106,13 @@ class CollabService final : public userver::components::ComponentBase {
   IExternalArtistLookup& gateway_;
   MusicSourceProviderChain& chain_;
   EnrichmentClient& enrichment_;
+  // [SF-ARCH-03] Общий на сервис ограничитель фан-аута, а не собственный
+  // семафор: в ту же foreground-полосу гейтвея фанится сборка графа
+  // (GeniusMusicSourceProvider), и два независимых лимита складывались бы,
+  // превышая lane-fg-max-concurrent гейтвея.
+  FgFanoutLimiter& fg_fanout_;
   const int path_max_expand_rounds_;
   const int path_max_frontier_size_;
-  mutable userver::engine::Semaphore fg_fanout_semaphore_;
 };
 
 }  // namespace six_feat

@@ -91,7 +91,7 @@ std::vector<YandexArtistRef> YandexGatewayClient::SearchArtist(const std::string
   return out;
 }
 
-std::optional<std::vector<YandexArtistRef>> YandexGatewayClient::FetchTrackArtists(
+std::optional<YandexTrackDetail> YandexGatewayClient::FetchTrackDetail(
     std::int64_t track_id) const {
   formats::json::ValueBuilder body(formats::json::Type::kObject);
   body["track_id"] = track_id;
@@ -99,19 +99,29 @@ std::optional<std::vector<YandexArtistRef>> YandexGatewayClient::FetchTrackArtis
   const auto json = PostInternal("/internal/yandex/track-artists", body);
   if (!json["found"].As<bool>(false)) return std::nullopt;
 
+  YandexTrackDetail out;
+  out.yandex_id = track_id;
+  out.title = json["title"].As<std::string>("");
+
   const auto& arr = json["artists"];
-  std::vector<YandexArtistRef> out;
   if (arr.IsArray()) {
-    out.reserve(arr.GetSize());
+    out.artists.reserve(arr.GetSize());
     for (const auto& a : arr) {
       YandexArtistRef ref;
       ref.yandex_id = a["id"].As<std::int64_t>(0);
       ref.name = a["name"].As<std::string>("");
       ref.image = a["image"].As<std::string>("");
-      if (ref.yandex_id) out.push_back(std::move(ref));
+      if (ref.yandex_id) out.artists.push_back(std::move(ref));
     }
   }
   return out;
+}
+
+std::optional<std::vector<YandexArtistRef>> YandexGatewayClient::FetchTrackArtists(
+    std::int64_t track_id) const {
+  auto detail = FetchTrackDetail(track_id);
+  if (!detail) return std::nullopt;
+  return std::move(detail->artists);
 }
 
 std::vector<std::int64_t> YandexGatewayClient::FetchArtistTracks(

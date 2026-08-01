@@ -1,15 +1,13 @@
-#include "music_source_provider_chain.hpp"
-
 #include "schemas/components/music_source_provider_chain_schema.hpp"
 
+#include <six-feat-sources/genius_music_source_provider.hpp>
+#include <six-feat-sources/music_source_provider_chain.hpp>
+#include <six-feat-sources/yandex_music_source_provider.hpp>
 #include <stdexcept>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
 #include <userver/logging/log.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
-
-#include "genius_music_source_provider.hpp"
-#include "yandex_music_source_provider.hpp"
 
 namespace six_feat {
 
@@ -56,6 +54,23 @@ std::vector<ProviderEdge> MusicSourceProviderChain::GetCollaborationEdges(
                       << " failed for seed=" << seed.id << ": " << ex.what()
                       << " — falling back to next provider";
       });
+}
+
+ArtistSongs MusicSourceProviderChain::GetArtistSongs(const ArtistRef& seed,
+                                                     int songs_limit,
+                                                     Lane lane,
+                                                     const std::string& user_token) const {
+  return TrySongsProvidersInOrder(providers_,
+                                  seed,
+                                  songs_limit,
+                                  lane,
+                                  user_token,
+                                  [&seed](std::string_view name, const std::exception& ex) {
+                                    LOG_WARNING()
+                                        << "[MusicSourceProviderChain] provider=" << name
+                                        << " songs failed for seed=" << seed.id << ": " << ex.what()
+                                        << " — falling back to next provider";
+                                  });
 }
 
 }  // namespace six_feat

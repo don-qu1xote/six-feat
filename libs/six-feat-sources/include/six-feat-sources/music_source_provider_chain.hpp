@@ -27,6 +27,11 @@ class MusicSourceProviderChain final : public userver::components::ComponentBase
   std::vector<ProviderEdge> GetCollaborationEdges(const ArtistRef& seed,
                                                   const std::string& user_token) const override;
 
+  ArtistSongs GetArtistSongs(const ArtistRef& seed,
+                             int songs_limit,
+                             Lane lane,
+                             const std::string& user_token) const override;
+
  private:
   std::vector<MusicSourceProvider*> providers_;
 };

@@ -7,6 +7,7 @@
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-domain/role_mask.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
+#include <six-feat-sources/music_source_provider_chain.hpp>
 #include <six-feat-storage/analytics.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <stdexcept>
@@ -22,8 +23,6 @@
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <variant>
 #include <vector>
-
-#include "infrastructure/music_source_provider_chain.hpp"
 
 namespace six_feat {
 
@@ -41,13 +40,14 @@ int RequireNonNegative(std::string_view param, int value) {
 
 int RequirePositive(std::string_view param, int value) {
   if (value <= 0) {
-    throw std::runtime_error("collab-service: " + std::string(param) +
-                             " must be non-negative, got " + std::to_string(value));
+    throw std::runtime_error("collab-service: " + std::string(param) + " must be positive, got " +
+                             std::to_string(value));
   }
   return value;
 }
 
 }  // namespace
+
 CollabService::CollabService(const components::ComponentConfig& config,
                              const components::ComponentContext& context)
     : ComponentBase(config, context),
@@ -55,12 +55,11 @@ CollabService::CollabService(const components::ComponentConfig& config,
       gateway_(context.FindComponent<GeniusGatewayClient>()),
       chain_(context.FindComponent<MusicSourceProviderChain>()),
       enrichment_(context.FindComponent<EnrichmentClient>()),
+      fg_fanout_(context.FindComponent<FgFanoutLimiter>()),
       path_max_expand_rounds_(RequireNonNegative("path-max-expand-rounds",
                                                  config["path-max-expand-rounds"].As<int>(3))),
-      path_max_frontier_size_(
-          RequirePositive("path-max-frontier-size", config["path-max-frontier-size"].As<int>(20))),
-      fg_fanout_semaphore_(static_cast<std::size_t>(RequirePositive(
-          "fg-fanout-max-concurrent", config["fg-fanout-max-concurrent"].As<int>(6)))) {}
+      path_max_frontier_size_(RequirePositive("path-max-frontier-size",
+                                              config["path-max-frontier-size"].As<int>(20))) {}
 
 yaml_config::Schema CollabService::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<components::ComponentBase>(kCollabServiceComponentSchema);
@@ -76,35 +75,15 @@ std::variant<ArtistRef, AmbiguousResult> CollabService::ResolveByName(
   return ResolveArtistByName(gateway_, query, user_token);
 }
 
+// Дефолтный граф идёт через цепочку источников (Яндекс, Genius — fallback).
 ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
                                    const std::string& user_token,
                                    std::optional<int> limit_override) const {
   const int limit = limit_override.value_or(gateway_.SongsLimitFg());
-  const auto song_ids = gateway_.FetchSongList(ref.id, limit, Lane::Foreground, user_token);
 
-  struct Pending {
-    std::int64_t id;
-    engine::TaskWithResult<std::optional<SongRecord>> task;
-  };
-  std::vector<Pending> pending;
-  pending.reserve(song_ids.size());
-  for (const auto sid : song_ids) {
-    pending.push_back({sid, utils::Async("fg-song-detail", [this, sid, &user_token] {
-                         engine::SemaphoreLock lock{fg_fanout_semaphore_};
-                         return gateway_.FetchSongDetail(sid, Lane::Foreground, user_token);
-                       })});
-  }
-
-  ArtistSongs out;
+  auto out = chain_.GetArtistSongs(ref, limit, Lane::Foreground, user_token);
   out.seed = ref;
-  out.songs.reserve(pending.size());
-  for (auto& p : pending) {
-    try {
-      if (auto rec = p.task.Get()) out.songs.push_back(std::move(*rec));
-    } catch (const std::exception& ex) {
-      LOG_WARNING() << "[Service] FG song detail " << p.id << ": " << ex.what();
-    }
-  }
+
   repo_.WriteThrough(out, Depth::Foreground);
   return out;
 }
@@ -227,7 +206,7 @@ PathContext CollabService::CheckDirectPath(const ArtistRef& from,
   detail_tasks.reserve(from_songs.size());
   for (const auto sid : from_songs) {
     detail_tasks.push_back({sid, utils::Async("direct-song-detail", [this, sid, &user_token] {
-                              engine::SemaphoreLock lock{fg_fanout_semaphore_};
+                              engine::SemaphoreLock lock{fg_fanout_.Semaphore()};
                               return gateway_.FetchSongDetail(sid, Lane::Foreground, user_token);
                             })});
   }
@@ -493,22 +472,30 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
   return PathFindResult{{}, false};
 }
 
+// Источник выводится из id треков (NamespacedYandexSongId): он переживает
+// запись в Postgres и чтение из кэша. Ребро — яндексовое, только если все
+// общие треки пришли из Яндекса.
 RadialGraphResult CollabService::BuildRadialGraphWithSource(
     const ArtistRef& seed, const std::string& user_token, std::optional<int> limit_override) const {
   RadialGraphResult result;
   result.data = BuildRadialGraph(seed, user_token, limit_override);
 
-  try {
-    const auto provider_edges = chain_.GetCollaborationEdges(seed, user_token);
-    for (const auto& pe : provider_edges) {
-      if (pe.to == seed.id) continue;
-      const std::int64_t lo = std::min(seed.id, pe.to);
-      const std::int64_t hi = std::max(seed.id, pe.to);
-      result.edge_sources[lo][hi] = pe.source;
+  std::unordered_map<std::int64_t, bool> all_yandex;
+  for (const auto& song : result.data.songs) {
+    const bool from_yandex = IsYandexSongId(song.id);
+    for (const auto& credit : song.credits) {
+      const std::int64_t other = credit.artist.id;
+      if (!other || other == seed.id) continue;
+      auto [it, inserted] = all_yandex.try_emplace(other, from_yandex);
+      if (!inserted) it->second = it->second && from_yandex;
     }
-  } catch (const std::exception& ex) {
-    LOG_WARNING() << "[Service] chain edge source lookup failed for seed=" << seed.id << ": "
-                  << ex.what() << " — edges will default to genius_credit";
+  }
+
+  for (const auto& [other, yandex_only] : all_yandex) {
+    const std::int64_t lo = std::min(seed.id, other);
+    const std::int64_t hi = std::max(seed.id, other);
+    result.edge_sources[lo][hi] =
+        yandex_only ? EdgeSource::YandexFeature : EdgeSource::GeniusCredit;
   }
 
   return result;

@@ -2,9 +2,17 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 import requests
 
-from conftest import SERVICE_BASE, GeniusMock, _build_song_detail
+import session_crypto
+from conftest import (
+    SERVICE_BASE,
+    TEST_APP_SECRET,
+    GeniusMock,
+    _build_song_detail,
+    _make_session_with_cookie,
+)
 
 DEEPEN_URL = f"{SERVICE_BASE}/api/v1/graph/deepen"
 SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
@@ -13,6 +21,20 @@ SETTINGS_DISCONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/disconnect"
 
 def _collab(collab_id: int, name: str, role: str = "featured") -> dict:
     return {"id": collab_id, "name": name, "role": role}
+
+
+@pytest.fixture()
+def deepen_client(service_proc) -> requests.Session:  # type: ignore[no-untyped-def]
+    """Своя сессия со свежим access_token: deepen лимитируется по токену (20/мин),
+    а общий `client` живёт весь прогон — его квоту выедает schemathesis из
+    test_contract_openapi.py, идущий раньше по алфавиту."""
+    cookie = session_crypto.make_cookie(
+        TEST_APP_SECRET,
+        access_token=f"deepen-token-{uuid.uuid4().hex}",
+        ttl_seconds=3600,
+        name="Deepen User",
+    )
+    return _make_session_with_cookie(cookie)
 
 
 class TestGraphDeepenRequiresAuth:
@@ -29,16 +51,16 @@ class TestGraphDeepenRequiresAuth:
 
 
 class TestGraphDeepenValidation:
-    def test_missing_id_returns_400(self, client: requests.Session):
-        resp = client.get(DEEPEN_URL)
+    def test_missing_id_returns_400(self, deepen_client: requests.Session):
+        resp = deepen_client.get(DEEPEN_URL)
         assert resp.status_code == 400
 
-    def test_non_numeric_id_returns_400(self, client: requests.Session):
-        resp = client.get(DEEPEN_URL, params={"id": "not-a-number"})
+    def test_non_numeric_id_returns_400(self, deepen_client: requests.Session):
+        resp = deepen_client.get(DEEPEN_URL, params={"id": "not-a-number"})
         assert resp.status_code == 400
 
-    def test_unknown_id_returns_404(self, client: requests.Session, unique_artist_id: int):
-        resp = client.get(DEEPEN_URL, params={"id": unique_artist_id})
+    def test_unknown_id_returns_404(self, deepen_client: requests.Session, unique_artist_id: int):
+        resp = deepen_client.get(DEEPEN_URL, params={"id": unique_artist_id})
         assert resp.status_code == 404
 
 
@@ -79,13 +101,13 @@ class TestGraphDeepenAddsGeniusRoles:
         )
 
     def test_returns_edges_with_genius_tagged_roles(
-        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+        self, deepen_client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
         seed_id = unique_artist_id
         seed_name = f"DeepenSeed{seed_id}"
         self._setup(genius_mock, seed_id, seed_name)
 
-        resp = client.get(DEEPEN_URL, params={"id": seed_id})
+        resp = deepen_client.get(DEEPEN_URL, params={"id": seed_id})
         assert resp.status_code == 200
         data = resp.json()
         assert data["type"] == "graph_deepen"
@@ -103,13 +125,13 @@ class TestGraphDeepenAddsGeniusRoles:
         assert {501, 502} <= node_ids
 
     def test_no_duplicate_edge_for_the_same_neighbour(
-        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+        self, deepen_client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
         seed_id = unique_artist_id
         seed_name = f"DeepenSeed{seed_id}"
         self._setup(genius_mock, seed_id, seed_name)
 
-        resp = client.get(DEEPEN_URL, params={"id": seed_id})
+        resp = deepen_client.get(DEEPEN_URL, params={"id": seed_id})
         data = resp.json()
 
         pairs = [(e["from"], e["to"]) for e in data["edges"]]
@@ -121,29 +143,31 @@ class TestGraphDeepenAddsGeniusRoles:
 
 class TestGraphDeepenAvailability:
     def test_works_on_bare_service_token(
-        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+        self, deepen_client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
         seed_id = unique_artist_id
         seed_name = f"DeepenService{seed_id}"
         genius_mock.artist(seed_id, {"id": seed_id, "name": seed_name})
         genius_mock.songs(seed_id, [])
 
-        resp = client.get(DEEPEN_URL, params={"id": seed_id})
+        resp = deepen_client.get(DEEPEN_URL, params={"id": seed_id})
         assert resp.status_code == 200
         assert resp.json()["type"] == "graph_deepen"
 
     def test_works_with_a_connected_byo_genius_token(
-        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+        self, deepen_client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
-        client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": f"genius-byo-{uuid.uuid4().hex}"})
+        deepen_client.post(
+            SETTINGS_GENIUS_CONNECT_URL, json={"token": f"genius-byo-{uuid.uuid4().hex}"}
+        )
         try:
             seed_id = unique_artist_id
             seed_name = f"DeepenByo{seed_id}"
             genius_mock.artist(seed_id, {"id": seed_id, "name": seed_name})
             genius_mock.songs(seed_id, [])
 
-            resp = client.get(DEEPEN_URL, params={"id": seed_id})
+            resp = deepen_client.get(DEEPEN_URL, params={"id": seed_id})
             assert resp.status_code == 200
             assert resp.json()["type"] == "graph_deepen"
         finally:
-            client.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
+            deepen_client.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})

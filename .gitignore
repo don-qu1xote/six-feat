@@ -21,3 +21,4 @@ front/dist/
 /.backups/
 # [SF-INF-09] Baseline-дампы, которые drill снимает сам.
 /.drill-backups/
+/build-test

@@ -22,6 +22,14 @@ struct YandexPlaylistRef {
   int track_count{0};
 };
 
+// Апстрим /tracks/{id} отдаёт заголовок вместе с составом; возвращаем трек
+// целиком, а не только артистов.
+struct YandexTrack {
+  std::int64_t id{0};
+  std::string title;
+  std::vector<ArtistRef> artists;
+};
+
 class YandexMusicGateway final : public userver::components::ComponentBase {
  public:
   static constexpr std::string_view kName = "yandex-music-gateway";
@@ -32,6 +40,8 @@ class YandexMusicGateway final : public userver::components::ComponentBase {
   ~YandexMusicGateway() override;
 
   static userver::yaml_config::Schema GetStaticConfigSchema();
+
+  std::optional<YandexTrack> FetchTrack(std::int64_t track_id, Lane lane) const;
 
   std::optional<std::vector<ArtistRef>> FetchTrackArtists(std::int64_t track_id, Lane lane) const;
 

@@ -2,8 +2,9 @@
 
 #include <chrono>
 #include <cstdint>
+#include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-enrichment/enrichment_queue.hpp>
-#include <six-feat-genius/i_external_artist_lookup.hpp>
+#include <six-feat-genius/genius_gateway_client.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <string>
 #include <string_view>
@@ -44,7 +45,10 @@ class EnrichmentWorker final : public userver::components::ComponentBase {
   void ExtendStatistics(userver::utils::statistics::Writer& writer) const;
 
   ArtistRepository& repo_;
-  IExternalArtistLookup& gateway_;
+  // Конкретный тип: нужен bg-лимит (SongsLimitBg), которого в интерфейсе нет.
+  GeniusGatewayClient& gateway_;
+  // Выборка — через ту же цепочку источников, что и дефолтный граф.
+  MusicSourceProvider& source_;
   const std::size_t capacity_;
   EnrichmentQueue queue_;
   userver::engine::TaskProcessor& bg_tp_;

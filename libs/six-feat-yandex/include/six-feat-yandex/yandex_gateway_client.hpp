@@ -37,6 +37,13 @@ struct YandexArtistRef {
   std::string image;
 };
 
+// Трек Яндекса вместе с заголовком — нужен дефолтному графу для названий.
+struct YandexTrackDetail {
+  std::int64_t yandex_id{0};
+  std::string title;
+  std::vector<YandexArtistRef> artists;
+};
+
 struct YandexPlaylistSummary {
   std::int64_t yandex_id{0};
   std::string title;
@@ -55,6 +62,8 @@ class YandexGatewayClient final : public userver::components::ComponentBase {
   std::vector<YandexArtistRef> SearchArtist(const std::string& query) const;
 
   std::optional<std::vector<YandexArtistRef>> FetchTrackArtists(std::int64_t track_id) const;
+
+  std::optional<YandexTrackDetail> FetchTrackDetail(std::int64_t track_id) const;
 
   std::vector<std::int64_t> FetchArtistTracks(std::int64_t yandex_artist_id) const;
 

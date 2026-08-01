@@ -10,12 +10,3 @@ properties:
         type: integer
         description: Maximum frontier nodes expanded per BFS round (caps Genius RPS)
         defaultDescription: '20'
-    fg-fanout-max-concurrent:
-        type: integer
-        description: >-
-            Maximum concurrent FetchSongDetail calls in flight to
-            six-feat-genius-gateway at once, shared across FetchFg and
-            CheckDirectPath. Should stay at or under the gateway's own
-            lane-fg-max-concurrent so this service never floods a lane
-            shared with other callers.
-        defaultDescription: '6'

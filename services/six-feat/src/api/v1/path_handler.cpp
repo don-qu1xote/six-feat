@@ -1,7 +1,6 @@
 #include "path_handler.hpp"
 
 #include "http/dto/artist_ref_dto.hpp"
-#include "http/dto/edge_source_dto.hpp"
 #include "http/dto/path_edge_dto.hpp"
 
 #include "auth/api_key_auth.hpp"
@@ -11,6 +10,7 @@
 #include <algorithm>
 #include <charconv>
 #include <six-feat-auth-lib/user_identity.hpp>
+#include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-core/http_cache.hpp>
 #include <six-feat-core/rate_limit_store_component.hpp>
 #include <six-feat-core/request_id.hpp>
@@ -339,10 +339,14 @@ std::string PathHandler::BuildPathJson(const ArtistRef& from_ref,
     const std::int64_t a = path[i], b = path[i + 1];
     const std::int64_t lo = std::min(a, b), hi = std::max(a, b);
     int w = 1;
+    // Источник из самого ребра (CollabEdge::source), а не из роли:
+    // dominant_role=="feature" не означает «пришло из Яндекса».
+    EdgeSource edge_source = EdgeSource::GeniusCredit;
     if (const auto it = adj.find(a); it != adj.end())
       for (const auto& e : it->second)
         if (e.neighbour == b) {
           w = e.weight;
+          edge_source = e.source;
           break;
         }
     std::string dominant_role = "primary";
@@ -357,7 +361,7 @@ std::string PathHandler::BuildPathJson(const ArtistRef& from_ref,
     edge_dto.to = b;
     edge_dto.weight = w;
     edge_dto.dominant_role = dominant_role;
-    edge_dto.source = dto::DeriveEdgeSource(dominant_role);
+    edge_dto.source = ToString(edge_source);
     if (const auto oit = edge_songs.find(lo); oit != edge_songs.end())
       if (const auto iit = oit->second.find(hi); iit != oit->second.end()) {
         std::unordered_set<std::string> seen;

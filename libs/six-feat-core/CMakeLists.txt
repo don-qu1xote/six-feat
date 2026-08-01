@@ -2,10 +2,12 @@ include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
 six_feat_embed_schema(components/rate_limit_store kRateLimitStoreComponentSchema RATE_LIMIT_STORE_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/idempotency_store kIdempotencyStoreComponentSchema IDEMPOTENCY_STORE_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/fg_fanout_limiter kFgFanoutLimiterComponentSchema FG_FANOUT_LIMITER_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_core_schema_headers DEPENDS
     ${RATE_LIMIT_STORE_COMPONENT_SCHEMA_HEADER}
     ${IDEMPOTENCY_STORE_COMPONENT_SCHEMA_HEADER}
+    ${FG_FANOUT_LIMITER_COMPONENT_SCHEMA_HEADER}
 )
 
 add_library(six_feat_core STATIC
@@ -13,6 +15,7 @@ add_library(six_feat_core STATIC
     src/rate_limit_store.cpp
     src/rate_limit_store_postgres.cpp
     src/rate_limit_store_component.cpp
+    src/fg_fanout_limiter.cpp
     src/request_id.cpp
     src/http_cache.cpp
     src/security_headers.cpp

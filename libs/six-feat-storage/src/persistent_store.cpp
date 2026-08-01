@@ -326,9 +326,12 @@ struct PersistentStore::Impl {
     if (roles.empty()) return {};
 
     return ExecuteReadQueryWithRetry([&] {
+      // Источник из диапазона song_id (kYandexSongIdOffset); смешанный
+      // случай подписывается genius_credit.
       auto res = cluster->Execute(read_host_type,
                                   kReadQueryCommandControl,
-                                  "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w "
+                                  "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w, "
+                                  "       bool_and((c1.song_id & $3::bigint) != 0) AS all_yandex "
                                   "FROM credits c1 "
                                   "JOIN credits c2 ON c2.song_id = c1.song_id "
                                   "              AND c2.artist_id != c1.artist_id "
@@ -336,7 +339,8 @@ struct PersistentStore::Impl {
                                   "WHERE c1.artist_id = $1 "
                                   "GROUP BY c2.artist_id",
                                   artist_id,
-                                  roles);
+                                  roles,
+                                  kYandexSongIdOffset);
 
       std::vector<CollabEdge> out;
       out.reserve(res.Size());
@@ -344,7 +348,9 @@ struct PersistentStore::Impl {
         CollabEdge e{};
         e.neighbour = row["artist_id"].As<std::int64_t>();
         e.weight = static_cast<int>(row["w"].As<std::int64_t>());
-        e.source = EdgeSource::GeniusCredit;
+        e.source = row["all_yandex"].As<std::optional<bool>>().value_or(false)
+                       ? EdgeSource::YandexFeature
+                       : EdgeSource::GeniusCredit;
         out.push_back(e);
       }
       return out;

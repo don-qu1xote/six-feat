@@ -201,7 +201,15 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
       LOG_WARNING() << "[GraphDeepenHandler] resolve neighbour " << neighbour_id << ": "
                     << ex.what();
     }
-    if (!neighbour_ref) continue;
+    // Нерезолвнутое имя не выбрасывает ребро: id канонический (ADR-0009),
+    // имя/аватар — необязательная деталь оформления.
+    if (!neighbour_ref) {
+      ArtistRef bare;
+      bare.id = neighbour_id;
+      neighbour_ref = bare;
+      LOG_DEBUG() << "[GraphDeepenHandler] neighbour " << neighbour_id
+                  << " has no resolvable card — keeping the edge without a name";
+    }
 
     auto nb = dto::ToJson(dto::ToDto(*neighbour_ref));
     nb["weight"] = agg.weight;
