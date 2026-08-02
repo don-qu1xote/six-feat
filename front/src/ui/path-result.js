@@ -54,7 +54,7 @@ export async function runServerPath(fromParam, toParam, opts = {}) {
 
     if (res.status === 401) {
       redirectToLogin(showToast, data, {
-        notSignedInMessage: "Sign in with Genius to search for collaboration paths.",
+        notSignedInMessage: "Sign in with Yandex to search for collaboration paths.",
         tokenInvalidDelay: 1200,
       });
       return;

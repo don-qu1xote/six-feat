@@ -13,7 +13,7 @@ function handleAuthRedirect() {
   const params = new URLSearchParams(window.location.search);
   const a = params.get("auth");
   if (!a) return;
-  if (a === "denied") showToast("Genius sign-in was cancelled.");
+  if (a === "denied") showToast("Sign-in was cancelled.");
   else if (a === "error") showToast("Sign-in failed — please try again.");
   params.delete("auth");
   const qs = params.toString();
@@ -38,7 +38,8 @@ export async function checkAuth() {
   if (data.authenticated) {
     if (hint) hint.style.display = "none";
     if (user) user.style.display = "flex";
-    if (name) name.textContent = data.name || "Genius User";
+    if (name)
+      name.textContent = data.name || (data.provider === "yandex" ? "Yandex User" : "Genius User");
     if (badge) badge.style.display = "inline-flex";
   } else {
     if (hint) hint.style.display = "flex";

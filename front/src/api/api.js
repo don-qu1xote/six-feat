@@ -158,7 +158,7 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
         body = await res.json();
       } catch (_) {}
       redirectToLogin(showToast, body, {
-        notSignedInMessage: "Sign in with Genius to start exploring.",
+        notSignedInMessage: "Sign in with Yandex to start exploring.",
       });
       return;
     }
@@ -226,7 +226,7 @@ export async function deepenArtistConnections(artistId) {
         body = await res.json();
       } catch (_) {}
       redirectToLogin(showToast, body, {
-        notSignedInMessage: "Sign in with Genius to find more connections.",
+        notSignedInMessage: "Sign in with Yandex to find more connections.",
       });
       return;
     }

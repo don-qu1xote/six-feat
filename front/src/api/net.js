@@ -38,7 +38,7 @@ export async function apiFetch(url, opts = {}) {
 export function authErrorInfo(body, overrides = {}) {
   const {
     tokenInvalidMessage = "Your Genius token expired — please sign in again.",
-    notSignedInMessage = "Sign in with Genius to continue.",
+    notSignedInMessage = "Sign in with Yandex to continue.",
     tokenInvalidDelay = 1500,
     notSignedInDelay = 1200,
   } = overrides;
@@ -52,6 +52,6 @@ export function redirectToLogin(showToastFn, body, overrides = {}) {
   const { message, delay } = authErrorInfo(body, overrides);
   showToastFn(message);
   setTimeout(() => {
-    window.location.href = "/auth/login";
+    window.location.href = "/auth/yandex/login";
   }, delay);
 }

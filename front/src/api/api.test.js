@@ -252,7 +252,7 @@ describe("_doSearch — concurrent requests cancel the previous one", () => {
 });
 
 describe("_doSearch — 401 responses", () => {
-  it("redirects to /auth/login on token_invalid", async () => {
+  it("redirects to /auth/yandex/login on token_invalid", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse({ error: "token_invalid" }, { status: 401 })),
@@ -264,12 +264,12 @@ describe("_doSearch — 401 responses", () => {
     await vi.advanceTimersByTimeAsync(1500);
 
     expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/token expired/i));
-    expect(window.location.href).toContain("/auth/login");
+    expect(window.location.href).toContain("/auth/yandex/login");
 
     vi.useRealTimers();
   });
 
-  it("redirects to /auth/login when not signed in at all (401 without token_invalid)", async () => {
+  it("redirects to /auth/yandex/login when not signed in at all (401 without token_invalid)", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 401 })));
     vi.useFakeTimers();
 
@@ -277,8 +277,8 @@ describe("_doSearch — 401 responses", () => {
     await p;
     await vi.advanceTimersByTimeAsync(1200);
 
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/sign in with genius/i));
-    expect(window.location.href).toContain("/auth/login");
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/sign in with yandex/i));
+    expect(window.location.href).toContain("/auth/yandex/login");
 
     vi.useRealTimers();
   });
@@ -465,7 +465,7 @@ describe("[SF-YM-03] deepenArtistConnections", () => {
     expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/1 enriched/i), 2500);
   });
 
-  it("redirects to /auth/login on a 401", async () => {
+  it("redirects to /auth/yandex/login on a 401", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({}, { status: 401 })));
     vi.useFakeTimers();
 
@@ -473,8 +473,8 @@ describe("[SF-YM-03] deepenArtistConnections", () => {
     await p;
     await vi.advanceTimersByTimeAsync(1500);
 
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/sign in with genius/i));
-    expect(window.location.href).toContain("/auth/login");
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/sign in with yandex/i));
+    expect(window.location.href).toContain("/auth/yandex/login");
     expect(mergeDeepenResult).not.toHaveBeenCalled();
 
     vi.useRealTimers();
