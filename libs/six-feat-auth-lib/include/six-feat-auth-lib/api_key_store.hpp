@@ -33,8 +33,6 @@ class ApiKeyStore final : public userver::components::ComponentBase {
 
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
-  // owner_id — auth::SessionUserId, не имя: тёзки из разных провайдеров
-  // входа не должны делить владение ключами.
   IssuedApiKey Issue(std::int64_t owner_id,
                      const std::string& owner_label,
                      const std::string& genius_token,

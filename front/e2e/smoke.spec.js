@@ -11,10 +11,12 @@
 // graph has exactly 2 nodes and the from/to path is a single hop.
 import { test, expect } from "@playwright/test";
 
-const SEED_ARTIST   = process.env.E2E_SEED_ARTIST   || "Aurora Vale";
+const SEED_ARTIST = process.env.E2E_SEED_ARTIST || "Aurora Vale";
 const TARGET_ARTIST = process.env.E2E_TARGET_ARTIST || "Kessler Vane";
 
-test("search artist → graph → node click → sidebar, then path search → hop-chain", async ({ page }) => {
+test("search artist → graph → node click → sidebar, then path search → hop-chain", async ({
+  page,
+}) => {
   // [SF-SEC-02] vis-network must be self-hosted (front/vendor/) — regression
   // test for the old CDN <script src="https://unpkg.com/..."> tag: if it
   // ever comes back, this fails instead of silently depending on unpkg.com
@@ -33,7 +35,7 @@ test("search artist → graph → node click → sidebar, then path search → h
 
   // ── Search draws a graph (nodes appear) ─────────────────────────────────
   await page.locator("#hero-input").fill(SEED_ARTIST);
-  await page.locator("#hero-form button[type=\"submit\"]").click();
+  await page.locator('#hero-form button[type="submit"]').click();
 
   const graphNodeButtons = page.locator("#graph-a11y-node-list button[data-node-id]");
   await expect(graphNodeButtons).toHaveCount(2);

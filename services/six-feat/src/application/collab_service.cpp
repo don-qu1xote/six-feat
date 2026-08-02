@@ -364,10 +364,10 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
         const char* name = nullptr;
         RoleMask single = {};
       };
-      const std::array<RoleProbe, 4> kProbes{{{"producer", ParseRoleMask("producer")},
-                                              {"writer", ParseRoleMask("writer")},
-                                              {"featured", ParseRoleMask("featured")},
-                                              {"primary", ParseRoleMask("primary")}}};
+      const std::array<RoleProbe, 4> probes{{{"producer", ParseRoleMask("producer")},
+                                             {"writer", ParseRoleMask("writer")},
+                                             {"featured", ParseRoleMask("featured")},
+                                             {"primary", ParseRoleMask("primary")}}};
 
       for (std::size_t i = 0; i + 1 < path.size(); ++i) {
         const std::int64_t a = path[i];
@@ -377,7 +377,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
         if (edge_dominant_role[lo].count(hi)) continue;
 
         std::string dominant = "primary";
-        for (const auto& probe : kProbes) {
+        for (const auto& probe : probes) {
           if (!RoleAllowed(probe.name, mask)) continue;
           for (const auto& e : repo_.Neighbours(a, probe.single)) {
             if (e.neighbour == b) {

@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""
-scripts/verify-env-profiles.py — проверяет, что
-config/profiles/{dev,staging,prod}.env реально парсятся как shell-фрагменты
-(source в docker-entrypoint.sh), и что ни один не задаёт обязательную
-переменную docker-compose.yml (${VAR:?...}) — профили формализуют только
-опциональные ручки (LOGGING_LEVEL, COOKIE_SECURE, DB_REPLICA_HOST и т.д.),
-никогда секреты/обязательные переменные.
-
-Завершается с ненулевым кодом при любой ошибке.
-"""
 
 from __future__ import annotations
 
@@ -31,9 +21,6 @@ def required_compose_vars() -> set[str]:
 
 
 def parse_profile_vars(path: Path) -> set[str]:
-    """Имена всех переменных, которые файл профиля задаёт при source в чистом
-    bash-subprocess — единственный надёжный способ, т.к. файлы используют
-    синтаксис ${VAR:-default}, а не простой KEY=VALUE."""
     script = f'set -e -a; source "{path}"; set +a; env'
     proc = subprocess.run(
         ["bash", "-c", script],

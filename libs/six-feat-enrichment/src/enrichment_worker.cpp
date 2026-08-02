@@ -99,11 +99,11 @@ void EnrichmentWorker::OnAllComponentsLoaded() {
 void EnrichmentWorker::RecoverPendingArtists() {
   if (capacity_ == 0) return;
 
-  constexpr int kBatchSize = 256;
+  constexpr int batch_size = 256;
   std::size_t recovered = 0;
   int offset = 0;
   while (recovered < capacity_) {
-    const int limit = static_cast<int>(std::min<std::size_t>(kBatchSize, capacity_ - recovered));
+    const int limit = static_cast<int>(std::min<std::size_t>(batch_size, capacity_ - recovered));
     const auto ids = repo_.ListIncompleteArtists(Depth::Full, limit, offset);
     if (ids.empty()) break;
 

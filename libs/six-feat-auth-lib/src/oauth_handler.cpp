@@ -33,7 +33,7 @@ namespace {
 std::string UrlEncode(const std::string& s) {
   std::string out;
   out.reserve(s.size() * 3);
-  static const char* kHex = "0123456789ABCDEF";
+  static const char kHex[] = "0123456789ABCDEF";
   for (unsigned char c : s) {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
         c == '_' || c == '.' || c == '~') {
@@ -52,7 +52,7 @@ std::string RandomState() {
   if (RAND_bytes(rand_bytes.data(), 16) != 1) {
     throw std::runtime_error("RAND_bytes failed");
   }
-  static const char* kHex = "0123456789abcdef";
+  static const char kHex[] = "0123456789abcdef";
   std::string out;
   out.reserve(32);
   for (auto b : rand_bytes) {
@@ -73,6 +73,11 @@ int RequirePositive(std::string_view param, int value) {
 bool ConstantTimeEquals(std::string_view a, std::string_view b) {
   if (a.size() != b.size()) return false;
   return CRYPTO_memcmp(a.data(), b.data(), a.size()) == 0;
+}
+
+std::string EnvOrEmpty(const char* name) {
+  const char* value = std::getenv(name);
+  return (value && *value) ? value : "";
 }
 
 constexpr std::chrono::seconds kOAuthFlowCookieTtl{300};
@@ -118,7 +123,8 @@ void IssueSessionCookies(const server::http::HttpRequest& request,
 }
 
 std::string Base64UrlEncode(const unsigned char* data, std::size_t len) {
-  static const char* kB64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  static const char kB64Chars[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   std::string out;
   out.reserve((len + 2) / 3 * 4);
   for (std::size_t i = 0; i < len; i += 3) {
@@ -446,16 +452,13 @@ YandexOAuthConfig::YandexOAuthConfig(const components::ComponentConfig& config,
                                      const components::ComponentContext& context)
     : ComponentBase(config, context),
       client_id_(config["client-id"].As<std::string>("")),
+      client_secret_(EnvOrEmpty("YANDEX_OAUTH_CLIENT_SECRET")),
       redirect_uri_(config["redirect-uri"].As<std::string>("")),
       oauth_base_url_(config["oauth-base-url"].As<std::string>("https://oauth.yandex.ru")),
-      login_base_url_(config["login-base-url"].As<std::string>("https://login.yandex.ru")) {
-  const char* secret_env = std::getenv("YANDEX_OAUTH_CLIENT_SECRET");
-  client_secret_ = (secret_env && *secret_env) ? secret_env : "";
-
-  // Мягкая деградация: без Яндекс-приложения сервис поднимается,
-  // ручки /auth/yandex/* отвечают 503, Genius-вход работает.
-  enabled_ = !client_id_.empty() && !client_secret_.empty() && !redirect_uri_.empty();
-
+      login_base_url_(config["login-base-url"].As<std::string>("https://login.yandex.ru")),
+      // Мягкая деградация: без Яндекс-приложения сервис поднимается,
+      // ручки /auth/yandex/* отвечают 503, Genius-вход работает.
+      enabled_(!client_id_.empty() && !client_secret_.empty() && !redirect_uri_.empty()) {
   if (!enabled_) {
     LOG_WARNING() << "[YandexOAuth] disabled — need yandex-oauth-config.client-id, "
                      "yandex-oauth-config.redirect-uri and YANDEX_OAUTH_CLIENT_SECRET. "

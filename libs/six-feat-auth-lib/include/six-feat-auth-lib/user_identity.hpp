@@ -16,9 +16,6 @@ inline std::int64_t StableUserId(std::string_view name) {
   return static_cast<std::int64_t>(h & 0x7FFFFFFFFFFFFFFFULL);
 }
 
-// Ключ из пары (провайдер, неизменяемый id): иначе тёзки в Genius и Яндексе
-// получили бы один user_id и доступ к чужим токенам. Сессии без uid
-// сохраняют прежний хеш имени (легаси-куки до SF-YM-05).
 inline std::int64_t SessionUserId(const SessionData& session) {
   if (session.provider_user_id.empty()) {
     return StableUserId(session.name);

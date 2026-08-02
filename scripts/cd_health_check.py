@@ -1,28 +1,4 @@
 #!/usr/bin/env python3
-"""
-scripts/cd_health_check.py — SF-CI-07 этап 4: гейт readiness после деплоя.
-
-Опрашивает контракт readiness, который SF-INF-03 уже реализует
-(libs/six-feat-http/src/readiness_common.cpp, доступен как /readyz
-в каждом сервисе через static_config.yaml), пока тот не сообщит ready
-или пока не истечёт ЯВНЫЙ таймаут. Таймаут — жёсткая ошибка: гейт
-staging закрывает пайплайн ДО того, как будет затронут production,
-а гейт production вооружает автоматический rollback.
-
-Почему эта проверка больше чем "HTTP 200": BuildReadinessBody возвращает
-{"status": "ready"|"not_ready", "checks": {<name>: {"ok": bool, "status": str}}}
-и отдаёт 503 только когда какая-то проверка не проходит. Проверка
-status == "ready" (не просто 2xx) — это то, что делает этот гейт
-readiness-гейтом, а не liveness: /healthz возвращает "ok" сразу после
-бинда listener'а, и это именно то, чему НЕЛЬЗЯ доверять здесь.
-
-Только stdlib, намеренно: этот скрипт выполняется на голом runner'е сразу
-после деплоя, и гейт, которому нужен `pip install`, чтобы сказать,
-что деплой сломан — это второй источник проблем.
-
-  ./cd_health_check.py --base-url http://staging.example:8080 --timeout 180
-  ./cd_health_check.py --self-test      # без хоста; см. ниже
-"""
 
 from __future__ import annotations
 
@@ -37,12 +13,6 @@ READINESS_PATH = "/readyz"
 
 
 def probe(base_url: str, timeout: float) -> tuple[bool, str]:
-    """Один запрос readiness. Возвращает (ready, человекочитаемая детализация).
-
-    503 — ОЖИДАЕМЫЙ ответ, пока стек прогревается (сервис сообщает not_ready
-    с детализацией по каждой проверке), поэтому он трактуется как "ещё нет",
-    а не как транспортная ошибка — оба случая означают "продолжать опрос".
-    """
     url = base_url.rstrip("/") + READINESS_PATH
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
@@ -81,12 +51,6 @@ def wait_for_ready(
     probe_timeout: float,
     annotate: bool = True,
 ) -> int:
-    """Опрашивать, пока ready или не кончится бюджет. Возвращает код процесса.
-
-    `annotate` управляет префиксом ::error::. Самотест ниже намеренно
-    прогоняет падающий сценарий, и зелёный dry-run не должен засорять
-    Actions UI красными аннотациями за ожидаемый исход.
-    """
     deadline = time.monotonic() + timeout
     attempt = 0
     detail = "ни одного запроса не выполнено"
@@ -109,15 +73,6 @@ def wait_for_ready(
 
 
 def self_test() -> int:
-    """Режим dry-run: проверить этот гейт на in-process заглушке вместо
-    реального хоста, чтобы workflow_dispatch dry-run доказал, что ЛОГИКА
-    гейта (парсинг контракта, отклонение not_ready, таймаут) работает,
-    а не просто эхо.
-
-    Заглушка воспроизводит реальный контракт: первые два запроса —
-    not_ready/503, затем ready/200, т.е. последовательность прогрева,
-    которую реально выдаёт свежий деплой.
-    """
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
 

@@ -8,7 +8,7 @@ namespace six_feat {
 
 namespace {
 
-userver::engine::TaskInheritedVariable<std::string> kRequestIdVariable;
+userver::engine::TaskInheritedVariable<std::string> request_id_variable;
 
 }
 std::string EnsureRequestId(const userver::server::http::HttpRequest& request) {
@@ -23,13 +23,13 @@ std::string EnsureRequestId(const userver::server::http::HttpRequest& request) {
   }
 
   span.AddTag("request_id", id);
-  kRequestIdVariable.Set(id);
+  request_id_variable.Set(id);
   request.GetHttpResponse().SetHeader(std::string{kRequestIdHeader}, id);
   return id;
 }
 
 std::string CurrentRequestId() {
-  if (const auto* id = kRequestIdVariable.GetOptional()) {
+  if (const auto* id = request_id_variable.GetOptional()) {
     return *id;
   }
   return std::string{userver::tracing::Span::CurrentSpan().GetTraceId()};

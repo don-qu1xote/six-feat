@@ -22,7 +22,7 @@ class FakeArtistDataSource final : public IArtistDataSource {
     depths_[artist_id] = depth;
   }
 
-  GetResult GetArtistSongs(const ArtistRef& ref, Depth /*want*/) const override {
+  GetResult GetArtistSongs(const ArtistRef& ref, Depth) const override {
     const auto it = songs_.find(ref.id);
     if (it == songs_.end()) return GetResult{{}, Depth::None, true};
     return GetResult{it->second, depths_.at(ref.id), false};
@@ -34,8 +34,7 @@ class FakeArtistDataSource final : public IArtistDataSource {
     return it->second;
   }
 
-  std::vector<CollabEdge> Neighbours(std::int64_t artist_id,
-                                     const RoleMask& /*mask*/) const override {
+  std::vector<CollabEdge> Neighbours(std::int64_t artist_id, const RoleMask&) const override {
     const auto it = neighbours_.find(artist_id);
     if (it == neighbours_.end()) return {};
     return it->second;

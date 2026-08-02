@@ -43,8 +43,6 @@ export function pollYandexDeviceFlow(deviceCode) {
   return postJson("/api/v1/settings/yandex/device/poll", { device_code: deviceCode });
 }
 
-// [SF-YM-04] Только источник seed-подсказок — см. settings-panel.js:
-// выбранный артист уходит не дальше searchArtist(), ничего более.
 export function fetchYandexPlaylists() {
   return getJson("/api/v1/settings/yandex/playlists");
 }

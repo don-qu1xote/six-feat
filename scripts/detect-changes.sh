@@ -117,6 +117,10 @@ if echo "$CHANGED_FILES" | grep -qE '\.(py)$'; then
   LINT="$LINT format"
 fi
 
+if echo "$CHANGED_FILES" | grep -qE '(^\.clang-format$|^\.clang-tidy$|^pyproject\.toml$|^front/\.prettierrc$|^front/\.prettierignore$|^front/package\.json$|^Makefile$|^scripts/check_comments\.py$)'; then
+  LINT="$LINT format"
+fi
+
 if echo "$CHANGED_FILES" | grep -qE '\.(yml|yaml)$'; then
   LINT="$LINT yaml"
 fi

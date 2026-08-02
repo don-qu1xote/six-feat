@@ -360,7 +360,7 @@ export function setGameMode(on, { clickRouter = null, homeParent = null } = {}) 
 
 export function setTruncation(graph) {
   graphSlice.truncated = graph.truncated === true;
-  graphSlice.shownSongCount = graph.shown_song_count ?? 0;
+  graphSlice.shownSongCount = graph.shown_songCount ?? 0;
   graphSlice.songLimit = graph.song_limit ?? 0;
 }
 

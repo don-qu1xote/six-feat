@@ -25,7 +25,6 @@ struct SessionData {
   std::string provider;
   std::string provider_user_id;
 
-  // Пустое значение в куках, выписанных до SF-YM-05, означает genius.
   std::string_view Provider() const {
     return provider.empty() ? kProviderGenius : std::string_view{provider};
   }

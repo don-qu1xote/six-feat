@@ -177,8 +177,8 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
       return;
     }
 
-    if (graph.seed_id != null) {
-      setGraphCacheEntry(State._graphCache, graph.seed_id, { graph, timestamp: Date.now() });
+    if (graph.seedId != null) {
+      setGraphCacheEntry(State._graphCache, graph.seedId, { graph, timestamp: Date.now() });
     }
 
     if (isExpansion) {
@@ -189,7 +189,7 @@ export async function _doSearch(artist, isExpansion, forceImmediate, limitOverri
       if (limitOverride > 0) State.collabLimit = limitOverride;
       pushHistory(graph.seed || artist);
       updateShareableUrl(graph.seed || artist);
-      if (graph.seed_id != null) pollEnrichment(graph.seed_id);
+      if (graph.seedId != null) pollEnrichment(graph.seedId);
     }
   } catch (err) {
     if (err.name === "AbortError") return;

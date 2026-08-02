@@ -63,7 +63,6 @@ IssuedApiKey ApiKeyStore::Issue(std::int64_t owner_id,
                                 const std::string& rate_tier) const {
   const std::string raw_key = GenerateRawApiKey();
   const std::string key_hash = HashApiKey(raw_key);
-  // owner_label — только для логов/отладки, владение определяется owner_id.
   const std::string encrypted_token =
       Encrypt(genius_token, genius_token_expires_at_unix, KeyFromEnv(), owner_label);
   const std::int64_t created_at = NowUnix();

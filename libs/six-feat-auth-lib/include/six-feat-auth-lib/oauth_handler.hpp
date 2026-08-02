@@ -90,9 +90,6 @@ class CallbackHandler final : public userver::server::handlers::HttpHandlerBase 
   userver::clients::http::Client& http_client_;
 };
 
-// Отдельный компонент, а не поля в OAuthConfig: у провайдеров свои
-// client_id/secret/redirect_uri, и мешать их нельзя — иначе genius-секрет
-// уехал бы в Яндекс.
 class YandexOAuthConfig final : public userver::components::ComponentBase {
  public:
   static constexpr std::string_view kName = "yandex-oauth-config";
@@ -111,7 +108,6 @@ class YandexOAuthConfig final : public userver::components::ComponentBase {
   const std::string& RedirectUri() const {
     return redirect_uri_;
   }
-  // /authorize и /token живут на oauth.yandex.ru, /info — на login.yandex.ru.
   const std::string& OAuthBaseUrl() const {
     return oauth_base_url_;
   }

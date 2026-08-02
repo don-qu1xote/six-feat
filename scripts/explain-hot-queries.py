@@ -39,10 +39,6 @@ def _walk_plan(node: Any, indexes_used: set[str], seq_scans: list[str]) -> None:
         _walk_plan(child, indexes_used, seq_scans)
 
 
-# Каждая запись — реальный запрос из persistent_store.cpp (Impl::*), с
-# параметрами, которые находят seed()-данные ниже, и явным списком индексов,
-# которые ОБЯЗАНЫ встретиться в плане (SF-DB-04 — это уже проверенный
-# правильный набор, script только следит за регрессом).
 HOT_QUERIES = [
     {
         "name": "SongsForArtist",
@@ -202,7 +198,6 @@ def explain(conn, sql: str, params: tuple) -> dict:
 
 
 def check_query(conn, query: dict) -> list[str]:
-    """Возвращает список проблем (пусто = зелёный baseline)."""
     plan = explain(conn, query["sql"], query["params"])
     indexes_used: set[str] = set()
     seq_scans: list[str] = []

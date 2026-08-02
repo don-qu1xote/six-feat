@@ -86,9 +86,7 @@ describe("check-bundle-size.mjs CLI", () => {
   it("passes (zero exit) on a bundle representative of the current build's gzip size", () => {
     // Repetitive JS-like text gzips down comfortably under budget, standing
     // in for the real (currently ~29 KB gzip) dist/script.*.js.
-    const current = Buffer.from(
-      "function six_feat(){return {a:1,b:2,c:3};}\n".repeat(2000),
-    );
+    const current = Buffer.from("function six_feat(){return {a:1,b:2,c:3};}\n".repeat(2000));
     expect(gzipSize(current)).toBeLessThan(BUDGET_BYTES);
 
     const dir = trackedDist({ scriptName: "script.current.js", content: current });

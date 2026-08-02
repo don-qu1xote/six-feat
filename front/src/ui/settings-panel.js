@@ -60,8 +60,6 @@ function _setYandexConnected(connected) {
     els.settingsYandexDeviceCode.textContent = "";
   }
 
-  // [SF-YM-04] Импорт предлагается только после подключения личного
-  // аккаунта — отключение чистит списки вместо устаревших данных.
   if (els.settingsYandexImport) els.settingsYandexImport.hidden = !connected;
   if (!connected) {
     if (els.settingsYandexPlaylistList) {
@@ -165,8 +163,6 @@ async function _handleYandexDisconnect() {
   _setYandexConnected(false);
 }
 
-// [SF-YM-04] Рендерит плейлисты (+ синтетическую запись «лайков»)
-// как кликабельный список — выбор загружает артистов этого источника.
 function _renderYandexPlaylists(playlists) {
   if (!els.settingsYandexPlaylistList) return;
   els.settingsYandexPlaylistList.innerHTML = (playlists || [])
@@ -185,9 +181,6 @@ function _renderYandexPlaylists(playlists) {
   });
 }
 
-// [SF-YM-04] Рендерит разрешённых/неразрешённых артистов для источника.
-// Неразрешённые помечены (честное «не найден» по ADR-0009), не кликабельны
-// — ничто из неразрешённого имени не доходит до searchArtist()/графа/GAME.
 function _renderYandexImportResults(data) {
   if (!els.settingsYandexArtistList) return;
   const artists = data?.artists || [];
@@ -228,8 +221,6 @@ async function _handleYandexPlaylistPick(playlistId) {
   _renderYandexImportResults(result);
 }
 
-// [SF-YM-04] Единственное, что разрешено с resolv-артистом импорта —
-// тот же searchArtist(), что и везде, никогда прямой id/граф-запрос.
 function _handleYandexArtistPick(name) {
   if (!name) return;
   closeSettingsPanel();

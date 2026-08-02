@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""dr-drill.py — SF-INF-09: автоматический прогон disaster recovery.
-
-Берёт последний дамп SF-INF-08, восстанавливает его в чистый Postgres и
-проверяет восстановленные данные. Превращает docs/runbooks/disaster-recovery.md
-в проверяемый факт: падает, если restore даёт битые или неполные данные.
-
-Источник дампа: --dump | --s3-url | --backup-dir (в этом порядке).
-Цель: --container (docker run postgres:16-alpine) либо существующий сервер
-из DB_HOST/DB_PORT/DB_USER/DB_PASSWORD.
-"""
 
 from __future__ import annotations
 

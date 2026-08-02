@@ -107,7 +107,7 @@ function buildGraph(game, photos, ids, frontier) {
       });
   }
 
-  return { seed: game.start, seed_id: idOf(game.start), nodes, edges, truncated: false };
+  return { seed: game.start, seedId: idOf(game.start), nodes, edges, truncated: false };
 }
 
 let _lastLayout = null;

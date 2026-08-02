@@ -11,7 +11,7 @@ export async function fetchNeighbours(id) {
     const graph = await res.json();
     if (!graph || !Array.isArray(graph.nodes)) return null;
 
-    const seedId = graph.seed_id ?? id;
+    const seedId = graph.seedId ?? id;
     const seedName = graph.seed || "";
     const neighbours = graph.nodes
       .filter((n) => n && n.id != null && n.id !== seedId)

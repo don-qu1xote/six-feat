@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""
-verify-yaml-anchors.py — проверяет, что YAML-anchor дедупликация
-task_processor в services/*/static_config.yaml оставила эффективную
-конфигурацию неизменной, и что hardening-блок docker-compose.yml
-применён идентично ко всем сервисам six-feat/six-feat-enrichment/
-six-feat-genius-gateway/six-feat-auth/six-feat-game и отсутствует
-у postgres/nginx.
-
-Завершается с ненулевым кодом при любой ошибке.
-"""
 
 from __future__ import annotations
 
@@ -27,7 +17,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MAIN_TP = "main-task-processor"
 MONITOR_TP = "monitor-task-processor"
 
-# rel path -> {"components.<dotted section>": expected task_processor value}
 EXPECTED: dict[str, dict[str, str]] = {
     "services/six-feat/static_config.yaml": {
         "server.listener": MAIN_TP,
@@ -51,9 +40,6 @@ EXPECTED: dict[str, dict[str, str]] = {
         "server.listener-monitor": MONITOR_TP,
         "handler-internal-enqueue": MAIN_TP,
         "handler-internal-status": MAIN_TP,
-        # Был handler-internal-healthz — теперь общий six_feat::HealthHandler
-        # (kName "handler-healthz"), как и в каждом другом сервисе.
-        # handler-readyz новый (проверка БД, специфичная для enrichment).
         "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
@@ -65,8 +51,6 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-internal-genius-song-list": MAIN_TP,
         "handler-internal-genius-song": MAIN_TP,
         "handler-internal-genius-candidates": MAIN_TP,
-        # Был handler-internal-healthz — см. соответствующий комментарий
-        # в блоке enrichment выше.
         "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
@@ -93,7 +77,6 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-auth-logout": MAIN_TP,
         "handler-auth-me": MAIN_TP,
         "handler-healthz": MAIN_TP,
-        # Новый — readiness, специфичный для auth (всегда пустые проверки).
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
@@ -111,7 +94,6 @@ EXPECTED: dict[str, dict[str, str]] = {
     },
 }
 
-# All five services default to main-task-processor.
 EXPECTED_DEFAULT_TP = {rel_path: MAIN_TP for rel_path in EXPECTED}
 
 HARDENING_KEYS = ("read_only", "cap_drop", "security_opt", "tmpfs")

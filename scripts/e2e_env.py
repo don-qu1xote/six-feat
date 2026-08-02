@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""
-scripts/e2e_env.py — окружение для Playwright smoke-теста
-браузера (front/e2e/smoke.spec.js).
-
-В отличие от фикстуры tests/conftest.py `service_proc` (которая направляет
-handler-index/handler-script в /dev/null, т.к. API-интеграционные тесты
-никогда не загружают страницу), этот скрипт запускает скомпилированный
-six_feat бинарник, обслуживающий *настоящий* собранный фронтенд
-(front/index.html + front/dist's хешированный JS-бандл), чтобы реальный
-браузер мог его загрузить — плюс тот же in-process mock Genius HTTP сервер
-из tests/conftest.py, переиспользованный, а не переписанный,
-запрограммированный на двух артистах, у которых есть один общий трек.
-
-Использование:
-    python3 scripts/e2e_env.py up      # запустить всё, записать ENV_FILE, блокироваться
-    python3 scripts/e2e_env.py down    # остановить ранее запущенный `up`
-
-`up` блокируется на переднем плане до получения SIGTERM/SIGINT — запускайте
-в фоне (`python3 scripts/e2e_env.py up &`) и опрашивайте появление ENV_FILE,
-затем запустите Playwright, затем `python3 scripts/e2e_env.py down`.
-"""
 
 from __future__ import annotations
 
@@ -45,17 +24,8 @@ SERVICE_PORT = int(os.environ.get("E2E_SERVICE_PORT", "18180"))
 MOCK_PORT = int(os.environ.get("E2E_MOCK_PORT", "18181"))
 MONITOR_PORT = int(os.environ.get("E2E_MONITOR_PORT", "18185"))
 ENRICHMENT_PORT = int(os.environ.get("E2E_ENRICHMENT_PORT", "18182"))
-# Доступ к Genius API вынесен из six_feat в отдельный
-# six-feat-genius-gateway сервис — этот процесс направлен на
-# суррогатный mock Genius сервер ниже; GeniusGatewayClient от six_feat
-# общается с ним вместо прямого вызова.
 GATEWAY_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
 GATEWAY_MONITOR_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_MONITOR_PORT", "18186"))
-# Цель AppSecretParityChecker. Как и ENRICHMENT_PORT выше,
-# никто реально не слушает здесь в этом smoke-тесте — проверка деградирует
-# до "unreachable" (мягкая зависимость, никогда не роняет /readyz сама) и
-# просто логирует предупреждение, как EnqueueIfNeeded()/IsEnriching()
-# деградирует, когда никто не слушает на ENRICHMENT_PORT.
 AUTH_PORT = int(os.environ.get("E2E_AUTH_PORT", "18184"))
 YANDEX_GATEWAY_PORT = int(os.environ.get("E2E_YANDEX_GATEWAY_PORT", "18187"))
 
@@ -63,7 +33,6 @@ APP_SECRET = "e" * 64
 GENIUS_CLIENT_SECRET = "e2e-genius-client-secret"
 ENRICHMENT_INTERNAL_SECRET = "e2e-enrichment-internal-secret"
 
-# Два артиста с одной общей песней — граф из 2 узлов и путь в 1 шаг
 SEED_ARTIST_ID = 90101
 SEED_ARTIST_NAME = "Aurora Vale"
 TARGET_ARTIST_ID = 90102
@@ -73,15 +42,9 @@ SHARED_SONG_ID = 70001
 BINARY = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
 FRONT_DIST = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
 FRONT_INDEX = Path(os.environ.get("E2E_FRONT_INDEX", REPO_ROOT / "front" / "index.html"))
-# Настоящий vendored vis-network бандл — это окружение обслуживает
-# реальный собранный фронтенд для настоящего браузера, поэтому
-# (в отличие от заглушки /dev/null в tests/conftest.py) это должен
-# быть настоящий файл, иначе граф никогда не отрисуется.
 VENDOR_VIS_NETWORK = Path(
     os.environ.get("E2E_VENDOR_VIS_NETWORK", REPO_ROOT / "front" / "vendor" / "vis-network.min.js")
 )
-# Зафиксированный в репозитории статический OpenAPI 3.1 документ — тот же
-# файл, который OpenApiHandler из static_handler.hpp отдаёт в реальном образе.
 OPENAPI_JSON = Path(
     os.environ.get("E2E_OPENAPI_JSON", REPO_ROOT / "schemas" / "openapi" / "openapi.json")
 )
@@ -124,8 +87,6 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
-          # Совпадает с production static_config.yaml templates'
-          # собственным logging block (format: json).
           format: json
 
     testsuite-support:
@@ -143,10 +104,6 @@ components_manager:
     persistent-store:
       dbname: postgres-db-1
 
-    # HTTP-клиент для отдельного six-feat-genius-gateway сервиса —
-    # см. GATEWAY_PORT / genius_gateway_proc, запущенный в cmd_up() ниже.
-    # Суррогатный mock Genius сервер теперь сконфигурирован напрямую
-    # на этом процессе, а не здесь.
     genius-gateway-client:
       genius-gateway-base-url: http://127.0.0.1:{gateway_port}
       timeout-ms: 5000
@@ -156,10 +113,6 @@ components_manager:
 
     artist-repository: {{}}
 
-    # Никто не слушает на {auth_port} в этом smoke-test окружении —
-    # AppSecretParityChecker деградирует до "unreachable" (мягкая зависимость,
-    # никогда не роняет /readyz сама), та же логика, что и у enrichment-client
-    # ниже с пустым enrichment_port.
     app-secret-parity-checker:
       auth-base-url: http://127.0.0.1:{auth_port}
       timeout-ms: 2000
@@ -186,14 +139,9 @@ components_manager:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
 
-    # [SF-ARCH-03] Общий потолок фан-аута в foreground-полосу гейтвея: его
-    # делят сборка графа (genius-music-source-provider) и проверка прямого
-    # ребра (collab-service).
     fg-fanout-limiter:
       max-concurrent: 6
 
-    # backend: single — e2e не использует shared/Postgres backend,
-    # только стандартную production-конфигурацию.
     rate-limit-store:
       backend: single
       dbname: postgres-db-1
@@ -204,7 +152,6 @@ components_manager:
     idempotency-store:
       dbname: postgres-db-1
 
-    # [SF-YM-02] main.cpp безусловно регистрирует UserProviderTokenStore.
     user-provider-token-store:
       dbname: postgres-db-1
 
@@ -235,9 +182,6 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # Настоящие статические ресурсы (в отличие от заглушек /dev/null
-    # в tests/conftest.py), чтобы безголовый браузер имел реальную
-    # страницу + JS-бандл для загрузки.
     handler-index:
       path: /
       method: GET
@@ -255,10 +199,6 @@ components_manager:
       file-path: {script_file_path}
       content-type: application/javascript; charset=utf-8
 
-    # Настоящий хешированный CSS-бандл — реальный браузер загружает эту
-    # страницу, поэтому дизайн-система должна быть доступна (в отличие от
-    # заглушки /dev/null в tests/conftest.py), иначе страница отрисуется
-    # без стилей.
     handler-style:
       path: {style_url_path}
       method: GET
@@ -266,10 +206,6 @@ components_manager:
       file-path: {style_file_path}
       content-type: text/css; charset=utf-8
 
-    # Настоящий vendored vis-network бандл (см. VENDOR_VIS_NETWORK выше) —
-    # реальный браузер загружает эту страницу, поэтому в отличие от заглушки
-    # /dev/null в tests/conftest.py, это должен быть настоящий файл,
-    # иначе граф никогда не отрисуется.
     handler-vendor-vis-network:
       path: /vendor/vis-network.min.js
       method: GET
@@ -292,10 +228,6 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # Метаданные артиста + fetch_state, только L1/L2 — см.
-    # services/six-feat/src/http/artist_handler.hpp. Каждый static config,
-    # запускающий этот бинарник, требует соответствующей секции, как и
-    # каждый другой handler здесь.
     handler-artist:
       path: /api/v1/artist
       method: GET
@@ -311,7 +243,6 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
-    # [SF-YM-02] main.cpp безусловно регистрирует все 5 handler-ов настроек.
     handler-settings-status:
       path: /api/v1/settings/providers
       method: GET
@@ -347,12 +278,6 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # main.cpp безусловно регистрирует InternalNeighboursHandler,
-    # поэтому каждый static config, запускающий six_feat бинарник, требует
-    # соответствующего блока, иначе components::Run падает с
-    # InvariantError. Не используется в e2e smoke/load-test наборах
-    # (никто не вызывает six-feat-game), но должен присутствовать,
-    # чтобы процесс вообще запустился.
     handler-internal-music-source-edges:
       path: /internal/music-source/collaboration-edges
       method: POST
@@ -369,22 +294,12 @@ components_manager:
       task_processor: main-task-processor
       response-body-stream: true
 
-    # main.cpp безусловно регистрирует ImageProxyHandler, поэтому
-    # каждый static config, запускающий six_feat бинарник, требует
-    # handler-image блок, иначе components::Run падает при старте.
-    # Нет переопределения allowed-hosts — e2e не использует
-    # /api/v1/image напрямую, поэтому встроенный по умолчанию
-    # (images.genius.com, assets.genius.com) подходит.
     handler-image:
       path: /api/v1/image
       method: GET
       task_processor: main-task-processor
       timeout-ms: 5000
 
-    # Та же логика, что и handler-image выше: main.cpp безусловно
-    # регистрирует OpenApiHandler, поэтому этот config тоже требует
-    # соответствующего блока. Настоящий файл (не заглушка), т.к.
-    # обслуживать его правильно здесь ничего не стоит.
     handler-openapi:
       path: /api/v1/openapi.json
       method: GET
@@ -417,7 +332,6 @@ def _resolve_script_bundle() -> tuple[str, Path]:
     return _resolve_bundle("script")
 
 
-# Хешированный CSS-бандл, резолвится так же, как JS-бандл.
 def _resolve_style_bundle() -> tuple[str, Path]:
     return _resolve_bundle("style")
 
@@ -486,9 +400,6 @@ def cmd_up() -> None:
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="six_feat_e2e_"))
 
-    # Реальный six-feat-genius-gateway инстанс, стоящий перед суррогатным
-    # mock Genius сервером — GeniusGatewayClient от six_feat общается с
-    # этим процессом вместо прямого обращения к Genius (или mock).
     gateway_cfg_path = tmp_dir / "genius_gateway_static_config.yaml"
     gateway_cfg_path.write_text(
         it_conftest._GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE.format(
@@ -661,7 +572,6 @@ def cmd_down() -> None:
     except ProcessLookupError:
         print(f"[e2e_env] process {pid} already gone.")
         return
-    # Даём обработчику сигналов `up`-процесса время на уборку
     for _ in range(20):
         if not ENV_FILE.exists():
             return

@@ -33,32 +33,32 @@ class FakeExternalArtistLookup final : public IExternalArtistLookup {
   }
 
   std::vector<Candidate> ResolveCandidates(const std::string& query,
-                                           const std::string& /*user_token*/) const override {
+                                           const std::string&) const override {
     const auto it = candidates_.find(query);
     if (it == candidates_.end()) return {};
     return it->second;
   }
 
   std::optional<ArtistRef> FetchArtistById(std::int64_t id,
-                                           Lane /*lane*/,
-                                           const std::string& /*user_token*/) const override {
+                                           Lane,
+                                           const std::string&) const override {
     const auto it = by_id_.find(id);
     if (it == by_id_.end()) return std::nullopt;
     return it->second;
   }
 
   std::vector<std::int64_t> FetchSongList(std::int64_t artist_id,
-                                          int /*limit*/,
-                                          Lane /*lane*/,
-                                          const std::string& /*user_token*/) const override {
+                                          int,
+                                          Lane,
+                                          const std::string&) const override {
     const auto it = song_lists_.find(artist_id);
     if (it == song_lists_.end()) return {};
     return it->second;
   }
 
   std::optional<SongRecord> FetchSongDetail(std::int64_t song_id,
-                                            Lane /*lane*/,
-                                            const std::string& /*user_token*/) const override {
+                                            Lane,
+                                            const std::string&) const override {
     const auto it = song_details_.find(song_id);
     if (it == song_details_.end()) return std::nullopt;
     return it->second;

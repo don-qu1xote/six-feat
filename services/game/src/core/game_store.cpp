@@ -104,7 +104,7 @@ const std::vector<const char*> kGameMigrationV2 = {
     ON CONFLICT (code) DO NOTHING)SQL",
 };
 
-const std::vector<Migration> game_migrations = {
+const std::vector<Migration> kGameMigrations = {
     {1, kGameMigrationV1},
     {2, kGameMigrationV2},
 };
@@ -132,7 +132,7 @@ void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
                              std::to_string(kGameTargetSchemaVersion) + ")");
   }
 
-  for (const auto& m : game_migrations) {
+  for (const auto& m : kGameMigrations) {
     if (m.version <= current) continue;
     for (const char* stmt : m.statements) {
       trx.Execute(stmt);

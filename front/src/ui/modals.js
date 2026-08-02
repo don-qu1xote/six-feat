@@ -52,10 +52,10 @@ export function closePathPanel() {
   els.companionPanel?.classList.remove("show");
 }
 
-let isSearchModalOpen_flag = false;
+let isSearchModalOpenFlag = false;
 
 export function isSearchModalOpen() {
-  return isSearchModalOpen_flag;
+  return isSearchModalOpenFlag;
 }
 
 export function openSearchModal(opts = {}) {
@@ -63,7 +63,7 @@ export function openSearchModal(opts = {}) {
   if (!modal) return;
   const docked = !!opts.docked;
 
-  isSearchModalOpen_flag = true;
+  isSearchModalOpenFlag = true;
   modal.classList.remove("is-closed");
   modal.classList.toggle("docked", docked);
   closeOtherDockedPanels(_searchModalPanel);
@@ -94,7 +94,7 @@ export function closeSearchModal() {
   const modal = els.searchModal;
   if (!modal) return;
 
-  isSearchModalOpen_flag = false;
+  isSearchModalOpenFlag = false;
   modal.classList.add("is-closed");
   modal.classList.remove("docked");
   els.appCanvas?.classList.remove("search-open");

@@ -1,23 +1,83 @@
 ---
-# CI и локальный запуск используют одинаковый набор проверок.
-# CI передаёт Checks через --checks (заменяет Checks из этого файла),
-# поэтому список должен совпадать с ci.yml вручную.
-Checks: >
-  -*,
-  bugprone-*,
-  performance-*,
-  cppcoreguidelines-*,
-  -cppcoreguidelines-avoid-magic-numbers,
-  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
-  -cppcoreguidelines-non-private-member-variables-in-classes,
-  -cppcoreguidelines-pro-type-reinterpret-cast,
-  -cppcoreguidelines-pro-type-const-cast,
-  -cppcoreguidelines-special-member-functions,
-  -cppcoreguidelines-pro-bounds-constant-array-index,
-  -cppcoreguidelines-pro-type-vararg,
-  -cppcoreguidelines-avoid-non-const-global-variables,
-  -bugprone-easily-swappable-parameters
-
-WarningsAsErrors: ''
-HeaderFilterRegex: '^(?!.*userver).*/src/.*'
-FormatStyle: none
+# Стиль именования (требуется clang-tidy >= 18, в CI и pre-commit закреплена версия 18.1.8).
+# Полный список активных проверок задаётся в CI через --checks; здесь хранятся только
+# опции readability-identifier-naming, чтобы конфиг был единым для CI и локального запуска.
+Checks: readability-identifier-naming
+CheckOptions:
+  # Типы и алиасы — PascalCase.
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConceptCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
+  - key: readability-identifier-naming.TemplateParameterCase
+    value: CamelCase
+  # Пространства имён — snake_case.
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  # Функции и методы — PascalCase.
+  - key: readability-identifier-naming.FunctionCase
+    value: CamelCase
+  - key: readability-identifier-naming.MethodCase
+    value: CamelCase
+  - key: readability-identifier-naming.VirtualMethodCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstexprFunctionCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstexprMethodCase
+    value: CamelCase
+  # Константы: глобальные и статические — с префиксом k, локальные — без префикса.
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: k
+  - key: readability-identifier-naming.StaticConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.StaticConstantPrefix
+    value: k
+  - key: readability-identifier-naming.GlobalConstexprVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstexprVariablePrefix
+    value: k
+  - key: readability-identifier-naming.StaticConstexprVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.StaticConstexprVariablePrefix
+    value: k
+  - key: readability-identifier-naming.LocalConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.LocalConstexprVariableCase
+    value: lower_case
+  # Переменные: глобальные и статические — snake_case.
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.StaticVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.LocalVariableCase
+    value: lower_case
+  # Члены классов: приватные — snake_case с суффиксом _; публичные (агрегаты) — без суффикса.
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberSuffix
+    value: _
+  - key: readability-identifier-naming.PublicMemberCase
+    value: lower_case
+  # Параметры и константы перечислений.
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantPrefix
+    value: k
+  # Макросы — UPPER_CASE.
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+...

@@ -32,7 +32,7 @@ import { updateStatus, updateTruncationBanner } from "./ui/canvas-controls.js";
 import { renderGraphA11yList } from "./ui/index.js";
 
 export function replaceGraph(graph) {
-  const seedId = graph.seed_id ?? graph.nodes[0]?.id;
+  const seedId = graph.seedId ?? graph.nodes[0]?.id;
 
   const savedPositions = State.network ? State.network.getPositions() : {};
   const nameById = {};
@@ -54,7 +54,7 @@ export function replaceGraph(graph) {
 }
 
 export function mergeGraph(graph) {
-  const expandedId = graph.seed_id ?? graph.nodes[0]?.id;
+  const expandedId = graph.seedId ?? graph.nodes[0]?.id;
 
   const priorPoles = new Set(State.expandedNodes);
 

@@ -45,8 +45,8 @@ std::unordered_map<std::int64_t, double> BetweennessCentrality(
     return bc;
   }
 
-  std::unordered_map<std::int64_t, std::vector<std::int64_t>> P;
-  P.reserve(nodes.size());
+  std::unordered_map<std::int64_t, std::vector<std::int64_t>> predecessors;
+  predecessors.reserve(nodes.size());
   std::unordered_map<std::int64_t, double> sigma;
   sigma.reserve(nodes.size());
   std::unordered_map<std::int64_t, int> dist;
@@ -54,7 +54,7 @@ std::unordered_map<std::int64_t, double> BetweennessCentrality(
   std::unordered_map<std::int64_t, double> delta;
   delta.reserve(nodes.size());
   for (const auto id : nodes) {
-    P[id];
+    predecessors[id];
     sigma[id] = 0.0;
     dist[id] = -1;
     delta[id] = 0.0;
@@ -65,7 +65,7 @@ std::unordered_map<std::int64_t, double> BetweennessCentrality(
 
   for (const auto s : nodes) {
     for (const auto id : nodes) {
-      P[id].clear();
+      predecessors[id].clear();
       sigma[id] = 0.0;
       dist[id] = -1;
       delta[id] = 0.0;
@@ -91,7 +91,7 @@ std::unordered_map<std::int64_t, double> BetweennessCentrality(
         }
         if (dist[w] == dist[v] + 1) {
           sigma[w] += sigma[v];
-          P[w].push_back(v);
+          predecessors[w].push_back(v);
         }
       }
     }
@@ -99,7 +99,7 @@ std::unordered_map<std::int64_t, double> BetweennessCentrality(
     while (!order.empty()) {
       const std::int64_t w = order.top();
       order.pop();
-      for (const std::int64_t v : P[w]) {
+      for (const std::int64_t v : predecessors[w]) {
         if (sigma[w] > 0.0) delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w]);
       }
       if (w != s) bc[w] += delta[w];

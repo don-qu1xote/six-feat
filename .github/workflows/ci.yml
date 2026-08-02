@@ -68,7 +68,10 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/setup
         with:
-          apt-packages: libssl-dev clang-tidy
+          apt-packages: libssl-dev
+
+      - name: Install clang-tidy 18
+        run: pip install clang-tidy==18.1.8
 
       - name: Configure CMake (six-feat)
         run: |
@@ -88,7 +91,7 @@ jobs:
           set -o pipefail
           find libs/six-feat-*/src services/six-feat/src -name '*.cpp' | xargs -r \
             clang-tidy -p build \
-              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
+              --checks='-*,readability-identifier-naming,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
               --header-filter='six-feat-|services/six-feat' \
             2>&1 | tee clang-tidy-report.txt
 
@@ -98,7 +101,7 @@ jobs:
           set -o pipefail
           find services/game -name '*.cpp' | xargs -r \
             clang-tidy -p build-game \
-              --checks='-*,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
+              --checks='-*,readability-identifier-naming,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
               --header-filter='six-feat-|services/game' \
             2>&1 | tee -a clang-tidy-report.txt
 
@@ -147,24 +150,35 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/setup
         with:
-          apt-packages: clang-format python3-pip python3-venv
+          apt-packages: python3-pip python3-venv
           node-version: "20"
+
+      # Версия clang-format пинится (PyPI-пакет clang-format), а не берётся
+      # из apt: .clang-format явно фиксирует каждую опцию, но разные версии
+      # clang-format всё равно могут давать разный вывод. CI и pre-commit
+      # должны использовать одну версию, чтобы формат был байт-в-байт тот же.
+      - name: Install clang-format (pinned)
+        run: pip install --user "clang-format==18.1.8"
 
       - name: Install ruff
         run: pip install --user ruff
 
-      - name: Check C++ formatting
+      - name: Check C++ formatting (all files)
         run: |
-          find libs services -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
+          find libs services -type f \( -name '*.cpp' -o -name '*.hpp' \) \
+            | xargs clang-format --dry-run --Werror --style=file
 
-      - name: Check Python formatting
-        run: ruff format --check tests/
+      - name: Check Python formatting (all files)
+        run: ruff format --check .
 
-      - name: Check JS formatting
+      - name: Check JS formatting (all files)
         working-directory: front
         run: |
           npm ci
-          npx prettier --check "src/**/*.js"
+          npx prettier --check "**/*.js"
+
+      - name: Check comments (build-necessary + Russian only)
+        run: python3 scripts/check_comments.py libs services tests scripts front
 
   lint-yaml:
     name: "Lint — YAML anchors"
