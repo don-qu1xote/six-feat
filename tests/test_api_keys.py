@@ -17,29 +17,34 @@ Scenarios covered:
 
 from __future__ import annotations
 
+import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional
+from pathlib import Path
 
 import requests
+from conftest import SERVICE_BASE, TEST_APP_SECRET, GeniusMock
 
-from conftest import SERVICE_BASE, GeniusMock
+sys.path.insert(0, str(Path(__file__).parent))
+import session_crypto  # noqa: E402
 
 API_KEYS_URL = f"{SERVICE_BASE}/api/v1/api-keys"
 API_KEYS_REVOKE_URL = f"{SERVICE_BASE}/api/v1/api-keys/revoke"
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
+SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
 
 RATE_LIMIT_STATUS = 429
 BURST_COUNT = 40
 
 
-def _issue_key(client: requests.Session, rate_tier: Optional[str] = None) -> dict:
+def _issue_key(client: requests.Session, rate_tier: str | None = None) -> dict:
     body = {"rate_tier": rate_tier} if rate_tier else {}
     resp = client.post(API_KEYS_URL, json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
 
 
-def _burst_with_key(anon_client: requests.Session, key: str, artist: str) -> List[int]:
+def _burst_with_key(anon_client: requests.Session, key: str, artist: str) -> list[int]:
     with ThreadPoolExecutor(max_workers=BURST_COUNT) as pool:
         futures = [
             pool.submit(
@@ -102,6 +107,41 @@ class TestIssue:
             GRAPH_URL, params={"artist": name}, headers={"X-Api-Key": issued["key"]}
         )
         assert resp.status_code == 200
+
+    def test_yandex_session_with_no_display_name_can_still_issue_with_a_connected_byo_token(self):
+        sess = requests.Session()
+        sess.headers["Accept"] = "application/json"
+        cookie = session_crypto.make_cookie(
+            TEST_APP_SECRET,
+            access_token="yandex-session-token",
+            name="",
+            provider="yandex",
+            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
+        )
+        sess.cookies.update({"six_feat_session": cookie})
+
+        raw_genius_token = f"genius-byo-{uuid.uuid4().hex}"
+        connect_resp = sess.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": raw_genius_token})
+        assert connect_resp.status_code == 200, connect_resp.text
+
+        issue_resp = sess.post(API_KEYS_URL, json={})
+        assert issue_resp.status_code == 201, issue_resp.text
+        assert issue_resp.json()["key"].startswith("sf_live_")
+
+    def test_yandex_session_with_no_display_name_and_no_byo_token_is_422_not_500(self):
+        sess = requests.Session()
+        sess.headers["Accept"] = "application/json"
+        cookie = session_crypto.make_cookie(
+            TEST_APP_SECRET,
+            access_token="yandex-session-token",
+            name="",
+            provider="yandex",
+            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
+        )
+        sess.cookies.update({"six_feat_session": cookie})
+
+        resp = sess.post(API_KEYS_URL, json={})
+        assert resp.status_code == 422, resp.text
 
 
 class TestApiKeyAuthenticatesWithoutCookie:

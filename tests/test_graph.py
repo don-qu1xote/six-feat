@@ -17,14 +17,19 @@ Scenarios covered:
 
 from __future__ import annotations
 
+import sys
 import time
+import uuid
+from pathlib import Path
 
-import pytest
 import requests
+from conftest import SERVICE_BASE, TEST_APP_SECRET, GeniusMock, YandexMock, _build_song_detail
 
-from conftest import SERVICE_BASE, GeniusMock, _build_song_detail
+sys.path.insert(0, str(Path(__file__).parent))
+import session_crypto  # noqa: E402
 
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
+SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
 
 _REQUIRED_FIELDS = {"type", "nodes", "edges"}
 _REQUIRED_NODE_FIELDS = {"id", "name", "weight", "betweenness", "betweenness_normalised", "is_seed"}
@@ -242,6 +247,64 @@ class TestGraphByName:
         assert data["edges"]
         for edge in data["edges"]:
             assert edge["source"] == "genius_credit"
+
+
+class TestGraphDefaultSourceIsYandex:
+    """Публичный /api/v1/graph по умолчанию — Yandex-sourced (как
+    TestYandexDefaultProvider в test_music_source_provider.py, но через
+    CollabService::BuildRadialGraph, а не internal-хендлер)."""
+
+    def test_by_id_default_graph_uses_yandex_source(
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        yandex_mock: YandexMock,
+    ):
+        seed_id = 61001
+        seed_name = "Seed Yandex Default"
+        yandex_seed_id = 71001
+        track_id = 81001
+        co1_genius_id, co2_genius_id = 61002, 61003
+        co1_yandex_id, co2_yandex_id = 71002, 71003
+
+        # Seed резолвится по id через Genius (без songs/song_detail — чтобы
+        # богатый Genius-путь не трогался, когда Яндекс побеждает).
+        genius_mock.artist(seed_id, {"id": seed_id, "name": seed_name})
+
+        yandex_mock.search_artist(seed_name, [{"id": yandex_seed_id, "name": seed_name}])
+        yandex_mock.artist_tracks(yandex_seed_id, [track_id])
+        yandex_mock.track_artists(
+            track_id,
+            [
+                {"id": yandex_seed_id, "name": seed_name},
+                {"id": co1_yandex_id, "name": "Co-Artist One"},
+                {"id": co2_yandex_id, "name": "Co-Artist Two"},
+            ],
+        )
+        # Имена co-артистов резолвятся в Genius-ид через ResolveCandidates.
+        genius_mock.resolve(
+            "Co-Artist One", [{"id": co1_genius_id, "name": "Co-Artist One", "score": 0.95}]
+        )
+        genius_mock.resolve(
+            "Co-Artist Two", [{"id": co2_genius_id, "name": "Co-Artist Two", "score": 0.95}]
+        )
+        # Соседи, которых нет в репозитории, резолвятся по id.
+        genius_mock.artist(co1_genius_id, {"id": co1_genius_id, "name": "Co-Artist One"})
+        genius_mock.artist(co2_genius_id, {"id": co2_genius_id, "name": "Co-Artist Two"})
+
+        resp = client.get(GRAPH_URL, params={"id": str(seed_id)})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["seed_id"] == seed_id
+
+        edges = data["edges"]
+        assert len(edges) == 2
+        for edge in edges:
+            assert edge["from"] == seed_id
+            assert edge["source"] == "yandex_feature"
+            assert edge["dominant_role"] == "featured"
+            assert edge["weight"] == 1
+        assert {edge["to"] for edge in edges} == {co1_genius_id, co2_genius_id}
 
 
 class TestGraphById:
@@ -792,8 +855,53 @@ class TestGraphGoldenNodeEdgeOrder:
         ids = self._setup(genius_mock, unique_artist_id)
         data = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
 
-        assert _REQUIRED_FIELDS <= data.keys()
+        assert data.keys() >= _REQUIRED_FIELDS
         for node in data["nodes"]:
-            assert _REQUIRED_NODE_FIELDS <= node.keys()
+            assert node.keys() >= _REQUIRED_NODE_FIELDS
         for edge in data["edges"]:
-            assert _REQUIRED_EDGE_FIELDS <= edge.keys()
+            assert edge.keys() >= _REQUIRED_EDGE_FIELDS
+
+
+def _yandex_session(*, name: str = "") -> requests.Session:
+    sess = requests.Session()
+    sess.headers["Accept"] = "application/json"
+    cookie = session_crypto.make_cookie(
+        TEST_APP_SECRET,
+        access_token="yandex-session-token-not-valid-for-genius",
+        name=name,
+        provider="yandex",
+        provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
+    )
+    sess.cookies.update({"six_feat_session": cookie})
+    return sess
+
+
+class TestGraphYandexSessionRequiresGeniusToken:
+    """Свой access_token яндексовой сессии — яндексовый, не Genius:
+    без подключённого BYO-токена граф невозможен (честный 422),
+    с BYO — работает как обычно."""
+
+    def test_no_connected_byo_token_is_honest_422_not_a_502(
+        self, service_proc, genius_mock: GeniusMock
+    ):
+        sess = _yandex_session()
+        resp = sess.get(GRAPH_URL, params={"artist": "Anyone"})
+        assert resp.status_code == 422
+        assert resp.json().get("error") == "no_genius_token"
+
+    def test_connected_byo_token_resolves_a_real_graph(
+        self, service_proc, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        sess = _yandex_session()
+
+        raw_genius_token = f"genius-byo-{uuid.uuid4().hex}"
+        connect_resp = sess.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": raw_genius_token})
+        assert connect_resp.status_code == 200, connect_resp.text
+
+        seed_name = f"YandexSessionSeed{unique_artist_id}"
+        genius_mock.resolve(seed_name, [{"id": unique_artist_id, "name": seed_name, "score": 0.99}])
+        genius_mock.songs(unique_artist_id, [])
+
+        resp = sess.get(GRAPH_URL, params={"artist": seed_name})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["seed_id"] == unique_artist_id

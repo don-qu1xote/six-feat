@@ -23,10 +23,15 @@ CollabService::ResolveByName, что и для ручного seed (ADR-0009: р
 
 from __future__ import annotations
 
+import sys
 import uuid
+from pathlib import Path
 
 import requests
-from conftest import SERVICE_BASE, GeniusMock, YandexMock
+from conftest import SERVICE_BASE, TEST_APP_SECRET, GeniusMock, YandexMock
+
+sys.path.insert(0, str(Path(__file__).parent))
+import session_crypto  # noqa: E402
 
 SETTINGS_YANDEX_DEVICE_START_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/start"
 SETTINGS_YANDEX_DEVICE_POLL_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/poll"
@@ -271,3 +276,32 @@ class TestYandexImportGraphMatchesNormalSearch:
         by_name = client.get(GRAPH_URL, params={"artist": name}).json()
         assert by_name["seed_id"] == genius_id
         assert by_name["type"] == "graph"
+
+
+class TestYandexImportRequiresGeniusToken:
+    """[SF-YM-05] A Yandex-authenticated session's own access_token is a
+    Yandex OAuth token, never a Genius one — with no connected Genius BYO
+    token there is genuinely nothing to resolve names against. This must be
+    an honest 422 (same contract graph_handler.cpp/path_handler.cpp/
+    graph_deepen_handler.cpp already give for the same condition), not a
+    silent resolved=false on every single artist in the playlist."""
+
+    def test_yandex_session_without_byo_genius_token_is_422(
+        self, service_proc, yandex_mock: YandexMock, unique_artist_id: int
+    ):
+        sess = requests.Session()
+        sess.headers["Accept"] = "application/json"
+        cookie = session_crypto.make_cookie(
+            TEST_APP_SECRET,
+            access_token="yandex-session-token-not-valid-for-genius",
+            provider="yandex",
+            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
+        )
+        sess.cookies.update({"six_feat_session": cookie})
+
+        _connect_yandex(sess, yandex_mock)
+        yandex_mock.account(str(unique_artist_id))
+        yandex_mock.liked_tracks(str(unique_artist_id), [])
+
+        resp = sess.get(YANDEX_IMPORT_URL, params={"playlist": "likes"})
+        assert resp.status_code == 422

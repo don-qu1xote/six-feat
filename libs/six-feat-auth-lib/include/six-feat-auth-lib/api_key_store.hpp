@@ -12,7 +12,7 @@ namespace six_feat::auth {
 
 struct ApiKeyIdentity {
   std::int64_t id{0};
-  std::string owner;
+  std::int64_t owner_id{0};
   std::string genius_token;
   std::string rate_tier;
 };
@@ -33,14 +33,17 @@ class ApiKeyStore final : public userver::components::ComponentBase {
 
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
-  IssuedApiKey Issue(const std::string& owner,
+  // owner_id — auth::SessionUserId, не имя: тёзки из разных провайдеров
+  // входа не должны делить владение ключами.
+  IssuedApiKey Issue(std::int64_t owner_id,
+                     const std::string& owner_label,
                      const std::string& genius_token,
                      std::int64_t genius_token_expires_at_unix,
                      const std::string& rate_tier) const;
 
   std::optional<ApiKeyIdentity> Resolve(const std::string& raw_key) const;
 
-  bool Revoke(std::int64_t id, const std::string& owner) const;
+  bool Revoke(std::int64_t id, std::int64_t owner_id) const;
 
  private:
   userver::storages::postgres::ClusterPtr cluster_;

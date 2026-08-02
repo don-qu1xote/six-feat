@@ -145,8 +145,14 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     if (!session) {
       return ErrorGraph("not_authenticated");
     }
-    const auto connected = user_provider_tokens_.Get(auth::StableUserId(session->name), "genius");
-    user_token = connected.value_or(session->access_token);
+    const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
+    // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
+    user_token = auth::GeniusTokenForSession(*session, connected);
+    if (user_token.empty()) {
+      // Без BYO-токена строить граф не во что — честный 422 вместо обречённого 502.
+      response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+      return ErrorGraph("no_genius_token");
+    }
   }
 
   const RoleMask mask = ParseRoleMask(request.GetArg("roles"));

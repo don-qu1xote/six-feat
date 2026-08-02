@@ -1,7 +1,3 @@
-#include <six-feat-auth-lib/session_crypto.hpp>
-
-// Шифрование/дешифрование сессионных токенов (AES-256-GCM), кодирование Base64/HEX.
-
 #include <array>
 #include <chrono>
 #include <cstdio>
@@ -10,6 +6,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <six-feat-auth-lib/session_crypto.hpp>
 #include <stdexcept>
 #include <vector>
 
@@ -225,7 +222,9 @@ namespace six_feat::auth {
 std::string Encrypt(std::string_view access_token,
                     std::int64_t expires_at_unix,
                     const std::array<unsigned char, 32>& key,
-                    std::string_view name) {
+                    std::string_view name,
+                    std::string_view provider,
+                    std::string_view provider_user_id) {
   std::string plain = "{\"tok\":\"";
   plain += JsonEscape(access_token);
   plain += "\",\"exp\":";
@@ -233,6 +232,18 @@ std::string Encrypt(std::string_view access_token,
   if (!name.empty()) {
     plain += ",\"name\":\"";
     plain += JsonEscape(name);
+    plain += "\"";
+  }
+  // Поля пишутся только когда есть что писать: genius-сессии без uid
+  // остаются байт-в-байт теми же, что до SF-YM-05.
+  if (!provider.empty()) {
+    plain += ",\"prov\":\"";
+    plain += JsonEscape(provider);
+    plain += "\"";
+  }
+  if (!provider_user_id.empty()) {
+    plain += ",\"uid\":\"";
+    plain += JsonEscape(provider_user_id);
     plain += "\"";
   }
   plain += "}";
@@ -315,6 +326,8 @@ std::optional<SessionData> Decrypt(std::string_view cookie_value,
   data.access_token = JsonGetString(json, "tok");
   data.expires_at_unix = JsonGetInt(json, "exp");
   data.name = JsonGetString(json, "name");
+  data.provider = JsonGetString(json, "prov");
+  data.provider_user_id = JsonGetString(json, "uid");
 
   if (data.access_token.empty()) return std::nullopt;
 

@@ -27,6 +27,7 @@ ApiKeyIssueHandler::ApiKeyIssueHandler(const components::ComponentConfig& config
     : HttpHandlerBase(config, context),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
       api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
+      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()),
       idempotency_store_(context.FindComponent<IdempotencyStore>()) {}
 
 std::string ApiKeyIssueHandler::HandleRequestThrow(const server::http::HttpRequest& request,
@@ -41,12 +42,19 @@ std::string ApiKeyIssueHandler::HandleRequestThrow(const server::http::HttpReque
   if (!session) {
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
-  if (session->name.empty()) {
+
+  // Пустой display_name не причина отказывать: владение по owner_id,
+  // имя — только label в блобе.
+  // Ключ несёт Genius-токен: у яндексовой сессии годится только BYO-токен.
+  const auto owner_id = auth::SessionUserId(*session);
+  const auto connected_genius = user_provider_tokens_.Get(owner_id, "genius");
+  const std::string genius_token = auth::GeniusTokenForSession(*session, connected_genius);
+  if (genius_token.empty()) {
     response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
-    return BuildProblemJson(
-        request,
-        server::http::HttpStatus::kUnprocessableEntity,
-        "session has no Genius display name to own this key with — please log in again");
+    return BuildProblemJson(request,
+                            server::http::HttpStatus::kUnprocessableEntity,
+                            "no Genius token available for this session — connect a Genius "
+                            "token in settings before issuing an API key");
   }
 
   const auto result = RunIdempotent(
@@ -70,8 +78,12 @@ std::string ApiKeyIssueHandler::HandleRequestThrow(const server::http::HttpReque
                                "body, if present, must be JSON with an optional string rate_tier")};
         }
 
+        // Время жизни ключа привязано к сроку СЕССИИ, а не BYO-токена
+        // (прежний tradeoff и для genius-сессий): если BYO истечёт раньше,
+        // запросы с ключом падают с genius-side 401 (token_invalid) до
+        // истечения самого ключа.
         const auto issued = api_key_store_.Issue(
-            session->name, session->access_token, session->expires_at_unix, rate_tier);
+            owner_id, session->name, genius_token, session->expires_at_unix, rate_tier);
 
         formats::json::ValueBuilder b(formats::json::Type::kObject);
         b["id"] = issued.id;
@@ -136,7 +148,7 @@ std::string ApiKeyRevokeHandler::HandleRequestThrow(const server::http::HttpRequ
       "api_keys_revoke",
       kDefaultIdempotencyTtl,
       [&]() -> IdempotentResult {
-        if (!api_key_store_.Revoke(id, session->name)) {
+        if (!api_key_store_.Revoke(id, auth::SessionUserId(*session))) {
           return IdempotentResult{
               server::http::HttpStatus::kNotFound,
               BuildProblemJson(request, server::http::HttpStatus::kNotFound, "not_found")};

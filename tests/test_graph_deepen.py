@@ -4,8 +4,6 @@ import uuid
 
 import pytest
 import requests
-
-import session_crypto
 from conftest import (
     SERVICE_BASE,
     TEST_APP_SECRET,
@@ -13,6 +11,8 @@ from conftest import (
     _build_song_detail,
     _make_session_with_cookie,
 )
+
+import session_crypto
 
 DEEPEN_URL = f"{SERVICE_BASE}/api/v1/graph/deepen"
 SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
@@ -171,3 +171,25 @@ class TestGraphDeepenAvailability:
             assert resp.json()["type"] == "graph_deepen"
         finally:
             deepen_client.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
+
+
+class TestGraphDeepenYandexSessionRequiresGeniusToken:
+    """Яндексовый токен сессии не годится для deepen (Genius-only):
+    без подключённого BYO — честный 422, не 502 «could not reach Genius»."""
+
+    def test_yandex_session_with_no_connected_byo_token_is_honest_422_not_a_502(
+        self, service_proc, genius_mock: GeniusMock
+    ):
+        sess = requests.Session()
+        sess.headers["Accept"] = "application/json"
+        cookie = session_crypto.make_cookie(
+            TEST_APP_SECRET,
+            access_token="yandex-session-token-not-valid-for-genius",
+            provider="yandex",
+            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
+        )
+        sess.cookies.update({"six_feat_session": cookie})
+
+        resp = sess.get(DEEPEN_URL, params={"id": "1"})
+        assert resp.status_code == 422
+        assert resp.json().get("error") == "no_genius_token"

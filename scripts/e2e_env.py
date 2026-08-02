@@ -186,6 +186,12 @@ components_manager:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
 
+    # [SF-ARCH-03] Общий потолок фан-аута в foreground-полосу гейтвея: его
+    # делят сборка графа (genius-music-source-provider) и проверка прямого
+    # ребра (collab-service).
+    fg-fanout-limiter:
+      max-concurrent: 6
+
     # backend: single — e2e не использует shared/Postgres backend,
     # только стандартную production-конфигурацию.
     rate-limit-store:

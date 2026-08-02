@@ -17,7 +17,11 @@ GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
 
 def _stable_user_id(name: str) -> int:
-    """FNV-1a-хеш Genius display name — копия six_feat::auth::StableUserId."""
+    """FNV-1a-хеш display name — копия six_feat::auth::StableUserId.
+
+    Тесты ходят с legacy-куками (без provider_user_id), для которых
+    auth::SessionUserId сохраняет прежний ключ по имени.
+    """
     h = 1469598103934665603
     for byte in name.encode("utf-8"):
         h ^= byte

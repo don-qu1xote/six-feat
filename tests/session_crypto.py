@@ -79,7 +79,14 @@ def _json_escape(s: str) -> str:
     return json.dumps(s)[1:-1]
 
 
-def encrypt(access_token: str, expires_at_unix: int, key: bytes, name: str = "") -> str:
+def encrypt(
+    access_token: str,
+    expires_at_unix: int,
+    key: bytes,
+    name: str = "",
+    provider: str = "",
+    provider_user_id: str = "",
+) -> str:
     """Отражение auth::Encrypt(). Строит ту же ручную JSON-структуру."""
     if len(key) != 32:
         raise ValueError("key must be 32 bytes")
@@ -87,6 +94,11 @@ def encrypt(access_token: str, expires_at_unix: int, key: bytes, name: str = "")
     plain = '{"tok":"' + _json_escape(access_token) + '","exp":' + str(int(expires_at_unix))
     if name:
         plain += ',"name":"' + _json_escape(name) + '"'
+    # Поля пишутся только если есть что писать — зеркалирует C++.
+    if provider:
+        plain += ',"prov":"' + _json_escape(provider) + '"'
+    if provider_user_id:
+        plain += ',"uid":"' + _json_escape(provider_user_id) + '"'
     plain += "}"
 
     nonce = os.urandom(NONCE_LEN)
@@ -102,6 +114,9 @@ class SessionData:
     access_token: str
     expires_at_unix: int
     name: str = ""
+    # Пусто у кук, выписанных до задачи → трактуется как "genius".
+    provider: str = ""
+    provider_user_id: str = ""
 
 
 def decrypt(cookie_value: str, key: bytes) -> Optional[SessionData]:
@@ -134,6 +149,8 @@ def decrypt(cookie_value: str, key: bytes) -> Optional[SessionData]:
     access_token = obj.get("tok", "") if isinstance(obj, dict) else ""
     expires_at = int(obj.get("exp", 0)) if isinstance(obj, dict) else 0
     name = obj.get("name", "") if isinstance(obj, dict) else ""
+    provider = obj.get("prov", "") if isinstance(obj, dict) else ""
+    provider_user_id = obj.get("uid", "") if isinstance(obj, dict) else ""
 
     if not access_token:
         return None
@@ -141,7 +158,13 @@ def decrypt(cookie_value: str, key: bytes) -> Optional[SessionData]:
     if expires_at < int(time.time()):
         return None
 
-    return SessionData(access_token=access_token, expires_at_unix=expires_at, name=name)
+    return SessionData(
+        access_token=access_token,
+        expires_at_unix=expires_at,
+        name=name,
+        provider=provider,
+        provider_user_id=provider_user_id,
+    )
 
 
 def make_cookie(
@@ -149,9 +172,38 @@ def make_cookie(
     access_token: str = "test-genius-token",
     ttl_seconds: int = 3600,
     name: str = "Test User",
+    provider: str = "",
+    provider_user_id: str = "",
 ) -> str:
-    """Высокоуровневое удобство для тестовых фикстур: создать свежую,
-    валидную `six_feat_session` cookie для данного APP_SECRET."""
+    """Создать свежую валидную `six_feat_session` cookie для APP_SECRET.
+
+    Пустые provider/provider_user_id дают ровно ту куку, что выписывалась до
+    задачи, — сервис обязан продолжать принимать её (как genius-сессию)."""
     key = key_from_secret(app_secret)
     exp = int(time.time()) + ttl_seconds
-    return encrypt(access_token, exp, key, name=name)
+    return encrypt(
+        access_token,
+        exp,
+        key,
+        name=name,
+        provider=provider,
+        provider_user_id=provider_user_id,
+    )
+
+
+def stable_user_id(value: str) -> int:
+    """Отражение auth::StableUserId() — FNV-1a 64 с обнулённым знаковым битом."""
+    h = 1469598103934665603
+    for b in value.encode("utf-8"):
+        h ^= b
+        h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return h & 0x7FFFFFFFFFFFFFFF
+
+
+def session_user_id(provider: str, provider_user_id: str, name: str = "") -> int:
+    """Отражение auth::SessionUserId(): ключ из пары (провайдер, неизменяемый
+    id), чтобы пространства провайдеров не пересекались; legacy-сессии без
+    uid падают на хеш имени, сохраняя доступ к выданным токенам."""
+    if not provider_user_id:
+        return stable_user_id(name)
+    return stable_user_id(f"{provider or 'genius'}:{provider_user_id}")

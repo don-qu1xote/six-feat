@@ -78,7 +78,7 @@ std::string SettingsStatusHandler::HandleRequestThrow(const server::http::HttpRe
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
 
-  const auto user_id = auth::StableUserId(session->name);
+  const auto user_id = auth::SessionUserId(*session);
   const bool genius_connected = user_provider_tokens_.Get(user_id, "genius").has_value();
   const bool yandex_connected = user_provider_tokens_.Get(user_id, "yandex").has_value();
 
@@ -130,7 +130,7 @@ std::string SettingsGeniusConnectHandler::HandleRequestThrow(
   }
 
   user_provider_tokens_.Connect(
-      auth::StableUserId(session->name), "genius", token, NowUnix() + kFarFutureSeconds);
+      auth::SessionUserId(*session), "genius", token, NowUnix() + kFarFutureSeconds);
 
   formats::json::ValueBuilder b(formats::json::Type::kObject);
   b["provider"] = std::string{"genius"};
@@ -171,7 +171,7 @@ std::string SettingsDisconnectHandler::HandleRequestThrow(const server::http::Ht
   }
 
   const bool disconnected =
-      user_provider_tokens_.Disconnect(auth::StableUserId(session->name), provider);
+      user_provider_tokens_.Disconnect(auth::SessionUserId(*session), provider);
   if (!disconnected) {
     response.SetStatus(server::http::HttpStatus::kNotFound);
     return BuildProblemJson(request, server::http::HttpStatus::kNotFound, "not_connected");
@@ -279,7 +279,7 @@ std::string SettingsYandexDevicePollHandler::HandleRequestThrow(
           NowUnix() +
           (result.expires_in_seconds > 0 ? result.expires_in_seconds : kFarFutureSeconds);
       user_provider_tokens_.Connect(
-          auth::StableUserId(session->name), "yandex", result.access_token, expires_at);
+          auth::SessionUserId(*session), "yandex", result.access_token, expires_at);
       b["status"] = std::string{"connected"};
       break;
     }
@@ -321,8 +321,7 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
 
-  const auto personal_token =
-      user_provider_tokens_.Get(auth::StableUserId(session->name), "yandex");
+  const auto personal_token = user_provider_tokens_.Get(auth::SessionUserId(*session), "yandex");
   if (!personal_token) {
     response.SetStatus(server::http::HttpStatus::kNotFound);
     return BuildProblemJson(request,
@@ -396,8 +395,7 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
 
-  const auto personal_token =
-      user_provider_tokens_.Get(auth::StableUserId(session->name), "yandex");
+  const auto personal_token = user_provider_tokens_.Get(auth::SessionUserId(*session), "yandex");
   if (!personal_token) {
     response.SetStatus(server::http::HttpStatus::kNotFound);
     return BuildProblemJson(request,
@@ -464,11 +462,19 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
     }
   }
 
-  // [SF-YM-02] Тот же приоритет BYO-токена, что в graph_handler.cpp —
-  // подключённый личный Genius-токен приоритетнее голого session token.
-  const auto connected_genius =
-      user_provider_tokens_.Get(auth::StableUserId(session->name), "genius");
-  const std::string genius_token = connected_genius.value_or(session->access_token);
+  // Тот же приоритет BYO-токена, что в graph_handler.cpp: на session-токен
+  // падает только для genius-сессии; у яндексовой без BYO токена нет вовсе.
+  const auto connected_genius = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
+  const std::string genius_token = auth::GeniusTokenForSession(*session, connected_genius);
+  if (genius_token.empty()) {
+    // Резолвить имена не во что — честный 422 вместо молчаливого resolved=false.
+    response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+    return BuildProblemJson(
+        request,
+        server::http::HttpStatus::kUnprocessableEntity,
+        "no Genius token available for this session — connect a Genius token in settings "
+        "before importing");
+  }
 
   formats::json::ValueBuilder artists_b(formats::json::Type::kArray);
   int resolved_count = 0;

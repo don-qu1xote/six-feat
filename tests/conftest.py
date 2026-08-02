@@ -192,11 +192,9 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         pass
 
-    def do_GET(self) -> None:
+    def _respond(self, params: Dict[str, List[str]]) -> None:
         try:
             parsed = urlparse(self.path)
-            params = parse_qs(parsed.query)
-
             status, body = _mock_state.dispatch(
                 parsed.path, params, self.headers.get("X-Request-Id")
             )
@@ -218,6 +216,17 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(error_body)
             except:
                 pass
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        self._respond(parse_qs(parsed.query))
+
+    def do_POST(self) -> None:
+        # /token и /info Яндекс-флоу живут на том же суррогатном сервере
+        # (см. yandex-oauth-config в конфиге тестов) — принимаем form-тело.
+        length = int(self.headers.get("Content-Length", 0))
+        raw_body = self.rfile.read(length) if length else b""
+        self._respond(parse_qs(raw_body.decode(errors="replace")))
 
 
 def _start_mock_server() -> HTTPServer:
@@ -594,6 +603,14 @@ components_manager:
       session-ttl-days: 90
       cookie-secure: false
 
+    # Оба base-url смотрят в тот же суррогатный сервер, что и Genius:
+    # он диспетчеризует по path (для /info и /token есть do_POST/do_GET).
+    yandex-oauth-config:
+      client-id: test-yandex-client-id
+      redirect-uri: http://127.0.0.1:{auth_port}/auth/yandex/callback
+      oauth-base-url: http://127.0.0.1:{mock_port}
+      login-base-url: http://127.0.0.1:{mock_port}
+
     handler-auth-login:
       path: /auth/login
       method: GET
@@ -601,6 +618,16 @@ components_manager:
 
     handler-auth-callback:
       path: /auth/callback
+      method: GET
+      task_processor: main-task-processor
+
+    handler-auth-yandex-login:
+      path: /auth/yandex/login
+      method: GET
+      task_processor: main-task-processor
+
+    handler-auth-yandex-callback:
+      path: /auth/yandex/callback
       method: GET
       task_processor: main-task-processor
 
@@ -861,6 +888,7 @@ components_manager:
 
 TEST_APP_SECRET = "f" * 64
 TEST_GENIUS_CLIENT_SECRET = "test-genius-client-secret"
+TEST_YANDEX_OAUTH_CLIENT_SECRET = "test-yandex-client-secret"
 
 
 def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
@@ -1128,6 +1156,8 @@ def auth_service_proc(
             **os.environ,
             "APP_SECRET": TEST_APP_SECRET,
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
+            # Без него yandex-oauth-config деградирует и ручки отвечают 503.
+            "YANDEX_OAUTH_CLIENT_SECRET": TEST_YANDEX_OAUTH_CLIENT_SECRET,
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
         },
     )

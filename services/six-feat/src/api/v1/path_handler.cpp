@@ -183,8 +183,15 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
     if (!session) {
       return ErrorJson("not_authenticated", "Login with Genius to search for collaboration paths.");
     }
-    const auto connected = user_provider_tokens_.Get(auth::StableUserId(session->name), "genius");
-    user_token = connected.value_or(session->access_token);
+    const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
+    // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
+    user_token = auth::GeniusTokenForSession(*session, connected);
+    if (user_token.empty()) {
+      // Без BYO-токена искать пути не во что — честный 422 вместо обречённого 502.
+      resp.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+      return ErrorJson("no_genius_token",
+                       "Connect a Genius token in Settings to search for collaboration paths.");
+    }
   }
 
   const std::string& from_param = request.GetArg("from");

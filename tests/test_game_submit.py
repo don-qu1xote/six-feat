@@ -383,10 +383,10 @@ def test_invalid_attempt_counts_toward_prior_attempts_too(direct_challenge_id: i
 
 
 def _profile_row(name: str) -> tuple[int, int]:
-    """(elo, games) straight from game_profiles for this player, keyed by the
-    same FNV-1a hash of the Genius name that game_session.hpp's StableUserId
-    computes — an independent Python reimplementation, same "two sources of
-    truth" posture as _expected_score/_expected_elo above."""
+    """(elo, games) straight from game_profiles, keyed by the FNV-1a hash of
+    the display name that auth::SessionUserId falls back to for legacy cookies
+    (no provider_user_id) — same "two sources of truth" posture as
+    _expected_score/_expected_elo above."""
     h = 1469598103934665603
     for byte in name.encode():
         h ^= byte

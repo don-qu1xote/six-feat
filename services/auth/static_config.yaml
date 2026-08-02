@@ -52,8 +52,26 @@ components_manager:
 
       pkce-enabled: false
 
+    # Параметры сессии (TTL, флаги кук, ключ) берутся из oauth-config —
+    # сессия выписывается одинаково независимо от провайдера входа.
+    yandex-oauth-config:
+      client-id: $yandex_oauth_client_id
+      redirect-uri: $yandex_oauth_redirect_uri
+      oauth-base-url: $yandex_oauth_base_url
+      login-base-url: $yandex_login_base_url
+
     handler-auth-login:
       path: /auth/login
+      method: GET
+      task_processor: *main_tp
+
+    handler-auth-yandex-login:
+      path: /auth/yandex/login
+      method: GET
+      task_processor: *main_tp
+
+    handler-auth-yandex-callback:
+      path: /auth/yandex/callback
       method: GET
       task_processor: *main_tp
 

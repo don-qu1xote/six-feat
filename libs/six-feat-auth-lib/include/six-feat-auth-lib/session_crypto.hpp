@@ -4,18 +4,31 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace six_feat::auth {
+
+inline constexpr std::string_view kProviderGenius = "genius";
+inline constexpr std::string_view kProviderYandex = "yandex";
 
 std::string Encrypt(std::string_view access_token,
                     std::int64_t expires_at_unix,
                     const std::array<unsigned char, 32>& key,
-                    std::string_view name = "");
+                    std::string_view name = "",
+                    std::string_view provider = "",
+                    std::string_view provider_user_id = "");
 
 struct SessionData {
   std::string access_token;
   std::int64_t expires_at_unix{0};
   std::string name;
+  std::string provider;
+  std::string provider_user_id;
+
+  // Пустое значение в куках, выписанных до SF-YM-05, означает genius.
+  std::string_view Provider() const {
+    return provider.empty() ? kProviderGenius : std::string_view{provider};
+  }
 };
 
 std::optional<SessionData> Decrypt(std::string_view cookie_value,

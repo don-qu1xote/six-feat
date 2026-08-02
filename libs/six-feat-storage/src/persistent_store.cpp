@@ -113,6 +113,19 @@ const std::vector<const char*> kMigrationV6 = {
     ))SQL",
 };
 
+// Владение API-ключом переезжает с имени на user_id: имена не уникальны
+// между провайдерами входа, и тёзки могли отзывать чужие ключи. Строки до
+// миграции не бэкфиллятся: у них owner_id=0 — аутентификация работает,
+// но отозвать их владелец не может (Revoke сверяется по owner_id).
+const std::vector<const char*> kMigrationV7 = {
+    "ALTER TABLE api_keys DROP COLUMN IF EXISTS owner",
+    "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS owner_id BIGINT NOT NULL DEFAULT 0",
+    "ALTER TABLE api_keys ALTER COLUMN owner_id DROP DEFAULT",
+    "DROP INDEX IF EXISTS idx_api_keys_owner",
+    "CREATE INDEX IF NOT EXISTS idx_api_keys_owner_id ON api_keys(owner_id)",
+    R"SQL(COMMENT ON COLUMN api_keys.owner_id IS 'auth::SessionUserId of the issuing session (SF-YM-05). Rows from before this migration were not backfilled and read owner_id=0: still valid for auth, but unrevokable via the self-service endpoint.')SQL",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
@@ -120,9 +133,10 @@ const std::vector<Migration> kMigrations = {
     {4, kMigrationV4},
     {5, kMigrationV5},
     {6, kMigrationV6},
+    {7, kMigrationV7},
 };
 
-constexpr int kTargetSchemaVersion = 6;
+constexpr int kTargetSchemaVersion = 7;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,

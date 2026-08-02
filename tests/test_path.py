@@ -17,12 +17,16 @@ Scenarios covered:
 
 from __future__ import annotations
 
-from typing import Dict, List
+import sys
+import uuid
+from pathlib import Path
 
 import pytest
 import requests
+from conftest import SERVICE_BASE, TEST_APP_SECRET, GeniusMock, _build_song_detail
 
-from conftest import SERVICE_BASE, GeniusMock, _build_song_detail
+sys.path.insert(0, str(Path(__file__).parent))
+import session_crypto  # noqa: E402
 
 PATH_URL = f"{SERVICE_BASE}/api/v1/graph/path"
 
@@ -544,3 +548,25 @@ class TestPathETag:
         resp = client.get(PATH_URL, params={"from": "SoloArtist", "to": "SoloArtist"})
         assert resp.status_code == 200
         assert resp.headers.get("ETag")
+
+
+class TestPathYandexSessionRequiresGeniusToken:
+    """Яндексовый токен сессии не годится для path (Genius-only):
+    без подключённого BYO — честный 422, не 502 «could not reach Genius»."""
+
+    def test_no_connected_byo_token_is_honest_422_not_a_502(
+        self, service_proc, genius_mock: GeniusMock
+    ):
+        sess = requests.Session()
+        sess.headers["Accept"] = "application/json"
+        cookie = session_crypto.make_cookie(
+            TEST_APP_SECRET,
+            access_token="yandex-session-token-not-valid-for-genius",
+            provider="yandex",
+            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
+        )
+        sess.cookies.update({"six_feat_session": cookie})
+
+        resp = sess.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
+        assert resp.status_code == 422
+        assert resp.json().get("error") == "no_genius_token"

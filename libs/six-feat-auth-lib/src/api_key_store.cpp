@@ -56,23 +56,25 @@ userver::yaml_config::Schema ApiKeyStore::GetStaticConfigSchema() {
       kApiKeyStoreComponentSchema);
 }
 
-IssuedApiKey ApiKeyStore::Issue(const std::string& owner,
+IssuedApiKey ApiKeyStore::Issue(std::int64_t owner_id,
+                                const std::string& owner_label,
                                 const std::string& genius_token,
                                 std::int64_t genius_token_expires_at_unix,
                                 const std::string& rate_tier) const {
   const std::string raw_key = GenerateRawApiKey();
   const std::string key_hash = HashApiKey(raw_key);
+  // owner_label — только для логов/отладки, владение определяется owner_id.
   const std::string encrypted_token =
-      Encrypt(genius_token, genius_token_expires_at_unix, KeyFromEnv(), owner);
+      Encrypt(genius_token, genius_token_expires_at_unix, KeyFromEnv(), owner_label);
   const std::int64_t created_at = NowUnix();
 
   auto res = cluster_->Execute(ClusterHostType::kMaster,
-                               "INSERT INTO api_keys(key_hash, owner, genius_token, rate_tier, "
+                               "INSERT INTO api_keys(key_hash, owner_id, genius_token, rate_tier, "
                                "created_at) "
                                "VALUES($1, $2, $3, $4, $5) "
                                "RETURNING id",
                                key_hash,
-                               owner,
+                               owner_id,
                                encrypted_token,
                                rate_tier,
                                created_at);
@@ -89,7 +91,7 @@ std::optional<ApiKeyIdentity> ApiKeyStore::Resolve(const std::string& raw_key) c
   const std::string key_hash = HashApiKey(raw_key);
 
   auto res = cluster_->Execute(ClusterHostType::kMaster,
-                               "SELECT id, owner, genius_token, rate_tier, revoked_at "
+                               "SELECT id, owner_id, genius_token, rate_tier, revoked_at "
                                "FROM api_keys WHERE key_hash = $1",
                                key_hash);
   if (res.IsEmpty()) return std::nullopt;
@@ -103,20 +105,20 @@ std::optional<ApiKeyIdentity> ApiKeyStore::Resolve(const std::string& raw_key) c
 
   ApiKeyIdentity identity;
   identity.id = row["id"].As<std::int64_t>();
-  identity.owner = row["owner"].As<std::string>();
+  identity.owner_id = row["owner_id"].As<std::int64_t>();
   identity.genius_token = session->access_token;
   identity.rate_tier = row["rate_tier"].As<std::string>();
   return identity;
 }
 
-bool ApiKeyStore::Revoke(std::int64_t id, const std::string& owner) const {
+bool ApiKeyStore::Revoke(std::int64_t id, std::int64_t owner_id) const {
   auto res = cluster_->Execute(ClusterHostType::kMaster,
                                "UPDATE api_keys SET revoked_at = $1 "
-                               "WHERE id = $2 AND owner = $3 AND revoked_at IS NULL "
+                               "WHERE id = $2 AND owner_id = $3 AND revoked_at IS NULL "
                                "RETURNING id",
                                NowUnix(),
                                id,
-                               owner);
+                               owner_id);
   return !res.IsEmpty();
 }
 

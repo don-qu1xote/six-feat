@@ -322,6 +322,11 @@ services:
 
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
+
+      # Яндекс-вход: пустые client-id/secret отключают его без ошибки.
+      YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
+      YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
+      YANDEX_OAUTH_REDIRECT_URI: ${YANDEX_OAUTH_REDIRECT_URI:-http://localhost:8080/auth/yandex/callback}
       # [SF-CFG-01] Пусто — см. комментарий к six-feat COOKIE_SECURE/
       # LOGGING_LEVEL выше; config/profiles/${ENV_PROFILE}.env теперь владеет.
       COOKIE_SECURE: ${COOKIE_SECURE:-}

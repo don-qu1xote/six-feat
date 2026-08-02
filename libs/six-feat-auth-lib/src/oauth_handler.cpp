@@ -1,4 +1,5 @@
 #include "schemas/handlers/shared/oauth_handler_schema.hpp"
+#include "schemas/handlers/shared/yandex_oauth_handler_schema.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -75,6 +76,46 @@ bool ConstantTimeEquals(std::string_view a, std::string_view b) {
 }
 
 constexpr std::chrono::seconds kOAuthFlowCookieTtl{300};
+
+void IssueSessionCookies(const server::http::HttpRequest& request,
+                         const OAuthConfig& oauth,
+                         std::string_view access_token,
+                         std::string_view display_name,
+                         std::string_view provider,
+                         std::string_view provider_user_id) {
+  auto& response = request.GetHttpResponse();
+
+  using SC = std::chrono::system_clock;
+  const auto now_unix = static_cast<std::int64_t>(
+      std::chrono::duration_cast<std::chrono::seconds>(SC::now().time_since_epoch()).count());
+  const std::int64_t exp = now_unix + static_cast<std::int64_t>(oauth.SessionTtlDays()) * 86400LL;
+
+  const std::string cookie_value =
+      Encrypt(access_token, exp, oauth.SessionKey(), display_name, provider, provider_user_id);
+
+  server::http::Cookie session_cookie{"six_feat_session", cookie_value};
+  session_cookie.SetMaxAge(
+      std::chrono::seconds{static_cast<long>(oauth.SessionTtlDays()) * 86400L});
+  session_cookie.SetHttpOnly();
+  if (oauth.CookieSecure()) session_cookie.SetSecure();
+  session_cookie.SetSameSite("Lax");
+  session_cookie.SetPath("/");
+  response.SetCookie(session_cookie);
+
+  const std::string csrf_token = RandomState();
+  server::http::Cookie csrf_cookie{"six_feat_csrf", csrf_token};
+  csrf_cookie.SetMaxAge(std::chrono::seconds{static_cast<long>(oauth.SessionTtlDays()) * 86400L});
+  if (oauth.CookieSecure()) csrf_cookie.SetSecure();
+  csrf_cookie.SetSameSite("Strict");
+  csrf_cookie.SetPath("/");
+  response.SetCookie(csrf_cookie);
+
+  server::http::Cookie clear_state{"six_feat_oauth_state", ""};
+  clear_state.SetMaxAge(std::chrono::seconds{0});
+  clear_state.SetHttpOnly();
+  clear_state.SetPath("/");
+  response.SetCookie(clear_state);
+}
 
 std::string Base64UrlEncode(const unsigned char* data, std::size_t len) {
   static const char* kB64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -254,42 +295,16 @@ std::string CallbackHandler::HandleRequestThrow(const server::http::HttpRequest&
     return "";
   }
 
-  using SC = std::chrono::system_clock;
-  const auto now_unix = static_cast<std::int64_t>(
-      std::chrono::duration_cast<std::chrono::seconds>(SC::now().time_since_epoch()).count());
-  const std::int64_t exp = now_unix + static_cast<std::int64_t>(oauth_.SessionTtlDays()) * 86400LL;
-
-  std::string cookie_value;
+  // provider_user_id у Genius не запрашивается (числовой id есть в /account,
+  // но переход на него сменил бы identity существующим пользователям);
+  // пустой uid → SessionUserId падает на прежний хеш имени.
   try {
-    cookie_value = Encrypt(access_token, exp, oauth_.SessionKey(), genius_name);
+    IssueSessionCookies(request, oauth_, access_token, genius_name, kProviderGenius, "");
   } catch (const std::exception& ex) {
     LOG_ERROR() << "[OAuth] Encrypt failed: " << ex.what();
     response.SetStatus(HttpStatus::kInternalServerError);
     return "Session encryption error";
   }
-
-  server::http::Cookie session_cookie{"six_feat_session", cookie_value};
-  session_cookie.SetMaxAge(
-      std::chrono::seconds{static_cast<long>(oauth_.SessionTtlDays()) * 86400L});
-  session_cookie.SetHttpOnly();
-  if (oauth_.CookieSecure()) session_cookie.SetSecure();
-  session_cookie.SetSameSite("Lax");
-  session_cookie.SetPath("/");
-  response.SetCookie(session_cookie);
-
-  const std::string csrf_token = RandomState();
-  server::http::Cookie csrf_cookie{"six_feat_csrf", csrf_token};
-  csrf_cookie.SetMaxAge(std::chrono::seconds{static_cast<long>(oauth_.SessionTtlDays()) * 86400L});
-  if (oauth_.CookieSecure()) csrf_cookie.SetSecure();
-  csrf_cookie.SetSameSite("Strict");
-  csrf_cookie.SetPath("/");
-  response.SetCookie(csrf_cookie);
-
-  server::http::Cookie clear_state{"six_feat_oauth_state", ""};
-  clear_state.SetMaxAge(std::chrono::seconds{0});
-  clear_state.SetHttpOnly();
-  clear_state.SetPath("/");
-  response.SetCookie(clear_state);
 
   if (!code_verifier.empty()) {
     server::http::Cookie clear_verifier{"six_feat_pkce_verifier", ""};
@@ -413,7 +428,11 @@ std::string MeHandler::HandleRequestThrow(const server::http::HttpRequest& reque
     if (session) {
       formats::json::ValueBuilder b(formats::json::Type::kObject);
       b["authenticated"] = true;
-      b["name"] = session->name.empty() ? "Genius User" : session->name;
+      const bool is_yandex = session->Provider() == kProviderYandex;
+      // Имя/provider заглушки нужны фронту (какой провайдер подключить в настройках).
+      b["name"] =
+          session->name.empty() ? (is_yandex ? "Yandex User" : "Genius User") : session->name;
+      b["provider"] = std::string{session->Provider()};
       return formats::json::ToString(b.ExtractValue());
     }
   }
@@ -421,6 +440,213 @@ std::string MeHandler::HandleRequestThrow(const server::http::HttpRequest& reque
   formats::json::ValueBuilder b(formats::json::Type::kObject);
   b["authenticated"] = false;
   return formats::json::ToString(b.ExtractValue());
+}
+
+YandexOAuthConfig::YandexOAuthConfig(const components::ComponentConfig& config,
+                                     const components::ComponentContext& context)
+    : ComponentBase(config, context),
+      client_id_(config["client-id"].As<std::string>("")),
+      redirect_uri_(config["redirect-uri"].As<std::string>("")),
+      oauth_base_url_(config["oauth-base-url"].As<std::string>("https://oauth.yandex.ru")),
+      login_base_url_(config["login-base-url"].As<std::string>("https://login.yandex.ru")) {
+  const char* secret_env = std::getenv("YANDEX_OAUTH_CLIENT_SECRET");
+  client_secret_ = (secret_env && *secret_env) ? secret_env : "";
+
+  // Мягкая деградация: без Яндекс-приложения сервис поднимается,
+  // ручки /auth/yandex/* отвечают 503, Genius-вход работает.
+  enabled_ = !client_id_.empty() && !client_secret_.empty() && !redirect_uri_.empty();
+
+  if (!enabled_) {
+    LOG_WARNING() << "[YandexOAuth] disabled — need yandex-oauth-config.client-id, "
+                     "yandex-oauth-config.redirect-uri and YANDEX_OAUTH_CLIENT_SECRET. "
+                     "Genius login stays available.";
+    return;
+  }
+
+  if (redirect_uri_.rfind("http://", 0) != 0 && redirect_uri_.rfind("https://", 0) != 0) {
+    throw std::runtime_error("yandex-oauth-config.redirect-uri ('" + redirect_uri_ +
+                             "') must be an absolute http(s):// URL — "
+                             "set YANDEX_OAUTH_REDIRECT_URI");
+  }
+
+  LOG_INFO() << "[YandexOAuth] enabled, redirect_uri=" << redirect_uri_
+             << " — must exactly match the Redirect URI registered at "
+                "https://oauth.yandex.ru/client/new";
+}
+
+userver::yaml_config::Schema YandexOAuthConfig::GetStaticConfigSchema() {
+  return yaml_config::MergeSchemas<ComponentBase>(kYandexOAuthHandlerSchema);
+}
+
+YandexLoginHandler::YandexLoginHandler(const components::ComponentConfig& config,
+                                       const components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      oauth_(context.FindComponent<OAuthConfig>()),
+      yandex_(context.FindComponent<YandexOAuthConfig>()) {}
+
+std::string YandexLoginHandler::HandleRequestThrow(const server::http::HttpRequest& request,
+                                                   server::request::RequestContext&) const {
+  EnsureRequestId(request);
+  ApplySecurityHeaders(request);
+
+  auto& response = request.GetHttpResponse();
+
+  if (!yandex_.Enabled()) {
+    response.SetStatus(server::http::HttpStatus::kServiceUnavailable);
+    return "Yandex login is not configured on this instance";
+  }
+
+  const std::string state = RandomState();
+
+  server::http::Cookie state_cookie{"six_feat_oauth_state", state};
+  state_cookie.SetMaxAge(kOAuthFlowCookieTtl);
+  state_cookie.SetHttpOnly();
+  if (oauth_.CookieSecure()) state_cookie.SetSecure();
+  state_cookie.SetSameSite("Lax");
+  state_cookie.SetPath("/");
+  response.SetCookie(state_cookie);
+
+  const std::string redirect = yandex_.OAuthBaseUrl() +
+                               "/authorize"
+                               "?response_type=code"
+                               "&client_id=" +
+                               UrlEncode(yandex_.ClientId()) +
+                               "&redirect_uri=" + UrlEncode(yandex_.RedirectUri()) +
+                               "&state=" + state;
+
+  LOG_DEBUG() << "[YandexOAuth] redirecting to: " << redirect;
+
+  response.SetStatus(server::http::HttpStatus::kFound);
+  response.SetHeader(std::string_view("Location"), redirect);
+  return "";
+}
+
+YandexCallbackHandler::YandexCallbackHandler(const components::ComponentConfig& config,
+                                             const components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      oauth_(context.FindComponent<OAuthConfig>()),
+      yandex_(context.FindComponent<YandexOAuthConfig>()),
+      http_client_(context.FindComponent<components::HttpClient>().GetHttpClient()) {}
+
+std::string YandexCallbackHandler::HandleRequestThrow(const server::http::HttpRequest& request,
+                                                      server::request::RequestContext&) const {
+  EnsureRequestId(request);
+  ApplySecurityHeaders(request);
+
+  using HttpStatus = server::http::HttpStatus;
+  auto& response = request.GetHttpResponse();
+
+  if (!yandex_.Enabled()) {
+    response.SetStatus(HttpStatus::kServiceUnavailable);
+    return "Yandex login is not configured on this instance";
+  }
+
+  // CSRF: тот же state-в-куке, что у Genius-флоу.
+  const std::string& state_param = request.GetArg("state");
+  const std::string state_cookie = request.GetCookie("six_feat_oauth_state");
+  if (state_param.empty() || state_cookie.empty() ||
+      !ConstantTimeEquals(state_param, state_cookie)) {
+    response.SetStatus(HttpStatus::kBadRequest);
+    return "Invalid state parameter (CSRF check failed)";
+  }
+
+  const std::string& error = request.GetArg("error");
+  if (!error.empty()) {
+    response.SetStatus(HttpStatus::kFound);
+    response.SetHeader(std::string_view("Location"), "/?auth=denied");
+    return "";
+  }
+
+  const std::string& code = request.GetArg("code");
+  if (code.empty()) {
+    response.SetStatus(HttpStatus::kBadRequest);
+    return "Missing code parameter";
+  }
+
+  std::string access_token;
+  YandexIdentity identity;
+  try {
+    access_token = ExchangeCode(code);
+    identity = FetchIdentity(access_token);
+  } catch (const std::exception& ex) {
+    LOG_ERROR() << "[YandexOAuth] login failed: " << ex.what();
+    response.SetStatus(HttpStatus::kFound);
+    response.SetHeader(std::string_view("Location"), "/?auth=error");
+    return "";
+  }
+
+  // Без неизменяемого id сессию не выписываем: иначе identity легла бы
+  // на изменяемое отображаемое имя — см. SessionUserId.
+  if (identity.id.empty()) {
+    LOG_ERROR() << "[YandexOAuth] login.yandex.ru/info returned no immutable `id` — "
+                   "refusing to create a session keyed on a mutable display name";
+    response.SetStatus(HttpStatus::kFound);
+    response.SetHeader(std::string_view("Location"), "/?auth=error");
+    return "";
+  }
+
+  try {
+    IssueSessionCookies(
+        request, oauth_, access_token, identity.display_name, kProviderYandex, identity.id);
+  } catch (const std::exception& ex) {
+    LOG_ERROR() << "[YandexOAuth] Encrypt failed: " << ex.what();
+    response.SetStatus(HttpStatus::kInternalServerError);
+    return "Session encryption error";
+  }
+
+  response.SetStatus(HttpStatus::kFound);
+  response.SetHeader(std::string_view("Location"), "/");
+  return "";
+}
+
+std::string YandexCallbackHandler::ExchangeCode(const std::string& code) const {
+  const std::string body = "grant_type=authorization_code&code=" + UrlEncode(code) +
+                           "&client_id=" + UrlEncode(yandex_.ClientId()) +
+                           "&client_secret=" + UrlEncode(yandex_.ClientSecret()) +
+                           "&redirect_uri=" + UrlEncode(yandex_.RedirectUri());
+
+  const auto resp = http_client_.CreateRequest()
+                        .post(yandex_.OAuthBaseUrl() + "/token")
+                        .data(body)
+                        .headers({{"Content-Type", "application/x-www-form-urlencoded"}})
+                        .timeout(std::chrono::seconds{10})
+                        .retry(0)
+                        .perform();
+
+  if (resp->status_code() != 200) {
+    throw std::runtime_error("Yandex token endpoint returned HTTP " +
+                             std::to_string(resp->status_code()));
+  }
+
+  const auto json = formats::json::FromString(resp->body());
+  auto token = json["access_token"].As<std::string>("");
+  if (token.empty()) throw std::runtime_error("access_token missing in Yandex response");
+  return token;
+}
+
+YandexCallbackHandler::YandexIdentity YandexCallbackHandler::FetchIdentity(
+    const std::string& access_token) const {
+  // Яндекс ждёт схему "OAuth", не "Bearer".
+  const auto resp = http_client_.CreateRequest()
+                        .get(yandex_.LoginBaseUrl() + "/info?format=json")
+                        .headers({{"Authorization", "OAuth " + access_token}})
+                        .timeout(std::chrono::seconds{5})
+                        .retry(0)
+                        .perform();
+
+  if (resp->status_code() != 200) {
+    throw std::runtime_error("login.yandex.ru/info returned HTTP " +
+                             std::to_string(resp->status_code()));
+  }
+
+  const auto json = formats::json::FromString(resp->body());
+
+  YandexIdentity out;
+  out.id = json["id"].As<std::string>("");
+  // Только для показа; в identity не участвует (см. SessionUserId).
+  out.display_name = json["display_name"].As<std::string>("");
+  if (out.display_name.empty()) out.display_name = json["login"].As<std::string>("");
+  return out;
 }
 
 }  // namespace six_feat::auth

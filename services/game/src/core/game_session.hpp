@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <six-feat-auth-lib/session_crypto.hpp>
+#include <six-feat-auth-lib/user_identity.hpp>
 #include <string>
 #include <userver/server/http/http_request.hpp>
 
@@ -14,15 +15,6 @@ struct Player {
   std::string name;
 };
 
-inline std::int64_t StableUserId(std::string_view name) {
-  std::uint64_t h = 1469598103934665603ULL;
-  for (unsigned char c : name) {
-    h ^= c;
-    h *= 1099511628211ULL;
-  }
-  return static_cast<std::int64_t>(h & 0x7FFFFFFFFFFFFFFFULL);
-}
-
 inline std::optional<Player> ResolvePlayer(const userver::server::http::HttpRequest& request,
                                            const std::array<unsigned char, 32>& session_key) {
   const std::string cookie = request.GetCookie("six_feat_session");
@@ -31,7 +23,7 @@ inline std::optional<Player> ResolvePlayer(const userver::server::http::HttpRequ
   const auto session = auth::Decrypt(cookie, session_key);
   if (!session) return std::nullopt;
 
-  return Player{StableUserId(session->name), session->name};
+  return Player{auth::SessionUserId(*session), session->name};
 }
 
 }  // namespace six_feat::game

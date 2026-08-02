@@ -2,6 +2,8 @@
 
 #include <six-feat-auth-lib/api_key_store.hpp>
 #include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-auth-lib/user_identity.hpp>
+#include <six-feat-auth-lib/user_provider_token_store.hpp>
 #include <six-feat-core/idempotency.hpp>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
@@ -26,6 +28,7 @@ class ApiKeyIssueHandler final : public userver::server::handlers::HttpHandlerBa
  private:
   auth::OAuthConfig& oauth_;
   auth::ApiKeyStore& api_key_store_;
+  auth::UserProviderTokenStore& user_provider_tokens_;
   IdempotencyStore& idempotency_store_;
 };
 
