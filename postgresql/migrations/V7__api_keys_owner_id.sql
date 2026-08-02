@@ -7,4 +7,4 @@ ALTER TABLE api_keys ALTER COLUMN owner_id DROP DEFAULT;
 DROP INDEX IF EXISTS idx_api_keys_owner;
 CREATE INDEX IF NOT EXISTS idx_api_keys_owner_id ON api_keys(owner_id);
 
-COMMENT ON COLUMN api_keys.owner_id IS 'auth::SessionUserId of the issuing session.';
+COMMENT ON COLUMN api_keys.owner_id IS 'auth::SessionUserId of the issuing session (SF-YM-05). Rows from before this migration were not backfilled and read owner_id=0: still valid for auth, but unrevokable via the self-service endpoint.';

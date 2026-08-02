@@ -66,7 +66,7 @@ describe("renderBoard drives the real replaceGraph pipeline", () => {
     renderBoard(GAME, {}, null, { Drake: 100, Adele: 900 }, {});
     expect(replaceGraph).toHaveBeenCalledTimes(1);
     const g = replaceGraph.mock.calls[0][0];
-    expect(g.seed_id).toBe(100);
+    expect(g.seedId).toBe(100);
     expect(g.nodes.some((n) => n.id === 100 && n.name === "Drake")).toBe(true);
     expect(g.nodes.some((n) => n.id === 900 && n.name === "Adele")).toBe(true);
   });

@@ -33,25 +33,25 @@ updates:
     directory: "/services/six-feat"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
 
   - package-ecosystem: "docker"
     directory: "/services/auth"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
 
   - package-ecosystem: "docker"
     directory: "/services/six-feat-enrichment"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
 
   - package-ecosystem: "docker"
     directory: "/services/genius-gateway"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
 
   - package-ecosystem: "pip"
     directory: "/config"

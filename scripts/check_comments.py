@@ -421,8 +421,14 @@ def main() -> int:
                         files.append(os.path.join(root, fn))
 
     all_violations: list[str] = []
+    analyzed = 0
     for f in sorted(files):
+        analyzed += 1
+        if analyzed % 50 == 1 or analyzed == len(files):
+            print(f"check_comments: analyzing {f} ({analyzed}/{len(files)})", file=sys.stderr)
         all_violations.extend(check_file(f))
+
+    print(f"check_comments: analyzed {analyzed} files", file=sys.stderr)
 
     if all_violations:
         print(f"Found {len(all_violations)} comment violations (non-build, non-Russian):")

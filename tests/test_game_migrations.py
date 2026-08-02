@@ -63,11 +63,11 @@ def _extract_migrations_list(source: str) -> List[Tuple[int, str]]:
     """Parse `const std::vector<Migration> game_migrations = { {1, kGameMigrationV1}, ... };`
     into an ordered [(version, cpp_array_var_name), ...] list."""
     block_match = re.search(
-        r"const std::vector<Migration>\s+game_migrations\s*=\s*\{(.*?)\};",
+        r"const std::vector<Migration>\s+kGameMigrations\s*=\s*\{(.*?)\};",
         source,
         re.DOTALL,
     )
-    assert block_match, "could not find game_migrations array in game_store.cpp"
+    assert block_match, "could not find kGameMigrations array in game_store.cpp"
     block = block_match.group(1)
 
     pairs = re.findall(r"\{\s*(\d+)\s*,\s*(kGameMigrationV\d+)\s*\}", block)

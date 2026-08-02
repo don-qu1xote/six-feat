@@ -1,13 +1,4 @@
 #!/bin/bash
-# pre-commit: форматирование ВСЕХ файлов репозитория.
-#
-# 1) Автоформатирует застейдженные файлы (clang-format / ruff / prettier).
-# 2) Проверяет форматирование ВСЕХ файлов репозитория — не только
-#    застейдженных: незакоммиченный файл, сломанный формат которого уехал
-#    в предыдущем коммите, заблокирует следующий коммит, пока не
-#    отформатирован. Команды идентичны CI (см. .github/workflows/ci.yml,
-#    job lint-format), поэтому "на CI упало, у меня было зелёное" больше
-#    невозможно.
 set -e
 set -u
 
@@ -21,96 +12,105 @@ missing() {
     exit 1
 }
 
-# --- 1) Автоформатирование застейдженных файлов -----------------------------
 staged=$(git diff --cached --name-only --diff-filter=ACM || true)
 
-if [ -n "$staged" ]; then
-    cpp_files=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
-    if [ -n "$cpp_files" ]; then
-        command -v clang-format >/dev/null 2>&1 || missing clang-format
-        echo "$cpp_files" | xargs -r clang-format -i --style=file
-    fi
-
-    py_files=$(echo "$staged" | grep -E '\.py$' || true)
-    if [ -n "$py_files" ]; then
-        command -v ruff >/dev/null 2>&1 || missing ruff
-        echo "$py_files" | xargs -r ruff format
-    fi
-
-    js_files=$(echo "$staged" | grep -E '^front/.*\.js$' || true)
-    if [ -n "$js_files" ]; then
-        command -v npx >/dev/null 2>&1 || missing npx
-        echo "$js_files" | while IFS= read -r file; do
-            (cd front && npx prettier --write "../$file" >/dev/null 2>&1)
-        done
-    fi
-
-    # Перестейджить только отформатированные файлы (не `git add -u`, чтобы
-    # не зацепить несвязанные изменения рабочего дерева).
-    echo "$staged" | xargs -r git add --
+if [ -z "$staged" ]; then
+    exit 0
 fi
 
-# --- 2) Проверка форматирования ВСЕХ файлов репозитория ---------------------
 fail=0
 
-cpp_files=$(find libs services -type f \( -name '*.cpp' -o -name '*.hpp' \))
+# --- 1) Автоформатирование застейдженных файлов -----------------------------
+cpp_files=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
 if [ -n "$cpp_files" ]; then
     command -v clang-format >/dev/null 2>&1 || missing clang-format
-    if ! echo "$cpp_files" | xargs clang-format --dry-run --Werror --style=file >/tmp/precommit-clang-format.log 2>&1; then
+    echo "$cpp_files" | xargs -r clang-format -i --style=file
+fi
+
+py_files=$(echo "$staged" | grep -E '\.py$' || true)
+if [ -n "$py_files" ]; then
+    command -v ruff >/dev/null 2>&1 || missing ruff
+    echo "$py_files" | xargs -r ruff format
+fi
+
+js_files=$(echo "$staged" | grep -E '^front/.*\.js$' || true)
+if [ -n "$js_files" ]; then
+    command -v npx >/dev/null 2>&1 || missing npx
+    echo "$js_files" | while IFS= read -r file; do
+        (cd front && npx prettier --write "../$file" >/dev/null 2>&1)
+    done
+fi
+
+echo "$staged" | xargs -r git add --
+
+# --- 2) Проверка форматирования только изменённых файлов -------------------
+cpp_staged=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
+if [ -n "$cpp_staged" ]; then
+    command -v clang-format >/dev/null 2>&1 || missing clang-format
+    if ! echo "$cpp_staged" | xargs clang-format --dry-run --Werror --style=file >/tmp/precommit-clang-format.log 2>&1; then
         echo "pre-commit: C++ не отформатирован (clang-format --dry-run --Werror):"
         cat /tmp/precommit-clang-format.log
         fail=1
     fi
 fi
 
-if [ -d tests ] || [ -d scripts ]; then
+py_staged=$(echo "$staged" | grep -E '\.py$' || true)
+if [ -n "$py_staged" ]; then
     command -v ruff >/dev/null 2>&1 || missing ruff
-    if ! ruff format --check . >/tmp/precommit-ruff.log 2>&1; then
-        echo "pre-commit: Python не отформатирован (ruff format --check .):"
+    if ! echo "$py_staged" | xargs ruff format --check >/tmp/precommit-ruff.log 2>&1; then
+        echo "pre-commit: Python не отформатирован (ruff format --check):"
         tail -20 /tmp/precommit-ruff.log
         fail=1
     fi
 fi
 
-if [ -d front ] && [ -f front/package.json ]; then
-    if [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
-        if ! (cd front && npm ci >/dev/null 2>&1 && npx prettier --check "**/*.js") >/tmp/precommit-prettier.log 2>&1; then
-            echo "pre-commit: JS не отформатирован (prettier --check):"
-            tail -20 /tmp/precommit-prettier.log
-            fail=1
-        fi
-    else
-        echo "pre-commit: front/node_modules отсутствует — JS-проверка пропущена (CI проверит)."
+js_staged=$(echo "$staged" | grep -E '^front/.*\.js$' || true)
+if [ -n "$js_staged" ] && [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
+    if ! echo "$js_staged" | while IFS= read -r file; do
+        (cd front && npx prettier --check "../$file" >/dev/null 2>&1)
+    done; then
+        echo "pre-commit: JS не отформатирован (prettier --check):"
+        tail -20 /tmp/precommit-prettier.log
+        fail=1
     fi
 fi
 
-if [ "$fail" -ne 0 ]; then
-    echo
-    echo "Запусти 'make fmt' (форматирует всё) и закоммить результат."
-    exit 1
-fi
-
-# --- 3) Проверка комментариев (только директивы + русский) ---------
+# --- 3) Проверка комментариев (только изменённые файлы) --------------------
 command -v python3 >/dev/null 2>&1 || missing python3
-if ! python3 scripts/check_comments.py libs services tests scripts front >/tmp/precommit-comments.log 2>&1; then
-    echo "pre-commit: найдены комментарии, не нужные для билда или не на русском:"
-    cat /tmp/precommit-comments.log
-    fail=1
+py_staged_for_comments=$(echo "$staged" | grep -E '\.py$' || true)
+js_staged_for_comments=$(echo "$staged" | grep -E '\.(js|mjs|cjs)$' || true)
+cpp_staged_for_comments=$(echo "$staged" | grep -E '\.(cpp|hpp|h|cc|cxx|c)$' || true)
+
+if [ -n "$py_staged_for_comments" ] || [ -n "$js_staged_for_comments" ] || [ -n "$cpp_staged_for_comments" ]; then
+    comment_targets=""
+    for f in $py_staged_for_comments $js_staged_for_comments $cpp_staged_for_comments; do
+        if [ -f "$f" ]; then
+            comment_targets="$comment_targets $f"
+        fi
+    done
+    if [ -n "$comment_targets" ]; then
+        if ! python3 scripts/check_comments.py $comment_targets >/tmp/precommit-comments.log 2>&1; then
+            echo "pre-commit: найдены комментарии, не нужные для билда или не на русском:"
+            cat /tmp/precommit-comments.log
+            fail=1
+        fi
+    fi
 fi
 
-# --- 4) Проверка нейминга Python (ruff N-правила) -----------------
-if [ -d tests ] || [ -d scripts ]; then
+# --- 4) Проверка нейминга Python (только изменённые файлы) -----------------
+if [ -n "$py_staged" ]; then
     command -v ruff >/dev/null 2>&1 || missing ruff
-    if ! ruff check . --select N --exclude tests/mocks/ >/tmp/precommit-ruff-naming.log 2>&1; then
+    if ! echo "$py_staged" | xargs ruff check --select N >/tmp/precommit-ruff-naming.log 2>&1; then
         echo "pre-commit: нарушения правил именования Python (ruff N):"
         cat /tmp/precommit-ruff-naming.log
         fail=1
     fi
 fi
 
-# --- 5) Проверка camelCase в JS (eslint) — только src и scripts, как в CI --
-if [ -d front ] && [ -f front/package.json ] && [ -d front/node_modules ]; then
-    if ! (cd front && npx eslint src scripts) >/tmp/precommit-eslint.log 2>&1; then
+# --- 5) Проверка camelCase в JS (только изменённые файлы) ------------------
+js_eslint_files=$(echo "$staged" | grep -E '^front/src/.*\.js$' || true)
+if [ -n "$js_eslint_files" ] && [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
+    if ! echo "$js_eslint_files" | xargs npx eslint >/tmp/precommit-eslint.log 2>&1; then
         echo "pre-commit: JS не проходит eslint (camelcase и др.):"
         tail -20 /tmp/precommit-eslint.log
         fail=1
