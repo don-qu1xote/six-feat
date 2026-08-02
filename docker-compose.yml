@@ -245,11 +245,18 @@ services:
       ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
+      # [SF-ARCH-03] music-source-provider-chain здесь зеркалит состав
+      # провайдеров six-feat (см. static_config.yaml) — yandex-gateway-client
+      # нужен ему так же, как genius-gateway-client выше.
+      YANDEX_GATEWAY_BASE_URL: ${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}}
     depends_on:
       postgres:
         condition: service_healthy
 
       six-feat-genius-gateway:
+        condition: service_started
+
+      six-feat-yandex-gateway:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_ENRICHMENT_PORT:-8081}/healthz"]

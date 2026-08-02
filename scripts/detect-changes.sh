@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # detect-changes.sh — определяет, какие сервисы/тесты затронуты изменениями.
 #
-# Использование: source этого файла, затем проверка переменных:
+# Использование: локально — source этого файла, затем проверка переменных:
 #   source scripts/detect-changes.sh
 #   echo "$SERVICES"      # список через пробел
 #   echo "$TESTS"         # список через пробел
@@ -9,14 +9,19 @@
 #   echo "$FRONTEND"      # "true" или "false"
 #   echo "$DOCKER"        # "true" или "false"
 #
-# Коды возврата не используются — предназначен для source, не для exec.
+# CI вызывает файл иначе — `bash scripts/detect-changes.sh HEAD~1` (exec, не
+# source) — и читает те же значения через $GITHUB_OUTPUT. Скрипт ни разу не
+# использует return/exit для досрочного выхода (см. workflow_dispatch ниже —
+# это if/else, а не ранний return), поэтому одинаково работает что
+# исполненным, что source'нутым.
+#
+# [SF-CI-08] workflow_dispatch (кнопка "Run workflow" в интерфейсе Actions)
+# не даёт осмысленного HEAD~1 для diff'а — в этом случае считается
+# затронутым абсолютно всё, без обращения к git diff.
 
 set -euo pipefail
 
 BASE_REF="${1:-HEAD~1}"
-
-# Список изменённых файлов (пустой на первом коммите)
-CHANGED_FILES=$(git diff --name-only "$BASE_REF" 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || echo "")
 
 # --- Инициализация выходных переменных ---
 SERVICES=""
@@ -24,6 +29,21 @@ TESTS=""
 LINT=""
 FRONTEND="false"
 DOCKER="false"
+
+# При workflow_dispatch нет осмысленного HEAD~1 — считаем затронутым всё и
+# пропускаем детект по diff'у целиком (ветки ниже трогают перечисленные
+# переменные, не переопределяют их с нуля).
+if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
+  echo "=== workflow_dispatch: treating everything as affected ==="
+  SERVICES="six-feat enrichment auth game genius-gateway yandex-gateway"
+  TESTS="unit integration six-feat auth genius-gateway yandex-gateway enrichment bg-resilience health"
+  LINT="clang-tidy eslint format yaml promtool"
+  FRONTEND="true"
+  DOCKER="true"
+else
+
+# Список изменённых файлов (пустой на первом коммите)
+CHANGED_FILES=$(git diff --name-only "$BASE_REF" 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || echo "")
 
 # --- Определение затронутых сервисов ---
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
@@ -147,6 +167,8 @@ if echo "$CHANGED_FILES" | grep -q "^libs/"; then
   LINT="clang-tidy eslint format yaml promtool"
   FRONTEND="true"
 fi
+
+fi  # ${GITHUB_EVENT_NAME:-} = workflow_dispatch
 
 # --- Экспорт в GitHub Actions outputs ---
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
