@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
 
 env:
   USERVER_IMAGE_TAG: v3.0
