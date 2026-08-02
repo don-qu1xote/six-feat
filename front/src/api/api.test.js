@@ -82,7 +82,7 @@ describe("_doSearch — successful search", () => {
   it("updates State and calls replaceGraph on a normal (non-expansion) search", async () => {
     const graph = {
       seed: "Radiohead",
-      seed_id: 1,
+      seedId: 1,
       nodes: [
         { id: 1, name: "Radiohead" },
         { id: 2, name: "Thom Yorke" },
@@ -110,7 +110,7 @@ describe("_doSearch — successful search", () => {
 
   it("calls mergeGraph instead of replaceGraph for expansion searches", async () => {
     const graph = {
-      seed_id: 5,
+      seedId: 5,
       nodes: [{ id: 5, name: "Someone" }],
       edges: [],
     };
@@ -123,7 +123,7 @@ describe("_doSearch — successful search", () => {
   });
 
   it("serves from cache without calling fetch when a fresh cache entry exists", async () => {
-    const cachedGraph = { seed_id: 1, nodes: [{ id: 1, name: "Cached Artist" }], edges: [] };
+    const cachedGraph = { seedId: 1, nodes: [{ id: 1, name: "Cached Artist" }], edges: [] };
     State.graphNodes = [{ id: 1, name: "Cached Artist" }];
     State._graphCache.set(1, { graph: cachedGraph, timestamp: Date.now() });
 
@@ -136,8 +136,8 @@ describe("_doSearch — successful search", () => {
   });
 
   it("bypasses a fresh cache entry when forceImmediate is true", async () => {
-    const cachedGraph = { seed_id: 1, nodes: [{ id: 1, name: "Cached Artist" }], edges: [] };
-    const freshGraph = { seed_id: 1, nodes: [{ id: 1, name: "Cached Artist" }], edges: [] };
+    const cachedGraph = { seedId: 1, nodes: [{ id: 1, name: "Cached Artist" }], edges: [] };
+    const freshGraph = { seedId: 1, nodes: [{ id: 1, name: "Cached Artist" }], edges: [] };
     State.graphNodes = [{ id: 1, name: "Cached Artist" }];
     State._graphCache.set(1, { graph: cachedGraph, timestamp: Date.now() });
 
@@ -154,7 +154,7 @@ describe("pollEnrichment — SSE events drive updateScanStatus", () => {
   it("shows an optimistic partial/scanning status as soon as the SSE stream opens", async () => {
     const graph = {
       seed: "Radiohead",
-      seed_id: 1,
+      seedId: 1,
       nodes: [{ id: 1, name: "Radiohead" }],
       edges: [],
     };
@@ -170,7 +170,7 @@ describe("pollEnrichment — SSE events drive updateScanStatus", () => {
   it("reflects each mock status event, partial → background scan → full", async () => {
     const graph = {
       seed: "Radiohead",
-      seed_id: 1,
+      seedId: 1,
       nodes: [{ id: 1, name: "Radiohead" }],
       edges: [],
     };
@@ -211,7 +211,7 @@ describe("_doSearch — concurrent requests cancel the previous one", () => {
         });
       }
       return Promise.resolve(
-        jsonResponse({ seed_id: 2, nodes: [{ id: 2, name: "Second" }], edges: [] }),
+        jsonResponse({ seedId: 2, nodes: [{ id: 2, name: "Second" }], edges: [] }),
       );
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -227,7 +227,7 @@ describe("_doSearch — concurrent requests cancel the previous one", () => {
     expect(capturedFirstSignal.aborted).toBe(true);
     expect(showToast).not.toHaveBeenCalled();
     expect(replaceGraph).toHaveBeenCalledTimes(1);
-    expect(replaceGraph).toHaveBeenCalledWith(expect.objectContaining({ seed_id: 2 }));
+    expect(replaceGraph).toHaveBeenCalledWith(expect.objectContaining({ seedId: 2 }));
   });
 
   it("does not show a toast when a request is aborted", async () => {
@@ -325,8 +325,8 @@ describe("_doSearch — ambiguous results", () => {
 
 describe("_doSearch — pendingExpand queue", () => {
   it("automatically re-runs a queued pendingExpand once the current request finishes", async () => {
-    const firstGraph = { seed_id: 1, nodes: [{ id: 1, name: "First" }], edges: [] };
-    const secondGraph = { seed_id: 2, nodes: [{ id: 2, name: "Queued" }], edges: [] };
+    const firstGraph = { seedId: 1, nodes: [{ id: 1, name: "First" }], edges: [] };
+    const secondGraph = { seedId: 2, nodes: [{ id: 2, name: "Queued" }], edges: [] };
 
     const fetchMock = vi
       .fn()
@@ -346,7 +346,7 @@ describe("_doSearch — pendingExpand queue", () => {
 
 describe("_doSearch — transient failures show a Retry toast", () => {
   it("offers Retry (not a plain toast) on a 502, and retry re-issues the request", async () => {
-    const okGraph = { seed_id: 1, nodes: [{ id: 1, name: "Radiohead" }], edges: [] };
+    const okGraph = { seedId: 1, nodes: [{ id: 1, name: "Radiohead" }], edges: [] };
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({}, { status: 502 }))
@@ -423,7 +423,7 @@ describe("[SF-YM-03] deepenArtistConnections", () => {
   it("fetches /api/v1/graph/deepen?id=<artistId> and merges the result", async () => {
     const deepen = {
       type: "graph_deepen",
-      seed_id: 1,
+      seedId: 1,
       nodes: [{ id: 2, name: "Producer Pete" }],
       edges: [{ from: 1, to: 2, dominant_role: "producer" }],
     };
@@ -441,7 +441,7 @@ describe("[SF-YM-03] deepenArtistConnections", () => {
   });
 
   it("shows a distinct toast when nothing new was found", async () => {
-    const deepen = { type: "graph_deepen", seed_id: 1, nodes: [], edges: [] };
+    const deepen = { type: "graph_deepen", seedId: 1, nodes: [], edges: [] };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(deepen)));
     mergeDeepenResult.mockReturnValue({ addedNodes: 0, addedEdges: 0, mergedEdges: 0 });
 
@@ -453,7 +453,7 @@ describe("[SF-YM-03] deepenArtistConnections", () => {
   it("mentions enriched edges when an existing pair got merged, not re-added", async () => {
     const deepen = {
       type: "graph_deepen",
-      seed_id: 1,
+      seedId: 1,
       nodes: [],
       edges: [{ from: 1, to: 2, dominant_role: "producer" }],
     };
