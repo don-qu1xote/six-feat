@@ -19,7 +19,7 @@
     "jsdom": "^29.1.1",
     "eslint": "^10.8.0",
     "@eslint/js": "^10.0.1",
-    "globals": "^17.7.0",
+    "globals": "^17.8.0",
     "@playwright/test": "^1.62.0"
   }
 }
