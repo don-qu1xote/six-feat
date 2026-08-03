@@ -58,6 +58,8 @@ struct EnrichmentJob {
   std::string image;
   std::string url;
   std::string user_token;
+  // [SF-YM-07] "yandex"|"genius"|"" (empty = сервисный дефолт цепочки).
+  std::string preferred_provider;
 };
 
 }  // namespace six_feat

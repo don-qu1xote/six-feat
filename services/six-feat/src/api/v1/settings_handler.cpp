@@ -1,6 +1,7 @@
 #include "settings_handler.hpp"
 
 #include "schemas/handlers/six-feat/settings_disconnect_handler_schema.hpp"
+#include "schemas/handlers/six-feat/settings_enrichment_provider_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_genius_connect_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_status_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_yandex_device_poll_handler_schema.hpp"
@@ -89,6 +90,11 @@ std::string SettingsStatusHandler::HandleRequestThrow(const server::http::HttpRe
   formats::json::ValueBuilder yandex(formats::json::Type::kObject);
   yandex["connected"] = yandex_connected;
   b["yandex"] = std::move(yandex);
+  // [SF-YM-07] Не про connection status — какой провайдер пробовать
+  // первым для ФОНОВОГО обогащения этого пользователя; читает фронт для
+  // рендера тумблера при загрузке страницы.
+  b["preferred_enrichment_provider"] =
+      user_provider_tokens_.GetPreferredEnrichmentProvider(user_id);
   return formats::json::ToString(b.ExtractValue());
 }
 
@@ -186,6 +192,56 @@ std::string SettingsDisconnectHandler::HandleRequestThrow(const server::http::Ht
 yaml_config::Schema SettingsDisconnectHandler::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
       kSettingsDisconnectHandlerSchema);
+}
+
+// [SF-YM-07] Переключает, каким провайдером СНАЧАЛА пытаться фоново
+// обогащать граф ДЛЯ ЭТОГО пользователя — общий порядок цепочки сервиса
+// ([yandex, genius-fallback], static_config.yaml) остаётся неизменным.
+SettingsEnrichmentProviderHandler::SettingsEnrichmentProviderHandler(
+    const components::ComponentConfig& config, const components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      oauth_(context.FindComponent<auth::OAuthConfig>()),
+      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()) {}
+
+std::string SettingsEnrichmentProviderHandler::HandleRequestThrow(
+    const server::http::HttpRequest& request, server::request::RequestContext&) const {
+  EnsureRequestId(request);
+  ApplySecurityHeaders(request);
+
+  auto& response = request.GetHttpResponse();
+  response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
+
+  const auto session = auth::RequireFullSession(request, oauth_);
+  if (!session) {
+    return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
+  }
+
+  std::string provider;
+  try {
+    const auto body = formats::json::FromString(request.RequestBody());
+    provider = body["provider"].As<std::string>("");
+  } catch (const std::exception&) {
+    response.SetStatus(server::http::HttpStatus::kBadRequest);
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kBadRequest, "body must be JSON with a string provider");
+  }
+  if (provider != "yandex" && provider != "genius") {
+    response.SetStatus(server::http::HttpStatus::kBadRequest);
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kBadRequest, "provider must be 'yandex' or 'genius'");
+  }
+
+  const auto user_id = auth::SessionUserId(*session);
+  user_provider_tokens_.SetPreferredEnrichmentProvider(user_id, provider);
+
+  formats::json::ValueBuilder b(formats::json::Type::kObject);
+  b["preferred_enrichment_provider"] = provider;
+  return formats::json::ToString(b.ExtractValue());
+}
+
+yaml_config::Schema SettingsEnrichmentProviderHandler::GetStaticConfigSchema() {
+  return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
+      kSettingsEnrichmentProviderHandlerSchema);
 }
 
 SettingsYandexDeviceStartHandler::SettingsYandexDeviceStartHandler(

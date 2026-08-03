@@ -82,7 +82,8 @@ bool EnrichmentClient::SendEnqueueRequest(std::int64_t artist_id,
                                           const std::string& name,
                                           const std::string& image,
                                           const std::string& url,
-                                          const std::string& user_token) const {
+                                          const std::string& user_token,
+                                          const std::string& preferred_provider) const {
   try {
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     b["artist_id"] = artist_id;
@@ -90,6 +91,7 @@ bool EnrichmentClient::SendEnqueueRequest(std::int64_t artist_id,
     b["image"] = image;
     b["url"] = url;
     b["user_token"] = user_token;
+    b["preferred_provider"] = preferred_provider;
 
     const auto resp = internal_http::Post(http_client_,
                                           base_url_ + "/internal/enqueue",
@@ -111,7 +113,9 @@ bool EnrichmentClient::SendEnqueueRequest(std::int64_t artist_id,
   }
 }
 
-void EnrichmentClient::EnqueueRetry(const ArtistRef& ref, const std::string& user_token) const {
+void EnrichmentClient::EnqueueRetry(const ArtistRef& ref,
+                                    const std::string& user_token,
+                                    const std::string& preferred_provider) const {
   std::unique_lock lock(retry_mu_);
 
   for (const auto& job : retry_queue_) {
@@ -132,6 +136,7 @@ void EnrichmentClient::EnqueueRetry(const ArtistRef& ref, const std::string& use
   job.image = ref.image;
   job.url = ref.url;
   job.user_token = user_token;
+  job.preferred_provider = preferred_provider;
   job.created_at = std::chrono::steady_clock::now();
   retry_queue_.push_back(std::move(job));
 
@@ -148,11 +153,13 @@ void EnrichmentClient::ExtendStatistics(utils::statistics::Writer& writer) const
   writer["retry_queue"]["size"] = size;
 }
 
-bool EnrichmentClient::EnqueueIfNeeded(const ArtistRef& ref, const std::string& user_token) const {
-  if (SendEnqueueRequest(ref.id, ref.name, ref.image, ref.url, user_token)) {
+bool EnrichmentClient::EnqueueIfNeeded(const ArtistRef& ref,
+                                       const std::string& user_token,
+                                       const std::string& preferred_provider) const {
+  if (SendEnqueueRequest(ref.id, ref.name, ref.image, ref.url, user_token, preferred_provider)) {
     return true;
   }
-  EnqueueRetry(ref, user_token);
+  EnqueueRetry(ref, user_token, preferred_provider);
   return false;
 }
 
@@ -240,7 +247,12 @@ void EnrichmentClient::FlushLoop() {
         continue;
       }
 
-      if (SendEnqueueRequest(job.artist_id, job.name, job.image, job.url, job.user_token)) {
+      if (SendEnqueueRequest(job.artist_id,
+                             job.name,
+                             job.image,
+                             job.url,
+                             job.user_token,
+                             job.preferred_provider)) {
         LOG_INFO() << "[EnrichmentClient] retry succeeded for artist " << job.artist_id;
         to_remove.push_back(job.artist_id);
       }

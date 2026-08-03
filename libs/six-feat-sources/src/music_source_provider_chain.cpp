@@ -73,4 +73,41 @@ ArtistSongs MusicSourceProviderChain::GetArtistSongs(const ArtistRef& seed,
                                   });
 }
 
+std::vector<MusicSourceProvider*> MusicSourceProviderChain::OrderedProviders(
+    const std::string& preferred_provider) const {
+  return ReorderProvidersPreferring(providers_, preferred_provider);
+}
+
+std::vector<ProviderEdge> MusicSourceProviderChain::GetCollaborationEdges(
+    const ArtistRef& seed,
+    const std::string& user_token,
+    const std::string& preferred_provider) const {
+  return TryProvidersInOrder(OrderedProviders(preferred_provider),
+                             seed,
+                             user_token,
+                             [&seed](std::string_view name, const std::exception& ex) {
+                               LOG_WARNING() << "[MusicSourceProviderChain] provider=" << name
+                                             << " failed for seed=" << seed.id << ": " << ex.what()
+                                             << " — falling back to next provider";
+                             });
+}
+
+ArtistSongs MusicSourceProviderChain::GetArtistSongs(const ArtistRef& seed,
+                                                     int songs_limit,
+                                                     Lane lane,
+                                                     const std::string& user_token,
+                                                     const std::string& preferred_provider) const {
+  return TrySongsProvidersInOrder(OrderedProviders(preferred_provider),
+                                  seed,
+                                  songs_limit,
+                                  lane,
+                                  user_token,
+                                  [&seed](std::string_view name, const std::exception& ex) {
+                                    LOG_WARNING()
+                                        << "[MusicSourceProviderChain] provider=" << name
+                                        << " songs failed for seed=" << seed.id << ": " << ex.what()
+                                        << " — falling back to next provider";
+                                  });
+}
+
 }  // namespace six_feat

@@ -11,6 +11,7 @@ import {
   pollYandexDeviceFlow,
   fetchYandexPlaylists,
   fetchYandexImport,
+  setPreferredEnrichmentProvider,
 } from "../api/settings-api.js";
 
 let _panel = null;
@@ -78,6 +79,20 @@ export async function refreshSettingsStatus() {
   if (!status) return;
   _setGeniusConnected(!!status.genius?.connected);
   _setYandexConnected(!!status.yandex?.connected);
+  if (els.settingsEnrichmentProviderSelect) {
+    els.settingsEnrichmentProviderSelect.value = status.preferred_enrichment_provider || "yandex";
+  }
+}
+
+async function _handleEnrichmentProviderChange() {
+  const provider = els.settingsEnrichmentProviderSelect?.value;
+  if (provider !== "yandex" && provider !== "genius") return;
+  const result = await setPreferredEnrichmentProvider(provider);
+  if (!result.ok) {
+    showToast("Couldn't save that preference — please try again.");
+    return;
+  }
+  showToast(provider === "yandex" ? "Yandex will be tried first." : "Genius will be tried first.");
 }
 
 async function _handleGeniusConnect() {
@@ -245,6 +260,7 @@ export function setupSettingsPanel() {
 
   els.settingsGeniusConnectBtn?.addEventListener("click", _handleGeniusConnect);
   els.settingsGeniusDisconnectBtn?.addEventListener("click", _handleGeniusDisconnect);
+  els.settingsEnrichmentProviderSelect?.addEventListener("change", _handleEnrichmentProviderChange);
   els.settingsYandexConnectBtn?.addEventListener("click", _handleYandexConnect);
   els.settingsYandexDisconnectBtn?.addEventListener("click", _handleYandexDisconnect);
   els.settingsYandexImportBtn?.addEventListener("click", _handleYandexImportOpen);

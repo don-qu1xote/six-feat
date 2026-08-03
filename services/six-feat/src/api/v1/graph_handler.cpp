@@ -140,11 +140,18 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
   response.SetHeader(std::string{"X-RateLimit-Remaining"},
                      std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
+  // [SF-YM-07] Порядок ПОПЫТОК для фоновых задач ЭТОГО пользователя, не
+  // замена сервисного дефолта цепочки — пусто для api-key-запросов (нет
+  // сессии/настроек, не в скоупе тикета).
+  std::string preferred_provider;
+
   if (user_token.empty()) {
     const auto session = auth::RequireFullSession(request, oauth_);
     if (!session) {
       return ErrorGraph("not_authenticated");
     }
+    preferred_provider =
+        user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
     const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
     // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
     user_token = auth::GeniusTokenForSession(*session, connected);
@@ -231,7 +238,8 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
 
   RadialGraphResult radial_result;
   try {
-    radial_result = service_.BuildRadialGraphWithSource(seed, user_token, limit_override);
+    radial_result =
+        service_.BuildRadialGraphWithSource(seed, user_token, limit_override, preferred_provider);
   } catch (const GeniusHttpError& e) {
     return GeniusErrorGraph(e, response);
   } catch (...) {

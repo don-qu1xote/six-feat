@@ -57,6 +57,16 @@ class MusicSourceProvider {
 using ProviderFailureLogger =
     std::function<void(std::string_view provider_name, const std::exception& ex)>;
 
+// [SF-YM-07] Двигает провайдера с именем preferred_provider (если он есть
+// в providers) на первое место, сохраняя относительный порядок остальных —
+// pure-функция, ничего не мутирует, providers может быть тем же вектором,
+// что цепочка хранит для сервисного дефолта. "genius" (пользовательское
+// значение настройки) матчит внутреннее имя провайдера "genius-fallback".
+// Пустой preferred_provider или отсутствие такого провайдера в цепочке —
+// providers возвращается как есть (сервисный дефолтный порядок).
+std::vector<MusicSourceProvider*> ReorderProvidersPreferring(
+    const std::vector<MusicSourceProvider*>& providers, const std::string& preferred_provider);
+
 std::vector<ProviderEdge> TryProvidersInOrder(const std::vector<MusicSourceProvider*>& providers,
                                               const ArtistRef& seed,
                                               const std::string& user_token,

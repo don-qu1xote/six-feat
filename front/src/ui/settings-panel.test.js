@@ -13,6 +13,7 @@ vi.mock("../api/settings-api.js", () => ({
   pollYandexDeviceFlow: vi.fn(),
   fetchYandexPlaylists: vi.fn(),
   fetchYandexImport: vi.fn(),
+  setPreferredEnrichmentProvider: vi.fn(),
 }));
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
@@ -33,6 +34,7 @@ import {
   pollYandexDeviceFlow,
   fetchYandexPlaylists,
   fetchYandexImport,
+  setPreferredEnrichmentProvider,
 } from "../api/settings-api.js";
 
 function renderSettingsMarkup() {
@@ -54,6 +56,14 @@ function renderSettingsMarkup() {
         <button id="settings-genius-connect-btn"></button>
         <button id="settings-genius-disconnect-btn" hidden></button>
         <div id="settings-genius-status">Not connected</div>
+      </div>
+
+      <div class="settings-card">
+        <div class="settings-card-title">Background enrichment provider</div>
+        <select id="settings-enrichment-provider-select">
+          <option value="yandex">Yandex first</option>
+          <option value="genius">Genius first</option>
+        </select>
       </div>
 
       <div class="settings-card">
@@ -85,6 +95,9 @@ function renderSettingsMarkup() {
   els.settingsGeniusConnectBtn = document.getElementById("settings-genius-connect-btn");
   els.settingsGeniusDisconnectBtn = document.getElementById("settings-genius-disconnect-btn");
   els.settingsGeniusStatus = document.getElementById("settings-genius-status");
+  els.settingsEnrichmentProviderSelect = document.getElementById(
+    "settings-enrichment-provider-select",
+  );
   els.settingsYandexConnectBtn = document.getElementById("settings-yandex-connect-btn");
   els.settingsYandexDisconnectBtn = document.getElementById("settings-yandex-disconnect-btn");
   els.settingsYandexStatus = document.getElementById("settings-yandex-status");
@@ -138,10 +151,105 @@ describe("[SF-YM-02] Settings panel renders both cards with the right explanatio
     expect(hint).toMatch(/never affects/i);
   });
 
-  it("the two cards are separate elements, not one shared toggle", () => {
-    const cards = document.querySelectorAll(".settings-card");
-    expect(cards).toHaveLength(2);
-    expect(cards[0]).not.toBe(cards[1]);
+  it("the Genius and Yandex cards are separate elements, not one shared toggle", () => {
+    const geniusCard = document
+      .getElementById("settings-genius-connect-btn")
+      .closest(".settings-card");
+    const yandexCard = document
+      .getElementById("settings-yandex-connect-btn")
+      .closest(".settings-card");
+    expect(geniusCard).not.toBeNull();
+    expect(yandexCard).not.toBeNull();
+    expect(geniusCard).not.toBe(yandexCard);
+  });
+});
+
+describe("[SF-YM-07] background enrichment provider toggle", () => {
+  beforeEach(() => {
+    setupSettingsPanel();
+  });
+
+  it("defaults to yandex when the fetched status omits the preference", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      genius: { connected: false },
+      yandex: { connected: false },
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsEnrichmentProviderSelect.value).toBe("yandex");
+  });
+
+  it("reflects a fetched genius preference on open", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      genius: { connected: true },
+      yandex: { connected: false },
+      preferred_enrichment_provider: "genius",
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsEnrichmentProviderSelect.value).toBe("genius");
+  });
+
+  it("persists the choice across a simulated reload (fetchSettingsStatus reflects the saved value)", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      genius: { connected: false },
+      yandex: { connected: false },
+      preferred_enrichment_provider: "yandex",
+    });
+    setPreferredEnrichmentProvider.mockResolvedValue({
+      ok: true,
+      status: 200,
+      data: { preferred_enrichment_provider: "genius" },
+    });
+
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    els.settingsEnrichmentProviderSelect.value = "genius";
+    els.settingsEnrichmentProviderSelect.dispatchEvent(new Event("change"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setPreferredEnrichmentProvider).toHaveBeenCalledWith("genius");
+
+    // Simulate a page reload: a fresh fetch now reflects the saved choice.
+    fetchSettingsStatus.mockResolvedValue({
+      genius: { connected: false },
+      yandex: { connected: false },
+      preferred_enrichment_provider: "genius",
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsEnrichmentProviderSelect.value).toBe("genius");
+  });
+
+  it("shows a toast confirming the choice on success", async () => {
+    setPreferredEnrichmentProvider.mockResolvedValue({ ok: true, status: 200, data: {} });
+
+    els.settingsEnrichmentProviderSelect.value = "genius";
+    els.settingsEnrichmentProviderSelect.dispatchEvent(new Event("change"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/genius/i));
+  });
+
+  it("shows an error toast and does not crash when saving fails", async () => {
+    setPreferredEnrichmentProvider.mockResolvedValue({ ok: false, status: 500, data: null });
+
+    els.settingsEnrichmentProviderSelect.value = "genius";
+    els.settingsEnrichmentProviderSelect.dispatchEvent(new Event("change"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/couldn't save/i));
   });
 });
 

@@ -253,6 +253,7 @@ export const els = {
   settingsGeniusConnectBtn: $("settings-genius-connect-btn"),
   settingsGeniusDisconnectBtn: $("settings-genius-disconnect-btn"),
   settingsGeniusStatus: $("settings-genius-status"),
+  settingsEnrichmentProviderSelect: $("settings-enrichment-provider-select"),
   settingsYandexConnectBtn: $("settings-yandex-connect-btn"),
   settingsYandexDisconnectBtn: $("settings-yandex-disconnect-btn"),
   settingsYandexStatus: $("settings-yandex-status"),

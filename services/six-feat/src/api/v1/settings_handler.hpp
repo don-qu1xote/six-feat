@@ -64,6 +64,25 @@ class SettingsDisconnectHandler final : public userver::server::handlers::HttpHa
   auth::UserProviderTokenStore& user_provider_tokens_;
 };
 
+// [SF-YM-07] PATCH /api/v1/settings/enrichment-provider — переключает
+// preferred_enrichment_provider (yandex|genius) залогиненного пользователя.
+class SettingsEnrichmentProviderHandler final : public userver::server::handlers::HttpHandlerBase {
+ public:
+  static constexpr std::string_view kName = "handler-settings-enrichment-provider";
+
+  SettingsEnrichmentProviderHandler(const userver::components::ComponentConfig& config,
+                                    const userver::components::ComponentContext& context);
+
+  std::string HandleRequestThrow(const userver::server::http::HttpRequest& request,
+                                 userver::server::request::RequestContext& context) const override;
+
+  static userver::yaml_config::Schema GetStaticConfigSchema();
+
+ private:
+  auth::OAuthConfig& oauth_;
+  auth::UserProviderTokenStore& user_provider_tokens_;
+};
+
 class SettingsYandexDeviceStartHandler final : public userver::server::handlers::HttpHandlerBase {
  public:
   static constexpr std::string_view kName = "handler-settings-yandex-device-start";

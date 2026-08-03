@@ -13,6 +13,7 @@ SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
 SETTINGS_DISCONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/disconnect"
 SETTINGS_YANDEX_DEVICE_START_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/start"
 SETTINGS_YANDEX_DEVICE_POLL_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/poll"
+SETTINGS_ENRICHMENT_PROVIDER_URL = f"{SERVICE_BASE}/api/v1/settings/enrichment-provider"
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
 
@@ -246,3 +247,74 @@ class TestSettingsRequireSession:
     def test_yandex_device_start_requires_session(self, anon_client: requests.Session):
         resp = anon_client.post(SETTINGS_YANDEX_DEVICE_START_URL)
         assert resp.status_code == 401
+
+    def test_enrichment_provider_patch_requires_session(self, anon_client: requests.Session):
+        resp = anon_client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
+        assert resp.status_code == 401
+
+
+class TestPreferredEnrichmentProvider:
+    """[SF-YM-07] Порядок ПОПЫТОК для ФОНОВОГО обогащения конкретного
+    пользователя (EnrichmentWorker) — не замена сервисного дефолтного
+    порядка цепочки ([yandex, genius-fallback], static_config.yaml), и не
+    connection-статус (см. genius/yandex ключи в этом же ответе)."""
+
+    def test_default_is_yandex_without_ever_setting_it(self, client: requests.Session):
+        resp = client.get(SETTINGS_STATUS_URL)
+        assert resp.status_code == 200
+        assert resp.json()["preferred_enrichment_provider"] == "yandex"
+
+    def test_patch_to_genius_then_status_reflects_it(self, client: requests.Session):
+        patch_resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
+        assert patch_resp.status_code == 200, patch_resp.text
+        assert patch_resp.json()["preferred_enrichment_provider"] == "genius"
+
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.json()["preferred_enrichment_provider"] == "genius"
+
+    def test_patch_back_to_yandex_overwrites_a_previous_genius_choice(
+        self, client: requests.Session
+    ):
+        client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
+        patch_resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "yandex"})
+        assert patch_resp.status_code == 200
+        assert patch_resp.json()["preferred_enrichment_provider"] == "yandex"
+
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.json()["preferred_enrichment_provider"] == "yandex"
+
+    def test_patch_rejects_an_unknown_provider_value(self, client: requests.Session):
+        resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "spotify"})
+        assert resp.status_code == 400
+
+        # A rejected value must not have been silently stored.
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.json()["preferred_enrichment_provider"] == "yandex"
+
+    def test_patch_rejects_a_missing_provider_field(self, client: requests.Session):
+        resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={})
+        assert resp.status_code == 400
+
+    def test_preference_is_per_user_not_global(self, client: requests.Session):
+        """The whole point of SF-YM-07: switching the toggle must change
+        the order for THIS user's own background jobs only — a second,
+        unrelated session must keep seeing the yandex default untouched."""
+        other = _session_for(f"Other Settings User {uuid.uuid4().hex}")
+
+        patch_resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
+        assert patch_resp.status_code == 200
+
+        assert client.get(SETTINGS_STATUS_URL).json()["preferred_enrichment_provider"] == "genius"
+        assert other.get(SETTINGS_STATUS_URL).json()["preferred_enrichment_provider"] == "yandex"
+
+    def test_setting_preference_does_not_affect_provider_connection_status(
+        self, client: requests.Session
+    ):
+        """preferred_enrichment_provider is a background-job knob, not a
+        connection — switching it must not connect/disconnect anything."""
+        before = client.get(SETTINGS_STATUS_URL).json()
+        client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
+        after = client.get(SETTINGS_STATUS_URL).json()
+
+        assert after["genius"]["connected"] == before["genius"]["connected"]
+        assert after["yandex"]["connected"] == before["yandex"]["connected"]

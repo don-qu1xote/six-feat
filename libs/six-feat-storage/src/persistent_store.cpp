@@ -126,6 +126,16 @@ const std::vector<const char*> kMigrationV7 = {
     R"SQL(COMMENT ON COLUMN api_keys.owner_id IS 'auth::SessionUserId of the issuing session (SF-YM-05). Rows from before this migration were not backfilled and read owner_id=0: still valid for auth, but unrevokable via the self-service endpoint.')SQL",
 };
 
+// [SF-YM-07] Один ряд на пользователя, не per-provider (в отличие от
+// user_provider_tokens) — предпочтение общее для аккаунта независимо от
+// того, сколько провайдеров подключено.
+const std::vector<const char*> kMigrationV8 = {
+    R"SQL(CREATE TABLE IF NOT EXISTS user_settings (
+        user_id                       BIGINT NOT NULL PRIMARY KEY,
+        preferred_enrichment_provider TEXT NOT NULL DEFAULT 'yandex'
+    ))SQL",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
@@ -134,9 +144,10 @@ const std::vector<Migration> kMigrations = {
     {5, kMigrationV5},
     {6, kMigrationV6},
     {7, kMigrationV7},
+    {8, kMigrationV8},
 };
 
-constexpr int kTargetSchemaVersion = 7;
+constexpr int kTargetSchemaVersion = 8;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,

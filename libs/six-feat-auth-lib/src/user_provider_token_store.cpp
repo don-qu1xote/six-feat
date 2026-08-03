@@ -79,4 +79,23 @@ bool UserProviderTokenStore::Disconnect(std::int64_t user_id, const std::string&
   return !res.IsEmpty();
 }
 
+void UserProviderTokenStore::SetPreferredEnrichmentProvider(std::int64_t user_id,
+                                                            const std::string& provider) const {
+  cluster_->Execute(ClusterHostType::kMaster,
+                    "INSERT INTO user_settings(user_id, preferred_enrichment_provider) "
+                    "VALUES ($1, $2) "
+                    "ON CONFLICT (user_id) DO UPDATE SET preferred_enrichment_provider = $2",
+                    user_id,
+                    provider);
+}
+
+std::string UserProviderTokenStore::GetPreferredEnrichmentProvider(std::int64_t user_id) const {
+  auto res = cluster_->Execute(ClusterHostType::kMaster,
+                               "SELECT preferred_enrichment_provider FROM user_settings "
+                               "WHERE user_id = $1",
+                               user_id);
+  if (res.IsEmpty()) return "yandex";
+  return res.Front()[0].As<std::string>();
+}
+
 }  // namespace six_feat::auth

@@ -5,6 +5,7 @@
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-enrichment/enrichment_queue.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
+#include <six-feat-sources/music_source_provider_chain.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <string>
 #include <string_view>
@@ -34,7 +35,9 @@ class EnrichmentWorker final : public userver::components::ComponentBase {
 
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
-  bool EnqueueIfNeeded(const ArtistRef& ref, const std::string& user_token);
+  bool EnqueueIfNeeded(const ArtistRef& ref,
+                       const std::string& user_token,
+                       const std::string& preferred_provider = "");
 
   bool IsPending(std::int64_t id) const;
 
@@ -48,7 +51,10 @@ class EnrichmentWorker final : public userver::components::ComponentBase {
   // Конкретный тип: нужен bg-лимит (SongsLimitBg), которого в интерфейсе нет.
   GeniusGatewayClient& gateway_;
   // Выборка — через ту же цепочку источников, что и дефолтный граф.
-  MusicSourceProvider& source_;
+  // Конкретный тип (не MusicSourceProvider&): нужен per-job reorder
+  // (SF-YM-07), которого в интерфейсе нет и не должно быть — переставлять
+  // порядок может только сама цепочка.
+  MusicSourceProviderChain& source_;
   const std::size_t capacity_;
   EnrichmentQueue queue_;
   userver::engine::TaskProcessor& bg_tp_;

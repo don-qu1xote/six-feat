@@ -10,10 +10,10 @@ async function getJson(url) {
   }
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, method = "POST") {
   try {
     const res = await apiFetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
     });
@@ -49,4 +49,10 @@ export function fetchYandexPlaylists() {
 
 export function fetchYandexImport(playlistId) {
   return getJson(`/api/v1/settings/yandex/import?playlist=${encodeURIComponent(playlistId)}`);
+}
+
+// [SF-YM-07] provider: "yandex" | "genius" — order of attempts for this
+// user's own background enrichment jobs, not the service-wide default chain.
+export function setPreferredEnrichmentProvider(provider) {
+  return postJson("/api/v1/settings/enrichment-provider", { provider }, "PATCH");
 }

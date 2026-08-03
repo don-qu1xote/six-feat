@@ -912,6 +912,21 @@
         <div class="settings-card-status" id="settings-genius-status">Not connected</div>
       </div>
 
+      <!-- [SF-YM-07] Тумблер, не третья карточка — не connection status,
+           а порядок ПОПЫТОК для фонового обогащения ЭТОГО пользователя. -->
+      <div class="settings-card">
+        <div class="settings-card-title">Background enrichment provider</div>
+        <p class="settings-card-hint">
+          Which provider to try first when filling in the shared graph in
+          the background for your requests. The other one is still used as
+          a fallback if the first doesn't have an answer.
+        </p>
+        <select class="ui-input" id="settings-enrichment-provider-select">
+          <option value="yandex">Yandex first</option>
+          <option value="genius">Genius first</option>
+        </select>
+      </div>
+
       <div class="settings-card ui-tile">
         <div class="settings-card-title">
           Connect your Yandex <span class="settings-card-sub">(import playlists)</span>

@@ -75,7 +75,9 @@ std::variant<ArtistRef, AmbiguousResult> CollabService::ResolveByName(
   return ResolveArtistByName(gateway_, query, user_token);
 }
 
-// Дефолтный граф идёт через цепочку источников (Яндекс, Genius — fallback).
+// Дефолтный граф идёт через цепочку источников (Яндекс, Genius — fallback) —
+// сам живой вызов остаётся сервисным дефолтным порядком; preferred_provider
+// (SF-YM-07) касается только enrichment enqueue в BuildRadialGraph ниже.
 ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
                                    const std::string& user_token,
                                    std::optional<int> limit_override) const {
@@ -90,7 +92,8 @@ ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
 
 ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
                                             const std::string& user_token,
-                                            std::optional<int> limit_override) const {
+                                            std::optional<int> limit_override,
+                                            const std::string& preferred_provider) const {
   auto result = repo_.GetArtistSongs(seed, Depth::Foreground);
 
   const bool force_refetch = limit_override.has_value() && !result.network_needed;
@@ -111,7 +114,7 @@ ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
       }
     }
   }
-  enrichment_.EnqueueIfNeeded(seed, user_token);
+  enrichment_.EnqueueIfNeeded(seed, user_token, preferred_provider);
   return std::move(result.data);
 }
 
@@ -270,7 +273,8 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
                                        const ArtistRef& to,
                                        const RoleMask& mask,
                                        engine::Deadline deadline,
-                                       const std::string& user_token) const {
+                                       const std::string& user_token,
+                                       const std::string& preferred_provider) const {
   {
     auto direct = CheckDirectPath(from, to, mask, user_token);
     if (!direct.path.empty()) {
@@ -337,7 +341,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
           ArtistRef fref;
           fref.id = nid;
           if (const auto it = node_info.find(nid); it != node_info.end()) fref = it->second;
-          enrichment_.EnqueueIfNeeded(fref, user_token);
+          enrichment_.EnqueueIfNeeded(fref, user_token, preferred_provider);
         }
       }
       return PathFindResult{{}, true};
@@ -462,7 +466,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
         LOG_WARNING() << "[Service] expand task " << et.ref.id << ": " << ex.what();
       }
       known_ids.insert(et.ref.id);
-      enrichment_.EnqueueIfNeeded(et.ref, user_token);
+      enrichment_.EnqueueIfNeeded(et.ref, user_token, preferred_provider);
     }
 
     append_delta();
@@ -476,9 +480,12 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
 // запись в Postgres и чтение из кэша. Ребро — яндексовое, только если все
 // общие треки пришли из Яндекса.
 RadialGraphResult CollabService::BuildRadialGraphWithSource(
-    const ArtistRef& seed, const std::string& user_token, std::optional<int> limit_override) const {
+    const ArtistRef& seed,
+    const std::string& user_token,
+    std::optional<int> limit_override,
+    const std::string& preferred_provider) const {
   RadialGraphResult result;
-  result.data = BuildRadialGraph(seed, user_token, limit_override);
+  result.data = BuildRadialGraph(seed, user_token, limit_override, preferred_provider);
 
   std::unordered_map<std::int64_t, bool> all_yandex;
   for (const auto& song : result.data.songs) {

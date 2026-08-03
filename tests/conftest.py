@@ -1311,6 +1311,18 @@ GENIUS_GATEWAY_MONITOR_PORT_BG = int(
 )
 GENIUS_GATEWAY_BASE_BG = f"http://localhost:{GENIUS_GATEWAY_PORT_BG}"
 
+# [SF-YM-07] Свои порт/mock для BG-профиля, отдельные от session-scoped
+# yandex_gateway_proc/yandex_mock, которым пользуется обычный
+# service_proc/client — та же изоляция, что genius уже имеет здесь
+# (genius_gateway_proc_bg/mock_server_bg), полезная тестам, которым нужно
+# реально наблюдать, какой провайдер выигрывает в EnrichmentWorker.
+YANDEX_GATEWAY_PORT_BG = int(os.environ.get("SIX_FEAT_YANDEX_GATEWAY_PORT_BG", "18107"))
+YANDEX_GATEWAY_MONITOR_PORT_BG = int(
+    os.environ.get("SIX_FEAT_YANDEX_GATEWAY_MONITOR_PORT_BG", "18108")
+)
+YANDEX_GATEWAY_BASE_BG = f"http://localhost:{YANDEX_GATEWAY_PORT_BG}"
+YANDEX_MOCK_PORT_BG = int(os.environ.get("YANDEX_MOCK_PORT_BG", "18109"))
+
 
 def _make_mock_handler(state: _MockState):
     """Создаёт класс BaseHTTPRequestHandler, привязанный к `state` через замыкание.
@@ -1361,11 +1373,76 @@ def _start_mock_server_on(port: int, state: _MockState) -> HTTPServer:
     return server
 
 
+def _make_yandex_mock_handler(state: _MockState):
+    """Как _make_mock_handler, но с do_POST — Яндекс device/token flow идёт
+    через POST с form-телом (см. _YandexRequestHandler выше), а не только
+    GET, которого достаточно суррогату Genius."""
+
+    class _BoundYandexRequestHandler(BaseHTTPRequestHandler):
+        def log_message(self, fmt: str, *args: Any) -> None:
+            pass
+
+        def _respond(self, path: str, params: Dict[str, List[str]]) -> None:
+            try:
+                status, body = state.dispatch(path, params, self.headers.get("X-Request-Id"))
+                payload = json.dumps(body).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+            except Exception as e:
+                import traceback
+
+                error_body = json.dumps(
+                    {"error": str(e), "traceback": traceback.format_exc()}
+                ).encode()
+                try:
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(error_body)))
+                    self.end_headers()
+                    self.wfile.write(error_body)
+                except Exception:
+                    pass
+
+        def do_GET(self) -> None:
+            parsed = urlparse(self.path)
+            self._respond(parsed.path, parse_qs(parsed.query))
+
+        def do_POST(self) -> None:
+            length = int(self.headers.get("Content-Length", 0))
+            raw_body = self.rfile.read(length) if length else b""
+            parsed = urlparse(self.path)
+            self._respond(parsed.path, parse_qs(raw_body.decode(errors="replace")))
+
+    return _BoundYandexRequestHandler
+
+
+def _start_yandex_mock_server_on(port: int, state: _MockState) -> HTTPServer:
+    server = HTTPServer(("127.0.0.1", port), _make_yandex_mock_handler(state))
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
 @pytest.fixture(scope="session")
 def mock_server_bg() -> Generator[_MockState, None, None]:
     """Independent surrogate Genius server for the BG-profile instance."""
     state = _MockState()
     srv = _start_mock_server_on(MOCK_PORT_BG, state)
+    yield state
+    srv.shutdown()
+
+
+@pytest.fixture(scope="session")
+def yandex_mock_server_bg() -> Generator[_MockState, None, None]:
+    """Независимый суррогатный Yandex Music сервер для BG-профиля —
+    собственное состояние, не разделяемое с обычным yandex_mock_server/
+    yandex_mock, которым пользуется service_proc/client по умолчанию."""
+    state = _MockState()
+    srv = _start_yandex_mock_server_on(YANDEX_MOCK_PORT_BG, state)
     yield state
     srv.shutdown()
 
@@ -1549,16 +1626,74 @@ def genius_gateway_proc_bg(
 
 
 @pytest.fixture(scope="session")
+def yandex_gateway_proc_bg(
+    tmp_db_dir_bg: Path, yandex_mock_server_bg: _MockState
+) -> Generator[subprocess.Popen, None, None]:
+    """
+    Реальный six-feat-yandex-gateway инстанс для BG профиля — собственный
+    суррогатный Yandex Music сервер (yandex_mock_server_bg), отдельный от
+    yandex_gateway_proc, которым пользуется обычный service_proc/client.
+    Нужен тестам, наблюдающим, какой провайдер реально выигрывает внутри
+    EnrichmentWorker при переключении preferred_enrichment_provider.
+    """
+    if not YANDEX_GATEWAY_BINARY.exists():
+        pytest.skip(
+            f"Yandex-gateway service binary not found at {YANDEX_GATEWAY_BINARY}. "
+            "Build the project first or set SIX_FEAT_YANDEX_GATEWAY_BINARY env var."
+        )
+
+    cfg_path = tmp_db_dir_bg / "yandex_gateway_static_config.yaml"
+    cfg_path.write_text(
+        _YANDEX_GATEWAY_TEST_CONFIG_TEMPLATE.format(
+            gateway_port=YANDEX_GATEWAY_PORT_BG,
+            gateway_monitor_port=YANDEX_GATEWAY_MONITOR_PORT_BG,
+            mock_port=YANDEX_MOCK_PORT_BG,
+            backoff_max_attempts=1,
+            cb_failure_threshold=100,
+            device_client_id=TEST_YANDEX_DEVICE_CLIENT_ID,
+        )
+    )
+
+    proc = subprocess.Popen(
+        [str(YANDEX_GATEWAY_BINARY), "--config", str(cfg_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "YANDEX_SERVICE_TOKEN": TEST_YANDEX_SERVICE_TOKEN,
+            "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+        },
+    )
+
+    if not _wait_for_port(YANDEX_GATEWAY_PORT_BG):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(
+            f"BG-profile yandex-gateway service did not start within timeout.\nstderr:\n{stderr}"
+        )
+
+    yield proc
+
+    proc.send_signal(signal.SIGTERM)
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+@pytest.fixture(scope="session")
 def enrichment_proc_bg(
     tmp_db_dir_bg: Path,
     mock_server_bg: _MockState,
     genius_gateway_proc_bg: subprocess.Popen,
+    yandex_gateway_proc_bg: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
     """
     Реальный six-feat-enrichment инстанс для BG профиля — та же БД и
-    суррогатный Genius сервер (через genius_gateway_proc_bg), что и у
-    service_proc_bg, с queue-capacity=8, чтобы фоновые deep-scan задачи
-    реально выполнялись. Пропускается, если бинарник не собран.
+    суррогатные Genius/Yandex серверы (через genius_gateway_proc_bg и
+    yandex_gateway_proc_bg), что и у service_proc_bg, с queue-capacity=8,
+    чтобы фоновые deep-scan задачи реально выполнялись. Пропускается,
+    если бинарник не собран.
     """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
@@ -1572,7 +1707,7 @@ def enrichment_proc_bg(
             enrichment_port=ENRICHMENT_SERVICE_PORT_BG,
             enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_BG,
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
-            yandex_gateway_port=YANDEX_GATEWAY_PORT,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT_BG,
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=8,
             drain_timeout_ms=5000,
@@ -1763,7 +1898,7 @@ def service_proc_bg(
     tmp_db_dir_bg: Path,
     mock_server_bg: _MockState,
     genius_gateway_proc_bg: subprocess.Popen,
-    yandex_gateway_proc: subprocess.Popen,
+    yandex_gateway_proc_bg: subprocess.Popen,
     enrichment_proc_bg: subprocess.Popen,
     auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
@@ -1774,6 +1909,9 @@ def service_proc_bg(
       * genius-gateway-client, указывающим на genius_gateway_proc_bg с
         низким cb-failure-threshold (3) и backoff-max-attempts > 1, чтобы
         CircuitBreaker/retry-backoff пути реально выполнялись.
+      * yandex-gateway-client, указывающим на собственный
+        yandex_gateway_proc_bg (не разделяемый с обычным service_proc),
+        чтобы тесты могли программировать суррогатный Yandex независимо.
       * auth-base-url, указывающим на тот же session-scoped
         auth_service_proc, что и service_proc — запущен с TEST_APP_SECRET.
     Пропускается, если бинарник не собран.
@@ -1791,7 +1929,7 @@ def service_proc_bg(
             monitor_port=MONITOR_PORT_BG,
             mock_port=MOCK_PORT_BG,
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
-            yandex_gateway_port=YANDEX_GATEWAY_PORT,
+            yandex_gateway_port=YANDEX_GATEWAY_PORT_BG,
             db_connection_string=DB_CONNECTION_STRING,
             enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_SERVICE_PORT_BG}",
             auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
@@ -2314,6 +2452,15 @@ class YandexMock:
 @pytest.fixture()
 def yandex_mock(yandex_mock_server: _MockState) -> YandexMock:
     return YandexMock(yandex_mock_server)
+
+
+@pytest.fixture()
+def yandex_mock_bg(yandex_mock_server_bg: _MockState) -> YandexMock:
+    """Как `yandex_mock`, но программирует суррогатный Yandex-сервер
+    BG-профиля (yandex_gateway_proc_bg), изолированный от обычного
+    yandex_mock/service_proc — нужен тестам, которым важно наблюдать,
+    каким провайдером реально обогащается фон конкретного пользователя."""
+    return YandexMock(yandex_mock_server_bg)
 
 
 def _build_song_detail(

@@ -11,6 +11,7 @@ six_feat_embed_schema(handlers/six-feat/api_keys_revoke_handler kApiKeysRevokeHa
 six_feat_embed_schema(handlers/six-feat/settings_status_handler             kSettingsStatusHandlerSchema             SETTINGS_STATUS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_genius_connect_handler     kSettingsGeniusConnectHandlerSchema      SETTINGS_GENIUS_CONNECT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_disconnect_handler        kSettingsDisconnectHandlerSchema         SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_enrichment_provider_handler kSettingsEnrichmentProviderHandlerSchema SETTINGS_ENRICHMENT_PROVIDER_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_yandex_device_start_handler kSettingsYandexDeviceStartHandlerSchema SETTINGS_YANDEX_DEVICE_START_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_yandex_device_poll_handler  kSettingsYandexDevicePollHandlerSchema  SETTINGS_YANDEX_DEVICE_POLL_HANDLER_SCHEMA_HEADER)
 # [SF-YM-04] Импорт плейлистов/лайков — потребление seed-подсказок.
@@ -43,6 +44,7 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${SETTINGS_STATUS_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_GENIUS_CONNECT_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_ENRICHMENT_PROVIDER_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_YANDEX_DEVICE_START_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_YANDEX_DEVICE_POLL_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_YANDEX_PLAYLISTS_HANDLER_SCHEMA_HEADER}

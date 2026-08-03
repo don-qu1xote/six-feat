@@ -32,7 +32,25 @@ class MusicSourceProviderChain final : public userver::components::ComponentBase
                              Lane lane,
                              const std::string& user_token) const override;
 
+  // [SF-YM-07] Не часть MusicSourceProvider — только у цепочки есть
+  // порядок, который можно переставить. preferred_provider двигает
+  // соответствующего провайдера (если такой есть в цепочке) на первое
+  // место ДЛЯ ЭТОГО вызова, не меняя общий providers_ сервиса. Пустая
+  // строка — сервисный дефолт (тот же порядок, что у обычных перегрузок
+  // выше).
+  std::vector<ProviderEdge> GetCollaborationEdges(const ArtistRef& seed,
+                                                  const std::string& user_token,
+                                                  const std::string& preferred_provider) const;
+
+  ArtistSongs GetArtistSongs(const ArtistRef& seed,
+                             int songs_limit,
+                             Lane lane,
+                             const std::string& user_token,
+                             const std::string& preferred_provider) const;
+
  private:
+  std::vector<MusicSourceProvider*> OrderedProviders(const std::string& preferred_provider) const;
+
   std::vector<MusicSourceProvider*> providers_;
 };
 

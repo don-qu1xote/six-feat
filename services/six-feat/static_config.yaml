@@ -241,6 +241,11 @@ components_manager:
       method: POST
       task_processor: *main_tp
 
+    handler-settings-enrichment-provider:
+      path: /api/v1/settings/enrichment-provider
+      method: PATCH
+      task_processor: *main_tp
+
     handler-settings-yandex-device-start:
       path: /api/v1/settings/yandex/device/start
       method: POST

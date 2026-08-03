@@ -25,6 +25,39 @@ const char* ToString(DiscoverySource source) {
   return "unknown";
 }
 
+namespace {
+
+// "genius" (значение user_provider_tokens.preferred_enrichment_provider) —
+// "genius-fallback" (MusicSourceProvider::Name() внутри цепочки), одно и то
+// же понятие под двумя именами; "yandex" совпадает буквально.
+bool MatchesPreferred(std::string_view provider_name, const std::string& preferred_provider) {
+  if (provider_name == preferred_provider) return true;
+  return preferred_provider == "genius" && provider_name == "genius-fallback";
+}
+
+}  // namespace
+
+std::vector<MusicSourceProvider*> ReorderProvidersPreferring(
+    const std::vector<MusicSourceProvider*>& providers, const std::string& preferred_provider) {
+  if (preferred_provider.empty()) return providers;
+
+  std::vector<MusicSourceProvider*> ordered;
+  ordered.reserve(providers.size());
+  MusicSourceProvider* preferred = nullptr;
+  for (auto* p : providers) {
+    if (!preferred && MatchesPreferred(p->Name(), preferred_provider)) {
+      preferred = p;
+      continue;
+    }
+    ordered.push_back(p);
+  }
+  // Провайдера с таким именем нет в этой цепочке (например, preferred
+  // "genius", а сервис сконфигурирован только на "yandex") — дефолтный
+  // порядок как есть, без ошибки.
+  if (preferred) ordered.insert(ordered.begin(), preferred);
+  return ordered;
+}
+
 std::vector<ProviderEdge> TryProvidersInOrder(const std::vector<MusicSourceProvider*>& providers,
                                               const ArtistRef& seed,
                                               const std::string& user_token,

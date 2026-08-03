@@ -59,14 +59,19 @@ class CollabService final : public userver::components::ComponentBase {
   std::variant<ArtistRef, AmbiguousResult> ResolveByName(const std::string& query,
                                                          const std::string& user_token) const;
 
+  // preferred_provider (SF-YM-07): порядок ПОПЫТОК для фоновых задач ЭТОГО
+  // вызова (EnrichmentWorker) — сам живой вызов ниже (chain_) идёт
+  // сервисным дефолтным порядком, preferred_provider влияет только на то,
+  // что передаётся дальше в enrichment enqueue.
   ArtistSongs BuildRadialGraph(const ArtistRef& seed,
                                const std::string& user_token,
-                               std::optional<int> limit_override = std::nullopt) const;
+                               std::optional<int> limit_override = std::nullopt,
+                               const std::string& preferred_provider = "") const;
 
-  RadialGraphResult BuildRadialGraphWithSource(
-      const ArtistRef& seed,
-      const std::string& user_token,
-      std::optional<int> limit_override = std::nullopt) const;
+  RadialGraphResult BuildRadialGraphWithSource(const ArtistRef& seed,
+                                               const std::string& user_token,
+                                               std::optional<int> limit_override = std::nullopt,
+                                               const std::string& preferred_provider = "") const;
 
   PathContext CheckDirectPath(const ArtistRef& from,
                               const ArtistRef& to,
@@ -77,7 +82,8 @@ class CollabService final : public userver::components::ComponentBase {
                           const ArtistRef& to,
                           const RoleMask& mask,
                           userver::engine::Deadline deadline,
-                          const std::string& user_token) const;
+                          const std::string& user_token,
+                          const std::string& preferred_provider = "") const;
 
   double MatchThreshold() const {
     return gateway_.MatchThreshold();

@@ -70,5 +70,58 @@ TEST(TryProvidersInOrder, EmptyProviderListReturnsEmptyEdgesWithoutThrowing) {
   EXPECT_TRUE(edges.empty());
 }
 
+// [SF-YM-07] preferred_enrichment_provider — порядок ПОПЫТОК для фоновых
+// задач конкретного пользователя.
+TEST(ReorderProvidersPreferring, MovesGeniusPreferenceToFrontMatchingInternalName) {
+  FakeMusicSourceProvider yandex("yandex");
+  FakeMusicSourceProvider genius("genius-fallback");
+  const std::vector<MusicSourceProvider*> providers{&yandex, &genius};
+
+  // Пользовательское значение "genius" (не "genius-fallback") должно
+  // матчить провайдера — иначе тумблер в Settings никогда бы не сработал.
+  const auto ordered = ReorderProvidersPreferring(providers, "genius");
+
+  ASSERT_EQ(ordered.size(), 2u);
+  EXPECT_EQ(ordered[0]->Name(), "genius-fallback");
+  EXPECT_EQ(ordered[1]->Name(), "yandex");
+}
+
+TEST(ReorderProvidersPreferring, YandexPreferenceIsAlreadyFrontNoOpButStillWellFormed) {
+  FakeMusicSourceProvider yandex("yandex");
+  FakeMusicSourceProvider genius("genius-fallback");
+  const std::vector<MusicSourceProvider*> providers{&yandex, &genius};
+
+  const auto ordered = ReorderProvidersPreferring(providers, "yandex");
+
+  ASSERT_EQ(ordered.size(), 2u);
+  EXPECT_EQ(ordered[0]->Name(), "yandex");
+  EXPECT_EQ(ordered[1]->Name(), "genius-fallback");
+}
+
+TEST(ReorderProvidersPreferring, EmptyPreferenceReturnsServiceDefaultOrderUnchanged) {
+  FakeMusicSourceProvider yandex("yandex");
+  FakeMusicSourceProvider genius("genius-fallback");
+  const std::vector<MusicSourceProvider*> providers{&yandex, &genius};
+
+  const auto ordered = ReorderProvidersPreferring(providers, "");
+
+  ASSERT_EQ(ordered.size(), 2u);
+  EXPECT_EQ(ordered[0]->Name(), "yandex");
+  EXPECT_EQ(ordered[1]->Name(), "genius-fallback");
+}
+
+TEST(ReorderProvidersPreferring, PreferenceForAProviderNotInThisChainLeavesOrderUnchanged) {
+  // Сервис сконфигурирован только на yandex (music-source-provider-chain:
+  // providers: [yandex]), но пользователь предпочитает "genius" — нет
+  // такого провайдера в ЭТОЙ цепочке, дефолт остаётся как есть, без ошибки.
+  FakeMusicSourceProvider yandex("yandex");
+  const std::vector<MusicSourceProvider*> providers{&yandex};
+
+  const auto ordered = ReorderProvidersPreferring(providers, "genius");
+
+  ASSERT_EQ(ordered.size(), 1u);
+  EXPECT_EQ(ordered[0]->Name(), "yandex");
+}
+
 }  // namespace
 }  // namespace six_feat::test

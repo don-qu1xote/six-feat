@@ -132,7 +132,9 @@ yaml_config::Schema EnrichmentWorker::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<components::ComponentBase>(kEnrichmentWorkerComponentSchema);
 }
 
-bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref, const std::string& user_token) {
+bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref,
+                                       const std::string& user_token,
+                                       const std::string& preferred_provider) {
   if (repo_.GetFetchDepth(ref.id) >= Depth::Full) return false;
 
   if (user_token.empty()) {
@@ -157,6 +159,7 @@ bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref, const std::string& 
   job.image = ref.image;
   job.url = ref.url;
   job.user_token = user_token;
+  job.preferred_provider = preferred_provider;
 
   if (!queue_.TryPush(std::move(job))) {
     std::unique_lock lock(pending_mu_);
@@ -205,8 +208,11 @@ void EnrichmentWorker::WorkerLoop() {
       const int limit = gateway_.SongsLimitBg();
       engine::current_task::CancellationPoint();
 
-      // Тот же источник, что у дефолтного графа, но в background-полосе.
-      auto full = source_.GetArtistSongs(ref, limit, Lane::Background, job.user_token);
+      // Тот же источник, что у дефолтного графа, но в background-полосе —
+      // и, в отличие от него, с per-user preferred_provider (SF-YM-07):
+      // порядок ПОПЫТОК для СВОИХ фоновых задач, не замена цепочки сервиса.
+      auto full = source_.GetArtistSongs(
+          ref, limit, Lane::Background, job.user_token, job.preferred_provider);
       full.seed = ref;
 
       // Провайдер проглотил единичные сбои деталей внутри себя: отличить
