@@ -348,7 +348,7 @@ std::string PathHandler::BuildPathJson(const ArtistRef& from_ref,
     const std::int64_t a = path[i], b = path[i + 1];
     const std::int64_t lo = std::min(a, b), hi = std::max(a, b);
     int w = 1;
-    EdgeSource edge_source = EdgeSource::GeniusCredit;
+    EdgeSource edge_source = EdgeSource::kGeniusCredit;
     if (const auto it = adj.find(a); it != adj.end())
       for (const auto& e : it->second)
         if (e.neighbour == b) {

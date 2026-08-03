@@ -45,15 +45,15 @@ struct RoleMask {
   bool featured{true};
 };
 
-enum class Depth : int {
-  None = 0,
-  Foreground = 1,
-  Full = 2,
+enum class Depth : std::uint8_t {
+  kNone = 0,
+  kForeground = 1,
+  kFull = 2,
 };
 
 struct EnrichmentJob {
   std::int64_t artist_id{0};
-  Depth target{Depth::Full};
+  Depth target{Depth::kFull};
   std::string name;
   std::string image;
   std::string url;

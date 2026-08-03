@@ -54,7 +54,7 @@ class RateLimiter {
 
 class CircuitBreaker {
  public:
-  enum class State : int { Closed = 0, Open = 1, HalfOpen = 2 };
+  enum class State : std::uint8_t { kClosed = 0, kOpen = 1, kHalfOpen = 2 };
 
   static const char* ToString(State state);
 
@@ -73,7 +73,7 @@ class CircuitBreaker {
   const int failure_threshold_;
   const std::chrono::seconds open_duration_;
   mutable std::mutex mu_;
-  std::atomic<State> state_{State::Closed};
+  std::atomic<State> state_{State::kClosed};
   std::atomic<bool> probe_in_flight_{false};
   int consecutive_failures_{0};
   std::chrono::steady_clock::time_point trip_time_{};

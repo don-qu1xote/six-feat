@@ -8,7 +8,7 @@
 
 namespace six_feat {
 
-enum class Lane;
+enum class Lane : std::uint8_t;
 
 class IExternalArtistLookup {
  public:

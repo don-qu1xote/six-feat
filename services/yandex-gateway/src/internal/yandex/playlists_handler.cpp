@@ -51,7 +51,7 @@ std::string PlaylistsHandler::HandleRequestThrow(const server::http::HttpRequest
   }
 
   try {
-    const auto playlists = gateway_.FetchPlaylists(token, user_id, Lane::Foreground);
+    const auto playlists = gateway_.FetchPlaylists(token, user_id, Lane::kForeground);
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     formats::json::ValueBuilder arr(formats::json::Type::kArray);
     for (const auto& p : playlists) {
@@ -59,6 +59,7 @@ std::string PlaylistsHandler::HandleRequestThrow(const server::http::HttpRequest
       pb["id"] = p.id;
       pb["title"] = p.title;
       pb["track_count"] = p.track_count;
+      if (!p.cover_url.empty()) pb["cover_url"] = p.cover_url;
       arr.PushBack(pb.ExtractValue());
     }
     b["playlists"] = std::move(arr);

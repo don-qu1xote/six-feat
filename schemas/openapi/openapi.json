@@ -1724,6 +1724,10 @@
                           },
                           "track_count": {
                             "type": "integer"
+                          },
+                          "cover_url": {
+                            "type": "string",
+                            "description": "Omitted when Yandex has no cover for this playlist (SF-WEB-74)"
                           }
                         }
                       }
@@ -1839,6 +1843,20 @@
                     },
                     "total_count": {
                       "type": "integer"
+                    },
+                    "truncated": {
+                      "type": "boolean",
+                      "description": "true when the source had more than the scanned tracks (SF-WEB-74)"
+                    },
+                    "total_track_count": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Track count of the source before truncation"
+                    },
+                    "scanned_track_count": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Track count actually scanned (== total_track_count unless truncated)"
                     }
                   }
                 }

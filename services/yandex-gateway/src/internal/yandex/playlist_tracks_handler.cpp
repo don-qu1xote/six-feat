@@ -54,7 +54,7 @@ std::string PlaylistTracksHandler::HandleRequestThrow(const server::http::HttpRe
 
   try {
     const auto track_ids =
-        gateway_.FetchPlaylistTracks(token, user_id, playlist_id, Lane::Foreground);
+        gateway_.FetchPlaylistTracks(token, user_id, playlist_id, Lane::kForeground);
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     formats::json::ValueBuilder arr(formats::json::Type::kArray);
     for (const auto tid : track_ids) arr.PushBack(tid);

@@ -5,32 +5,46 @@
    for the import order that preserves the original cascade.
    ============================================================ */
 /* Chip — small pill-shaped toggle/suggestion (autocomplete suggestions,
-   filter pills). Mirrors .chip's existing recipe so adopting it is a
-   no-op for controls that already look right, while giving them the
-   shared focus ring for free. */
+
+
+
 .ui-chip {
-  display: inline-flex; align-items: center; gap: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   /* [SF-WEB-42] var(--font-mono) — same "Space Mono", monospace stack,
      named token instead of a literal (see tokens.css's own comment on
      --font-mono: IDs/metrics/labels are exactly what this component is
      for — autocomplete suggestions, filter pills). */
-  font-family: var(--font-mono); font-size: var(--text-xs);
-  color: var(--mist); background: transparent;
-  border: 1px solid var(--line); border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--mist);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
   padding: var(--space-1) var(--space-3);
   cursor: pointer;
-  transition: color var(--duration-base) var(--ease-standard),
-              border-color var(--duration-base) var(--ease-standard),
-              background var(--duration-base) var(--ease-standard);
+  transition:
+    color var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard),
+    background var(--duration-base) var(--ease-standard);
 }
 /* [SF-WEB-42] var(--hover-tint) — see .ui-btn:hover's own comment
    (components/button.css) for the theming rationale. */
-.ui-chip:hover { color: var(--paper); border-color: var(--pulse); background: var(--hover-tint); }
+.ui-chip:hover {
+  color: var(--paper);
+  border-color: var(--pulse);
+  background: var(--hover-tint);
+}
 /* [SF-WEB-42] var(--focus-ring) — same token .ui-btn:focus-visible uses
    (components/button.css), see that rule's comment for the rationale. */
 .ui-chip:focus-visible {
-  outline: none; border-color: var(--signal);
+  outline: none;
+  border-color: var(--signal);
   box-shadow: var(--focus-ring);
 }
-.ui-chip.active { color: var(--paper); border-color: var(--signal); background: var(--active-tint); }
-
+.ui-chip.active {
+  color: var(--paper);
+  border-color: var(--signal);
+  background: var(--active-tint);
+}

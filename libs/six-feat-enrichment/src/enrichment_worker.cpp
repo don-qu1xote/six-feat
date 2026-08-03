@@ -104,7 +104,7 @@ void EnrichmentWorker::RecoverPendingArtists() {
   int offset = 0;
   while (recovered < capacity_) {
     const int limit = static_cast<int>(std::min<std::size_t>(batch_size, capacity_ - recovered));
-    const auto ids = repo_.ListIncompleteArtists(Depth::Full, limit, offset);
+    const auto ids = repo_.ListIncompleteArtists(Depth::kFull, limit, offset);
     if (ids.empty()) break;
 
     {
@@ -135,7 +135,7 @@ yaml_config::Schema EnrichmentWorker::GetStaticConfigSchema() {
 bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref,
                                        const std::string& user_token,
                                        const std::string& preferred_provider) {
-  if (repo_.GetFetchDepth(ref.id) >= Depth::Full) return false;
+  if (repo_.GetFetchDepth(ref.id) >= Depth::kFull) return false;
 
   if (user_token.empty()) {
     LOG_WARNING() << "[EnrichmentWorker] refusing to enqueue artist " << ref.id
@@ -154,7 +154,7 @@ bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref,
 
   EnrichmentJob job;
   job.artist_id = ref.id;
-  job.target = Depth::Full;
+  job.target = Depth::kFull;
   job.name = ref.name;
   job.image = ref.image;
   job.url = ref.url;
@@ -209,11 +209,11 @@ void EnrichmentWorker::WorkerLoop() {
       engine::current_task::CancellationPoint();
 
       auto full = source_.GetArtistSongs(
-          ref, limit, Lane::Background, job.user_token, job.preferred_provider);
+          ref, limit, Lane::kBackground, job.user_token, job.preferred_provider);
       full.seed = ref;
 
       if (!full.songs.empty()) {
-        repo_.WriteThrough(full, Depth::Full);
+        repo_.WriteThrough(full, Depth::kFull);
         LOG_INFO() << "[EnrichmentWorker] completed artist " << ref.id << " '" << ref.name << "'"
                    << " songs=" << full.songs.size();
       } else {

@@ -30,37 +30,65 @@
    makes "hero и docked читаются как одно продолжение" (SF-WEB-24 п.4)
    hold for the dropdown too, not just the input/button around it. */
 .ac-dropdown {
-  position: absolute; top: calc(100% + 8px); left: 0;
-  min-width: 100%; width: max-content; max-width: min(400px, 90vw);
-  background: var(--glass-fill); border: 1px solid var(--line);
-  border-radius: var(--r-lg); box-shadow: var(--elevation-2), var(--glass-glow);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(400px, 90vw);
+  background: var(--glass-fill);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elevation-2), var(--glass-glow);
   backdrop-filter: blur(var(--blur-scrim));
-  z-index: var(--z-dropdown); display: none; flex-direction: column; overflow: hidden;
-  max-height: 360px; overflow-y: auto;
+  z-index: var(--z-dropdown);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 360px;
+  overflow-y: auto;
 }
-.ac-dropdown.open { display: flex; }
+.ac-dropdown.open {
+  display: flex;
+}
 .ac-item {
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-3) var(--space-4); cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-standard); border-bottom: 1px solid rgba(var(--line-rgb), .3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard);
+  border-bottom: 1px solid rgba(var(--line-rgb), 0.3);
 }
-.ac-item:last-child { border-bottom: none; }
+.ac-item:last-child {
+  border-bottom: none;
+}
 /* [SF-WEB-43] var(--signal-rgb) (tokens.css) replaces the literal
    rgba(94,230,197,.07) — same "hardcoded to dark theme's hex" fix as
    .dock-btn/.ns-item below, so every docked/hero result-row hover uses
    the same theme-aware source instead of each re-pinning the dark hex. */
-.ac-item:hover, .ac-item.ac-active { background: rgba(var(--signal-rgb), .07); }
+.ac-item:hover,
+.ac-item.ac-active {
+  background: rgba(var(--signal-rgb), 0.07);
+}
 .ac-icon {
-  display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; flex-shrink: 0;
-  font-size: var(--text-sm); color: var(--mist);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--mist);
 }
 
 .role-icon {
   display: inline-block;
-  width: 16px; height: 16px;
+  width: 16px;
+  height: 16px;
   vertical-align: -2px;
-  stroke: currentColor; fill: none;
+  stroke: currentColor;
+  fill: none;
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
   flex-shrink: 0;
@@ -100,8 +128,12 @@
   margin: 0;
 }
 .ac-avatar {
-  width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
-  flex-shrink: 0; border: 1px solid var(--line);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
 }
 /* [SF-WEB-60] БАГ: .ac-name (<span class="ac-name truncate">) — .truncate
    (base.css) sets white-space:nowrap+overflow:hidden+text-overflow:
@@ -114,11 +146,31 @@
    shrinks via flex+min-width:0, hint stays fixed-size) + .ac-name as a
    block-level flex item is what actually makes .truncate's ellipsis take
    effect, regardless of how wide .ac-dropdown itself ends up being. */
-.ac-info { display: flex; align-items: baseline; gap: var(--space-2); flex: 1; min-width: 0; overflow: hidden; }
-.ac-name { display: block; min-width: 0; font-size: var(--text-base); font-weight: 600; color: var(--paper); }
-.ac-hint { flex-shrink: 0; font-size: var(--text-xs); color: var(--mist); letter-spacing: 0.5px; }
-.ac-spinner {
-  padding: var(--space-4); text-align: center;
-  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
+.ac-info {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
-
+.ac-name {
+  display: block;
+  min-width: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--paper);
+}
+.ac-hint {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--mist);
+  letter-spacing: 0.5px;
+}
+.ac-spinner {
+  padding: var(--space-4);
+  text-align: center;
+  font-family: "Space Mono", monospace;
+  font-size: var(--text-xs);
+  color: var(--mist);
+}

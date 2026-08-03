@@ -8,9 +8,9 @@ namespace {
 
 TEST(TryProvidersInOrder, ReturnsFirstProviderResultWhenItSucceeds) {
   FakeMusicSourceProvider yandex("yandex");
-  yandex.SucceedWith({ProviderEdge{1, 2, EdgeSource::YandexFeature, "featured"}});
+  yandex.SucceedWith({ProviderEdge{1, 2, EdgeSource::kYandexFeature, "featured"}});
   FakeMusicSourceProvider genius("genius-fallback");
-  genius.SucceedWith({ProviderEdge{1, 3, EdgeSource::GeniusCredit, "producer"}});
+  genius.SucceedWith({ProviderEdge{1, 3, EdgeSource::kGeniusCredit, "producer"}});
 
   const std::vector<MusicSourceProvider*> providers{&yandex, &genius};
   bool fallback_logged = false;
@@ -30,7 +30,7 @@ TEST(TryProvidersInOrder, FallsBackToNextProviderWhenFirstThrows) {
   FakeMusicSourceProvider yandex("yandex");
   yandex.FailWith("yandex unavailable");
   FakeMusicSourceProvider genius("genius-fallback");
-  genius.SucceedWith({ProviderEdge{1, 3, EdgeSource::GeniusCredit, "producer"}});
+  genius.SucceedWith({ProviderEdge{1, 3, EdgeSource::kGeniusCredit, "producer"}});
 
   const std::vector<MusicSourceProvider*> providers{&yandex, &genius};
   std::vector<std::string> failed_providers;
@@ -45,7 +45,7 @@ TEST(TryProvidersInOrder, FallsBackToNextProviderWhenFirstThrows) {
 
   ASSERT_EQ(edges.size(), 1u);
   EXPECT_EQ(edges[0].to, 3);
-  EXPECT_EQ(edges[0].source, EdgeSource::GeniusCredit);
+  EXPECT_EQ(edges[0].source, EdgeSource::kGeniusCredit);
   ASSERT_EQ(failed_providers.size(), 1u);
   EXPECT_EQ(failed_providers[0], "yandex");
 }

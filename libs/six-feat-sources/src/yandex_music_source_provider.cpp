@@ -86,7 +86,7 @@ std::vector<ProviderEdge> YandexMusicSourceProvider::GetCollaborationEdges(
       if (!resolved) continue;
       if (!seen_genius_ids.insert(resolved->id).second) continue;
 
-      edges.push_back({seed.id, resolved->id, EdgeSource::YandexFeature, "featured"});
+      edges.push_back({seed.id, resolved->id, EdgeSource::kYandexFeature, "featured"});
     }
   }
 

@@ -20,6 +20,7 @@ struct YandexPlaylistRef {
   std::int64_t id{0};
   std::string title;
   int track_count{0};
+  std::string cover_url;
 };
 
 struct YandexTrack {

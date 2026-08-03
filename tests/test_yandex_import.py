@@ -93,6 +93,61 @@ class TestYandexPlaylistsListing:
         resp = client.get(YANDEX_PLAYLISTS_URL)
         assert resp.status_code == 502
 
+    def test_playlist_cover_url_is_passed_through(
+        self, client: requests.Session, yandex_mock: YandexMock, unique_artist_id: int
+    ):
+        """[SF-WEB-74] Passed through as-is, same pattern as ArtistRef.image —
+        no server-side rewrite."""
+        _connect_yandex(client, yandex_mock)
+        uid = str(unique_artist_id)
+        yandex_mock.account(uid)
+        yandex_mock.playlists(
+            uid,
+            [
+                {
+                    "id": 7,
+                    "title": "Road Trip",
+                    "track_count": 12,
+                    "cover": {"uri": "avatars.yandex.net/get-music-content/1/2/3"},
+                }
+            ],
+        )
+
+        resp = client.get(YANDEX_PLAYLISTS_URL)
+        assert resp.status_code == 200, resp.text
+        by_id = {p["id"]: p for p in resp.json()["playlists"]}
+        assert by_id["7"]["cover_url"] == "avatars.yandex.net/get-music-content/1/2/3"
+
+    def test_playlist_without_cover_omits_the_field(
+        self, client: requests.Session, yandex_mock: YandexMock, unique_artist_id: int
+    ):
+        _connect_yandex(client, yandex_mock)
+        uid = str(unique_artist_id)
+        yandex_mock.account(uid)
+        yandex_mock.playlists(uid, [{"id": 8, "title": "No Cover", "track_count": 1}])
+
+        resp = client.get(YANDEX_PLAYLISTS_URL)
+        assert resp.status_code == 200, resp.text
+        by_id = {p["id"]: p for p in resp.json()["playlists"]}
+        assert "cover_url" not in by_id["8"]
+
+    def test_likes_track_count_is_the_real_number_not_hardcoded_zero(
+        self, client: requests.Session, yandex_mock: YandexMock, unique_artist_id: int
+    ):
+        """[SF-WEB-74] Regression guard: the 'likes' entry's track_count used
+        to be a hardcoded literal 0 regardless of how many tracks the user
+        actually liked."""
+        _connect_yandex(client, yandex_mock)
+        uid = str(unique_artist_id)
+        yandex_mock.account(uid)
+        yandex_mock.playlists(uid, [])
+        yandex_mock.liked_tracks(uid, [101, 102, 103])
+
+        resp = client.get(YANDEX_PLAYLISTS_URL)
+        assert resp.status_code == 200, resp.text
+        by_id = {p["id"]: p for p in resp.json()["playlists"]}
+        assert by_id["likes"]["track_count"] == 3
+
 
 class TestYandexImportValidation:
     def test_missing_playlist_param_is_400(
@@ -112,6 +167,59 @@ class TestYandexImportValidation:
 
         resp = client.get(YANDEX_IMPORT_URL, params={"playlist": "not-a-number-or-likes"})
         assert resp.status_code == 400
+
+
+class TestYandexImportTruncation:
+    """[SF-WEB-74] kImportMaxTracks (20) truncation used to be silent — no
+    field told the client a playlist longer than the limit was cut short."""
+
+    def test_import_over_the_limit_reports_truncated_and_counts(
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        yandex_mock: YandexMock,
+        unique_artist_id: int,
+    ):
+        uid = str(unique_artist_id)
+        _connect_yandex(client, yandex_mock)
+        yandex_mock.account(uid)
+
+        track_ids = list(range(700_000, 700_025))  # 25 tracks, over the limit of 20
+        yandex_mock.playlist_tracks(uid, 11, track_ids)
+        for tid in track_ids:
+            yandex_mock.track_artists(tid, [])
+
+        resp = client.get(YANDEX_IMPORT_URL, params={"playlist": "11"})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+
+        assert data["truncated"] is True
+        assert data["total_track_count"] == 25
+        assert data["scanned_track_count"] == 20
+
+    def test_import_at_or_under_the_limit_is_not_truncated(
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        yandex_mock: YandexMock,
+        unique_artist_id: int,
+    ):
+        uid = str(unique_artist_id)
+        _connect_yandex(client, yandex_mock)
+        yandex_mock.account(uid)
+
+        track_ids = list(range(701_000, 701_005))  # 5 tracks, under the limit
+        yandex_mock.playlist_tracks(uid, 12, track_ids)
+        for tid in track_ids:
+            yandex_mock.track_artists(tid, [])
+
+        resp = client.get(YANDEX_IMPORT_URL, params={"playlist": "12"})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+
+        assert data["truncated"] is False
+        assert data["total_track_count"] == 5
+        assert data["scanned_track_count"] == 5
 
 
 class TestYandexImportResolvesArtists:

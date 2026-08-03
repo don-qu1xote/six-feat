@@ -258,8 +258,13 @@ export const els = {
   settingsYandexDisconnectBtn: $("settings-yandex-disconnect-btn"),
   settingsYandexStatus: $("settings-yandex-status"),
   settingsYandexDeviceCode: $("settings-yandex-device-code"),
-  settingsYandexImport: $("settings-yandex-import"),
-  settingsYandexImportBtn: $("settings-yandex-import-btn"),
-  settingsYandexPlaylistList: $("settings-yandex-playlist-list"),
-  settingsYandexArtistList: $("settings-yandex-artist-list"),
+
+  btnPlaylistsOpen: $("btn-playlists-open"),
+  playlistsPanel: $("playlists-panel"),
+  playlistsPanelClose: $("playlists-panel-close"),
+  playlistsConnectHint: $("playlists-connect-hint"),
+  playlistsGrid: $("playlists-grid"),
+  playlistsArtistSection: $("playlists-artist-section"),
+  playlistsTruncatedHint: $("playlists-truncated-hint"),
+  playlistsArtistGrid: $("playlists-artist-grid"),
 };

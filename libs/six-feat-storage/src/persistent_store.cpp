@@ -239,7 +239,7 @@ constexpr storages::postgres::CommandControl kReadQueryCommandControl{
 constexpr int kReadQueryMaxAttempts = 2;
 
 template <typename Fn>
-auto ExecuteReadQueryWithRetry(Fn&& fn) {
+auto ExecuteReadQueryWithRetry(const Fn& fn) {
   for (int attempt = 1;; ++attempt) {
     try {
       return fn();
@@ -260,7 +260,7 @@ constexpr storages::postgres::CommandControl kPruneCommandControl{
 
 struct PersistentStore::Impl {
   storages::postgres::ClusterPtr cluster;
-  const storages::postgres::ClusterHostType read_host_type = ReadHostType();
+  storages::postgres::ClusterHostType read_host_type = ReadHostType();
 
   explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
     try {
@@ -296,7 +296,7 @@ struct PersistentStore::Impl {
                                   kReadQueryCommandControl,
                                   "SELECT depth FROM fetch_state WHERE artist_id = $1",
                                   artist_id);
-      if (res.IsEmpty()) return Depth::None;
+      if (res.IsEmpty()) return Depth::kNone;
       return static_cast<Depth>(res.Front()[0].As<std::int16_t>());
     });
   }
@@ -365,8 +365,8 @@ struct PersistentStore::Impl {
         e.neighbour = row["artist_id"].As<std::int64_t>();
         e.weight = static_cast<int>(row["w"].As<std::int64_t>());
         e.source = row["all_yandex"].As<std::optional<bool>>().value_or(false)
-                       ? EdgeSource::YandexFeature
-                       : EdgeSource::GeniusCredit;
+                       ? EdgeSource::kYandexFeature
+                       : EdgeSource::kGeniusCredit;
         out.push_back(e);
       }
       return out;

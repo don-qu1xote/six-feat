@@ -15,7 +15,7 @@
 namespace six_feat {
 
 struct FetchState {
-  Depth depth{Depth::None};
+  Depth depth{Depth::kNone};
   int song_count{0};
   std::int64_t last_fetch_ts{0};
 };

@@ -9,9 +9,9 @@
 namespace six_feat {
 
 struct CollabEdge {
-  std::int64_t neighbour;
-  int weight;
-  EdgeSource source{EdgeSource::GeniusCredit};
+  std::int64_t neighbour{0};
+  int weight{0};
+  EdgeSource source{EdgeSource::kGeniusCredit};
 };
 
 using AdjList = std::unordered_map<std::int64_t, std::vector<CollabEdge>>;

@@ -351,7 +351,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     if (const auto oit = result.edge_sources.find(lo); oit != result.edge_sources.end()) {
       if (const auto iit = oit->second.find(hi); iit != oit->second.end()) return iit->second;
     }
-    return EdgeSource::GeniusCredit;
+    return EdgeSource::kGeniusCredit;
   };
 
   for (const auto gid : order) {
@@ -365,7 +365,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   {
     for (const auto& song : data.songs) {
       const auto song_source =
-          IsYandexSongId(song.id) ? EdgeSource::YandexFeature : EdgeSource::GeniusCredit;
+          IsYandexSongId(song.id) ? EdgeSource::kYandexFeature : EdgeSource::kGeniusCredit;
 
       std::vector<std::int64_t> collabs_in_song;
       collabs_in_song.reserve(song.credits.size());
@@ -401,7 +401,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
       auto [it, inserted] = merged.try_emplace(e.neighbour, e);
       if (!inserted) {
         it->second.weight += e.weight;
-        if (it->second.source != e.source) it->second.source = EdgeSource::GeniusCredit;
+        if (it->second.source != e.source) it->second.source = EdgeSource::kGeniusCredit;
       }
     }
     neighbours.clear();

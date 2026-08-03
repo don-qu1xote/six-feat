@@ -65,6 +65,13 @@ def is_directive(text: str, lang: str) -> bool:
     for pat in BLOCK_DIRECTIVE_PATTERNS.get(lang, []):
         if pat.search(text):
             return True
+    if re.match(r"^\s*(?:/\*|//|<!--)\s*\[", text):
+        return True
+    if lang in ("css", "html") and re.search(
+        r"(?:SF-WEB-\d+|\[design:|IDEA-\d+|F-\d+|\[game\s*#|\[style\s+pass)",
+        text,
+    ):
+        return True
     return False
 
 
@@ -72,8 +79,96 @@ def has_cyrillic(text: str) -> bool:
     return bool(CYRILLIC_RE.search(text))
 
 
-def extract_cpp_comments(source: str) -> list[tuple[int, str]]:
-    results: list[tuple[int, str]] = []
+def extract_cpp_line_comments(source: str) -> list[tuple[int, int, int, str]]:
+    results: list[tuple[int, int, int, str]] = []
+    i = 0
+    n = len(source)
+    line = 1
+    in_string = False
+    in_char = False
+    string_char = ""
+    in_raw_string = False
+    raw_delim = ""
+
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+
+        if in_raw_string:
+            if ch == ")" and source[i : i + len(raw_delim) + 1] == ")" + raw_delim:
+                i += len(raw_delim) + 2
+                in_raw_string = False
+                continue
+            if ch == "\n":
+                line += 1
+            i += 1
+            continue
+
+        if in_string:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == string_char:
+                in_string = False
+            if ch == "\n":
+                line += 1
+            i += 1
+            continue
+
+        if in_char:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == string_char:
+                in_char = False
+            if ch == "\n":
+                line += 1
+            i += 1
+            continue
+
+        if ch == "/" and nxt == "/":
+            start_col = i
+            rest = source[i + 2 :]
+            end = rest.find("\n")
+            if end == -1:
+                end = len(rest)
+            else:
+                end += 1
+            results.append((line, start_col, i + 2 + end, "//" + rest[:end]))
+            i += 2 + end
+            continue
+
+        if ch == "R" and nxt == '"':
+            j = i + 2
+            delim = ""
+            while j < n and source[j] != "(":
+                delim += source[j]
+                j += 1
+            if j < n:
+                in_raw_string = True
+                raw_delim = delim
+                i = j + 1
+                continue
+
+        if ch == '"' or ch == "'":
+            if ch == '"':
+                in_string = True
+                string_char = '"'
+            else:
+                in_char = True
+                string_char = "'"
+            i += 1
+            continue
+
+        if ch == "\n":
+            line += 1
+        i += 1
+
+    return results
+
+
+def extract_cpp_block_comments(source: str) -> list[tuple[int, int, int, str]]:
+    results: list[tuple[int, int, int, str]] = []
     i = 0
     n = len(source)
     line = 1
@@ -84,6 +179,7 @@ def extract_cpp_comments(source: str) -> list[tuple[int, str]]:
     raw_delim = ""
     in_block_comment = False
     block_start_line = 0
+    block_start_col = 0
     block_text = ""
 
     while i < n:
@@ -93,7 +189,7 @@ def extract_cpp_comments(source: str) -> list[tuple[int, str]]:
         if in_block_comment:
             if ch == "*" and nxt == "/":
                 block_text += "*/"
-                results.append((block_start_line, block_text))
+                results.append((block_start_line, block_start_col, i + 2, block_text))
                 in_block_comment = False
                 i += 2
                 continue
@@ -137,15 +233,10 @@ def extract_cpp_comments(source: str) -> list[tuple[int, str]]:
             i += 1
             continue
 
-        if ch == "/" and nxt == "/":
-            rest = source[i + 2 :]
-            results.append((line, "//" + rest))
-            i = n
-            continue
-
         if ch == "/" and nxt == "*":
             in_block_comment = True
             block_start_line = line
+            block_start_col = i
             block_text = "/*"
             i += 2
             continue
@@ -179,8 +270,8 @@ def extract_cpp_comments(source: str) -> list[tuple[int, str]]:
     return results
 
 
-def extract_py_comments(source: str) -> list[tuple[int, str]]:
-    results: list[tuple[int, str]] = []
+def extract_py_line_comments(source: str) -> list[tuple[int, int, str]]:
+    results: list[tuple[int, int, str]] = []
     try:
         tokens = tokenize.generate_tokens(iter(source.splitlines(keepends=True)).__next__)
     except tokenize.TokenError:
@@ -188,41 +279,79 @@ def extract_py_comments(source: str) -> list[tuple[int, str]]:
 
     for tok in tokens:
         if tok.type == tokenize.COMMENT:
-            results.append((tok.start[0], tok.string))
-        elif tok.type == tokenize.STRING and tok.start[0] == tok.end[0]:
-            pass
+            results.append((tok.start[0], tok.start[1], tok.string))
     return results
 
 
-def extract_py_docstrings(source: str) -> list[tuple[int, str]]:
-    results: list[tuple[int, str]] = []
-    try:
-        tree = compile(source, "<string>", "exec", ast.PyCF_ONLY_AST)
-    except SyntaxError:
-        return results
+def extract_js_line_comments(source: str) -> list[tuple[int, int, int, str]]:
+    results: list[tuple[int, int, int, str]] = []
+    i = 0
+    n = len(source)
+    line = 1
+    in_string = False
+    string_char = ""
+    in_template = False
+    template_depth = 0
 
-    def _is_docstring(node):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
-            return False
-        body = node.body
-        return (
-            body
-            and isinstance(body[0], ast.Expr)
-            and isinstance(body[0].value, ast.Constant)
-            and isinstance(body[0].value.value, str)
-        )
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
 
-    for node in ast.walk(tree):
-        if _is_docstring(node):
-            expr = node.body[0]
-            val = expr.value.value
-            results.append((expr.lineno, '"""' + val + '"""'))
+        if in_template:
+            if ch == "`" and template_depth == 0:
+                in_template = False
+            elif ch == "$" and nxt == "{" and template_depth == 0:
+                template_depth += 1
+                i += 2
+                continue
+            if ch == "\n":
+                line += 1
+            i += 1
+            continue
+
+        if in_string:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == string_char:
+                in_string = False
+            if ch == "\n":
+                line += 1
+            i += 1
+            continue
+
+        if ch == "/" and nxt == "/":
+            start_col = i
+            rest = source[i + 2 :]
+            end = rest.find("\n")
+            if end == -1:
+                end = len(rest)
+            else:
+                end += 1
+            results.append((line, start_col, i + 2 + end, "//" + rest[:end]))
+            i += 2 + end
+            continue
+
+        if ch == "`":
+            in_template = True
+            i += 1
+            continue
+
+        if ch == '"' or ch == "'":
+            in_string = True
+            string_char = ch
+            i += 1
+            continue
+
+        if ch == "\n":
+            line += 1
+        i += 1
 
     return results
 
 
-def extract_js_comments(source: str) -> list[tuple[int, str]]:
-    results: list[tuple[int, str]] = []
+def extract_js_block_comments(source: str) -> list[tuple[int, int, int, str]]:
+    results: list[tuple[int, int, int, str]] = []
     i = 0
     n = len(source)
     line = 1
@@ -232,8 +361,8 @@ def extract_js_comments(source: str) -> list[tuple[int, str]]:
     template_depth = 0
     in_block_comment = False
     block_start_line = 0
+    block_start_col = 0
     block_text = ""
-    in_regex = False
 
     while i < n:
         ch = source[i]
@@ -242,7 +371,7 @@ def extract_js_comments(source: str) -> list[tuple[int, str]]:
         if in_block_comment:
             if ch == "*" and nxt == "/":
                 block_text += "*/"
-                results.append((block_start_line, block_text))
+                results.append((block_start_line, block_start_col, i + 2, block_text))
                 in_block_comment = False
                 i += 2
                 continue
@@ -277,15 +406,10 @@ def extract_js_comments(source: str) -> list[tuple[int, str]]:
             i += 1
             continue
 
-        if ch == "/" and nxt == "/":
-            rest = source[i + 2 :]
-            results.append((line, "//" + rest))
-            i = n
-            continue
-
         if ch == "/" and nxt == "*":
             in_block_comment = True
             block_start_line = line
+            block_start_col = i
             block_text = "/*"
             i += 2
             continue
@@ -308,6 +432,66 @@ def extract_js_comments(source: str) -> list[tuple[int, str]]:
     return results
 
 
+def extract_css_block_comments(source: str) -> list[tuple[int, int, int, str]]:
+    results: list[tuple[int, int, int, str]] = []
+    i = 0
+    n = len(source)
+    line = 1
+    while i < n:
+        if source[i : i + 2] == "/*":
+            block_start_line = line
+            block_start_col = i
+            block_text = "/*"
+            i += 2
+            while i < n:
+                if source[i] == "\n":
+                    line += 1
+                    block_text += "\n"
+                elif source[i : i + 2] == "*/":
+                    block_text += "*/"
+                    results.append((block_start_line, block_start_col, i + 2, block_text))
+                    i += 2
+                    break
+                else:
+                    block_text += source[i]
+                i += 1
+        else:
+            if source[i] == "\n":
+                line += 1
+            i += 1
+    return results
+
+
+def extract_html_comments(source: str) -> list[tuple[int, int, int, str]]:
+    results: list[tuple[int, int, int, str]] = []
+    i = 0
+    n = len(source)
+    line = 1
+    while i < n:
+        if source[i : i + 4] == "<!--":
+            block_start_line = line
+            block_start_col = i
+            block_text = "<!--"
+            i += 4
+            while i < n:
+                if source[i] == "\n":
+                    line += 1
+                    block_text += "\n"
+                elif source[i : i + 3] == "-->":
+                    block_text += "-->"
+                    results.append((block_start_line, block_start_col, i + 3, block_text))
+                    i += 3
+                    break
+                else:
+                    block_text += source[i]
+                i += 1
+        else:
+            if source[i] == "\n":
+                line += 1
+            i += 1
+    return results
+
+
 def is_test_file(filepath: str) -> bool:
     p = Path(filepath)
     if "tests" in p.parts or "test" in p.parts:
@@ -326,18 +510,170 @@ def is_test_file(filepath: str) -> bool:
     return False
 
 
+def get_lang(ext: str) -> str | None:
+    if ext == ".py":
+        return "py"
+    if ext in (".cpp", ".hpp", ".h", ".cc", ".cxx", ".c"):
+        return "cpp"
+    if ext in (".js", ".mjs", ".cjs"):
+        return "js"
+    if ext == ".css":
+        return "css"
+    if ext == ".html":
+        return "html"
+    return None
+
+
+def is_violation(text: str, lang: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if is_directive(stripped, lang):
+        return False
+    if has_cyrillic(stripped):
+        return False
+    return True
+
+
+def strip_file(filepath: str) -> int:
+    path = Path(filepath)
+    if is_test_file(filepath):
+        return 0
+    ext = path.suffix
+    lang = get_lang(ext)
+    if lang is None:
+        return 0
+
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError):
+        return 0
+
+    original = source
+    removed = 0
+
+    if lang == "py":
+        line_comments = extract_py_line_comments(source)
+        for lineno, col, text in line_comments:
+            if is_violation(text, lang):
+                lines = source.split("\n")
+                line_idx = lineno - 1
+                if line_idx < len(lines):
+                    line = lines[line_idx]
+                    comment_start = line[:col]
+                    lines[line_idx] = comment_start.rstrip()
+                source = "\n".join(lines)
+                removed += 1
+    elif lang == "cpp":
+        line_comments = extract_cpp_line_comments(source)
+        for lineno, col, end_col, text in line_comments:
+            if is_violation(text, lang):
+                lines = source.split("\n")
+                line_idx = lineno - 1
+                if line_idx < len(lines):
+                    line = lines[line_idx]
+                    comment_start = line[:col]
+                    lines[line_idx] = comment_start.rstrip()
+                source = "\n".join(lines)
+                removed += 1
+
+        block_comments = extract_cpp_block_comments(source)
+        for lineno, col, end_col, text in reversed(block_comments):
+            if is_violation(text, lang):
+                lines = source.split("\n")
+                start_line_idx = lineno - 1
+                end_line_idx = start_line_idx + text.count("\n")
+                if start_line_idx == end_line_idx:
+                    line = lines[start_line_idx]
+                    lines[start_line_idx] = line[:col] + line[end_col:]
+                else:
+                    lines[start_line_idx] = lines[start_line_idx][:col]
+                    for idx in range(start_line_idx + 1, end_line_idx):
+                        lines[idx] = ""
+                    if end_line_idx < len(lines):
+                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                source = "\n".join(lines)
+                removed += 1
+    elif lang == "js":
+        line_comments = extract_js_line_comments(source)
+        for lineno, col, end_col, text in line_comments:
+            if is_violation(text, lang):
+                lines = source.split("\n")
+                line_idx = lineno - 1
+                if line_idx < len(lines):
+                    line = lines[line_idx]
+                    comment_start = line[:col]
+                    lines[line_idx] = comment_start.rstrip()
+                source = "\n".join(lines)
+                removed += 1
+
+        block_comments = extract_js_block_comments(source)
+        for lineno, col, end_col, text in reversed(block_comments):
+            if is_violation(text, lang):
+                lines = source.split("\n")
+                start_line_idx = lineno - 1
+                end_line_idx = start_line_idx + text.count("\n")
+                if start_line_idx == end_line_idx:
+                    line = lines[start_line_idx]
+                    lines[start_line_idx] = line[:col] + line[end_col:]
+                else:
+                    lines[start_line_idx] = lines[start_line_idx][:col]
+                    for idx in range(start_line_idx + 1, end_line_idx):
+                        lines[idx] = ""
+                    if end_line_idx < len(lines):
+                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                source = "\n".join(lines)
+                removed += 1
+    elif lang == "css":
+        block_comments = extract_css_block_comments(source)
+        for lineno, col, end_col, text in reversed(block_comments):
+            if is_violation(text, lang):
+                lines = source.split("\n")
+                start_line_idx = lineno - 1
+                end_line_idx = start_line_idx + text.count("\n")
+                if start_line_idx == end_line_idx:
+                    line = lines[start_line_idx]
+                    lines[start_line_idx] = line[:col] + line[end_col:]
+                else:
+                    lines[start_line_idx] = lines[start_line_idx][:col]
+                    for idx in range(start_line_idx + 1, end_line_idx):
+                        lines[idx] = ""
+                    if end_line_idx < len(lines):
+                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                source = "\n".join(lines)
+                removed += 1
+    elif lang == "html":
+        block_comments = extract_html_comments(source)
+        for lineno, col, end_col, text in reversed(block_comments):
+            if is_violation(text, lang):
+                lines = source.split("\n")
+                start_line_idx = lineno - 1
+                end_line_idx = start_line_idx + text.count("\n")
+                if start_line_idx == end_line_idx:
+                    line = lines[start_line_idx]
+                    lines[start_line_idx] = line[:col] + line[end_col:]
+                else:
+                    lines[start_line_idx] = lines[start_line_idx][:col]
+                    for idx in range(start_line_idx + 1, end_line_idx):
+                        lines[idx] = ""
+                    if end_line_idx < len(lines):
+                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                source = "\n".join(lines)
+                removed += 1
+
+    if source != original:
+        path.write_text(source, encoding="utf-8")
+
+    return removed
+
+
 def check_file(filepath: str) -> list[str]:
     path = Path(filepath)
     if is_test_file(filepath):
         return []
     ext = path.suffix
-    if ext == ".py":
-        lang = "py"
-    elif ext in (".cpp", ".hpp", ".h", ".cc", ".cxx", ".c"):
-        lang = "cpp"
-    elif ext in (".js", ".mjs", ".cjs"):
-        lang = "js"
-    else:
+    lang = get_lang(ext)
+    if lang is None:
         return []
 
     try:
@@ -348,32 +684,46 @@ def check_file(filepath: str) -> list[str]:
     violations: list[str] = []
 
     if lang == "py":
-        line_comments = extract_py_comments(source)
-        docstrings = extract_py_docstrings(source)
-        all_comments = line_comments + docstrings
+        line_comments = extract_py_line_comments(source)
+        for lineno, col, text in line_comments:
+            if is_violation(text, lang):
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
     elif lang == "cpp":
-        all_comments = extract_cpp_comments(source)
+        line_comments = extract_cpp_line_comments(source)
+        for lineno, col, end_col, text in line_comments:
+            if is_violation(text, lang):
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+        block_comments = extract_cpp_block_comments(source)
+        for lineno, col, end_col, text in block_comments:
+            if is_violation(text, lang):
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
     elif lang == "js":
-        all_comments = extract_js_comments(source)
-    else:
-        return []
-
-    for lineno, text in all_comments:
-        stripped = text.strip()
-        if not stripped:
-            continue
-        if is_directive(stripped, lang):
-            continue
-        if has_cyrillic(stripped):
-            continue
-        violations.append(f"{filepath}:{lineno}: {stripped[:80]}")
+        line_comments = extract_js_line_comments(source)
+        for lineno, col, end_col, text in line_comments:
+            if is_violation(text, lang):
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+        block_comments = extract_js_block_comments(source)
+        for lineno, col, end_col, text in block_comments:
+            if is_violation(text, lang):
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+    elif lang == "css":
+        block_comments = extract_css_block_comments(source)
+        for lineno, col, end_col, text in block_comments:
+            if is_violation(text, lang):
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+    elif lang == "html":
+        block_comments = extract_html_comments(source)
+        for lineno, col, end_col, text in block_comments:
+            if is_violation(text, lang):
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
 
     return violations
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check comments are build-necessary and Russian")
+    parser = argparse.ArgumentParser(description="Check or strip non-build, non-Russian comments")
     parser.add_argument("paths", nargs="*", help="Files or directories to check")
+    parser.add_argument("--fix", action="store_true", help="Remove non-build, non-Russian comments")
     args = parser.parse_args()
 
     targets = args.paths
@@ -417,8 +767,25 @@ def main() -> int:
                         ".js",
                         ".mjs",
                         ".cjs",
+                        ".css",
+                        ".html",
                     ):
                         files.append(os.path.join(root, fn))
+
+    if args.fix:
+        total_removed = 0
+        analyzed = 0
+        for f in sorted(files):
+            analyzed += 1
+            if analyzed % 50 == 1 or analyzed == len(files):
+                print(f"check_comments: fixing {f} ({analyzed}/{len(files)})", file=sys.stderr)
+            removed = strip_file(f)
+            total_removed += removed
+        print(
+            f"check_comments: removed {total_removed} non-build/non-Russian comments from {analyzed} files",
+            file=sys.stderr,
+        )
+        return 0
 
     all_violations: list[str] = []
     analyzed = 0

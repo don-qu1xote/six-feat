@@ -17,16 +17,21 @@
   font: inherit;
   font-size: var(--text-sm);
   color: var(--paper);
-  background: rgba(var(--ink2-rgb), .85);
+  background: rgba(var(--ink2-rgb), 0.85);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   padding: var(--space-2) var(--space-3);
-  transition: border-color var(--duration-base) var(--ease-standard),
-              background var(--duration-base) var(--ease-standard),
-              box-shadow var(--duration-base) var(--ease-standard);
+  transition:
+    border-color var(--duration-base) var(--ease-standard),
+    background var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard);
 }
-.ui-input::placeholder { color: var(--mist); }
-.ui-input:hover { border-color: var(--mist); }
+.ui-input::placeholder {
+  color: var(--mist);
+}
+.ui-input:hover {
+  border-color: var(--mist);
+}
 .ui-input:focus,
 .ui-input:focus-visible {
   outline: none;
@@ -34,4 +39,7 @@
   background: rgba(var(--ink2-rgb), 1);
   box-shadow: var(--focus-ring);
 }
-.ui-input:disabled { opacity: .55; cursor: not-allowed; }
+.ui-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

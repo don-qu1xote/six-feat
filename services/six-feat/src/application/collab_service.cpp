@@ -80,10 +80,10 @@ ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
                                    std::optional<int> limit_override) const {
   const int limit = limit_override.value_or(gateway_.SongsLimitFg());
 
-  auto out = chain_.GetArtistSongs(ref, limit, Lane::Foreground, user_token);
+  auto out = chain_.GetArtistSongs(ref, limit, Lane::kForeground, user_token);
   out.seed = ref;
 
-  repo_.WriteThrough(out, Depth::Foreground);
+  repo_.WriteThrough(out, Depth::kForeground);
   return out;
 }
 
@@ -91,14 +91,14 @@ ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
                                             const std::string& user_token,
                                             std::optional<int> limit_override,
                                             const std::string& preferred_provider) const {
-  auto result = repo_.GetArtistSongs(seed, Depth::Foreground);
+  auto result = repo_.GetArtistSongs(seed, Depth::kForeground);
 
   const bool force_refetch = limit_override.has_value() && !result.network_needed;
 
   if (result.network_needed || force_refetch) {
     try {
       result.data = FetchFg(seed, user_token, limit_override);
-      result.have = Depth::Foreground;
+      result.have = Depth::kForeground;
       result.network_needed = false;
     } catch (const GeniusHttpError& e) {
       if (e.status_code == 503) {
@@ -152,7 +152,7 @@ void CollabService::AppendAdjFromL1(
     fallback.id = id;
     const auto node_it = node_info.find(id);
     const ArtistRef& fref = node_it != node_info.end() ? node_it->second : fallback;
-    const auto res = repo_.GetArtistSongs(fref, Depth::Foreground);
+    const auto res = repo_.GetArtistSongs(fref, Depth::kForeground);
     if (res.network_needed) continue;
 
     for (const auto& song : res.data.songs) {
@@ -176,10 +176,10 @@ PathContext CollabService::CheckDirectPath(const ArtistRef& from,
   const int limit = gateway_.SongsLimitFg();
 
   auto task_from = utils::Async("direct-songlist-from", [&] {
-    return gateway_.FetchSongList(from.id, limit, Lane::Foreground, user_token);
+    return gateway_.FetchSongList(from.id, limit, Lane::kForeground, user_token);
   });
   auto task_to = utils::Async("direct-songlist-to", [&] {
-    return gateway_.FetchSongList(to.id, limit, Lane::Foreground, user_token);
+    return gateway_.FetchSongList(to.id, limit, Lane::kForeground, user_token);
   });
 
   std::vector<std::int64_t> from_songs, to_songs;
@@ -207,7 +207,7 @@ PathContext CollabService::CheckDirectPath(const ArtistRef& from,
   for (const auto sid : from_songs) {
     detail_tasks.push_back({sid, utils::Async("direct-song-detail", [this, sid, &user_token] {
                               engine::SemaphoreLock lock{fg_fanout_.Semaphore()};
-                              return gateway_.FetchSongDetail(sid, Lane::Foreground, user_token);
+                              return gateway_.FetchSongDetail(sid, Lane::kForeground, user_token);
                             })});
   }
 
@@ -281,20 +281,22 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
   }
 
   {
-    auto rf = repo_.GetArtistSongs(from, Depth::Foreground);
+    auto rf = repo_.GetArtistSongs(from, Depth::kForeground);
     if (rf.network_needed) {
       try {
         FetchFg(from, user_token);
-      } catch (...) {
+      } catch (const std::exception& ex) {
+        LOG_WARNING() << "[Service] FindPath pre-warm from=" << from.id << ": " << ex.what();
       }
     }
   }
   {
-    auto rt = repo_.GetArtistSongs(to, Depth::Foreground);
+    auto rt = repo_.GetArtistSongs(to, Depth::kForeground);
     if (rt.network_needed) {
       try {
         FetchFg(to, user_token);
-      } catch (...) {
+      } catch (const std::exception& ex) {
+        LOG_WARNING() << "[Service] FindPath pre-warm to=" << to.id << ": " << ex.what();
       }
     }
   }
@@ -304,7 +306,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
   const auto pre_warm = [&](std::int64_t id) {
     for (const auto& edge : repo_.Neighbours(id, mask)) {
       const std::int64_t nid = edge.neighbour;
-      if (repo_.GetFetchDepth(nid) >= Depth::Foreground) known_ids.insert(nid);
+      if (repo_.GetFetchDepth(nid) >= Depth::kForeground) known_ids.insert(nid);
     }
   };
   pre_warm(from.id);
@@ -409,7 +411,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
     frontier_candidates.reserve(adj.size());
     for (const auto& [nid, edges] : adj) {
       if (known_ids.count(nid)) continue;
-      if (repo_.GetFetchDepth(nid) >= Depth::Foreground) {
+      if (repo_.GetFetchDepth(nid) >= Depth::kForeground) {
         known_ids.insert(nid);
         continue;
       }
@@ -496,7 +498,7 @@ RadialGraphResult CollabService::BuildRadialGraphWithSource(
     const std::int64_t lo = std::min(seed.id, other);
     const std::int64_t hi = std::max(seed.id, other);
     result.edge_sources[lo][hi] =
-        yandex_only ? EdgeSource::YandexFeature : EdgeSource::GeniusCredit;
+        yandex_only ? EdgeSource::kYandexFeature : EdgeSource::kGeniusCredit;
   }
 
   return result;

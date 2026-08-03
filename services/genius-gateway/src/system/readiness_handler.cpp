@@ -25,7 +25,7 @@ std::string ReadinessHandler::HandleRequestThrow(const server::http::HttpRequest
   ApplySecurityHeaders(request);
 
   const auto cb_state = gateway_.CbState();
-  const bool cb_ok = cb_state == CircuitBreaker::State::Closed;
+  const bool cb_ok = cb_state == CircuitBreaker::State::kClosed;
 
   const std::vector<ReadinessCheck> checks{
       {"circuit_breaker", cb_ok, CircuitBreaker::ToString(cb_state)},

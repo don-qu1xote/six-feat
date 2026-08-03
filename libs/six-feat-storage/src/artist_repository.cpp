@@ -27,8 +27,8 @@ GetResult ArtistRepository::GetArtistSongs(const ArtistRef& ref, Depth want) con
   }
 
   const Depth have = store_.GetFetchDepth(ref.id);
-  if (have != Depth::None) {
-    if (auto partial = store_.LoadArtistSongs(ref.id, Depth::None)) {
+  if (have != Depth::kNone) {
+    if (auto partial = store_.LoadArtistSongs(ref.id, Depth::kNone)) {
       LOG_DEBUG() << "[Repo] L1 partial id=" << ref.id << " have=" << static_cast<int>(have)
                   << " want=" << static_cast<int>(want);
       return {std::move(*partial), have, true};
@@ -38,7 +38,7 @@ GetResult ArtistRepository::GetArtistSongs(const ArtistRef& ref, Depth want) con
   LOG_DEBUG() << "[Repo] miss id=" << ref.id;
   ArtistSongs empty;
   empty.seed = ref;
-  return {std::move(empty), Depth::None, true};
+  return {std::move(empty), Depth::kNone, true};
 }
 
 std::optional<ArtistRef> ArtistRepository::Lookup(std::int64_t artist_id) const {
@@ -61,7 +61,7 @@ std::vector<std::int64_t> ArtistRepository::ListIncompleteArtists(Depth want,
 }
 
 bool ArtistRepository::HasAny(std::int64_t id) const {
-  return store_.GetFetchDepth(id) != Depth::None;
+  return store_.GetFetchDepth(id) != Depth::kNone;
 }
 
 void ArtistRepository::WriteThrough(const ArtistSongs& data, Depth new_depth) {

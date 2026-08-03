@@ -97,15 +97,15 @@ void RateLimiter::WaitAndDecrement() {
 
 bool CircuitBreaker::AllowRequest() {
   const State s = state_.load(std::memory_order_acquire);
-  if (s == State::Closed) return true;
-  if (s == State::HalfOpen) return TryClaimProbe();
+  if (s == State::kClosed) return true;
+  if (s == State::kHalfOpen) return TryClaimProbe();
   std::lock_guard lock(mu_);
   const State locked_state = state_.load(std::memory_order_relaxed);
-  if (locked_state == State::HalfOpen) return TryClaimProbe();
-  if (locked_state != State::Open) return false;
+  if (locked_state == State::kHalfOpen) return TryClaimProbe();
+  if (locked_state != State::kOpen) return false;
   if (std::chrono::steady_clock::now() - trip_time_ >= open_duration_) {
     LOG_INFO() << "[CB] request_id=" << CurrentRequestId() << " Open→HalfOpen";
-    state_.store(State::HalfOpen, std::memory_order_release);
+    state_.store(State::kHalfOpen, std::memory_order_release);
     probe_in_flight_.store(true, std::memory_order_release);
     return true;
   }
@@ -119,14 +119,14 @@ bool CircuitBreaker::TryClaimProbe() {
 
 void CircuitBreaker::RecordSuccess() {
   const State s = state_.load(std::memory_order_acquire);
-  if (s == State::Closed) {
+  if (s == State::kClosed) {
     std::lock_guard lock(mu_);
     consecutive_failures_ = 0;
     return;
   }
-  if (s == State::HalfOpen) {
+  if (s == State::kHalfOpen) {
     std::lock_guard lock(mu_);
-    if (state_.load(std::memory_order_relaxed) == State::HalfOpen) Reset();
+    if (state_.load(std::memory_order_relaxed) == State::kHalfOpen) Reset();
   }
 }
 
@@ -134,11 +134,11 @@ void CircuitBreaker::RecordFailure() {
   std::lock_guard lock(mu_);
   ++consecutive_failures_;
   const State s = state_.load(std::memory_order_relaxed);
-  if (s == State::HalfOpen) {
+  if (s == State::kHalfOpen) {
     Trip();
     return;
   }
-  if (s == State::Closed && consecutive_failures_ >= failure_threshold_) Trip();
+  if (s == State::kClosed && consecutive_failures_ >= failure_threshold_) Trip();
 }
 
 CircuitBreaker::State CircuitBreaker::CurrentState() const {
@@ -147,11 +147,11 @@ CircuitBreaker::State CircuitBreaker::CurrentState() const {
 
 const char* CircuitBreaker::ToString(State state) {
   switch (state) {
-    case State::Closed:
+    case State::kClosed:
       return "closed";
-    case State::Open:
+    case State::kOpen:
       return "open";
-    case State::HalfOpen:
+    case State::kHalfOpen:
       return "half_open";
   }
   return "unknown";
@@ -159,7 +159,7 @@ const char* CircuitBreaker::ToString(State state) {
 
 void CircuitBreaker::Trip() {
   trip_time_ = std::chrono::steady_clock::now();
-  state_.store(State::Open, std::memory_order_release);
+  state_.store(State::kOpen, std::memory_order_release);
   probe_in_flight_.store(false, std::memory_order_release);
   LOG_ERROR() << "[CB] request_id=" << CurrentRequestId()
               << " TRIPPED (failures=" << consecutive_failures_ << ")";
@@ -167,7 +167,7 @@ void CircuitBreaker::Trip() {
 
 void CircuitBreaker::Reset() {
   consecutive_failures_ = 0;
-  state_.store(State::Closed, std::memory_order_release);
+  state_.store(State::kClosed, std::memory_order_release);
   probe_in_flight_.store(false, std::memory_order_release);
   LOG_INFO() << "[CB] request_id=" << CurrentRequestId() << " HalfOpen→Closed";
 }
@@ -255,7 +255,7 @@ ResiliencePipeline::Guard ResiliencePipeline::Acquire(Lane lane) {
 
   cooldown_.WaitForCooldown();
 
-  LaneData& ld = (lane == Lane::Foreground) ? fg_ : bg_;
+  LaneData& ld = (lane == Lane::kForeground) ? fg_ : bg_;
 
   ld.bucket.Acquire();
 

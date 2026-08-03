@@ -50,7 +50,7 @@ std::string AccountHandler::HandleRequestThrow(const server::http::HttpRequest& 
   }
 
   try {
-    const auto user_id = gateway_.FetchAccountUserId(token, Lane::Foreground);
+    const auto user_id = gateway_.FetchAccountUserId(token, Lane::kForeground);
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     if (!user_id) {
       b["found"] = false;

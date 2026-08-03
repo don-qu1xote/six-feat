@@ -44,7 +44,9 @@
    шевелится, и анимировать можно честную width. */
 .game-rail {
   position: absolute;
-  left: var(--space-4); top: var(--space-4); bottom: var(--space-4);
+  left: var(--space-4);
+  top: var(--space-4);
+  bottom: var(--space-4);
   width: 54px;
   display: flex;
   flex-direction: column;
@@ -53,18 +55,23 @@
   padding: var(--space-3) 7px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: rgba(var(--panel-rgb), .82);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: rgba(var(--panel-rgb), 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--elevation-2);
   overflow: hidden;
   z-index: var(--z-docked, 30);
   transition: width var(--duration-med) var(--ease-emphasized);
 }
-.game-rail:hover { width: 180px; }
+.game-rail:hover {
+  width: 180px;
+}
 /* Сцена уступает островку место слева — ровно его ширину плюс поля, и это
    значение НЕ меняется на ховере (иначе разворот снова двигал бы контент). */
 .connect-split,
-.game-screen-body { padding-left: calc(54px + var(--space-4) * 2); }
+.game-screen-body {
+  padding-left: calc(54px + var(--space-4) * 2);
+}
 
 /* [ИСПРАВЛЕНО] Бренд игрового рейла теперь ТА ЖЕ .brand-кнопка, что в
    Explorer'е (canvas-controls.css) — тот же кружок .dotmark, тот же лейбл
@@ -72,85 +79,156 @@
    неинтерактивный <span> со своим набором стилей: выглядело похоже, но не
    нажималось, и вернуться из игры на 8080 из левого верхнего угла было
    нечем. Здесь остаётся только раскладка колонки. */
-.game-rail-brand { margin-bottom: var(--space-2); text-decoration: none; }
+.game-rail-brand {
+  margin-bottom: var(--space-2);
+  text-decoration: none;
+}
 
 /* Активный экран — тот же язык, что .rail-btn.active у Explorer'а. */
-.game-nav-link.is-active { color: var(--paper); border-color: var(--signal); background: var(--active-tint); }
-.game-nav-link.is-active .ri { color: var(--signal); }
+.game-nav-link.is-active {
+  color: var(--paper);
+  border-color: var(--signal);
+  background: var(--active-tint);
+}
+.game-nav-link.is-active .ri {
+  color: var(--signal);
+}
 /* [SF-GAME-52] .game-rail-spacer / .game-rail-back удалены вместе с разметкой:
    кнопка Explore внизу рейла вела на #/graph — туда же, куда и бренд в самом
    верху той же колонки, — то есть один и тот же выход дважды в одном рейле, а
    спейсер существовал только чтобы её туда отжать. */
 
 /* Play surface (connect.css owns its inner split) adopts the same rail-left
-   row layout — overrides connect.css's own `flex-direction: column`. */
-.connect-surface { flex-direction: row; }
 
-/* ── Screen shell ─────────────────────────────────────────────────────────── */
-.game-screen {
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-surface, 20);
-  display: none;
-  flex-direction: row;
-  background: var(--ink);
-  background-image: radial-gradient(circle, rgba(var(--line-rgb), .5) 1px, transparent 1px);
-  background-size: 26px 26px;
-  overflow: hidden;
-}
-.game-screen.show { display: flex; }
 
-.game-screen-body {
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: var(--space-9) var(--space-8) var(--space-10);
-  overflow-y: auto;
-}
-.game-screen-body--wide { max-width: 1080px; }
 
-/* Section header + tabs (shared by Leaderboard / Challenges). */
-.gs-head {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.lb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  margin-bottom: var(--space-3);
+  flex-direction: column;
+  gap: 6px;
 }
-.gs-title { font-family: var(--font-display); font-weight: 800; font-size: var(--text-2xl); color: var(--paper); }
-.gs-title--sm { font-size: var(--text-lg); }
-.gs-sub { color: var(--mist); font-size: var(--text-sm); margin-bottom: var(--space-4); }
-.gs-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: var(--r-md); background: rgba(var(--panel-rgb), .7); border: 1px solid var(--line); }
-.gs-tab {
-  padding: 6px 14px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--mist);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: color var(--duration-base) var(--ease-standard), background-color var(--duration-base) var(--ease-standard);
-}
-.gs-tab:hover { color: var(--paper); }
-.gs-tab.is-active { color: var(--ink); background: var(--signal); }
-.gs-empty { color: var(--mist); font-size: var(--text-sm); padding: var(--space-5) 0; text-align: center; }
-.gs-signin { display: inline-block; margin-top: var(--space-2); color: var(--signal); font-weight: 700; text-decoration: none; }
-.gs-signin:hover { text-decoration: underline; }
-
-/* Shared avatar (game-windows.js avatarHtml). */
-.gw-av { width: 34px; height: 34px; border-radius: 999px; object-fit: cover; flex: 0 0 auto; }
-.gw-av--fallback {
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--panel-2); color: var(--signal);
-  border: 1px solid var(--line); font-weight: 700; font-size: var(--text-sm);
-}
-
-/* ── Leaderboard list (also reused by the season podium) ──────────────────── */
-.lb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 /* [SF-GAME-33] Строки-плитки (лидерборд, история, ачивки, сезонная стена)
    стоят на .ui-tile — радиус и фон оттуда. Здесь только раскладка строки,
    свой паддинг и рамка. */
@@ -162,165 +240,469 @@
   padding: 10px var(--space-4);
   border: 1px solid var(--line);
 }
-.lb-rank { font-family: var(--font-mono); font-weight: 700; color: var(--mist); }
-.lb-row:nth-child(1) .lb-rank { color: var(--amber); }
-.lb-name { color: var(--paper); font-weight: 600; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-a.lb-name:hover { color: var(--signal); }
-.lb-hops { color: var(--mist); font-size: var(--text-xs); }
-.lb-score { font-family: var(--font-mono); font-weight: 700; color: var(--signal); }
+.lb-rank {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--mist);
+}
+.lb-row:nth-child(1) .lb-rank {
+  color: var(--amber);
+}
+.lb-name {
+  color: var(--paper);
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+a.lb-name:hover {
+  color: var(--signal);
+}
+.lb-hops {
+  color: var(--mist);
+  font-size: var(--text-xs);
+}
+.lb-score {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--signal);
+}
 
 /* ── Profile · personal cabinet (ЛК) ──────────────────────────────────────── */
 /* .pf-head / .pf-name / .pf-rank are also reused by the admin panel below. */
-.pf-head { display: flex; align-items: center; gap: var(--space-4); }
-.pf-rank { color: var(--mist); font-size: var(--text-sm); }
+.pf-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.pf-rank {
+  color: var(--mist);
+  font-size: var(--text-sm);
+}
 
 /* [SF-GAME-33] .ui-panel даёт материал (стекло, рамка, радиус, тень, blur) —
    здесь остаётся только раскладка ЛК и его собственный, более просторный
    паддинг. Раньше эти пять «материальных» деклараций были второй реализацией
    того же самого. */
 .cab-hero {
-  display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-6); align-items: center;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-6);
+  align-items: center;
   padding: var(--space-7);
   margin-bottom: var(--space-7);
 }
 .cab-avatar-ring {
-  width: 112px; height: 112px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
   background: conic-gradient(from 210deg, var(--signal), var(--pulse), var(--signal));
 }
 .pf-avatar {
-  width: 98px; height: 98px; border-radius: 50%; overflow: hidden;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--panel-2); color: var(--signal); border: 3px solid var(--panel);
-  font-family: var(--font-display); font-weight: 800; font-size: var(--text-2xl);
+  width: 98px;
+  height: 98px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-2);
+  color: var(--signal);
+  border: 3px solid var(--panel);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-2xl);
 }
-.pf-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.cab-eyebrow { font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: .16em; text-transform: uppercase; color: var(--signal); margin: 0; }
-.cab-name-row { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-1) 0 var(--space-3); }
-.pf-name { font-family: var(--font-display); font-weight: 800; font-size: var(--text-3xl); color: var(--paper); margin: 0; letter-spacing: -.01em; }
+.pf-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cab-eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin: 0;
+}
+.cab-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-1) 0 var(--space-3);
+}
+.pf-name {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-3xl);
+  color: var(--paper);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
 /* [SF-GAME-33] .ui-btn ui-btn--icon даёт рамку/фон/цвет/курсор/переход и общий
    focus-ring. Здесь — только форма: скруглённый квадрат 34px вместо круглых
    32px кита (иконка правки стоит в ряд с именем, а не в пилюле рейла). */
-.cab-edit { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; flex: 0 0 auto; }
-.cab-edit svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; }
-.cab-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.cab-edit {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+.cab-edit svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.cab-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
 /* [SF-GAME-33] .ui-chip даёт форму, рамку, цвет и focus-ring; тут — плотность
    и вес под статы ЛК (чип не кликабельный, поэтому чуть крупнее и жирнее). */
-.cab-chip { gap: 6px; padding: 5px 12px; font-weight: 650; cursor: default; }
-.cab-chip--rank { background: rgba(var(--signal-rgb), .13); color: var(--signal); border-color: rgba(var(--signal-rgb), .4); }
-.cab-cta { display: flex; flex-direction: column; gap: var(--space-2); }
+.cab-chip {
+  gap: 6px;
+  padding: 5px 12px;
+  font-weight: 650;
+  cursor: default;
+}
+.cab-chip--rank {
+  background: rgba(var(--signal-rgb), 0.13);
+  color: var(--signal);
+  border-color: rgba(var(--signal-rgb), 0.4);
+}
+.cab-cta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
 
-.cab-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-bottom: var(--space-8); }
+.cab-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
 /* [SF-GAME-33] .ui-tile даёт радиус и фон; тут — свой паддинг (плитка статов
    крупнее плитки сайдбара) и рамка, которой у базовой плитки нет. */
-.cab-tile { padding: var(--space-5); border: 1px solid var(--line); }
-.cab-tile-v { display: block; font-family: var(--font-mono); font-weight: 800; font-size: var(--text-2xl); color: var(--paper); }
-.cab-tile-l { color: var(--mist); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .07em; margin-top: var(--space-1); }
+.cab-tile {
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+}
+.cab-tile-v {
+  display: block;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: var(--text-2xl);
+  color: var(--paper);
+}
+.cab-tile-l {
+  color: var(--mist);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-top: var(--space-1);
+}
 
-.cab-section { margin-bottom: var(--space-8); }
-.cab-sec-title { font-family: var(--font-display); font-weight: 700; font-size: var(--text-lg); color: var(--paper); margin: 0 0 var(--space-4); }
+.cab-section {
+  margin-bottom: var(--space-8);
+}
+.cab-sec-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  color: var(--paper);
+  margin: 0 0 var(--space-4);
+}
 
 /* Achievements + history (populated by game-windows.js renderBadges/renderHistory). */
-.pf-badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); }
+.pf-badges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
 .pf-badge {
-  display: flex; flex-direction: column; gap: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   padding: var(--space-4);
   border: 1px solid var(--amber);
-  background: rgba(var(--amber-rgb), .09);   /* заслуженная ачивка — свой янтарь поверх фона плитки */
+  background: rgba(
+    var(--amber-rgb),
+    0.09
+  ); /* заслуженная ачивка — свой янтарь поверх фона плитки */
 }
-.pf-badge-title { color: var(--paper); font-weight: 700; font-size: var(--text-sm); }
-.pf-badge-descr { color: var(--mist); font-size: var(--text-xs); }
-.pf-history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.pf-badge-title {
+  color: var(--paper);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+.pf-badge-descr {
+  color: var(--mist);
+  font-size: var(--text-xs);
+}
+.pf-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
 .pf-attempt {
-  display: grid; grid-template-columns: 4.5rem 1fr auto; align-items: center; gap: var(--space-4);
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--line);
 }
-.pf-attempt-score { font-family: var(--font-mono); font-weight: 700; font-size: var(--text-lg); }
-.pf-attempt--ok .pf-attempt-score { color: var(--signal); }
-.pf-attempt--bad .pf-attempt-score { color: var(--mist); }
-.pf-attempt-meta { color: var(--paper); font-size: var(--text-sm); }
-.pf-attempt-date { color: var(--mist); font-size: var(--text-xs); }
+.pf-attempt-score {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: var(--text-lg);
+}
+.pf-attempt--ok .pf-attempt-score {
+  color: var(--signal);
+}
+.pf-attempt--bad .pf-attempt-score {
+  color: var(--mist);
+}
+.pf-attempt-meta {
+  color: var(--paper);
+  font-size: var(--text-sm);
+}
+.pf-attempt-date {
+  color: var(--mist);
+  font-size: var(--text-xs);
+}
 
 /* ── Challenges browser ───────────────────────────────────────────────────── */
 /* [SF-GAME-46] Строка поиска. Инпут — .ui-input кита, кнопка сброса —
    .ui-btn--icon; здесь только раскладка «иконка ‖ поле ‖ сброс». */
 .ch-search {
   position: relative;
-  display: flex; align-items: center; gap: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
 .ch-search-ico {
-  position: absolute; left: var(--space-3); width: 16px; height: 16px;
-  fill: none; stroke: var(--mist); stroke-width: 1.6; pointer-events: none;
+  position: absolute;
+  left: var(--space-3);
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--mist);
+  stroke-width: 1.6;
+  pointer-events: none;
 }
-.ch-search-input { flex: 1; padding-left: var(--space-9); }
+.ch-search-input {
+  flex: 1;
+  padding-left: var(--space-9);
+}
 /* Нативный крестик type="search" убираем — у нас своя кнопка сброса, две рядом
    читались бы как баг. */
-.ch-search-input::-webkit-search-cancel-button { display: none; }
-.ch-search-clear { flex: 0 0 auto; }
+.ch-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+.ch-search-clear {
+  flex: 0 0 auto;
+}
 
-.ch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
+.ch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
 /* [SF-GAME-33] Карточка челленджа — .ui-panel как материал; здесь только то,
    что делает её КНОПКОЙ (раскладка, выравнивание текста, курсор, ховер). */
 .ch-card {
-  display: flex; flex-direction: column; gap: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-4);
-  text-align: left; cursor: pointer;
-  transition: border-color var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-standard);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-base) var(--ease-standard),
+    transform var(--duration-base) var(--ease-standard);
 }
-.ch-card:hover { border-color: var(--signal); transform: translateY(-2px); }
+.ch-card:hover {
+  border-color: var(--signal);
+  transform: translateY(-2px);
+}
 .ch-card-kind {
   align-self: flex-start;
-  padding: 2px 8px; border-radius: 999px;
-  font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--ink); background: var(--mist);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  background: var(--mist);
 }
-.ch-card-kind--daily { background: var(--amber); }
-.ch-card-kind--custom { background: var(--signal); }
-.ch-card-pair { display: flex; align-items: center; gap: var(--space-2); }
-.ch-card-arrow { color: var(--mist); }
-.ch-av { width: 40px; height: 40px; }
-.ch-card-names { color: var(--paper); font-size: var(--text-sm); }
-.ch-card-names b { color: var(--paper); }
-.ch-card-meta { color: var(--mist); font-family: var(--font-mono); font-size: var(--text-xs); }
-.ch-more { display: block; margin: var(--space-5) auto 0; }
+.ch-card-kind--daily {
+  background: var(--amber);
+}
+.ch-card-kind--custom {
+  background: var(--signal);
+}
+.ch-card-pair {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.ch-card-arrow {
+  color: var(--mist);
+}
+.ch-av {
+  width: 40px;
+  height: 40px;
+}
+.ch-card-names {
+  color: var(--paper);
+  font-size: var(--text-sm);
+}
+.ch-card-names b {
+  color: var(--paper);
+}
+.ch-card-meta {
+  color: var(--mist);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.ch-more {
+  display: block;
+  margin: var(--space-5) auto 0;
+}
 
 /* ── Season & achievements ────────────────────────────────────────────────── */
 /* [SF-GAME-33] .ui-panel — материал; здесь раскладка сезонного героя. */
 .sn-hero {
-  display: flex; gap: var(--space-4); align-items: flex-start;
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
   padding: var(--space-5);
   margin-bottom: var(--space-6);
 }
 .sn-hero-badge {
   flex: 0 0 auto;
-  width: 52px; height: 52px; border-radius: 14px;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(var(--amber-rgb), .14); border: 1px solid var(--amber);
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--amber-rgb), 0.14);
+  border: 1px solid var(--amber);
 }
-.sn-hero-ico { width: 26px; height: 26px; fill: var(--amber); }
-.sn-hero-main { flex: 1; min-width: 0; }
-.sn-eyebrow { color: var(--amber); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
-.sn-title { font-family: var(--font-display); font-weight: 800; font-size: var(--text-2xl); color: var(--paper); }
-.sn-meta { display: flex; gap: var(--space-3); flex-wrap: wrap; margin: var(--space-2) 0; }
-.sn-countdown { color: var(--paper); font-size: var(--text-sm); font-weight: 600; }
-.sn-you { color: var(--signal); font-size: var(--text-sm); font-weight: 600; }
-.sn-progress { height: 6px; border-radius: 999px; background: rgba(var(--line-rgb), .6); overflow: hidden; margin: var(--space-2) 0; }
-.sn-progress-fill { display: block; height: 100%; width: 0; background: var(--amber); border-radius: 999px; transition: width var(--duration-slow) var(--ease-standard); }
-.sn-dates { color: var(--mist); font-size: var(--text-xs); }
-.sn-section { margin-bottom: var(--space-6); }
-.sn-link { color: var(--signal); font-size: var(--text-sm); font-weight: 600; text-decoration: none; }
-.sn-link:hover { text-decoration: underline; }
-.sn-ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
+.sn-hero-ico {
+  width: 26px;
+  height: 26px;
+  fill: var(--amber);
+}
+.sn-hero-main {
+  flex: 1;
+  min-width: 0;
+}
+.sn-eyebrow {
+  color: var(--amber);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+.sn-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-2xl);
+  color: var(--paper);
+}
+.sn-meta {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: var(--space-2) 0;
+}
+.sn-countdown {
+  color: var(--paper);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.sn-you {
+  color: var(--signal);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.sn-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(var(--line-rgb), 0.6);
+  overflow: hidden;
+  margin: var(--space-2) 0;
+}
+.sn-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--amber);
+  border-radius: 999px;
+  transition: width var(--duration-slow) var(--ease-standard);
+}
+.sn-dates {
+  color: var(--mist);
+  font-size: var(--text-xs);
+}
+.sn-section {
+  margin-bottom: var(--space-6);
+}
+.sn-link {
+  color: var(--signal);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+.sn-link:hover {
+  text-decoration: underline;
+}
+.sn-ach-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
 .sn-ach {
-  display: flex; flex-direction: column; gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: var(--space-4);
   border: 1px solid var(--line);
-  opacity: .55;   /* незаработанная — приглушена; .is-earned ниже возвращает её */
+  opacity: 0.55; /* незаработанная — приглушена; .is-earned ниже возвращает её */
 }
-.sn-ach.is-earned { opacity: 1; border-color: var(--amber); background: rgba(var(--amber-rgb), .1); }
-.sn-ach-title { color: var(--paper); font-weight: 700; font-size: var(--text-sm); }
-.sn-ach-descr { color: var(--mist); font-size: var(--text-xs); }
+.sn-ach.is-earned {
+  opacity: 1;
+  border-color: var(--amber);
+  background: rgba(var(--amber-rgb), 0.1);
+}
+.sn-ach-title {
+  color: var(--paper);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+.sn-ach-descr {
+  color: var(--mist);
+  font-size: var(--text-xs);
+}
 
 /* ── Admin panel (owner-only, embedded in Profile) ────────────────────────── */
 /* [SF-GAME-33] .ui-panel — материал; здесь только «это админская зона»:
@@ -329,39 +711,113 @@ a.lb-name:hover { color: var(--signal); }
   margin-top: var(--space-6);
   padding: var(--space-5);
   border: 1px solid var(--amber);
-  background: rgba(var(--amber-rgb), .07);
+  background: rgba(var(--amber-rgb), 0.07);
 }
-.pf-head--admin { margin-bottom: var(--space-4); }
+.pf-head--admin {
+  margin-bottom: var(--space-4);
+}
 .admin-badge {
-  width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: rgba(var(--amber-rgb), .14); border: 1px solid var(--amber);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(var(--amber-rgb), 0.14);
+  border: 1px solid var(--amber);
 }
-.admin-ico { width: 22px; height: 22px; fill: var(--amber); }
-.pf-name--sm { font-size: var(--text-xl); }
+.admin-ico {
+  width: 22px;
+  height: 22px;
+  fill: var(--amber);
+}
+.pf-name--sm {
+  font-size: var(--text-xl);
+}
 .admin-publish {
-  display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
 }
-.admin-field { flex: 1 1 180px; min-width: 0; position: relative; display: flex; flex-direction: column; gap: 4px; }
-.admin-label { color: var(--mist); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .06em; }
-.admin-publish-btn { flex: 0 0 auto; }
-.admin-status { margin-top: var(--space-3); color: var(--mist); font-size: var(--text-sm); min-height: 1.2em; }
+.admin-field {
+  flex: 1 1 180px;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.admin-label {
+  color: var(--mist);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.admin-publish-btn {
+  flex: 0 0 auto;
+}
+.admin-status {
+  margin-top: var(--space-3);
+  color: var(--mist);
+  font-size: var(--text-sm);
+  min-height: 1.2em;
+}
 
 /* The REAL #network, relocated into the game's graph column (game-board.js) —
-   fills the column and stays under the game overlay/rail. */
-.connect-canvas #network { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
 
-/* ── Achievement icons (profile badges + season wall) ─────────────────────── */
-.pf-badge { flex-direction: row; align-items: center; gap: var(--space-3); }
-.sn-ach { flex-direction: row; align-items: center; gap: var(--space-3); }
-.pf-badge-ico, .sn-ach-ico {
-  width: 40px; height: 40px; border-radius: 11px; flex: 0 0 auto;
-  display: grid; place-items: center; color: var(--amber);
-  background: rgba(var(--amber-rgb), .14); border: 1px solid var(--amber);
+
+
+
+
+
+
+
+
+
+.pf-badge {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
 }
-.pf-badge-ico svg, .sn-ach-ico svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; }
-.pf-badge-body, .sn-ach-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.sn-ach:not(.is-earned) .sn-ach-ico { color: var(--mist); background: rgba(var(--line-rgb), .1); border-color: var(--line); }
+.sn-ach {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+}
+.pf-badge-ico,
+.sn-ach-ico {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--amber);
+  background: rgba(var(--amber-rgb), 0.14);
+  border: 1px solid var(--amber);
+}
+.pf-badge-ico svg,
+.sn-ach-ico svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+.pf-badge-body,
+.sn-ach-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.sn-ach:not(.is-earned) .sn-ach-ico {
+  color: var(--mist);
+  background: rgba(var(--line-rgb), 0.1);
+  border-color: var(--line);
+}
 
 /* ── [SF-GAME-47/48] Экран старта партии ──────────────────────────────────────
    Один и тот же #connect-endpoints в двух ролях. Пока партии нет
@@ -377,9 +833,13 @@ a.lb-name:hover { color: var(--signal); }
    сцене: flex + margin:auto (не place-items), чтобы при нехватке высоты
    карточка скроллилась, а не обрезалась сверху. */
 .connect-surface:not(.has-game) .connect-stage-layer {
-  inset: 0; max-width: none;
-  display: flex; align-items: center; justify-content: center;
-  padding: var(--space-6); box-sizing: border-box;
+  inset: 0;
+  max-width: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  box-sizing: border-box;
   overflow-y: auto;
   z-index: var(--z-panel);
 }
@@ -396,7 +856,9 @@ a.lb-name:hover { color: var(--signal); }
 .connect-surface:not(.has-game) .connect-hud,
 .connect-surface:not(.has-game) .connect-graph-rail,
 .connect-surface:not(.has-game) .connect-stage-empty,
-.connect-surface:not(.has-game) .connect-line-panel { display: none; }
+.connect-surface:not(.has-game) .connect-line-panel {
+  display: none;
+}
 /* Строку тоже переопределяем: на узком экране .connect-split зажимает граф в
    320px (там он делит высоту с панелью), и стартовая карточка прилипала к
    верхнему краю вместо центра. Панели в этом состоянии нет — отдавать высоту
@@ -410,92 +872,179 @@ a.lb-name:hover { color: var(--signal); }
    с одной карточкой, а не «форма внутри пустого виджета». Свечение позади
    карточки берёт те же два акцента, что и вся игра. */
 .connect-surface:not(.has-game) .connect-graph-col {
-  border-color: transparent; box-shadow: none; background-image: none;
+  border-color: transparent;
+  box-shadow: none;
+  background-image: none;
   background:
-    radial-gradient(ellipse 900px 620px at 50% 50%, rgba(var(--signal-rgb), .05), transparent 62%),
-    radial-gradient(ellipse 700px 500px at 50% 50%, rgba(var(--pulse-rgb),  .05), transparent 62%);
+    radial-gradient(ellipse 900px 620px at 50% 50%, rgba(var(--signal-rgb), 0.05), transparent 62%),
+    radial-gradient(ellipse 700px 500px at 50% 50%, rgba(var(--pulse-rgb), 0.05), transparent 62%);
 }
 
-.connect-setup-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.connect-setup-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
 .connect-setup-kicker {
-  display: inline-flex; align-items: center; align-self: flex-start; gap: 6px;
-  padding: 4px 11px; border-radius: 999px;
-  font-weight: 800; letter-spacing: .12em; font-size: var(--text-xs); text-transform: uppercase;
-  color: var(--ink); background: linear-gradient(90deg, var(--signal), var(--pulse));
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  color: var(--ink);
+  background: linear-gradient(90deg, var(--signal), var(--pulse));
   margin-bottom: var(--space-2);
 }
-.connect-setup-kicker .cgf-ico { width: 14px; height: 14px; fill: var(--ink); }
-.connect-setup-title {
-  font-family: var(--font-display); font-weight: 800; font-size: var(--text-xl);
-  color: var(--paper); margin: 0;
+.connect-setup-kicker .cgf-ico {
+  width: 14px;
+  height: 14px;
+  fill: var(--ink);
 }
-.connect-setup-sub { color: var(--mist); font-size: var(--text-sm); margin: 0; }
-.connect-setup-actions { display: flex; gap: var(--space-2); }
-.connect-setup-actions .ui-btn { flex: 1; justify-content: center; }
+.connect-setup-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-xl);
+  color: var(--paper);
+  margin: 0;
+}
+.connect-setup-sub {
+  color: var(--mist);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+.connect-setup-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.connect-setup-actions .ui-btn {
+  flex: 1;
+  justify-content: center;
+}
 /* В роли поповера («сменить пару») заголовок и кнопки лишние — пилюля уже
    объяснила, что происходит, а старт давно случился. */
 .connect-surface.has-game .connect-setup-head,
-.connect-surface.has-game .connect-setup-actions { display: none; }
+.connect-surface.has-game .connect-setup-actions {
+  display: none;
+}
 
 /* [SF-GAME-48] Два полюса. На стартовом экране — рядом, слева направо, той же
    грамматикой цвета, что и граф (--signal = старт, --pulse = цель): карточка
    рисует ту же ось, вдоль которой потом ляжет коридор. В роли поповера сетка
    схлопывается в колонку, соединитель уходит. */
-.connect-setup-poles { display: grid; gap: var(--space-3); }
-.connect-setup-link { display: none; }
+.connect-setup-poles {
+  display: grid;
+  gap: var(--space-3);
+}
+.connect-setup-link {
+  display: none;
+}
 .connect-surface:not(.has-game) .connect-setup-poles {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: end; gap: var(--space-3);
+  align-items: end;
+  gap: var(--space-3);
 }
 .connect-surface:not(.has-game) .connect-setup-link {
-  display: flex; align-items: center; gap: 5px;
-  height: 40px; color: var(--mist);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 40px;
+  color: var(--mist);
 }
 .connect-surface:not(.has-game) .connect-setup-link::before,
 .connect-surface:not(.has-game) .connect-setup-link::after {
-  content: ""; width: 12px; border-top: 2px dashed var(--line);
+  content: "";
+  width: 12px;
+  border-top: 2px dashed var(--line);
 }
 .connect-setup-link svg {
-  width: 17px; height: 17px; flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
   /* В спрайте есть только arrow-left; коридор игры идёт слева направо. */
   transform: scaleX(-1);
 }
-.connect-field--start .connect-label { color: var(--signal); }
-.connect-field--goal  .connect-label { color: var(--pulse); }
+.connect-field--start .connect-label {
+  color: var(--signal);
+}
+.connect-field--goal .connect-label {
+  color: var(--pulse);
+}
 
 /* ── [fix: уродское изменение челленджа] cleaner glass endpoint editor ─────── */
 .connect-stage-layer .connect-endpoints {
   padding: var(--space-4);
   border-radius: var(--r-lg);
-  background: rgba(var(--panel-rgb), .94);
+  background: rgba(var(--panel-rgb), 0.94);
   border: 1px solid var(--line);
-  box-shadow: var(--glass-glow), 0 18px 40px -22px rgba(0, 0, 0, .6);
-  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  box-shadow:
+    var(--glass-glow),
+    0 18px 40px -22px rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
 }
 
 /* ── "Game" flag on the reused explorer graph ─────────────────────────────── */
 .connect-game-flag {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 999px;
-  font-weight: 800; letter-spacing: .12em; font-size: var(--text-xs); text-transform: uppercase;
-  color: var(--ink); background: linear-gradient(90deg, var(--signal), var(--pulse));
-  box-shadow: 0 4px 14px -4px rgba(var(--pulse-rgb), .5);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  color: var(--ink);
+  background: linear-gradient(90deg, var(--signal), var(--pulse));
+  box-shadow: 0 4px 14px -4px rgba(var(--pulse-rgb), 0.5);
 }
-.connect-game-flag .cgf-ico { width: 15px; height: 15px; fill: var(--ink); }
+.connect-game-flag .cgf-ico {
+  width: 15px;
+  height: 15px;
+  fill: var(--ink);
+}
 
 /* ── Narrow screens ───────────────────────────────────────────────────────── */
 @media (max-width: 760px) {
-  .cab-hero { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: var(--space-4); }
-  .cab-cta { flex-direction: row; }
+  .cab-hero {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    gap: var(--space-4);
+  }
+  .cab-cta {
+    flex-direction: row;
+  }
 }
 @media (max-width: 640px) {
-  .game-rail { flex-basis: 54px; width: 54px; padding: var(--space-3) 7px; }
+  .game-rail {
+    flex-basis: 54px;
+    width: 54px;
+    padding: var(--space-3) 7px;
+  }
   /* Разворот теперь диктует flex-basis (см. .game-rail:hover выше), поэтому на
      узком экране зажимать надо ИМЕННО его — одного width мало, рейл всё равно
      раскрывался бы и съедал пол-экрана. */
-  .game-rail:hover { flex-basis: 54px; width: 54px; }
-  .game-rail:hover .rl { opacity: 0; }
-  .game-screen-body { padding: var(--space-5) var(--space-4) var(--space-8); }
-  .cab-tiles { grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
-  .cab-tile { padding: var(--space-4); }
+  .game-rail:hover {
+    flex-basis: 54px;
+    width: 54px;
+  }
+  .game-rail:hover .rl {
+    opacity: 0;
+  }
+  .game-screen-body {
+    padding: var(--space-5) var(--space-4) var(--space-8);
+  }
+  .cab-tiles {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-2);
+  }
+  .cab-tile {
+    padding: var(--space-4);
+  }
 }

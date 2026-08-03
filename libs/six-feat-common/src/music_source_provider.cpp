@@ -5,9 +5,9 @@ namespace six_feat {
 
 const char* ToString(EdgeSource source) {
   switch (source) {
-    case EdgeSource::YandexFeature:
+    case EdgeSource::kYandexFeature:
       return "yandex_feature";
-    case EdgeSource::GeniusCredit:
+    case EdgeSource::kGeniusCredit:
       return "genius_credit";
   }
   return "unknown";
@@ -15,11 +15,11 @@ const char* ToString(EdgeSource source) {
 
 const char* ToString(DiscoverySource source) {
   switch (source) {
-    case DiscoverySource::YandexTrack:
+    case DiscoverySource::kYandexTrack:
       return "yandex_track";
-    case DiscoverySource::GeniusCredit:
+    case DiscoverySource::kGeniusCredit:
       return "genius_credit";
-    case DiscoverySource::YandexPlaylist:
+    case DiscoverySource::kYandexPlaylist:
       return "yandex_playlist";
   }
   return "unknown";

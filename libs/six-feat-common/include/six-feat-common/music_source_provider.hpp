@@ -11,18 +11,18 @@
 
 namespace six_feat {
 
-enum class EdgeSource { YandexFeature, GeniusCredit };
+enum class EdgeSource : std::uint8_t { kYandexFeature, kGeniusCredit };
 
 const char* ToString(EdgeSource source);
 
-enum class DiscoverySource { YandexTrack, GeniusCredit, YandexPlaylist };
+enum class DiscoverySource : std::uint8_t { kYandexTrack, kGeniusCredit, kYandexPlaylist };
 
 const char* ToString(DiscoverySource source);
 
 struct ProviderEdge {
   std::int64_t from{0};
   std::int64_t to{0};
-  EdgeSource source{EdgeSource::YandexFeature};
+  EdgeSource source{EdgeSource::kYandexFeature};
   std::string role;
 };
 

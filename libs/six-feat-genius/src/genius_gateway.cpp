@@ -233,9 +233,9 @@ GeniusGateway::~GeniusGateway() {
 void GeniusGateway::ExtendStatistics(utils::statistics::Writer& writer) const {
   const auto state = pipeline_.CbState();
   writer["circuit_breaker"]["state"] = static_cast<int>(state);
-  writer["circuit_breaker"]["closed"] = state == CircuitBreaker::State::Closed ? 1 : 0;
-  writer["circuit_breaker"]["open"] = state == CircuitBreaker::State::Open ? 1 : 0;
-  writer["circuit_breaker"]["half_open"] = state == CircuitBreaker::State::HalfOpen ? 1 : 0;
+  writer["circuit_breaker"]["closed"] = state == CircuitBreaker::State::kClosed ? 1 : 0;
+  writer["circuit_breaker"]["open"] = state == CircuitBreaker::State::kOpen ? 1 : 0;
+  writer["circuit_breaker"]["half_open"] = state == CircuitBreaker::State::kHalfOpen ? 1 : 0;
 
   writer["lane"]["foreground"]["tokens_available"] = pipeline_.FgTokensAvailable();
   writer["lane"]["foreground"]["slots_available"] = pipeline_.FgSlotsAvailable();
@@ -339,7 +339,7 @@ std::string GeniusGateway::GeniusGet(const std::string& url,
 std::vector<Candidate> GeniusGateway::ResolveCandidates(const std::string& query,
                                                         const std::string& user_token) const {
   const std::string body =
-      GeniusGet(genius_base_url_ + "/search?q=" + UrlEncode(query), Lane::Foreground, user_token);
+      GeniusGet(genius_base_url_ + "/search?q=" + UrlEncode(query), Lane::kForeground, user_token);
   const auto json = formats::json::FromString(body);
   const auto& hits = json["response"]["hits"];
 

@@ -23,7 +23,7 @@ struct YandexDeviceFlowStart {
   int expires_in_seconds{600};
 };
 
-enum class YandexDeviceFlowStatus { kSuccess, kPending, kDenied, kExpired };
+enum class YandexDeviceFlowStatus : std::uint8_t { kSuccess, kPending, kDenied, kExpired };
 
 struct YandexDeviceFlowPollResult {
   YandexDeviceFlowStatus status{YandexDeviceFlowStatus::kPending};
@@ -47,6 +47,10 @@ struct YandexPlaylistSummary {
   std::int64_t yandex_id{0};
   std::string title;
   int track_count{0};
+  // [SF-WEB-74] Passed through as-is from Yandex Music, same as
+  // ArtistRef::image — no server-side rewrite/proxy (SF-API-12's proxy is
+  // opt-in, client-side only, for canvas-tainting consumers).
+  std::string cover_url;
 };
 
 class YandexGatewayClient final : public userver::components::ComponentBase {

@@ -56,7 +56,7 @@ std::string SongListHandler::HandleRequestThrow(const server::http::HttpRequest&
   }
 
   if (limit <= 0) {
-    limit = (*lane == Lane::Foreground) ? gateway_.SongsLimitFg() : gateway_.SongsLimitBg();
+    limit = (*lane == Lane::kForeground) ? gateway_.SongsLimitFg() : gateway_.SongsLimitBg();
   }
 
   try {

@@ -24,7 +24,7 @@ class FakeArtistDataSource final : public IArtistDataSource {
 
   GetResult GetArtistSongs(const ArtistRef& ref, Depth) const override {
     const auto it = songs_.find(ref.id);
-    if (it == songs_.end()) return GetResult{{}, Depth::None, true};
+    if (it == songs_.end()) return GetResult{{}, Depth::kNone, true};
     return GetResult{it->second, depths_.at(ref.id), false};
   }
 
@@ -42,7 +42,7 @@ class FakeArtistDataSource final : public IArtistDataSource {
 
   Depth GetFetchDepth(std::int64_t artist_id) const override {
     const auto it = depths_.find(artist_id);
-    return it == depths_.end() ? Depth::None : it->second;
+    return it == depths_.end() ? Depth::kNone : it->second;
   }
 
   void WriteThrough(const ArtistSongs& data, Depth new_depth) override {

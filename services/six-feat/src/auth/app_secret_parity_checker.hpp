@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <userver/clients/http/client.hpp>
@@ -17,7 +18,7 @@ class AppSecretParityChecker final : public userver::components::ComponentBase {
  public:
   static constexpr std::string_view kName = "app-secret-parity-checker";
 
-  enum class Status {
+  enum class Status : std::uint8_t {
     kUnknown,
     kOk,
     kMismatch,

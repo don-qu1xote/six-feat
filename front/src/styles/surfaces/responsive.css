@@ -5,12 +5,31 @@
    for the import order that preserves the original cascade.
    ============================================================ */
 @media (max-width: 700px) {
-  .rail { width: 48px; }
-  .rail-btn { width: 34px; height: 34px; font-size: var(--text-base); }
-  .rail-btn[data-tip]::after { display: none; }
-  .status { left: 80px; }
-  .actions-bar { right: var(--space-2); bottom: var(--space-3); }
-  .context-panel { right: var(--space-2); left: 80px; width: auto; top: var(--space-2); bottom: var(--space-2); }
+  .rail {
+    width: 48px;
+  }
+  .rail-btn {
+    width: 34px;
+    height: 34px;
+    font-size: var(--text-base);
+  }
+  .rail-btn[data-tip]::after {
+    display: none;
+  }
+  .status {
+    left: 80px;
+  }
+  .actions-bar {
+    right: var(--space-2);
+    bottom: var(--space-3);
+  }
+  .context-panel {
+    right: var(--space-2);
+    left: 80px;
+    width: auto;
+    top: var(--space-2);
+    bottom: var(--space-2);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   /* [fix] Was ".canvas-chrome" (the element itself only, no descendant
@@ -19,14 +38,29 @@
      hovers, the companion/compare/path panels' open/close transitions,
      tooltips, the context-panel's own opacity fade — all still animated
      under reduced-motion. ".canvas-chrome *" closes that gap. */
-  .search-modal, .search-modal *, .canvas-chrome, .canvas-chrome *, .canvas-decorator, .decor-dot,
-  .connect-surface, .connect-surface * {
-    transition: none !important; animation: none !important;
+  .search-modal,
+  .search-modal *,
+  .canvas-chrome,
+  .canvas-chrome *,
+  .canvas-decorator,
+  .decor-dot,
+  .connect-surface,
+  .connect-surface * {
+    transition: none !important;
+    animation: none !important;
   }
-  .decor-dot { opacity: var(--decor-o, .5); }
-  .spinner { animation: none; }
-  .flip-ghost { display: none !important; }
+  .decor-dot {
+    opacity: var(--decor-o, 0.5);
+  }
+  .spinner {
+    animation: none;
+  }
+  .flip-ghost {
+    display: none !important;
+  }
   @supports (view-transition-name: none) {
-    .search-wrap { view-transition-name: none; }
+    .search-wrap {
+      view-transition-name: none;
+    }
   }
 }

@@ -36,7 +36,7 @@ double RequirePositive(std::string_view param, double value) {
 }
 
 std::string LaneToString(Lane lane) {
-  return lane == Lane::Foreground ? "foreground" : "background";
+  return lane == Lane::kForeground ? "foreground" : "background";
 }
 
 }  // namespace

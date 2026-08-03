@@ -33,20 +33,29 @@
   padding: var(--space-4);
   min-width: 0; /* allow grid children to shrink instead of overflowing */
 }
-.bento-tile--sm   { padding: var(--space-3); }
-.bento-tile--md   { padding: var(--space-4); }
-.bento-tile--lg   { padding: var(--space-5); }
+.bento-tile--sm {
+  padding: var(--space-3);
+}
+.bento-tile--md {
+  padding: var(--space-4);
+}
+.bento-tile--lg {
+  padding: var(--space-5);
+}
 /* Span modifiers for use inside a parent with display:grid — set the
-   number of grid columns/rows a tile occupies. Call sites define their
-   own grid-template-columns/areas; these just set the span. */
-.bento-tile--wide  { grid-column: 1 / -1; }
-.bento-tile--tall  { grid-row: span 2; }
+
+
+.bento-tile--wide {
+  grid-column: 1 / -1;
+}
+.bento-tile--tall {
+  grid-row: span 2;
+}
 /* Flat variant — same padding/radius rhythm but no separate background/
-   shadow, for tiles nested inside an already-elevated parent (e.g. a
-   tile-within-a-tile like the path-to-seed mini chain inside the
-   sidebar, which already sits inside .artist-sidebar's own elevation). */
+
+
+
 .bento-tile--flat {
-  background: rgba(var(--panel-rgb),.4);
+  background: rgba(var(--panel-rgb), 0.4);
   box-shadow: none;
 }
-

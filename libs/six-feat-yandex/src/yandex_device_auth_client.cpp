@@ -100,9 +100,9 @@ YandexDeviceAuthClient::~YandexDeviceAuthClient() {
 void YandexDeviceAuthClient::ExtendStatistics(utils::statistics::Writer& writer) const {
   const auto state = pipeline_.CbState();
   writer["circuit_breaker"]["state"] = static_cast<int>(state);
-  writer["circuit_breaker"]["closed"] = state == CircuitBreaker::State::Closed ? 1 : 0;
-  writer["circuit_breaker"]["open"] = state == CircuitBreaker::State::Open ? 1 : 0;
-  writer["circuit_breaker"]["half_open"] = state == CircuitBreaker::State::HalfOpen ? 1 : 0;
+  writer["circuit_breaker"]["closed"] = state == CircuitBreaker::State::kClosed ? 1 : 0;
+  writer["circuit_breaker"]["open"] = state == CircuitBreaker::State::kOpen ? 1 : 0;
+  writer["circuit_breaker"]["half_open"] = state == CircuitBreaker::State::kHalfOpen ? 1 : 0;
 }
 
 std::string YandexDeviceAuthClient::PostForm(const std::string& url,
@@ -112,7 +112,7 @@ std::string YandexDeviceAuthClient::PostForm(const std::string& url,
   int last_5xx_status = 502;
 
   while (true) {
-    auto guard = pipeline_.Acquire(Lane::Foreground);
+    auto guard = pipeline_.Acquire(Lane::kForeground);
     bool failure_already_recorded = false;
 
     try {

@@ -1,16 +1,12 @@
 import { els } from "../dom/dom.js";
 import { registerDockedPanel, closeOtherDockedPanels } from "./docked-panel.js";
 import { showToast } from "./toast.js";
-import { escapeHtml } from "../state/helpers.js";
-import { searchArtist } from "../api/api.js";
 import {
   fetchSettingsStatus,
   connectGeniusToken,
   disconnectProvider,
   startYandexDeviceFlow,
   pollYandexDeviceFlow,
-  fetchYandexPlaylists,
-  fetchYandexImport,
   setPreferredEnrichmentProvider,
 } from "../api/settings-api.js";
 
@@ -59,18 +55,6 @@ function _setYandexConnected(connected) {
   if (connected && els.settingsYandexDeviceCode) {
     els.settingsYandexDeviceCode.hidden = true;
     els.settingsYandexDeviceCode.textContent = "";
-  }
-
-  if (els.settingsYandexImport) els.settingsYandexImport.hidden = !connected;
-  if (!connected) {
-    if (els.settingsYandexPlaylistList) {
-      els.settingsYandexPlaylistList.hidden = true;
-      els.settingsYandexPlaylistList.innerHTML = "";
-    }
-    if (els.settingsYandexArtistList) {
-      els.settingsYandexArtistList.hidden = true;
-      els.settingsYandexArtistList.innerHTML = "";
-    }
   }
 }
 
@@ -178,70 +162,6 @@ async function _handleYandexDisconnect() {
   _setYandexConnected(false);
 }
 
-function _renderYandexPlaylists(playlists) {
-  if (!els.settingsYandexPlaylistList) return;
-  els.settingsYandexPlaylistList.innerHTML = (playlists || [])
-    .map((p) => {
-      const label =
-        p.kind === "likes"
-          ? "Liked tracks"
-          : `${p.title || "Untitled playlist"} (${p.track_count ?? 0})`;
-      return `<li><button type="button" class="ui-btn ui-btn--ghost" data-playlist-id="${escapeHtml(String(p.id))}">${escapeHtml(label)}</button></li>`;
-    })
-    .join("");
-  els.settingsYandexPlaylistList.hidden = false;
-
-  els.settingsYandexPlaylistList.querySelectorAll("button[data-playlist-id]").forEach((btn) => {
-    btn.addEventListener("click", () => _handleYandexPlaylistPick(btn.dataset.playlistId));
-  });
-}
-
-function _renderYandexImportResults(data) {
-  if (!els.settingsYandexArtistList) return;
-  const artists = data?.artists || [];
-  els.settingsYandexArtistList.innerHTML = artists
-    .map((a) => {
-      if (!a.resolved) {
-        return `<li class="settings-yandex-artist settings-yandex-artist--unresolved">${escapeHtml(a.yandex_name)} <span class="settings-card-sub">(not found on Genius)</span></li>`;
-      }
-      return `<li><button type="button" class="ui-btn ui-btn--ghost" data-artist-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button></li>`;
-    })
-    .join("");
-  els.settingsYandexArtistList.hidden = false;
-
-  els.settingsYandexArtistList.querySelectorAll("button[data-artist-name]").forEach((btn) => {
-    btn.addEventListener("click", () => _handleYandexArtistPick(btn.dataset.artistName));
-  });
-}
-
-async function _handleYandexImportOpen() {
-  const result = await fetchYandexPlaylists();
-  if (!result) {
-    showToast("Couldn't load your Yandex playlists — please try again.");
-    return;
-  }
-  _renderYandexPlaylists(result.playlists);
-  if (els.settingsYandexArtistList) {
-    els.settingsYandexArtistList.hidden = true;
-    els.settingsYandexArtistList.innerHTML = "";
-  }
-}
-
-async function _handleYandexPlaylistPick(playlistId) {
-  const result = await fetchYandexImport(playlistId);
-  if (!result) {
-    showToast("Couldn't import that source — please try again.");
-    return;
-  }
-  _renderYandexImportResults(result);
-}
-
-function _handleYandexArtistPick(name) {
-  if (!name) return;
-  closeSettingsPanel();
-  searchArtist(name, false, true);
-}
-
 export function setupSettingsPanel() {
   if (!els.settingsPanel) return;
 
@@ -263,5 +183,4 @@ export function setupSettingsPanel() {
   els.settingsEnrichmentProviderSelect?.addEventListener("change", _handleEnrichmentProviderChange);
   els.settingsYandexConnectBtn?.addEventListener("click", _handleYandexConnect);
   els.settingsYandexDisconnectBtn?.addEventListener("click", _handleYandexDisconnect);
-  els.settingsYandexImportBtn?.addEventListener("click", _handleYandexImportOpen);
 }

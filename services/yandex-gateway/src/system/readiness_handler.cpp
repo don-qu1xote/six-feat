@@ -31,10 +31,10 @@ std::string ReadinessHandler::HandleRequestThrow(const server::http::HttpRequest
 
   const std::vector<ReadinessCheck> checks{
       {"circuit_breaker_music",
-       music_cb == CircuitBreaker::State::Closed,
+       music_cb == CircuitBreaker::State::kClosed,
        CircuitBreaker::ToString(music_cb)},
       {"circuit_breaker_device_auth",
-       device_cb == CircuitBreaker::State::Closed,
+       device_cb == CircuitBreaker::State::kClosed,
        CircuitBreaker::ToString(device_cb)},
   };
 

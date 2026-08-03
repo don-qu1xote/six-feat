@@ -10,7 +10,7 @@ namespace six_feat {
 
 struct GetResult {
   ArtistSongs data;
-  Depth have{Depth::None};
+  Depth have{Depth::kNone};
   bool network_needed{false};
 };
 

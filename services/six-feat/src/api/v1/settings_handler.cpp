@@ -377,9 +377,16 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
 
   std::optional<std::string> user_id;
   std::vector<YandexPlaylistSummary> playlists;
+  std::vector<std::int64_t> liked_track_ids;
   try {
     user_id = yandex_client_.FetchAccountUserId(*personal_token);
-    if (user_id) playlists = yandex_client_.FetchPlaylists(*personal_token, *user_id);
+    if (user_id) {
+      playlists = yandex_client_.FetchPlaylists(*personal_token, *user_id);
+      // [SF-WEB-74] Real count instead of a hardcoded 0 — no cheap
+      // count-only endpoint exists yet, so this is the same fan-out the
+      // import flow already pays for the likes collection.
+      liked_track_ids = yandex_client_.FetchLikedTracks(*personal_token, *user_id);
+    }
   } catch (const GeniusHttpError&) {
     response.SetStatus(server::http::HttpStatus::kBadGateway);
     return BuildProblemJson(
@@ -400,7 +407,7 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
     likes["id"] = std::string{"likes"};
     likes["kind"] = std::string{"likes"};
     likes["title"] = std::string{"Liked tracks"};
-    likes["track_count"] = 0;
+    likes["track_count"] = static_cast<int>(liked_track_ids.size());
     arr.PushBack(std::move(likes));
   }
   for (const auto& p : playlists) {
@@ -409,6 +416,7 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
     pb["kind"] = std::string{"playlist"};
     pb["title"] = p.title;
     pb["track_count"] = p.track_count;
+    if (!p.cover_url.empty()) pb["cover_url"] = p.cover_url;
     arr.PushBack(std::move(pb));
   }
   out["playlists"] = std::move(arr);
@@ -484,7 +492,12 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
                             server::http::HttpStatus::kBadGateway,
                             "the connected Yandex token is no longer valid — reconnect it");
   }
-  if (track_ids.size() > kImportMaxTracks) track_ids.resize(kImportMaxTracks);
+  // [SF-WEB-74] Truncation used to be silent — capture the pre-truncation
+  // count so the client can honestly show "first N of M tracks scanned"
+  // instead of a resolved-artist count that looked complete either way.
+  const std::size_t total_track_count = track_ids.size();
+  const bool truncated = total_track_count > kImportMaxTracks;
+  if (truncated) track_ids.resize(kImportMaxTracks);
 
   std::unordered_map<std::int64_t, std::string> yandex_artists;
   std::vector<std::int64_t> yandex_artist_order;
@@ -556,6 +569,9 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
   out["artists"] = std::move(artists_b);
   out["resolved_count"] = resolved_count;
   out["total_count"] = static_cast<int>(yandex_artist_order.size());
+  out["truncated"] = truncated;
+  out["total_track_count"] = static_cast<std::int64_t>(total_track_count);
+  out["scanned_track_count"] = static_cast<std::int64_t>(track_ids.size());
   return formats::json::ToString(out.ExtractValue());
 }
 

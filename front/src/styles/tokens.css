@@ -7,45 +7,45 @@
 /* ─── Design tokens ─────────────────────────────────────────────── */
 :root {
   /* Color palette (unchanged) */
-  --ink:      #0B0E14;
-  --ink-2:    #0E1320;
-  --panel:    #141A28;
-  --panel-2:  #1B2236;
-  --line:     #283044;
-  --mist:     #8A94A6;
-  --paper:    #EDEFF4;
-  --signal:   #5EE6C5;
-  --pulse:    #B98AFF;
-  --amber:    #FFD27A;
-  --warn:     #FF8FA3;
-  --neon:     #FF2D78;
+  --ink: #0b0e14;
+  --ink-2: #0e1320;
+  --panel: #141a28;
+  --panel-2: #1b2236;
+  --line: #283044;
+  --mist: #8a94a6;
+  --paper: #edeff4;
+  --signal: #5ee6c5;
+  --pulse: #b98aff;
+  --amber: #ffd27a;
+  --warn: #ff8fa3;
+  --neon: #ff2d78;
   /* "primary" role accent (collabs without an explicit featured/producer/
-     writer tag). Must stay visually distinct from --line — see
-     ROLE_STYLE.primary in state.js for the full rationale. */
-  --primary2: #8FA6C9;
-  --shadow:   0 18px 50px rgba(0,0,0,.45);
-  --r-sm:     10px;
-  --r-md:     14px;
-  --r-lg:     18px;
+
+
+  --primary2: #8fa6c9;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
 
   /* Text colour for content sitting directly on the bright signal→pulse
-     accent gradient (hero-mode thumb, "Map it"/"Trace the path" buttons,
-     info toast). [fix] The comment here used to claim the gradient "stays
-     equally bright in both themes" — it doesn't: light theme's --signal/
-     --pulse (#0E9C7D/#7C4DFF) are noticeably darker/more saturated than
-     dark theme's (#5EE6C5/#B98AFF), so this near-black default read as
-     low-contrast, muddy text specifically in light theme. Kept as the
-     dark-theme default here; light theme now overrides it below instead
-     of inheriting it unconditionally. */
-  --on-accent: #07120F;
+
+
+
+
+
+
+
+
+  --on-accent: #07120f;
 
   /* RGB triplets (no alpha) for the two dark "recessed surface" tones
      used as rgba(<triplet>, alpha) overlays throughout docked
      search/rail/path controls (see .dock-btn, .path-input, .hop-row,
      etc.) — factored out so IDEA-23's light theme can swap the tone
      those overlays render in without touching every call site. */
-  --panel-rgb: 20,26,40;
-  --ink2-rgb:  14,19,32;
+  --panel-rgb: 20, 26, 40;
+  --ink2-rgb: 14, 19, 32;
   /* [fix] Same "recessed surface" reasoning as --panel-rgb/--ink2-rgb just
      above, for --line — companion.css's path/compare cards ("1 hop from
      seed", path-node-card, path-edge-connector, compare-item) had
@@ -54,11 +54,11 @@
      dark-styled even in the light theme (the same bug class --panel-rgb/
      --signal-rgb/--pulse-rgb already fix everywhere else — this file was
      just missed). */
-  --line-rgb: 40,48,68;
+  --line-rgb: 40, 48, 68;
   /* Radial glow behind the hero title (body background) — separate from
-     --ink so the two can differ in the light theme (a dark glow on a
-     light backdrop would look like a smudge). */
-  --hero-glow: #14203A;
+
+
+  --hero-glow: #14203a;
 
   /* ─ Blur/scrim scale — раньше эти значения были раскиданы магическими
      литералами по .search-modal/.help-overlay/.candidate-overlay/
@@ -67,36 +67,36 @@
      уровня вместо произвольных значений: "chip" — маленькие плавающие
      элементы поверх канвы (seed-card, status-icon-btn), "scrim" —
      полноэкранные модальные подложки. ─ */
-  --blur-chip:  6px;
+  --blur-chip: 6px;
   --blur-scrim: 8px;
   --blur-modal: 10px;
-  --scrim:       rgba(11,14,20,.76);
-  --scrim-modal: rgba(9,11,17,.82);
-  --chip-bg:    rgba(14,19,32,.80);
+  --scrim: rgba(11, 14, 20, 0.76);
+  --scrim-modal: rgba(9, 11, 17, 0.82);
+  --chip-bg: rgba(14, 19, 32, 0.8);
 
   /* ─ Typographic scale (major third: 1.25) ─ */
-  --text-xs:    0.694rem;   /* 11.1px — metadata, labels, hints */
-  --text-sm:    0.833rem;   /* 13.3px — secondary text, autocomplete */
-  --text-base:  1rem;       /* 16px — body text (standard) */
-  --text-lg:    1.25rem;    /* 20px — emphasis, larger labels */
-  --text-xl:    1.563rem;   /* 25px — subheadings */
-  --text-2xl:   1.953rem;   /* 31.2px — heading level 2 */
-  --text-3xl:   2.441rem;   /* 39px — heading level 1 */
-  --text-hero:  clamp(2.5rem, 6vw, 4rem); /* 40–64px — hero title */
+  --text-xs: 0.694rem; /* 11.1px — metadata, labels, hints */
+  --text-sm: 0.833rem; /* 13.3px — secondary text, autocomplete */
+  --text-base: 1rem; /* 16px — body text (standard) */
+  --text-lg: 1.25rem; /* 20px — emphasis, larger labels */
+  --text-xl: 1.563rem; /* 25px — subheadings */
+  --text-2xl: 1.953rem; /* 31.2px — heading level 2 */
+  --text-3xl: 2.441rem; /* 39px — heading level 1 */
+  --text-hero: clamp(2.5rem, 6vw, 4rem); /* 40–64px — hero title */
 
   /* ─ Spacing scale (4px grid) ─ */
-  --space-1:    4px;
-  --space-2:    8px;
-  --space-3:    12px;
-  --space-4:    16px;
-  --space-5:    20px;
-  --space-6:    24px;
-  --space-7:    28px;
-  --space-8:    32px;
-  --space-9:    36px;
-  --space-10:   40px;
-  --space-11:   44px;
-  --space-12:   48px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-11: 44px;
+  --space-12: 48px;
 
   /* ─ Motion (SF-WEB-11, converged by SF-WEB-47) — durations/easing were
      scattered as bare literals at nearly every transition/animation site
@@ -112,24 +112,34 @@
      state.js's MOTION object (same readCssVar pattern COLOR already uses)
      — one source of truth for both CSS and JS motion, and it re-reads on
      every call so it can never fall out of sync with a theme/token edit. ─ */
-  --ease-standard:   cubic-bezier(.4,0,.2,1);   /* already used by .hero-mode-thumb */
-  --ease-out:        cubic-bezier(0,0,.58,1);   /* identical curve to the bare "ease-out" keyword it replaces — zero motion change, just token-sourced */
-  --ease-emphasized: cubic-bezier(.16,.9,.3,1); /* hero↔graph FLIP fallback (dom/transition.js) — a more pronounced curve for that one big scene morph */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* already used by .hero-mode-thumb */
+  --ease-out: cubic-bezier(
+    0,
+    0,
+    0.58,
+    1
+  ); /* identical curve to the bare "ease-out" keyword it replaces — zero motion change, just token-sourced */
+  --ease-emphasized: cubic-bezier(
+    0.16,
+    0.9,
+    0.3,
+    1
+  ); /* hero↔graph FLIP fallback (dom/transition.js) — a more pronounced curve for that one big scene morph */
 
-  --duration-fast:   120ms; /* press feedback — .search button:active, .rail-btn[data-tip] */
-  --duration-base:   150ms; /* hover states — the most common transition length here */
-  --duration-med:     200ms; /* input focus / status-width transitions */
-  --duration-slow:    280ms; /* panel/rail expand-style transitions */
-  --duration-slower:  320ms; /* modal/backdrop enter */
-  --duration-xslow:   380ms; /* hero-mode landing crossfade */
-  --duration-flight:  420ms; /* JS-only (state.js MOTION.flight): the RAF flyout's own duration (vis-adapter/physics.js) AND the hero↔graph FLIP fallback (dom/transition.js) — already identical values in both places before this ticket, now one token instead of two coincidentally-matching literals */
-  --duration-camera:  500ms; /* JS-only (state.js MOTION.camera): network.fit()/focus() view-settle moves */
-  --duration-xxslow:  600ms; /* big, deliberate camera/decorator moves (fit-to-cluster, focus-on-select, canvas-decorator fade) */
-  --duration-loop:    800ms; /* looping animations (loading spinner) */
+  --duration-fast: 120ms; /* press feedback — .search button:active, .rail-btn[data-tip] */
+  --duration-base: 150ms; /* hover states — the most common transition length here */
+  --duration-med: 200ms; /* input focus / status-width transitions */
+  --duration-slow: 280ms; /* panel/rail expand-style transitions */
+  --duration-slower: 320ms; /* modal/backdrop enter */
+  --duration-xslow: 380ms; /* hero-mode landing crossfade */
+  --duration-flight: 420ms; /* JS-only (state.js MOTION.flight): the RAF flyout's own duration (vis-adapter/physics.js) AND the hero↔graph FLIP fallback (dom/transition.js) — already identical values in both places before this ticket, now one token instead of two coincidentally-matching literals */
+  --duration-camera: 500ms; /* JS-only (state.js MOTION.camera): network.fit()/focus() view-settle moves */
+  --duration-xxslow: 600ms; /* big, deliberate camera/decorator moves (fit-to-cluster, focus-on-select, canvas-decorator fade) */
+  --duration-loop: 800ms; /* looping animations (loading spinner) */
 
   /* Staggered-reveal offsets (landing modal's h1/chips/etc cascading in) —
-     same convergence, a much smaller scale since these are relative delays
-     between siblings, not standalone transition lengths. */
+
+
   --stagger-1: 20ms;
   --stagger-2: 50ms;
   --stagger-3: 100ms;
@@ -143,19 +153,19 @@
      --elevation-2 is --shadow unchanged (bento-tile/rail/status-icon-btn
      keep their current look); --elevation-3 is new headroom for
      full-screen overlays, not yet consumed here. ─ */
-  --elevation-1: 0 4px 14px rgba(0,0,0,.35);
+  --elevation-1: 0 4px 14px rgba(0, 0, 0, 0.35);
   --elevation-2: var(--shadow);
-  --elevation-3: 0 24px 64px rgba(0,0,0,.5);
-   --z-canvas:        0;   /* #network — сам граф, базовый холст */
-   --z-graph-overlay: 10;  /* хром поверх канвы: декоратор, состояния,
+  --elevation-3: 0 24px 64px rgba(0, 0, 0, 0.5);
+  --z-canvas: 0; /* #network — сам граф, базовый холст */
+  --z-graph-overlay: 10; /* хром поверх канвы: декоратор, состояния,
                               HUD-кластеры, статус, спиннер загрузки */
-   --z-panel:         20;  /* докнутый хром/панели, полноэкранная модалка,
+  --z-panel: 20; /* докнутый хром/панели, полноэкранная модалка,
                               canvas-chrome, тултипы рейла */
-   --z-docked:        30;  /* эксклюзивные докнутые поисковые поверхности
+  --z-docked: 30; /* эксклюзивные докнутые поисковые поверхности
                               (search-modal.docked, node-search) */
-   --z-dropdown:      40;  /* выпадающие списки автокомплита (#overlay-root) */
-   --z-overlay:       50;  /* полноэкранные оверлеи: candidate/help, flip-ghost */
-   --z-toast:         60;  /* тосты — всегда сверху */
+  --z-dropdown: 40; /* выпадающие списки автокомплита (#overlay-root) */
+  --z-overlay: 50; /* полноэкранные оверлеи: candidate/help, flip-ghost */
+  --z-toast: 60; /* тосты — всегда сверху */
 
   /* ─ Observatory shell (SF-WEB-42) ────────────────────────────────────
      RGB triplets for --panel-2/--signal — same reasoning as --panel-rgb/
@@ -167,30 +177,30 @@
      through components/*.css before this ticket — the same class of
      "hardcoded per callsite" problem --panel-rgb/--ink2-rgb already fixed
      for --panel/--ink-2, just not yet done for --panel-2/--signal. ─ */
-  --panel-2-rgb: 27,34,54;
-  --signal-rgb:  94,230,197;
-  --pulse-rgb:   185,138,255;
+  --panel-2-rgb: 27, 34, 54;
+  --signal-rgb: 94, 230, 197;
+  --pulse-rgb: 185, 138, 255;
   /* [SF-WEB-44] Same "hardcoded per callsite" fix, extended to the two
      role-chip colours that were still missing a triplet — .role-chip--
      writer/--primary (companion.css) had --amber/--primary2's dark hex
      spelled out as their own rgba() literal instead of a token, so both
      stayed dark-styled under :root[data-theme="light"] the same way
      --panel-2/--signal/--pulse did before SF-WEB-42/43 fixed those. */
-  --amber-rgb:    255,210,122;
-  --primary2-rgb: 143,166,201;
+  --amber-rgb: 255, 210, 122;
+  --primary2-rgb: 143, 166, 201;
 
   /* How translucent a "glass" panel's own fill is before backdrop-filter
      blurs whatever sits behind it — a panel painted at alpha 1 makes an
      applied backdrop-filter a no-op (nothing behind it to blur), which is
      exactly what .bento-tile/.ui-panel did pre-SF-WEB-42 despite already
      carrying (or now gaining) backdrop-filter: blur(...). */
-  --glass-alpha: .74;
-  --glass-fill:  rgba(var(--panel-2-rgb), var(--glass-alpha));
+  --glass-alpha: 0.74;
+  --glass-fill: rgba(var(--panel-2-rgb), var(--glass-alpha));
   /* Soft accent bloom for a panel's hairline border — paired with
-     --elevation-* in box-shadow, not a replacement for it. Negative
-     spread keeps it a tight glow hugging the edge rather than a diffuse
-     halo that would compete with the canvas for attention. */
-  --glass-glow: 0 0 28px -6px rgba(var(--signal-rgb), .22);
+
+
+
+  --glass-glow: 0 0 28px -6px rgba(var(--signal-rgb), 0.22);
 
   /* Unified focus-visible ring for every interactive kit component
      (.ui-btn/.ui-chip — see components/button.css, chip.css). One token
@@ -201,16 +211,16 @@
      ring). Built from --signal-rgb so it re-themes for light mode
      automatically instead of staying pinned to the dark theme's signal
      hex the way the pre-SF-WEB-42 literal rgba(94,230,197,...) did. */
-  --focus-ring:        0 0 0 3px rgba(var(--signal-rgb), .35);
-  --focus-ring-strong: 0 0 0 3px rgba(var(--signal-rgb), .45);
+  --focus-ring: 0 0 0 3px rgba(var(--signal-rgb), 0.35);
+  --focus-ring-strong: 0 0 0 3px rgba(var(--signal-rgb), 0.45);
   /* Same "hardcoded to dark theme's hex" bug the focus-ring literal had —
-     .ui-btn/.ui-chip's :hover/.active backgrounds were rgba(185,138,255,
-     .10)/rgba(94,230,197,.12) verbatim, so a light-theme session still
-     got the DARK theme's --pulse/--signal tint on hover/active instead of
-     its own. --hover-tint/--active-tint (--pulse-rgb/--signal-rgb-driven)
-     fix that the same way --focus-ring did for the ring. */
-  --hover-tint:  rgba(var(--pulse-rgb), .10);
-  --active-tint: rgba(var(--signal-rgb), .12);
+
+
+
+
+
+  --hover-tint: rgba(var(--pulse-rgb), 0.1);
+  --active-tint: rgba(var(--signal-rgb), 0.12);
 
   /* Type scale (SF-WEB-42) — the three families already loaded in
      index.html's <link>, named once so base.css/components/*.css
@@ -221,18 +231,18 @@
      surface-level font-family declarations are untouched by this ticket
      (SF-WEB-42 is shell-only — see base.css) and keep their own literal
      stacks for now; these tokens are additive, for gradual adoption. */
-  --font-sans:    "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-display: "Syne", sans-serif;
-  --font-mono:    "Space Mono", monospace;
+  --font-mono: "Space Mono", monospace;
 }
 :root[data-theme="light"] {
-  --ink:      #F2F4F9;
-  --ink-2:    #E8ECF4;
-  --panel:    #FFFFFF;
-  --panel-2:  #F4F6FB;
-  --line:     #D7DDE9;
-  --mist:     #5B6479;
-  --paper:    #12151F;
+  --ink: #f2f4f9;
+  --ink-2: #e8ecf4;
+  --panel: #ffffff;
+  --panel-2: #f4f6fb;
+  --line: #d7dde9;
+  --mist: #5b6479;
+  --paper: #12151f;
   /* [SF-WEB-49] --signal/--pulse/--amber all get real text-color use
      (eyebrow labels, active-filter/role-badge text, auth-user-name — see
      components/*.css and surfaces/*.css `color: var(--signal|--pulse|
@@ -247,27 +257,27 @@
      styles.test.js's [SF-WEB-49] contrast assertions, computed straight
      from these hex values so a future edit here that regresses contrast
      fails the test, not just a visual read. */
-  --signal:   #0B7D64;
-  --pulse:    #703CFF;
-  --amber:    #8F5600;
-  --warn:     #D6304A;
-  --neon:     #D6004F;
-  --primary2: #4A6FA5;
+  --signal: #0b7d64;
+  --pulse: #703cff;
+  --amber: #8f5600;
+  --warn: #d6304a;
+  --neon: #d6004f;
+  --primary2: #4a6fa5;
   /* [fix] Light theme's own --signal/--pulse are darker/more saturated
      than dark theme's — the dark-theme --on-accent default (near-black)
      read as low-contrast on this gradient. Near-white instead, mirroring
      the dark theme's near-black choice. */
-  --on-accent: #F3FFFA;
-  --shadow:   0 18px 40px rgba(20,30,55,.14);
-  --scrim:       rgba(230,233,240,.72);
-  --scrim-modal: rgba(222,226,236,.82);
-  --chip-bg:    rgba(255,255,255,.82);
-  --panel-rgb: 214,220,232;
-  --ink2-rgb:  234,237,244;
+  --on-accent: #f3fffa;
+  --shadow: 0 18px 40px rgba(20, 30, 55, 0.14);
+  --scrim: rgba(230, 233, 240, 0.72);
+  --scrim-modal: rgba(222, 226, 236, 0.82);
+  --chip-bg: rgba(255, 255, 255, 0.82);
+  --panel-rgb: 214, 220, 232;
+  --ink2-rgb: 234, 237, 244;
   /* [fix] Light-theme triplet for --line-rgb — see the :root comment next
      to --line-rgb's dark definition. */
-  --line-rgb: 215,221,233;
-  --hero-glow: #DCE6F6;
+  --line-rgb: 215, 221, 233;
+  --hero-glow: #dce6f6;
   /* [SF-WEB-42] Light-theme triplets for --panel-2-rgb/--signal-rgb/
      --pulse-rgb — same rationale as --panel-rgb/--ink2-rgb just above
      being redefined per theme: --panel-2/--signal/--pulse all flip to
@@ -277,18 +287,17 @@
      var() — resolved at USE time against whichever theme is active, so
      no need to redefine the composed tokens themselves here too) would
      silently stay pinned to the dark palette. */
-  --panel-2-rgb: 244,246,251;
+  --panel-2-rgb: 244, 246, 251;
   /* [SF-WEB-49] Triplets for the AA-contrast-adjusted --signal/--pulse/
      --amber hex above — kept in exact sync (same "hardcoded per-callsite
      drift" bug class every other -rgb token comment in this file already
      warns about, just between a hex and its own triplet this time instead
      of between a token and a literal call site). */
-  --signal-rgb:  11,125,100;
-  --pulse-rgb:   112,60,255;
+  --signal-rgb: 11, 125, 100;
+  --pulse-rgb: 112, 60, 255;
   /* [SF-WEB-44] Light-theme triplets for --amber-rgb/--primary2-rgb — see
      the dark :root's own comment on why these two role-chip colours
      needed one. */
-  --amber-rgb:    143,86,0;
-  --primary2-rgb: 74,111,165;
+  --amber-rgb: 143, 86, 0;
+  --primary2-rgb: 74, 111, 165;
 }
-

@@ -22,45 +22,90 @@
    today's behaviour — out of scope for a shell-only unification
    (see closeOtherDockedPanels for a similar note, ui/docked-panel.js). */
 .node-search-overlay {
-  position: absolute; z-index: var(--z-docked);
-  top: var(--space-4); right: var(--space-4); left: auto; bottom: auto;
-  background: transparent; backdrop-filter: none;
-  display: none; padding: 0; width: 380px; max-width: calc(100vw - 88px);
+  position: absolute;
+  z-index: var(--z-docked);
+  top: var(--space-4);
+  right: var(--space-4);
+  left: auto;
+  bottom: auto;
+  background: transparent;
+  backdrop-filter: none;
+  display: none;
+  padding: 0;
+  width: 380px;
+  max-width: calc(100vw - 88px);
 }
-.node-search-overlay.show { display: flex; }
+.node-search-overlay.show {
+  display: flex;
+}
 /* [SF-WEB-43] The exact .ui-panel recipe (components/panel.css) —
    background/box-shadow now literally match .search-modal.docked
    .search-wrap/.companion-panel (search.css/panel.css) instead of the
    opaque pre-SF-WEB-42 --panel-2 fill this predated. One shell, one
    source — see observatory.test.js. */
 .node-search-box {
-  background: var(--glass-fill); border: 1px solid var(--line);
-  border-radius: var(--r-lg); padding: var(--space-4); width: 100%;
+  background: var(--glass-fill);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--space-4);
+  width: 100%;
   backdrop-filter: blur(var(--blur-scrim));
-  box-shadow: var(--elevation-2), var(--glass-glow); display: flex; flex-direction: column; gap: var(--space-3);
+  box-shadow: var(--elevation-2), var(--glass-glow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 .node-search-hint {
-  font-family: "Space Mono", monospace; font-size: var(--text-xs); color: var(--mist);
-  letter-spacing: .14em; text-transform: uppercase;
+  font-family: "Space Mono", monospace;
+  font-size: var(--text-xs);
+  color: var(--mist);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 /* ТЗ: поиск по уже отрисованному графу переведён на тот же материал,
    что и find path — #node-search-input использует класс .path-input
    (см. .path-panel ниже) вместо собственного bespoke стиля, а
    результаты — те же бордер-плитки, что .hop-row в цепочке пути,
    вместо плоских строк списка. */
-#node-search-results { display: flex; flex-direction: column; gap: var(--space-2); max-height: 280px; overflow-y: auto; }
+#node-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 280px;
+  overflow-y: auto;
+}
 .ns-item {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--space-2) var(--space-3); cursor: pointer;
-  border-radius: var(--r-md); border: 1px solid var(--line); background: rgba(var(--panel-rgb),.4);
-  transition: background var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: rgba(var(--panel-rgb), 0.4);
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
 }
 /* [SF-WEB-43] var(--signal-rgb) (tokens.css) replaces the literal
    rgba(94,230,197,...) — same fix as .ac-item/.dock-btn, so every
    docked-surface result row hovers with the same theme-aware source. */
 .ns-item:hover,
-.ns-item.ns-active { background: rgba(var(--signal-rgb), .08); border-color: rgba(var(--signal-rgb), .4); }
-.ns-name { color: var(--paper); font-size: var(--text-sm); }
-.ns-weight { color: var(--mist); font-family: "Space Mono", monospace; font-size: var(--text-xs); }
-.ns-empty { color: var(--mist); font-size: var(--text-sm); padding: var(--space-2) var(--space-3); }
-
+.ns-item.ns-active {
+  background: rgba(var(--signal-rgb), 0.08);
+  border-color: rgba(var(--signal-rgb), 0.4);
+}
+.ns-name {
+  color: var(--paper);
+  font-size: var(--text-sm);
+}
+.ns-weight {
+  color: var(--mist);
+  font-family: "Space Mono", monospace;
+  font-size: var(--text-xs);
+}
+.ns-empty {
+  color: var(--mist);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+}

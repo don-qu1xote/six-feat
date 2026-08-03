@@ -205,6 +205,7 @@ std::vector<YandexPlaylistSummary> YandexGatewayClient::FetchPlaylists(
       summary.yandex_id = p["id"].As<std::int64_t>(0);
       summary.title = p["title"].As<std::string>("");
       summary.track_count = p["track_count"].As<int>(0);
+      summary.cover_url = p["cover_url"].As<std::string>("");
       if (summary.yandex_id) out.push_back(std::move(summary));
     }
   }

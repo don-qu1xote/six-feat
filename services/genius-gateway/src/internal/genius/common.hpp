@@ -42,8 +42,8 @@ inline std::string HandleGeniusError(userver::server::http::HttpResponse& resp,
 }
 
 inline std::optional<Lane> ParseLane(const std::string& raw) {
-  if (raw == "foreground") return Lane::Foreground;
-  if (raw == "background") return Lane::Background;
+  if (raw == "foreground") return Lane::kForeground;
+  if (raw == "background") return Lane::kBackground;
   return std::nullopt;
 }
 

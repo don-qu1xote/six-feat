@@ -123,9 +123,9 @@ YandexMusicGateway::~YandexMusicGateway() {
 void YandexMusicGateway::ExtendStatistics(utils::statistics::Writer& writer) const {
   const auto state = pipeline_.CbState();
   writer["circuit_breaker"]["state"] = static_cast<int>(state);
-  writer["circuit_breaker"]["closed"] = state == CircuitBreaker::State::Closed ? 1 : 0;
-  writer["circuit_breaker"]["open"] = state == CircuitBreaker::State::Open ? 1 : 0;
-  writer["circuit_breaker"]["half_open"] = state == CircuitBreaker::State::HalfOpen ? 1 : 0;
+  writer["circuit_breaker"]["closed"] = state == CircuitBreaker::State::kClosed ? 1 : 0;
+  writer["circuit_breaker"]["open"] = state == CircuitBreaker::State::kOpen ? 1 : 0;
+  writer["circuit_breaker"]["half_open"] = state == CircuitBreaker::State::kHalfOpen ? 1 : 0;
 
   writer["lane"]["foreground"]["tokens_available"] = pipeline_.FgTokensAvailable();
   writer["lane"]["foreground"]["slots_available"] = pipeline_.FgSlotsAvailable();
@@ -274,6 +274,7 @@ std::vector<YandexPlaylistRef> YandexMusicGateway::FetchPlaylists(const std::str
       ref.id = p["id"].As<std::int64_t>(0);
       ref.title = p["title"].As<std::string>("");
       ref.track_count = p["track_count"].As<int>(0);
+      ref.cover_url = p["cover"]["uri"].As<std::string>("");
       out.push_back(std::move(ref));
     }
   }

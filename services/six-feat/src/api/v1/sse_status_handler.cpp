@@ -25,7 +25,7 @@ using namespace userver;
 
 namespace {
 
-constexpr int kFullDepth = static_cast<int>(Depth::Full);
+constexpr int kFullDepth = static_cast<int>(Depth::kFull);
 constexpr std::chrono::seconds kPollInterval{2};
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)

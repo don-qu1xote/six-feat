@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 set -u
 
 repo_root=$(git rev-parse --show-toplevel)
@@ -47,6 +46,15 @@ if [ -n "$js_files" ]; then
     done
 fi
 
+css_html_files=$(echo "$staged" | grep -E '\.(css|html)$' || true)
+if [ -n "$css_html_files" ]; then
+    command -v npx >/dev/null 2>&1 || missing npx
+    for f in $css_html_files; do
+        echo "pre-commit: форматирую $f"
+        (cd front && npx prettier --write "../$f" >/dev/null 2>&1)
+    done
+fi
+
 echo "$staged" | xargs -r git add --
 
 cpp_staged=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
@@ -80,26 +88,60 @@ if [ -n "$js_staged" ] && [ -d front/node_modules ] && command -v npx >/dev/null
     fi
 fi
 
+css_html_staged=$(echo "$staged" | grep -E '\.(css|html)$' || true)
+if [ -n "$css_html_staged" ] && [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
+    if ! echo "$css_html_staged" | while IFS= read -r file; do
+        (cd front && npx prettier --check "../$file" >/dev/null 2>&1)
+    done; then
+        echo "pre-commit: CSS/HTML не отформатирован (prettier --check):"
+        tail -20 /tmp/precommit-prettier.log
+        fail=1
+    fi
+fi
+
 command -v python3 >/dev/null 2>&1 || missing python3
 py_staged_for_comments=$(echo "$staged" | grep -E '\.py$' || true)
 js_staged_for_comments=$(echo "$staged" | grep -E '\.(js|mjs|cjs)$' || true)
 cpp_staged_for_comments=$(echo "$staged" | grep -E '\.(cpp|hpp|h|cc|cxx|c)$' || true)
+css_html_staged_for_comments=$(echo "$staged" | grep -E '\.(css|html)$' || true)
 
-if [ -n "$py_staged_for_comments" ] || [ -n "$js_staged_for_comments" ] || [ -n "$cpp_staged_for_comments" ]; then
-    comment_targets=""
-    for f in $py_staged_for_comments $js_staged_for_comments $cpp_staged_for_comments; do
+comment_targets=""
+for f in $py_staged_for_comments $js_staged_for_comments $cpp_staged_for_comments $css_html_staged_for_comments; do
+    if [ -f "$f" ]; then
+        comment_targets="$comment_targets $f"
+    fi
+done
+if [ -n "$comment_targets" ]; then
+    echo "pre-commit: удаляю комментарии, не нужные для билда или не на русском"
+    python3 scripts/check_comments.py --fix $comment_targets >/tmp/precommit-comments-fix.log 2>&1
+    for f in $comment_targets; do
         if [ -f "$f" ]; then
-            comment_targets="$comment_targets $f"
+            ext="${f##*.}"
+            case "$ext" in
+                py)
+                    command -v ruff >/dev/null 2>&1 || missing ruff
+                    echo "pre-commit: форматирую $f (после удаления комментариев)"
+                    ruff format "$f"
+                    ;;
+                js|mjs|cjs)
+                    command -v npx >/dev/null 2>&1 || missing npx
+                    echo "pre-commit: форматирую $f (после удаления комментариев)"
+                    (cd front && npx prettier --write "../$f" >/dev/null 2>&1)
+                    ;;
+                css|html)
+                    command -v npx >/dev/null 2>&1 || missing npx
+                    echo "pre-commit: форматирую $f (после удаления комментариев)"
+                    (cd front && npx prettier --write "../$f" >/dev/null 2>&1)
+                    ;;
+                cpp|hpp|h|cc|cxx|c)
+                    command -v clang-format >/dev/null 2>&1 || missing clang-format
+                    echo "pre-commit: форматирую $f (после удаления комментариев)"
+                    clang-format -i --style=file "$f"
+                    ;;
+            esac
         fi
     done
-    if [ -n "$comment_targets" ]; then
-        echo "pre-commit: проверяю комментарии (только build-необходимые, на русском)"
-        if ! python3 scripts/check_comments.py $comment_targets >/tmp/precommit-comments.log 2>&1; then
-            echo "pre-commit: найдены комментарии, не нужные для билда или не на русском:"
-            cat /tmp/precommit-comments.log
-            fail=1
-        fi
-    fi
+    echo "$comment_targets" | xargs -r git add --
 fi
 
 if [ -n "$py_staged" ]; then

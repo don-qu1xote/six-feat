@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <six-feat-core/resilience.hpp>
 #include <string>
 #include <string_view>
@@ -21,7 +22,7 @@ struct YandexDeviceCode {
   int expires_in_seconds{600};
 };
 
-enum class YandexTokenPollStatus { kSuccess, kPending, kDenied, kExpired };
+enum class YandexTokenPollStatus : std::uint8_t { kSuccess, kPending, kDenied, kExpired };
 
 struct YandexTokenPollResult {
   YandexTokenPollStatus status{YandexTokenPollStatus::kPending};

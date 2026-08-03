@@ -16,7 +16,7 @@ std::optional<ArtistRef> ResolveArtistById(IArtistDataSource& repo,
                                            std::int64_t id,
                                            const std::string& user_token) {
   if (auto ref = repo.Lookup(id)) return ref;
-  return gateway.FetchArtistById(id, Lane::Foreground, user_token);
+  return gateway.FetchArtistById(id, Lane::kForeground, user_token);
 }
 
 std::variant<ArtistRef, AmbiguousResult> ResolveArtistByName(IExternalArtistLookup& gateway,

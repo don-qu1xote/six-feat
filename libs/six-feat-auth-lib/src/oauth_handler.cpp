@@ -11,6 +11,7 @@
 #include <six-feat-core/request_id.hpp>
 #include <six-feat-core/security_headers.hpp>
 #include <stdexcept>
+#include <string_view>
 #include <userver/clients/http/client.hpp>
 #include <userver/clients/http/component.hpp>
 #include <userver/components/component_config.hpp>
@@ -33,7 +34,7 @@ namespace {
 std::string UrlEncode(const std::string& s) {
   std::string out;
   out.reserve(s.size() * 3);
-  static const char kHex[] = "0123456789ABCDEF";
+  static constexpr std::string_view kHex{"0123456789ABCDEF"};
   for (unsigned char c : s) {
     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
         c == '_' || c == '.' || c == '~') {
@@ -52,7 +53,7 @@ std::string RandomState() {
   if (RAND_bytes(rand_bytes.data(), 16) != 1) {
     throw std::runtime_error("RAND_bytes failed");
   }
-  static const char kHex[] = "0123456789abcdef";
+  static constexpr std::string_view kHex{"0123456789abcdef"};
   std::string out;
   out.reserve(32);
   for (auto b : rand_bytes) {
@@ -123,8 +124,8 @@ void IssueSessionCookies(const server::http::HttpRequest& request,
 }
 
 std::string Base64UrlEncode(const unsigned char* data, std::size_t len) {
-  static const char kB64Chars[] =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  static constexpr std::string_view kB64Chars{
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"};
   std::string out;
   out.reserve((len + 2) / 3 * 4);
   for (std::size_t i = 0; i < len; i += 3) {
@@ -352,7 +353,9 @@ std::pair<std::string, std::string> CallbackHandler::ExchangeCode(
   std::string name;
   try {
     name = FetchGeniusName(token);
-  } catch (...) {
+  } catch (const std::exception& ex) {
+    LOG_WARNING() << "[OAuth] failed to fetch Genius profile name (" << ex.what()
+                  << "), continuing with empty name";
   }
 
   return {token, name};

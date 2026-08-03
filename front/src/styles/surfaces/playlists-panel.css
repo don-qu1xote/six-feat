@@ -1,0 +1,73 @@
+/* [SF-WEB-74] Playlists tab — its own docked panel (registerDockedPanel,
+   same mechanism as settings/search/path), styled with the existing
+   .bento-tile card material (components/tile.css, SF-WEB-11 kit) instead
+   of a new visual system. */
+.playlists-panel {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-4);
+  position: fixed;
+  left: 76px;
+  bottom: var(--space-4);
+  width: 560px;
+  max-width: calc(100vw - 96px);
+  max-height: min(80vh, 100%);
+  overflow-y: auto;
+  z-index: var(--z-graph-overlay);
+}
+.playlists-panel.show {
+  display: flex;
+}
+
+.playlist-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.playlist-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  cursor: pointer;
+  transition: border-color var(--duration-base) var(--ease-standard);
+}
+.playlist-card:hover {
+  border-color: var(--signal);
+}
+.playlist-card--unresolved {
+  cursor: default;
+}
+.playlist-card--unresolved:hover {
+  border-color: var(--line);
+}
+
+.playlist-card-cover {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+}
+.playlist-card-cover--round {
+  border-radius: 50%;
+}
+
+.playlist-card-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--paper);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.playlist-card-count {
+  font-size: var(--text-xs);
+  color: var(--mist);
+}
+
+.playlists-truncated-hint {
+  font-size: var(--text-xs);
+  color: var(--mist);
+  margin: 0;
+}

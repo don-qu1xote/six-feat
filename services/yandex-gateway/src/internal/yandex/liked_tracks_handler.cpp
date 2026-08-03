@@ -51,7 +51,7 @@ std::string LikedTracksHandler::HandleRequestThrow(const server::http::HttpReque
   }
 
   try {
-    const auto track_ids = gateway_.FetchLikedTracks(token, user_id, Lane::Foreground);
+    const auto track_ids = gateway_.FetchLikedTracks(token, user_id, Lane::kForeground);
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     formats::json::ValueBuilder arr(formats::json::Type::kArray);
     for (const auto tid : track_ids) arr.PushBack(tid);
