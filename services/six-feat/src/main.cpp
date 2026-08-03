@@ -54,9 +54,6 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::AppSecretParityChecker>()
                                   .Append<six_feat::ArtistRepository>()
                                   .Append<six_feat::EnrichmentClient>()
-                                  // [SF-ARCH-03] Общий ограничитель фан-аута —
-                                  // до CollabService и провайдеров: оба фанятся
-                                  // в одну foreground-полосу гейтвея.
                                   .Append<six_feat::FgFanoutLimiter>()
                                   .Append<six_feat::CollabService>()
                                   .Append<six_feat::YandexMusicSourceProvider>()

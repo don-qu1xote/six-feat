@@ -1,44 +1,3 @@
-"""
-test_game_submit.py — [SF-GAME-15] integration tests for the game service's
-POST /api/v1/game/submit (scoring + Elo update against a challenge's ideal).
-
-Same harness convention as test_game_validate.py (SF-GAME-14): the game
-service needs Postgres AND a reachable six-feat instance (for the
-/internal/neighbours lookup chain_validator.hpp delegates to), so these run
-against the running docker-compose stack via GAME_SERVICE_ORIGIN, self-
-skipping if that origin isn't reachable. Real L1 collaboration data AND a
-game_challenges row (with optimal_len/optimal_path already computed) are
-seeded directly via psycopg2 — there is no challenge-creation endpoint yet
-(that's SF-GAME-16), so a fully-formed challenge row is the mock "ideal" the
-ticket asks these tests to score a mock attempt against.
-
-The score/Elo arithmetic (_expected_score/_expected_elo below) is a literal
-reimplementation of services/game/scoring.hpp's ComputeScore/UpdateElo in
-Python — the same "two independent sources of truth" pattern
-test_contract_gateway.py already uses — so these tests fail immediately and
-specifically if the two ever drift, rather than only noticing a vague score
-mismatch.
-
-Scenarios (per the ticket):
-  1. no cookie -> 401.
-  2. malformed body / missing challenge_id / chain shorter than 2 -> 400.
-  3. unknown challenge_id -> 404.
-  4. a challenge whose ideal hasn't been computed yet (optimal_len IS NULL)
-     -> 409.
-  5. exact-optimal valid chain, fresh player -> score/Elo delta match the
-     Python reimplementation exactly (deterministic).
-  6. a longer-than-optimal valid chain -> extra-hop penalty applied.
-  7. a fabricated hop -> {valid:false, ...}, no score, no Elo change,
-     recorded so it counts toward a LATER valid submission's prior_attempts
-     penalty ("невалид снижают").
-  8. two valid submissions by the same player on the same challenge -> the
-     second one's score/Elo reflect prior_attempts=1.
-  9. [SF-GAME-36] anti-abuse: a REPEAT submission of the same challenge is
-     still scored, but never re-rates — Elo and the games count both stay put,
-     however many times it's replayed. The gate is per (player, challenge), so
-     a different challenge still rates normally.
-"""
-
 from __future__ import annotations
 
 import math
@@ -144,9 +103,6 @@ def _seed_challenge(
     optimal_len: int | None,
     optimal_path: list[int] | None,
 ) -> int:
-    """Directly writes a game_challenges row with its ideal already computed
-    — there is no challenge-creation endpoint yet (SF-GAME-16), so this
-    stands in as the "mock ideal" the ticket's pytest requirement asks for."""
     conn = psycopg2.connect(**DB_CONN_PARAMS)
     try:
         conn.autocommit = True
@@ -167,10 +123,6 @@ def _seed_challenge(
 
 
 def _fresh_cookie() -> tuple[str, str]:
-    """A never-before-seen player name (and its cookie) — StableUserId(name)
-    hashes to a fresh user_id, so game_profiles starts this player at the
-    migration defaults (elo=1200, games=0) regardless of what earlier test
-    runs left in the shared, persisted docker-compose Postgres."""
     name = f"SFGAME15Player-{time.time_ns()}"
     return name, session_crypto.make_cookie(
         TEST_APP_SECRET,
@@ -199,8 +151,6 @@ def _require_service() -> None:
 
 @pytest.fixture(scope="module")
 def direct_challenge_id() -> int:
-    """A: primary, B: featured, sharing one song -> A-B direct hop is real
-    and is also the shortest possible path (optimal_len=1)."""
     _seed_collaboration(
         150_101,
         "SF-GAME-15 Direct Collab",
@@ -230,11 +180,6 @@ def direct_challenge_id() -> int:
 
 @pytest.fixture(scope="module")
 def second_challenge_id(direct_challenge_id: int) -> int:
-    """[SF-GAME-36] A genuinely DIFFERENT challenge (A->Y, also a real direct
-    hop seeded by direct_challenge_id above), so the anti-abuse rule can be
-    shown to be per (player, challenge) rather than "only your first game ever
-    counts". Depends on direct_challenge_id purely for its collaboration
-    seeding."""
     return _seed_challenge(
         _A_ID, _Y_ID, 15, "sf-game-36-second", optimal_len=1, optimal_path=[_A_ID, _Y_ID]
     )
@@ -242,8 +187,6 @@ def second_challenge_id(direct_challenge_id: int) -> int:
 
 @pytest.fixture(scope="module")
 def unscored_challenge_id() -> int:
-    """A challenge whose ideal hasn't been computed yet (optimal_len IS
-    NULL) — simulates a row SF-GAME-16 hasn't finished processing."""
     return _seed_challenge(
         _X_ID, _B_ID, 15, "sf-game-15-unscored", optimal_len=None, optimal_path=None
     )
@@ -383,10 +326,6 @@ def test_invalid_attempt_counts_toward_prior_attempts_too(direct_challenge_id: i
 
 
 def _profile_row(name: str) -> tuple[int, int]:
-    """(elo, games) straight from game_profiles, keyed by the FNV-1a hash of
-    the display name that auth::SessionUserId falls back to for legacy cookies
-    (no provider_user_id) — same "two sources of truth" posture as
-    _expected_score/_expected_elo above."""
     h = 1469598103934665603
     for byte in name.encode():
         h ^= byte
@@ -404,7 +343,6 @@ def _profile_row(name: str) -> tuple[int, int]:
 
 
 def test_repeat_submission_never_moves_elo(direct_challenge_id: int):
-    """A replayed challenge is scored (and shown) but never re-rates."""
     _, cookie = _fresh_cookie()
     body = {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]}
 
@@ -424,7 +362,6 @@ def test_repeat_submission_never_moves_elo(direct_challenge_id: int):
 
 
 def test_repeat_submission_never_increments_games(direct_challenge_id: int):
-    """games counts RANKED attempts, so a replay leaves it where it was."""
     name, cookie = _fresh_cookie()
     body = {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]}
 
@@ -442,9 +379,6 @@ def test_repeat_submission_never_increments_games(direct_challenge_id: int):
 def test_a_different_challenge_still_rates_normally(
     direct_challenge_id: int, second_challenge_id: int
 ):
-    """The gate is per (player, challenge) — a NEW challenge still rates, so
-    the anti-abuse rule can't be mistaken for 'only your first game ever
-    counts'."""
     name, cookie = _fresh_cookie()
 
     first = _post(cookie, {"challenge_id": direct_challenge_id, "chain": [_A_ID, _B_ID]}).json()

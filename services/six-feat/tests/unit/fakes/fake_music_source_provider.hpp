@@ -22,8 +22,6 @@ class FakeMusicSourceProvider final : public MusicSourceProvider {
     should_throw_ = false;
   }
 
-  // Треки без seed: seed подставляется из аргумента GetArtistSongs, чтобы фейк
-  // физически не мог вернуть данные не того артиста, которого спросили.
   void SucceedWithSongs(std::vector<SongRecord> songs) {
     songs_ = std::move(songs);
     should_throw_ = false;
@@ -34,18 +32,16 @@ class FakeMusicSourceProvider final : public MusicSourceProvider {
     should_throw_ = true;
   }
 
-  std::vector<ProviderEdge> GetCollaborationEdges(
-      const ArtistRef& /*seed*/, const std::string& /*user_token*/) const override {
+  std::vector<ProviderEdge> GetCollaborationEdges(const ArtistRef&,
+                                                  const std::string&) const override {
     if (should_throw_) throw std::runtime_error(error_message_);
     return edges_;
   }
 
-  // Уважает и seed, и songs_limit — иначе тест мог бы получить треки «чужого»
-  // артиста или больше запрошенного и всё равно позеленеть.
   ArtistSongs GetArtistSongs(const ArtistRef& seed,
                              int songs_limit,
-                             Lane /*lane*/,
-                             const std::string& /*user_token*/) const override {
+                             Lane,
+                             const std::string&) const override {
     if (should_throw_) throw std::runtime_error(error_message_);
 
     ArtistSongs out;

@@ -1,9 +1,3 @@
-"""
-test_backup_restore.py — SF-INF-08: backup, restore, ротация, --yes-i-am-sure.
-Создаёт свои scratch-базы (не трогает shared test DB).
-Требует pg_dump >= серверной мажорной версии, иначе module-level skip.
-"""
-
 from __future__ import annotations
 
 import os
@@ -247,7 +241,6 @@ class TestRestoreRoundTrip:
         actual = _read_all(clean_target_db)
         assert actual == expected
 
-        # Guard against a vacuously-passing comparison of four empty tables.
         assert sum(len(rows) for rows in expected.values()) == (
             len(SEED_ARTISTS) + len(SEED_SONGS) + len(SEED_CREDITS) + len(SEED_FETCH_STATE)
         )

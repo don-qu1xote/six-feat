@@ -8,10 +8,6 @@
 
 namespace six_feat::yandex_gateway {
 
-// [SF-YM-04] Резолвит Yandex account id (`user_id`) за подключённым
-// личным токеном — недостающее звено: PlaylistsHandler/LikedTracksHandler/
-// PlaylistTracksHandler ожидают его, но device flow (SF-YM-02) хранит
-// только access token, не user_id.
 class AccountHandler final : public userver::server::handlers::HttpHandlerBase {
  public:
   static constexpr std::string_view kName = "handler-internal-yandex-account";

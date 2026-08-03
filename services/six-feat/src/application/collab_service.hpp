@@ -59,10 +59,6 @@ class CollabService final : public userver::components::ComponentBase {
   std::variant<ArtistRef, AmbiguousResult> ResolveByName(const std::string& query,
                                                          const std::string& user_token) const;
 
-  // preferred_provider (SF-YM-07): порядок ПОПЫТОК для фоновых задач ЭТОГО
-  // вызова (EnrichmentWorker) — сам живой вызов ниже (chain_) идёт
-  // сервисным дефолтным порядком, preferred_provider влияет только на то,
-  // что передаётся дальше в enrichment enqueue.
   ArtistSongs BuildRadialGraph(const ArtistRef& seed,
                                const std::string& user_token,
                                std::optional<int> limit_override = std::nullopt,
@@ -112,10 +108,6 @@ class CollabService final : public userver::components::ComponentBase {
   IExternalArtistLookup& gateway_;
   MusicSourceProviderChain& chain_;
   EnrichmentClient& enrichment_;
-  // [SF-ARCH-03] Общий на сервис ограничитель фан-аута, а не собственный
-  // семафор: в ту же foreground-полосу гейтвея фанится сборка графа
-  // (GeniusMusicSourceProvider), и два независимых лимита складывались бы,
-  // превышая lane-fg-max-concurrent гейтвея.
   FgFanoutLimiter& fg_fanout_;
   const int path_max_expand_rounds_;
   const int path_max_frontier_size_;

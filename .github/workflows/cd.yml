@@ -1,108 +1,5 @@
 name: CD
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SF-CI-07 — релизный пайплайн. Восемь стадий, каждая — отдельная job,
-# соединённые через `needs:`, чтобы Actions UI рисовал граф сверху вниз
-# и каждый гейт был отдельной краснеющей точкой:
-#
-#   Stage 0        1          2         3            4          5
-#   ┌────────┐  ┌───────┐  ┌──────┐  ┌─────────┐  ┌────────┐  ┌───────┐
-#   │ config │─▶│ build │─▶│ push │─▶│ deploy  │─▶│ health │─▶│ smoke │──┐
-#   │ (mode) │  │ (×5)  │  │ (×5) │  │ staging │  │ check  │  │ tests │  │
-#   └────────┘  └───────┘  └──────┘  └─────────┘  └────────┘  └───────┘  │
-#                                                                         │
-#      ┌──────────────────────────────────────────────────────────────────┘
-#      │   Stage 6            Stage 7                Stage 7b
-#      │  ┌──────────┐    ┌────────────┐    ┌──────────────────────┐
-#      └─▶│ approve  │───▶│  deploy    │───▶│ health check (prod)  │
-#         │ (manual) │    │ production │    │ + record last-good   │
-#         └──────────┘    └────────────┘    └──────────┬───────────┘
-#                                                      │ при сбое
-#                                          Stage 8     ▼
-#                                        ┌─────────────────────────┐
-#                                        │ rollback к last-good    │
-#                                        │ (или workflow_dispatch) │
-#                                        └─────────────────────────┘
-#
-# ── Что этот файл НЕ делает, намеренно ─────────────────────────────────────
-# Он не подключается к инфраструктуре владельца. STAGING_HOST/PROD_HOST —
-# секреты-заглушки; объём тикета — ФОРМА пайплайна и его гейтов,
-# а не интеграция с хостингом. См. "Auto-degrade" ниже: как незаданный
-# хост обрабатывается без покраски main в красный.
-#
-# ── Отношение к ci.yml (читай перед редактированием) ──────────────────────
-# Тикет написан исходя из предположения, что этот репозиторий не пушит
-# образы. Это уже не так: Stage 3 `publish` в ci.yml (SF-CI-03)
-# собирает все пять сервисов, пушит их в
-# ghcr.io/<owner>/<service>:sha-<sha> и подписывает каждый digest через
-# cosign. Этот файл НЕ заменяет и НЕ переподписывает ничего.
-#
-# Стадии 1 и 2 существуют здесь потому, что релизный пайплайн должен уметь
-# поднимать те самые бинарники, которые собирается деплоить — включая
-# workflow_dispatch rollback, где ci.yml publish никогда не запускался.
-# Они разделяют buildx-кэш с ci.yml, так что на нормальном пути (push в
-# main, ci.yml уже собрал этот же коммит) обе стадии — почти мгновенные
-# cache hit'ы, а не вторая компиляция. КООРДИНАТЫ образов ниже побайтово
-# идентичны publish-матрице ci.yml: тот же registry, те же имена, те же
-# GITHUB_TOKEN credentials, ни одного нового секрета. Если переименовываешь
-# образ в одном файле — переименуй в другом.
-#
-# ── Build → push двумя job'ами ────────────────────────────────────────────
-# Тикет требует build и push отдельными стадиями. Контейнерный образ нельзя
-# передать между job'ами как живой образ, и в этом репозитории нет
-# утверждённого pin для actions/download-artifact, поэтому handoff идёт
-# через buildx GHA cache: стадия 1 собирает с `outputs: type=cacheonly`
-# (компилирует, экспортирует кэш, ничего не хранит), стадия 2 пересобирает
-# из этого кэша — полный cache hit, не вторая компиляция — и пушит.
-# Те же входы и тот же Dockerfile дают те же бинарники, и стадия 2 —
-# настоящий гейт: она не может запушить то, что стадия 1 не смогла собрать.
-#
-# ── Auto-degrade вместо вечно красного пайплайна ──────────────────────────
-# Каждая deploy-стадия проверяет свой host-секрет. Если он не задан —
-# а это состояние, в котором тикет попадает в репозиторий — стадия
-# рендерит и ВАЛИДИРУЕТ всё (compose merge, последовательность удалённых
-# команд) и печатает, что она запустила бы вместо контакта с хостом,
-# а downstream health/smoke гейты самотестируют свои утверждения на
-# in-process заглушках. Пайплайн остаётся зелёным и честным, а не падает
-# на заглушке при каждом merge в main. Как только владелец установит
-# STAGING_HOST/PROD_HOST, те же самые job'ы становятся реальными деплоями
-# без правки этого файла. Каждая вырожденная стадия шлёт ::warning:: —
-# чтобы прогон никогда не был молчаливым no-op.
-#
-# ── Manual approval (стадия 6) ────────────────────────────────────────────
-# Использует protection rules GitHub Environments, не кастомный гейт:
-# job `approve-production` объявляет `environment: production` и Actions
-# ждёт, пока required reviewer утвердит. НАСТРОЙКА ОДНОКРАТНО в
-# Settings → Environments: создать `production` и добавить "Required
-# reviewers". Пока такого правила нет, job проходит насквозь — GitHub
-# не умеет выражать "требуется утверждение" изнутри workflow-файла,
-# так что это единственная часть пайплайна, которую нельзя полностью
-# проверить кодом репозитория. Dry-run нацелен на отдельное, намеренно
-# незащищённое окружение `production-dry-run`, чтобы репетиция пайплайна
-# не расходовала утверждение ревьюера.
-#
-# ── Dry run ───────────────────────────────────────────────────────────────
-#   Actions → CD → Run workflow → mode: dry-run
-# Запускает все восемь стадий по порядку без записи в registry и без
-# контакта с хостом. Это не эхо: deploy-стадии мержат и валидируют
-# настоящие compose-файлы, health/smoke гейты выполняют реальные
-# проверки против stub-серверов, воспроизводящих документированные
-# контракты — плюс намеренно сломанный stub, доказывающий, что гейты
-# умеют падать. См. scripts/cd_*.py --self-test.
-#
-# ── Известный gap: ENV_PROFILE (SF-CFG-01/02) ────────────────────────────
-# Тикет специфицирует ENV_PROFILE=staging/production согласно SF-CFG-01/02.
-# Этой переменной в репозитории пока нет — коммит SF-CFG-02 (12e24d6) несёт
-# сообщение об унификации docker-compose, но его diff трогает только
-# services/game/*.cpp. docker-compose.yml по-прежнему различает окружения
-# через .env и compose-ключ `profiles:`, что другой механизм. ENV_PROFILE
-# проведён end-to-end здесь в любом случае, так что контракт уже будет
-# корректен, когда SF-CFG-01/02 по-настоящему приземлится; пока staging
-# и production получают одинаковую compose-топологию и различаются только
-# хостом и .env. Это config-parity gap, не pipeline gap — но staging-деплой
-# пока не является верным окружению репетицией, которую предполагает тикет.
-# ─────────────────────────────────────────────────────────────────────────────
-
 on:
   push:
     branches: [main]
@@ -110,20 +7,18 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry-run = rehearse every stage, touch nothing. rollback-production = redeploy the last known-good release."
+        description: "dry-run = репетиция всех стадий, ничего не трогает. rollback-production = передеплой последнего известного хорошего релиза."
         type: choice
         options:
           - dry-run
           - rollback-production
         default: dry-run
       rollback_sha:
-        description: "Rollback only: deploy this exact sha instead of the recorded last-good one. Leave empty to use the last-good tag."
+        description: "Только для rollback: задеплоить этот конкретный sha вместо записанного last-good. Оставьте пустым, чтобы использовать last-good tag."
         type: string
         required: false
         default: ""
 
-# Один релиз за раз на ref. cancel-in-progress намеренно FALSE:
-# полунакаченный деплой, прерванный посередине `up`, хуже поставленного в очередь.
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
@@ -133,24 +28,12 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  # Идентично env-блоку ci.yml — build-arg, который читают Dockerfile'ы.
   USERVER_IMAGE_REPO: ghcr.io/userver-framework/ubuntu-22.04-userver
   USERVER_IMAGE_TAG: v3.0
   USERVER_IMAGE_DIGEST: sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
-  # Движущийся tag, записывающий последний релиз, прошедший PRODUCTION health
-  # gate. Stage 7b продвигает его только после того, как гейт зелёный —
-  # это делает его безопасным для stage 8: в момент сбойного деплоя он всё
-  # ещё указывает на предыдущий хороший релиз, никогда на сломанный.
-  # Выбран вместо артефакта, потому что артефакты истекают и привязаны
-  # к одному прогону, а этот живёт бесконечно и читается обычным git.
   LAST_GOOD_TAG: cd/last-good-production
 
 jobs:
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 0 — Resolve: какой это прогон (dry-run/rollback/push-on-main),
-  # один раз, чтобы каждый поздний `if:` читал строку, а не перевычислял
-  # логику event/input. Не одна из восьми стадий тикета; это корень графа.
-  # ══════════════════════════════════════════════════════════════════════════
   config:
     name: "Stage 0 — Resolve release mode"
     runs-on: ubuntu-22.04
@@ -177,8 +60,6 @@ jobs:
             is_dry_run=false; is_rollback=false
           fi
 
-          # GHCR отвергает заглавные сегменты пути. Lowercasing — no-op для
-          # владельца этого репозитория и сохраняет значение идентичным ci.yml.
           owner="$(printf '%s' "$OWNER_RAW" | tr '[:upper:]' '[:lower:]')"
 
           {
@@ -199,12 +80,6 @@ jobs:
             echo "| image tag | \`sha-$SHA\` |"
           } >>"$GITHUB_STEP_SUMMARY"
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 1 — Собрать образ каждого сервиса в этом коммите. Без push, без
-  # load: `outputs: type=cacheonly` компилирует и экспортирует buildx layer
-  # cache, из которого stage 2 затем пушит. Падение здесь = ничего не дошло
-  # до registry.
-  # ══════════════════════════════════════════════════════════════════════════
   build:
     name: "Stage 1 — Build ${{ matrix.service.name }}"
     runs-on: ubuntu-22.04
@@ -213,9 +88,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Идентично publish/sbom матрицам ci.yml. yandex-gateway (Release 0.8)
-        # добавляется сюда как ещё одна запись, когда появится — матрица
-        # единственное место, где нужно менять.
         service:
           - name: six-feat
             dockerfile: services/six-feat/Dockerfile
@@ -242,17 +114,9 @@ jobs:
           outputs: type=cacheonly
           build-args: |
             USERVER_IMAGE=${{ env.USERVER_IMAGE_REPO }}:${{ env.USERVER_IMAGE_TAG }}@${{ env.USERVER_IMAGE_DIGEST }}
-          # Та же строка scope, что в ci.yml, намеренно — push в main, который
-          # уже запустил ci.yml, превращает это в cache hit вместо повторной
-          # компиляции.
           cache-from: type=gha,scope=${{ matrix.service.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 2 — Запушить каждый образ в registry как :sha-<git sha>. Тот же
-  # registry и те же GITHUB_TOKEN credentials, что использует publish job
-  # в ci.yml — ни одного нового секрета не вводится этим пайплайном.
-  # ══════════════════════════════════════════════════════════════════════════
   push:
     name: "Stage 2 — Push ${{ matrix.service.name }}"
     runs-on: ubuntu-22.04
@@ -260,7 +124,7 @@ jobs:
     if: needs.config.outputs.is_rollback != 'true'
     permissions:
       contents: read
-      packages: write   # docker push to ghcr.io
+      packages: write   # docker push в ghcr.io
     strategy:
       fail-fast: false
       matrix:
@@ -281,8 +145,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
-      # Dry-run останавливается до аутентификации в registry, чтобы репетиция
-      # никогда не записала пакет.
       - name: Log in to GHCR
         if: needs.config.outputs.is_dry_run != 'true'
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
@@ -291,8 +153,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Только immutable sha tag. Теги "latest"/tag-name остаются за publish
-      # job в ci.yml — деплой никогда не должен описываться движущимся тегом.
       - name: Build and push ${{ needs.config.outputs.image_tag }}
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
         with:
@@ -309,10 +169,6 @@ jobs:
         if: needs.config.outputs.is_dry_run == 'true'
         run: echo "::warning title=Dry run::Built ${{ matrix.service.name }} but did not push to ${{ env.REGISTRY }}."
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 3 — Деплой в staging (ENV_PROFILE=staging). Вырождается в
-  # валидированную репетицию, когда secrets.STAGING_HOST не задан — см. header.
-  # ══════════════════════════════════════════════════════════════════════════
   deploy-staging:
     name: "Stage 3 — Deploy staging"
     runs-on: ubuntu-22.04
@@ -322,8 +178,6 @@ jobs:
       name: staging
       url: ${{ steps.target.outputs.base_url }}
     outputs:
-      # Downstream гейтам нужно знать, существует ли реальное окружение для
-      # опроса, или они должны самотестировать свои утверждения вместо этого.
       dry_run: ${{ steps.target.outputs.dry_run }}
       base_url: ${{ steps.target.outputs.base_url }}
     steps:
@@ -347,8 +201,6 @@ jobs:
             dry_run=false
           fi
 
-          # nginx — единая публичная точка входа (docker-compose.yml) и
-          # публикует NGINX_PUBLIC_PORT, по умолч. 8080.
           if [ -n "$BASE_URL_OVERRIDE" ]; then
             base_url="$BASE_URL_OVERRIDE"
           elif [ -n "$HOST" ]; then
@@ -362,8 +214,6 @@ jobs:
             echo "base_url=$base_url"
           } >>"$GITHUB_OUTPUT"
 
-      # Материализует ключ только когда есть реальный хост для доступа.
-      # Secret-заглушка, как и сами хосты.
       - name: Configure SSH
         if: steps.target.outputs.dry_run != 'true'
         env:
@@ -391,10 +241,6 @@ jobs:
           DRY_RUN: ${{ steps.target.outputs.dry_run == 'true' && '1' || '0' }}
         run: ./scripts/cd_deploy.sh
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 4 — Health check staging по readiness-контракту SF-INF-03,
-  # с явным таймаутом. Падение здесь закрывает пайплайн ДО prod.
-  # ══════════════════════════════════════════════════════════════════════════
   health-check-staging:
     name: "Stage 4 — Health check staging"
     runs-on: ubuntu-22.04
@@ -407,21 +253,12 @@ jobs:
         if: needs.deploy-staging.outputs.dry_run != 'true'
         run: python3 scripts/cd_health_check.py --base-url "${{ needs.deploy-staging.outputs.base_url }}" --timeout 180
 
-      # Не эхо: запускает реальную логику polling/parsing этого гейта против
-      # stub'а, который прогревается как свежий деплой, и против того, который
-      # никогда не становится ready — доказывая, что таймаут реально валит
-      # стадию.
       - name: Rehearse the gate (no staging target)
         if: needs.deploy-staging.outputs.dry_run == 'true'
         run: |
           echo "::warning title=Rehearsal::No staging target; self-testing the readiness gate instead of probing."
           python3 scripts/cd_health_check.py --self-test
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 5 — Smoke-тесты: пять сценариев (health, search, graph-build,
-  # openapi, index), не tests/*.py suite. См. docstring cd_smoke_test.py
-  # о том, почему этот suite не может нацеливаться на удалённый хост.
-  # ══════════════════════════════════════════════════════════════════════════
   smoke-staging:
     name: "Stage 5 — Smoke tests (staging)"
     runs-on: ubuntu-22.04
@@ -440,12 +277,6 @@ jobs:
           echo "::warning title=Rehearsal::No staging target; self-testing the smoke scenarios instead of running them against staging."
           python3 scripts/cd_smoke_test.py --self-test
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 6 — Ручное утверждение. Гейтом является `environment:` этой job'ы —
-  # Actions держит её здесь, пока required reviewer не утвердит. Нет шагов,
-  # которые стоит выполнять; пауза и есть смысл. Требует однократной настройки
-  # окружения, описанной в header.
-  # ══════════════════════════════════════════════════════════════════════════
   approve-production:
     name: "Stage 6 — Manual approval"
     runs-on: ubuntu-22.04
@@ -459,11 +290,6 @@ jobs:
           echo "Approved promotion of ${{ needs.config.outputs.image_tag }} to production." \
             >>"$GITHUB_STEP_SUMMARY"
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 7 — Деплой в production. Тот же скрипт, тот же шаблон оверрайда,
-  # тот же image tag, что у staging; отличаются только DEPLOY_ENV,
-  # ENV_PROFILE и хост.
-  # ══════════════════════════════════════════════════════════════════════════
   deploy-production:
     name: "Stage 7 — Deploy production"
     runs-on: ubuntu-22.04
@@ -536,19 +362,13 @@ jobs:
           DRY_RUN: ${{ steps.target.outputs.dry_run == 'true' && '1' || '0' }}
         run: ./scripts/cd_deploy.sh
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 7b — Health check production. Это гейт, который вооружает stage 8:
-  # его сбой запускает автоматический rollback. При успехе — и только тогда —
-  # он продвигает last-good tag на этот коммит, чтобы tag никогда не указывал
-  # на релиз, проваливший свой собственный health check.
-  # ══════════════════════════════════════════════════════════════════════════
   health-check-production:
     name: "Stage 7b — Health check production"
     runs-on: ubuntu-22.04
     needs: [config, deploy-production]
     if: needs.config.outputs.is_rollback != 'true'
     permissions:
-      contents: write   # move the last-good tag; no new secret, GITHUB_TOKEN
+      contents: write   # двигает last-good tag; без новых секретов, GITHUB_TOKEN
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -562,8 +382,6 @@ jobs:
           echo "::warning title=Rehearsal::No production target; self-testing the readiness gate instead of probing."
           python3 scripts/cd_health_check.py --self-test
 
-      # Пропускается на dry-run: репетиция не должна менять то, что восстановил
-      # бы реальный rollback.
       - name: Record last-good release
         if: needs.deploy-production.outputs.dry_run != 'true'
         run: |
@@ -572,20 +390,6 @@ jobs:
           git push -f origin "refs/tags/$LAST_GOOD_TAG"
           echo "Recorded $LAST_GOOD_TAG -> ${{ github.sha }}" >>"$GITHUB_STEP_SUMMARY"
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # Stage 8 — Rollback. Передеплоит последний релиз, прошедший stage 7b,
-  # из образов, уже находящихся в registry (без пересборки — смысл rollback'а
-  # в скорости и восстановлении известных бинарников, а не в производстве
-  # новых).
-  #
-  # Две точки входа, согласно тикету:
-  #   • автоматически, когда stage 7b падает после production деплоя;
-  #   • вручную, через workflow_dispatch mode=rollback-production.
-  #
-  # `always()` обязателен, потому что на автоматическом пути needs этой job'ы
-  # упали — без него Actions пропустил бы rollback именно тогда, когда он
-  # нужен. `!cancelled()` не даёт отменённому прогону запустить деплой.
-  # ══════════════════════════════════════════════════════════════════════════
   rollback-production:
     name: "Stage 8 — Rollback production"
     runs-on: ubuntu-22.04
@@ -599,8 +403,7 @@ jobs:
     environment:
       name: ${{ needs.config.outputs.is_dry_run == 'true' && 'production-dry-run' || 'production' }}
     steps:
-      # Полная история + теги: для разрешения LAST_GOOD_TAG нужен tag object,
-      # а мелкий shallow checkout его не забирает.
+      # Для разрешения LAST_GOOD_TAG нужен tag object — shallow checkout его не забирает
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 0
@@ -651,9 +454,6 @@ jobs:
           printf '%s\n' "$SSH_KEY" >~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
-      # Тот же скрипт и тот же шаблон, что у stage 7 — отличается только
-      # IMAGE_TAG. Rollback, идущий другим путём, чем деплой — это rollback,
-      # которому никто не может доверять.
       - name: Redeploy last-good release
         env:
           DEPLOY_ENV: production

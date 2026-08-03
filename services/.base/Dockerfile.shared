@@ -1,21 +1,7 @@
 # syntax=docker/dockerfile:1
-#
-# Shared builder + runtime base stages. Build standalone:
-#   docker build -f services/.base/Dockerfile.shared -t six-feat-builder-base --target builder-base .
-#   docker build -f services/.base/Dockerfile.shared -t six-feat-runtime-base --target runtime-base .
-#
-# Service Dockerfiles can reference these stages via:
-#   # syntax=docker/dockerfile:1
-#   ARG BUILDER_BASE_IMAGE=six-feat-builder-base:latest
-#   ARG RUNTIME_BASE_IMAGE=six-feat-runtime-base:latest
-#   FROM ${BUILDER_BASE_IMAGE} AS builder
-#   FROM ${RUNTIME_BASE_IMAGE} AS runtime
-#
-# Or keep self-contained (preferred for docker compose up --build).
 
 ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
 
-# ── Builder base ─────────────────────────────────────────────────────────────
 FROM ${USERVER_IMAGE} AS builder-base
 ARG BUILD_JOBS=8
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -28,7 +14,6 @@ COPY schemas ./schemas
 COPY libs ./libs
 ENV CCACHE_DIR=/ccache
 
-# ── Runtime base ─────────────────────────────────────────────────────────────
 FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982 AS runtime-base
 ENV DEBIAN_FRONTEND=noninteractive
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

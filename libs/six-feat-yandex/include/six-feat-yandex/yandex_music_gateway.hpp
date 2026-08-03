@@ -22,8 +22,6 @@ struct YandexPlaylistRef {
   int track_count{0};
 };
 
-// Апстрим /tracks/{id} отдаёт заголовок вместе с составом; возвращаем трек
-// целиком, а не только артистов.
 struct YandexTrack {
   std::int64_t id{0};
   std::string title;
@@ -57,18 +55,11 @@ class YandexMusicGateway final : public userver::components::ComponentBase {
                                              const std::string& user_id,
                                              Lane lane) const;
 
-  // [SF-YM-04] Недостающее звено между «список плейлистов» (FetchPlaylists,
-  // только метаданные) и «кто на этом плейлисте» — симметрично
-  // FetchLikedTracks, но для одного плейлиста вместо всей коллекции.
   std::vector<std::int64_t> FetchPlaylistTracks(const std::string& personal_token,
                                                 const std::string& user_id,
                                                 std::int64_t playlist_id,
                                                 Lane lane) const;
 
-  // [SF-YM-04] Все лично-токенные ручки выше принимают явный `user_id`
-  // — ничего в кодовой базе не резолвило его из голого access token
-  // до этого тикета. std::nullopt — токен не резолвится в аккаунт
-  // (просрочен/невалиден) или апстрим не вернул; никогда id-заглушка.
   std::optional<std::string> FetchAccountUserId(const std::string& personal_token, Lane lane) const;
 
   CircuitBreaker::State CbState() const {

@@ -1,35 +1,3 @@
-"""
-test_game_validate.py — [SF-GAME-14] integration tests for the game service's
-POST /api/v1/game/validate (server-side anti-cheat chain check).
-
-Same harness convention as test_game_profile.py (SF-GAME-12): the game
-service needs Postgres AND a reachable six-feat instance (for the
-/internal/neighbours lookup this endpoint delegates to — see
-services/game/chain_validator.hpp), so these run against the running
-docker-compose stack via GAME_SERVICE_ORIGIN (default http://localhost:8080,
-nginx-proxied to six-feat-game), self-skipping if that origin isn't reachable.
-
-Real L1 collaboration data is seeded directly into the shared Postgres
-(artists/songs/credits — see libs/six-feat-storage/src/
-persistent_store.cpp's schema/role encoding) rather than through a mocked
-Genius server: unlike tests/test_internal_neighbours.py (which runs against
-the standalone service_proc + genius_mock sandbox), this harness has no mock
-Genius server to program — the docker-compose stack's six-feat talks to
-whatever GENIUS_* config it was actually started with. Seeding L1 rows
-directly is the same technique tests/conftest.py's own clean_db_state fixture
-uses (psycopg2 against DB_CONN_PARAMS), just reused here without the rest of
-that conftest's (this-sandbox-broken, unrelated) import chain.
-
-Scenarios (per the ticket):
-  1. no cookie → 401 (unified RFC 7807 envelope, SF-API-11).
-  2. malformed body / chain shorter than 2 → 400.
-  3. a chain that doesn't start/end at the given from/to → {valid:false,
-     reason:"endpoint_mismatch"}.
-  4. a chain of REAL collaborations, endpoints matching → {valid:true}.
-  5. a chain with one fabricated hop → {valid:false, reason:"invalid_hop",
-     invalid_hop_index:<the first bad transition>}.
-"""
-
 from __future__ import annotations
 
 import os
@@ -61,8 +29,6 @@ _A_ID, _B_ID, _X_ID = 140_001, 140_002, 140_003
 
 
 def _seed_collaboration(song_id: int, title: str, members: list[tuple[int, str, int]]) -> None:
-    """`members`: (artist_id, name, role) sharing song_id — makes each pair
-    mutual neighbours (see LoadNeighboursImpl's self-join on credits.song_id)."""
     conn = psycopg2.connect(**DB_CONN_PARAMS)
     try:
         conn.autocommit = True
@@ -115,8 +81,6 @@ def _require_service() -> None:
 
 @pytest.fixture(scope="module", autouse=True)
 def _seed_l1() -> None:
-    """A (primary) real-song-shared-with (B, featured): A and B are mutual
-    neighbours. X shares NOTHING with B — used as the fabricated hop below."""
     _seed_collaboration(
         140_101,
         "SF-GAME-14 Real Collab",

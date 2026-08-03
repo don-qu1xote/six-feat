@@ -1,28 +1,3 @@
-"""
-test_status.py — integration tests for GET /api/v1/status
-===========================================================
-
-The service returns enrichment status for a given artist id or name.
-
-Expected response shape:
-  {
-    "artist_id": <int>,
-    "depth": <int 0|1|2>,
-    "song_count": <int>,
-    "last_fetch_ts": <int>,
-    "enriching": <bool>
-  }
-
-Scenarios covered:
-  0.  [F-29] Anonymous request (no session cookie) → HTTP 401
-  1.  Artist with data in L1 → depth > 0, song_count > 0, enriching=false
-  2.  Artist in enrichment queue → enriching=true
-  3.  Unknown artist → depth=0, song_count=0, last_fetch_ts=0
-  4.  Missing id param → 400
-  5.  Response content-type is application/json
-  6.  [F-29] Non-strict numeric id ("123abc") → 400
-"""
-
 from __future__ import annotations
 
 import time
@@ -47,7 +22,6 @@ pytestmark = pytest.mark.status_endpoint
 
 
 def _skip_if_not_implemented(resp: requests.Response) -> None:
-    """Defensive: skip gracefully if the endpoint is ever un-wired (404)."""
     if resp.status_code == 404:
         pytest.skip("/api/v1/status returned 404 — handler not registered in this build")
 
@@ -75,9 +49,6 @@ class TestStatusRequiresAuth:
     def test_anonymous_error_body_has_nonempty_request_id_matching_header(
         self, anon_client: requests.Session
     ):
-        """[SF-API-06] request_id in the error body must be the same id
-        EnsureRequestId already stamped on the X-Request-Id response
-        header/log tags — not a second, independently-generated value."""
         resp = anon_client.get(STATUS_URL, params={"id": "1"})
         _skip_if_not_implemented(resp)
         data = resp.json()
@@ -87,7 +58,6 @@ class TestStatusRequiresAuth:
 
 class TestStatusKnownArtist:
     def _populate(self, client: requests.Session, genius_mock: GeniusMock, artist_id: int) -> None:
-        """Load artist data into L1 by triggering a graph request."""
         name = f"Artist{artist_id}"
         genius_mock.resolve(name, [{"id": artist_id, "name": name, "score": 0.99}])
         genius_mock.songs(artist_id, [artist_id * 10])
@@ -154,8 +124,6 @@ class TestStatusKnownArtist:
     def test_successful_response_has_no_request_id_field(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """[SF-API-06] request_id is only added to error bodies — success
-        responses' shape must stay exactly as before."""
         self._populate(client, genius_mock, 805)
         resp = client.get(STATUS_URL, params={"id": "805"})
         _skip_if_not_implemented(resp)
@@ -168,19 +136,6 @@ class TestStatusEnrichingArtist:
     def test_enriching_true_while_in_queue(
         self, client_bg: requests.Session, genius_mock_bg: GeniusMock
     ):
-        """
-        [F-34] Requires the bg-profile service instance (queue-capacity=8):
-        the default profile (`client`/`service_proc`) runs with
-        queue-capacity=0, so EnrichmentWorker::EnqueueIfNeeded() never
-        actually queues anything there and `enriching` can never
-        observably become true — asserting only `isinstance(..., bool)`
-        against it was a tautology that passed regardless of behaviour.
-
-        A deliberately slow song-detail response keeps the BG worker's job
-        pending (see EnrichmentWorker::WorkerLoop) long enough for the poll
-        below to reliably observe enriching=true before it settles back to
-        false.
-        """
         name = "SlowArtist"
 
         artist_id = 80_000_000_000 + int(time.time() * 1000)

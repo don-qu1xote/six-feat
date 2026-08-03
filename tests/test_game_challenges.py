@@ -1,22 +1,3 @@
-"""
-test_game_challenges.py — [SF-GAME-21] integration tests for
-GET /api/v1/game/challenges, the challenge-browser listing (game
-PLAYABLE challenges (ideal computed), newest first, endpoints resolved to
-names, keyset-paginated. Open endpoint — no session.
-
-Same harness convention as the other test_game_*.py files: runs against the
-docker-compose stack via GAME_SERVICE_ORIGIN, self-skipping if unreachable.
-Artists and game_challenges rows are seeded directly via psycopg2.
-
-Scenarios:
-  1. a seeded playable challenge appears with its endpoints resolved to
-     {id,name} plus kind + optimal_len + created_ts.
-  2. the kind filter isolates daily vs custom.
-  3. limit/kind/cursor validation -> 400 on bad input.
-  4. keyset pagination: limit=1 yields one entry + a non-null cursor while
-     more remain, and the cursor walks to a distinct entry.
-"""
-
 from __future__ import annotations
 
 import os
@@ -167,7 +148,6 @@ def test_search_matches_the_from_endpoint(seeded: dict):
 
 
 def test_search_matches_the_to_endpoint_too(seeded: dict):
-    """Игрок ищет «челлендж с этим артистом», не зная, старт он там или цель."""
     body = requests.get(CHALLENGES_URL, params={"q": "SFG21ChB", "limit": 60}, timeout=5).json()
     ids = {c["id"] for c in body["challenges"]}
     assert seeded["ab"] in ids
@@ -185,7 +165,6 @@ def test_search_is_case_insensitive_and_substring(seeded: dict):
 
 
 def test_search_combines_with_the_kind_filter(seeded: dict):
-    """kind и q — независимые фильтры, а не альтернативы."""
     ids = {
         c["id"]
         for c in requests.get(
@@ -204,7 +183,6 @@ def test_search_combines_with_the_kind_filter(seeded: dict):
 
 
 def test_empty_query_is_the_same_as_no_filter(seeded: dict):
-    """Старые клиенты, не знающие про q, не должны ничего заметить."""
     without = requests.get(CHALLENGES_URL, params={"kind": "custom", "limit": 60}, timeout=5).json()
     with_empty = requests.get(
         CHALLENGES_URL, params={"kind": "custom", "q": "", "limit": 60}, timeout=5
@@ -219,8 +197,6 @@ def test_no_match_returns_an_empty_page_not_an_error():
 
 
 def test_like_wildcards_are_escaped_not_honoured(seeded: dict):
-    """'%' — это символ имени, а не «покажи всё»: незаэкранированный он
-    превратил бы поиск в полный листинг."""
     body = requests.get(CHALLENGES_URL, params={"q": "%", "limit": 60}, timeout=5).json()
     assert seeded["ab"] not in {c["id"] for c in body["challenges"]}
 

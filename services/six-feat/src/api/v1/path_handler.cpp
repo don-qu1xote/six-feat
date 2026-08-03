@@ -178,8 +178,6 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
   resp.SetHeader(std::string{"X-RateLimit-Remaining"},
                  std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
-  // [SF-YM-07] Порядок ПОПЫТОК для фоновых задач ЭТОГО пользователя, не
-  // замена сервисного дефолта цепочки — пусто для api-key-запросов.
   std::string preferred_provider;
 
   if (user_token.empty()) {
@@ -190,10 +188,8 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
     preferred_provider =
         user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
     const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
-    // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
     user_token = auth::GeniusTokenForSession(*session, connected);
     if (user_token.empty()) {
-      // Без BYO-токена искать пути не во что — честный 422 вместо обречённого 502.
       resp.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
       return ErrorJson("no_genius_token",
                        "Connect a Genius token in Settings to search for collaboration paths.");
@@ -352,8 +348,6 @@ std::string PathHandler::BuildPathJson(const ArtistRef& from_ref,
     const std::int64_t a = path[i], b = path[i + 1];
     const std::int64_t lo = std::min(a, b), hi = std::max(a, b);
     int w = 1;
-    // Источник из самого ребра (CollabEdge::source), а не из роли:
-    // dominant_role=="featured" не означает «пришло из Яндекса».
     EdgeSource edge_source = EdgeSource::GeniusCredit;
     if (const auto it = adj.find(a); it != adj.end())
       for (const auto& e : it->second)

@@ -278,6 +278,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-settings-enrichment-provider:
+      path: /api/v1/settings/enrichment-provider
+      method: PATCH
+      task_processor: main-task-processor
+
     handler-internal-music-source-edges:
       path: /internal/music-source/collaboration-edges
       method: POST

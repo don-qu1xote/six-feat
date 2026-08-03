@@ -1,21 +1,9 @@
 # syntax=docker/dockerfile:1
-#
-# Автономный Dockerfile для six-feat-enrichment. Собирает только
-# services/six-feat-enrichment/ — контекст сборки — корень репозитория (libs/,
-# schemas/, cmake/ — общие соседние каталоги — полное обоснование в
-# services/six-feat/Dockerfile). См. docker-compose.yml: context: . /
-# dockerfile: services/six-feat-enrichment/Dockerfile.
 
 ARG USERVER_IMAGE=ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
 
-# ════════════════════════════════════════════════════════════════════════════
-# Stage 1 — C++ Build
-# ════════════════════════════════════════════════════════════════════════════
 FROM ${USERVER_IMAGE} AS builder
 
-# BUILD_JOBS ограничивает параллелизм компиляции — полное обоснование в
-# services/six-feat/Dockerfile (параллельный `docker compose up -d` 5 сервисов
-# превышает лимиты памяти при полном nproc parallelism).
 ARG BUILD_JOBS=8
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -30,8 +18,6 @@ COPY libs ./libs
 COPY services/.base ./services/.base
 COPY services/six-feat-enrichment ./services/six-feat-enrichment
 
-# CCACHE_DIR: общий cache-mount id (six-feat-ccache) для всех 5 Dockerfile'ов —
-# полное обоснование в services/six-feat/Dockerfile.
 ENV CCACHE_DIR=/ccache
 RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
     --mount=type=cache,id=six-feat-enrichment-build-v2,target=/src/build,sharing=locked \
@@ -39,17 +25,9 @@ RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
  && cmake --build build -j"${BUILD_JOBS}" \
  && cmake --install build --strip
 
-# ════════════════════════════════════════════════════════════════════════════
-# Stage 2 — Runtime
-# ════════════════════════════════════════════════════════════════════════════
-# Полное обоснование списка пакетов — в services/six-feat/Dockerfile
-# (libpq5/boost/и т.д. — транзитивные зависимости статически слинкованного
-# userver, выведены из `ldd` — перезапустите против builder этого стейджа,
-# если зависимости бинарного файла изменятся).
 FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982 AS runtime
 
-# Зачем это нужно — в services/six-feat/Dockerfile (интерактивный debconf
-# от tzdata иначе навсегда зависает в `docker build`).
+# DEBIAN_FRONTEND=noninteractive: иначе tzdata зависает на debconf в docker build
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -107,11 +85,7 @@ RUN mkdir -p /var/lib/six_feat_enrichment \
 
 EXPOSE 8081
 
-# start-period покрывает ограниченное ожидание Postgres в docker-entrypoint.sh
-# через pg_isready (до ~131с в худшем случае: 120s master + 10s replica + 1s
-# settle) плюс нормальное время старта приложения, чтобы медленная, но
-# здоровая загрузка не помечалась как нездоровая, пока у неё не было
-# реального шанса запуститься.
+# start-period покрывает ожидание Postgres в docker-entrypoint.sh (pg_isready)
 HEALTHCHECK --interval=15s --timeout=5s --start-period=150s --retries=3 \
   CMD curl -f http://localhost:8081/healthz || exit 1
 

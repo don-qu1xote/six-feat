@@ -87,7 +87,6 @@ services:
           cpus: "1"
           memory: 512M
 
-  # [SF-INF-08] backup — только через --profile backup, как postgres-replica.
   postgres-backup:
     image: postgres:16-alpine
     container_name: six-feat-postgres-backup
@@ -144,27 +143,17 @@ services:
 
     expose:
       - "${SIX_FEAT_PORT:-8080}"
-    # [SF-CFG-01] Read-only bind-mount profiles — ENV_PROFILE-выбранный
-    # файл sourced docker-entrypoint.sh при старте.
     volumes:
       - ./config/profiles:/app/config/profiles:ro
     environment:
-      # Из shell-окружения или .env (см. .env.example)
-      # [ТЗ-6] Серверный токен Genius больше не нужен — auth только OAuth.
       GENIUS_CLIENT_ID: ${GENIUS_CLIENT_ID:?Set GENIUS_CLIENT_ID — from https://genius.com/api-clients}
       GENIUS_CLIENT_SECRET: ${GENIUS_CLIENT_SECRET:?Set GENIUS_CLIENT_SECRET — keep it secret}
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
 
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
-      # [SF-CFG-01] Пусто (не захардкоженный дефолт) — чтобы не заданное
-      # значение из .env/shell падало в config/profiles/${ENV_PROFILE}.env.
-      # Явное COOKIE_SECURE/LOGGING_LEVEL в .env по-прежнему перекрывает
-      # профиль (docker-entrypoint.sh source-ит профиль через ${VAR:-default}).
+      # Пусто намеренно — дефолт живёт в config/profiles/${ENV_PROFILE}.env (entrypoint source-ит профиль)
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
-      # [SF-CFG-01] Выбирает config/profiles/${ENV_PROFILE}.env, sourced
-      # docker-entrypoint.sh — см. docs/DEVELOPMENT.md «Env-профили».
-      # Единственное различие между dev/staging/prod для этого compose.yml.
       ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       DB_HOST: ${DB_HOST:-postgres}
@@ -179,9 +168,6 @@ services:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
 
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
-      # Яндекс — обязательный дефолтный источник рёбер графа
-      # (MusicSourceProviderChain); сервисный токен — YANDEX_SERVICE_TOKEN
-      # на самом six-feat-yandex-gateway (SF-YM-01), не здесь.
       YANDEX_GATEWAY_BASE_URL: ${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}}
 
       AUTH_BASE_URL: ${AUTH_BASE_URL:-http://six-feat-auth:${SIX_FEAT_AUTH_PORT:-8083}}
@@ -226,7 +212,6 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-enrichment:latest
     container_name: six-feat-enrichment
-    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
     volumes:
       - ./config/profiles:/app/config/profiles:ro
     environment:
@@ -239,15 +224,10 @@ services:
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
-      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
-      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
-      # [SF-ARCH-03] music-source-provider-chain здесь зеркалит состав
-      # провайдеров six-feat (см. static_config.yaml) — yandex-gateway-client
-      # нужен ему так же, как genius-gateway-client выше.
       YANDEX_GATEWAY_BASE_URL: ${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}}
     depends_on:
       postgres:
@@ -319,7 +299,6 @@ services:
 
     ports:
       - "${SIX_FEAT_AUTH_PORT:-8083}:${SIX_FEAT_AUTH_PORT:-8083}"
-    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
     volumes:
       - ./config/profiles:/app/config/profiles:ro
     environment:
@@ -330,12 +309,10 @@ services:
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
 
-      # Яндекс-вход: пустые client-id/secret отключают его без ошибки.
+      # Пустой client-id отключает Яндекс-вход без ошибки
       YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
       YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
       YANDEX_OAUTH_REDIRECT_URI: ${YANDEX_OAUTH_REDIRECT_URI:-http://localhost:8080/auth/yandex/callback}
-      # [SF-CFG-01] Пусто — см. комментарий к six-feat COOKIE_SECURE/
-      # LOGGING_LEVEL выше; config/profiles/${ENV_PROFILE}.env теперь владеет.
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       ENV_PROFILE: ${ENV_PROFILE:-dev}
@@ -366,13 +343,10 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-genius-gateway:latest
     container_name: six-feat-genius-gateway
-    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
     volumes:
       - ./config/profiles:/app/config/profiles:ro
     environment:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
-      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
-      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       ENV_PROFILE: ${ENV_PROFILE:-dev}
     healthcheck:
@@ -396,11 +370,6 @@ services:
           cpus: "1"
           memory: 256M
 
-  # Яндекс.Музыка не имеет официального API — только
-  # реверс-инженеренные библиотеки. Хрупкость изолирована отдельным
-  # сервисом, ровно как для Genius (six-feat-genius-gateway выше). Теперь
-  # обязательный дефолтный источник рёбер графа (YandexMusicSourceProvider,
-  # SF-ARCH-02), поэтому не за отдельным compose-профилем.
   six-feat-yandex-gateway:
     platform: linux/amd64
     pull_policy: build
@@ -411,19 +380,12 @@ services:
         USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
     image: six-feat-yandex-gateway:latest
     container_name: six-feat-yandex-gateway
-    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
     volumes:
       - ./config/profiles:/app/config/profiles:ro
     environment:
-      # Один OAuth-токен Яндекс.Музыки на весь деплой (НЕ per-user)
-      # — обязателен, единственный дефолтный источник рёбер графа.
       YANDEX_SERVICE_TOKEN: "${YANDEX_SERVICE_TOKEN:?Set YANDEX_SERVICE_TOKEN — single Yandex Music OAuth token, NOT per-user}"
-      # Device-flow client-id — задел под SF-YM-04, не блокер;
-      # пусто по умолчанию, покуда персонализация не используется продуктом.
       YANDEX_DEVICE_CLIENT_ID: ${YANDEX_DEVICE_CLIENT_ID:-}
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
-      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
-      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       ENV_PROFILE: ${ENV_PROFILE:-dev}
     healthcheck:
@@ -459,7 +421,6 @@ services:
     container_name: six-feat-game
     ports:
       - "${SIX_FEAT_GAME_PORT:-8084}:${SIX_FEAT_GAME_PORT:-8084}"
-    # [SF-CFG-01] См. комментарий к six-feat volumes выше.
     volumes:
       - ./config/profiles:/app/config/profiles:ro
     environment:
@@ -472,8 +433,6 @@ services:
       DB_NAME: ${DB_NAME:?Set DB_NAME}
       DB_USER: ${DB_USER:?Set DB_USER}
       DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD}"
-      # [SF-CFG-01] Пусто — см. комментарий к six-feat LOGGING_LEVEL выше;
-      # config/profiles/${ENV_PROFILE}.env теперь владеет этим дефолтом.
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       ENV_PROFILE: ${ENV_PROFILE:-dev}
 

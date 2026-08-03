@@ -1,15 +1,3 @@
-"""
-test_rate_limit.py — integration tests for ТЗ-6 rate limiting
-==============================================================
-
-Scenarios covered:
-  1. /api/v1/graph: burst of 30 requests in <1s → some get HTTP 429
-  2. /api/v1/graph/path: burst of 30 requests in <1s → some get HTTP 429
-  3. 429 responses include Retry-After: 1 header
-  4. Normal traffic (1-2 req/s) is never throttled
-  5. After ~1s cooldown following a burst, requests succeed again
-"""
-
 from __future__ import annotations
 
 import time
@@ -31,7 +19,6 @@ RATE_LIMIT_STATUS = 429
 def _fire_burst(
     session: requests.Session, url: str, params: dict, n: int = BURST_COUNT
 ) -> List[requests.Response]:
-    """Fire n requests as fast as possible and return their Response objects."""
     responses: List[requests.Response] = []
     with ThreadPoolExecutor(max_workers=n) as pool:
         futures = [pool.submit(session.get, url, params=params) for _ in range(n)]
@@ -44,13 +31,6 @@ def _fire_burst(
 
 
 def _first_rate_limited(responses: List[requests.Response]) -> requests.Response:
-    """Return the first 429 response in `responses`, or fail deterministically.
-
-    BURST_COUNT (70) concurrent requests against a 50 req/s limit always
-    produces at least one 429, so this never has to guess — unlike firing one
-    extra sequential request after the burst and hoping it lands in the same
-    window.
-    """
     for r in responses:
         if r.status_code == RATE_LIMIT_STATUS:
             return r
@@ -62,7 +42,6 @@ def _first_rate_limited(responses: List[requests.Response]) -> requests.Response
 
 class TestGraphRateLimit:
     def test_burst_produces_429(self, isolated_client: requests.Session, genius_mock: GeniusMock):
-        """30 simultaneous requests should produce at least one 429."""
         genius_mock.resolve("TestArtist", [{"id": 999, "name": "TestArtist", "score": 0.99}])
         genius_mock.songs(999, [])
 
@@ -75,7 +54,6 @@ class TestGraphRateLimit:
     def test_429_has_retry_after_header(
         self, isolated_client: requests.Session, genius_mock: GeniusMock
     ):
-        """A rate-limited response must include Retry-After: 1."""
         genius_mock.resolve("TestArtist", [{"id": 999, "name": "TestArtist", "score": 0.99}])
         genius_mock.songs(999, [])
 
@@ -89,7 +67,6 @@ class TestGraphRateLimit:
     def test_error_body_is_valid_json(
         self, isolated_client: requests.Session, genius_mock: GeniusMock
     ):
-        """429 body must be a valid JSON object with a type field."""
         genius_mock.resolve("TestArtist", [{"id": 999, "name": "TestArtist", "score": 0.99}])
         genius_mock.songs(999, [])
 
@@ -117,7 +94,6 @@ class TestPathRateLimit:
         genius_mock.songs(TestPathRateLimit._TO_ID, [])
 
     def test_burst_produces_429(self, isolated_client: requests.Session, genius_mock: GeniusMock):
-        """30 simultaneous path requests should produce at least one 429."""
         self._program_mock(genius_mock)
         responses = _fire_burst(isolated_client, PATH_URL, {"from": "ArtistA", "to": "ArtistB"})
         codes = [r.status_code for r in responses]
@@ -128,7 +104,6 @@ class TestPathRateLimit:
     def test_429_has_retry_after_header(
         self, isolated_client: requests.Session, genius_mock: GeniusMock
     ):
-        """Path handler 429 must include Retry-After: 1."""
         self._program_mock(genius_mock)
         resp = _first_rate_limited(
             _fire_burst(isolated_client, PATH_URL, {"from": "ArtistA", "to": "ArtistB"})
@@ -138,7 +113,6 @@ class TestPathRateLimit:
     def test_error_body_is_valid_json(
         self, isolated_client: requests.Session, genius_mock: GeniusMock
     ):
-        """Path handler 429 body must be valid JSON with type=path."""
         self._program_mock(genius_mock)
         resp = _first_rate_limited(
             _fire_burst(isolated_client, PATH_URL, {"from": "ArtistA", "to": "ArtistB"})
@@ -150,7 +124,6 @@ class TestPathRateLimit:
 
 class TestNormalTrafficNotThrottled:
     def test_slow_requests_are_never_429(self, client: requests.Session, genius_mock: GeniusMock):
-        """1 request per second for 3 seconds must never be rate-limited."""
         genius_mock.resolve("SlowArtist", [{"id": 777, "name": "SlowArtist", "score": 0.99}])
         genius_mock.songs(777, [])
 
@@ -168,7 +141,6 @@ class TestRateLimitResets:
     def test_window_resets_after_one_second(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """After a burst + 1.1s pause, the next request must not be 429."""
         genius_mock.resolve("ResetArtist", [{"id": 888, "name": "ResetArtist", "score": 0.99}])
         genius_mock.songs(888, [])
 

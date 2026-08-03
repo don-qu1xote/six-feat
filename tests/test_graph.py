@@ -1,20 +1,3 @@
-"""
-test_graph.py — integration tests for GET /api/v1/graph
-=========================================================
-
-Scenarios covered:
-  0. [ТЗ-6] Anonymous request (no session cookie) → HTTP 401
-  1. Request by name that resolves cleanly → graph with seed + collaborators
-  2. Request by numeric id → same shape
-  3. Name with multiple candidates (ambiguous) → ambiguous payload
-  4. Unknown name → empty graph (nodes=[])
-  5. Role filter (?roles=primary) → only primary edges returned
-  6. Betweenness centrality: star-graph centre has highest score
-  7. JSON schema: required fields present in every successful response
-  8. GeniusHttpError 503 from name-resolve → HTTP 503 from service
-  9. Missing required params → HTTP 400
-"""
-
 from __future__ import annotations
 
 import sys
@@ -45,13 +28,6 @@ def _collab(collab_id: int, name: str, role: str = "featured") -> dict:
 
 
 class TestGraphRequiresAuth:
-    """
-    GraphHandler calls auth::ExtractToken() and rejects any request that
-    doesn't carry a valid `six_feat_session` cookie — see graph_handler.cpp.
-    These tests use `anon_client` (no cookie attached) instead of the
-    pre-authenticated `client` fixture used everywhere else in this file.
-    """
-
     def test_anonymous_by_name_returns_401(
         self, anon_client: requests.Session, genius_mock: GeniusMock
     ):
@@ -69,8 +45,6 @@ class TestGraphRequiresAuth:
         assert data.get("error") == "not_authenticated"
 
     def test_anonymous_response_is_well_formed_graph_json(self, anon_client: requests.Session):
-        """Even the 401 error body should be a parseable graph-shaped JSON,
-        not an opaque framework error page, so the frontend can render it."""
         resp = anon_client.get(GRAPH_URL, params={"artist": "Drake"})
         data = resp.json()
         assert data.get("type") == "graph"
@@ -78,8 +52,6 @@ class TestGraphRequiresAuth:
         assert data.get("edges") == []
 
     def test_garbage_cookie_value_returns_401(self, service_proc, genius_mock: GeniusMock):
-        """A syntactically-present but undecryptable cookie must be treated
-        exactly like no cookie at all (auth::ExtractToken returns "")."""
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
         sess.cookies.update({"six_feat_session": "not-a-valid-encrypted-cookie"})
@@ -87,9 +59,6 @@ class TestGraphRequiresAuth:
         assert resp.status_code == 401
 
     def test_tampered_cookie_returns_401(self, service_proc, auth_cookie: str):
-        """Flipping a character anywhere in a real, valid cookie must break
-        AES-GCM tag verification and be rejected (GCM authenticates the
-        full ciphertext, so this is a basic tamper-detection smoke test)."""
         idx = len(auth_cookie) - 5
         flipped_char = "A" if auth_cookie[idx] != "A" else "B"
         tampered = auth_cookie[:idx] + flipped_char + auth_cookie[idx + 1 :]
@@ -102,18 +71,12 @@ class TestGraphRequiresAuth:
     def test_anonymous_error_body_has_nonempty_request_id_matching_header(
         self, anon_client: requests.Session
     ):
-        """[SF-API-06] request_id in the error body must be the same id
-        EnsureRequestId already stamped on the X-Request-Id response
-        header/log tags — not a second, independently-generated value."""
         resp = anon_client.get(GRAPH_URL, params={"artist": "Drake"})
         data = resp.json()
         assert data.get("request_id")
         assert data["request_id"] == resp.headers.get("X-Request-Id")
 
     def test_expired_cookie_returns_401(self, service_proc):
-        """A cookie that decrypts fine but carries an exp in the past must
-        still be rejected — Decrypt() checks expiry server-side too, this
-        isn't only a cookie Max-Age client-side convenience."""
         import session_crypto
 
         key = session_crypto.key_from_secret("f" * 64)
@@ -125,11 +88,6 @@ class TestGraphRequiresAuth:
         assert resp.status_code == 401
 
     def test_fresh_cookie_returns_200(self, service_proc, genius_mock: GeniusMock):
-        """[SF-SEC-05] Mirror image of test_expired_cookie_returns_401 above:
-        same hand-crafted-cookie mechanism (token_router.hpp's
-        ExtractToken -> Decrypt), just with exp far in the future instead of
-        in the past — confirms a session within its TTL is genuinely
-        accepted, not merely that an expired one is rejected."""
         import session_crypto
 
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
@@ -250,10 +208,6 @@ class TestGraphByName:
 
 
 class TestGraphDefaultSourceIsYandex:
-    """Публичный /api/v1/graph по умолчанию — Yandex-sourced (как
-    TestYandexDefaultProvider в test_music_source_provider.py, но через
-    CollabService::BuildRadialGraph, а не internal-хендлер)."""
-
     def test_by_id_default_graph_uses_yandex_source(
         self,
         client: requests.Session,
@@ -267,8 +221,6 @@ class TestGraphDefaultSourceIsYandex:
         co1_genius_id, co2_genius_id = 61002, 61003
         co1_yandex_id, co2_yandex_id = 71002, 71003
 
-        # Seed резолвится по id через Genius (без songs/song_detail — чтобы
-        # богатый Genius-путь не трогался, когда Яндекс побеждает).
         genius_mock.artist(seed_id, {"id": seed_id, "name": seed_name})
 
         yandex_mock.search_artist(seed_name, [{"id": yandex_seed_id, "name": seed_name}])
@@ -281,14 +233,12 @@ class TestGraphDefaultSourceIsYandex:
                 {"id": co2_yandex_id, "name": "Co-Artist Two"},
             ],
         )
-        # Имена co-артистов резолвятся в Genius-ид через ResolveCandidates.
         genius_mock.resolve(
             "Co-Artist One", [{"id": co1_genius_id, "name": "Co-Artist One", "score": 0.95}]
         )
         genius_mock.resolve(
             "Co-Artist Two", [{"id": co2_genius_id, "name": "Co-Artist Two", "score": 0.95}]
         )
-        # Соседи, которых нет в репозитории, резолвятся по id.
         genius_mock.artist(co1_genius_id, {"id": co1_genius_id, "name": "Co-Artist One"})
         genius_mock.artist(co2_genius_id, {"id": co2_genius_id, "name": "Co-Artist Two"})
 
@@ -465,10 +415,6 @@ class TestBetweennessCentrality:
     def test_seed_has_highest_betweenness_in_star(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """
-        Star graph: seed (id=50) collaborates with 5 distinct artists.
-        The seed is the only hub; its BC score must be ≥ all others.
-        """
         genius_mock.resolve("HubArtist", [{"id": 50, "name": "HubArtist", "score": 0.99}])
         song_ids = list(range(500, 505))
         collab_ids = list(range(51, 56))
@@ -542,8 +488,6 @@ class TestGraphSchema:
     def test_successful_response_has_no_request_id_field(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """[SF-API-06] request_id is only added to error bodies — success
-        responses' shape must stay exactly as before."""
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         genius_mock.songs(1, [101])
         genius_mock.song_detail(
@@ -578,10 +522,6 @@ class TestGraphErrorHandling:
 
 class TestGraphEdgeDeduplication:
     def test_duplicate_collab_counts_once(self, client: requests.Session, genius_mock: GeniusMock):
-        """
-        If the same song appears twice in credits (primary + featured),
-        the edge weight should count the song only once (BUG-6 guard).
-        """
         genius_mock.resolve("ArtistA", [{"id": 60, "name": "ArtistA", "score": 0.99}])
         genius_mock.songs(60, [601])
         genius_mock.song_detail(
@@ -701,9 +641,6 @@ class TestGraphTruncationIndicator:
     def test_truncated_reflects_limit_override(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
-        """[IDEA-22] ?limit= overrides songs-limit-fg; truncation must be
-        computed against the *effective* (overridden) limit, not the
-        configured default."""
         seed_id = unique_artist_id
         self._songs_and_details(genius_mock, seed_id, "OverrideArtist", 5)
 
@@ -729,8 +666,6 @@ class TestGraphTruncationIndicator:
     def test_etag_changes_with_limit_override(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
-        """[IDEA-32] The truncation state is folded into the ETag so a
-        limit-only change invalidates any previously cached response."""
         seed_id = unique_artist_id
         self._songs_and_details(genius_mock, seed_id, "EtagArtist", 5)
 
@@ -836,10 +771,6 @@ class TestGraphGoldenNodeEdgeOrder:
     def test_response_is_stable_across_repeated_requests(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
-        """A regression to unordered_map iteration order (e.g. reverting the
-        numeric-keyed edges map to something order-dependent) would show up
-        as flakiness between two back-to-back requests for the same seed,
-        not necessarily as an outright wrong single response."""
         ids = self._setup(genius_mock, unique_artist_id)
         first = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
         second = client.get(GRAPH_URL, params={"id": str(ids["seed"])}).json()
@@ -877,10 +808,6 @@ def _yandex_session(*, name: str = "") -> requests.Session:
 
 
 class TestGraphYandexSessionRequiresGeniusToken:
-    """Свой access_token яндексовой сессии — яндексовый, не Genius:
-    без подключённого BYO-токена граф невозможен (честный 422),
-    с BYO — работает как обычно."""
-
     def test_no_connected_byo_token_is_honest_422_not_a_502(
         self, service_proc, genius_mock: GeniusMock
     ):

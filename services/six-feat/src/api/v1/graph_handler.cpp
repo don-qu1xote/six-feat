@@ -140,9 +140,6 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
   response.SetHeader(std::string{"X-RateLimit-Remaining"},
                      std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
-  // [SF-YM-07] Порядок ПОПЫТОК для фоновых задач ЭТОГО пользователя, не
-  // замена сервисного дефолта цепочки — пусто для api-key-запросов (нет
-  // сессии/настроек, не в скоупе тикета).
   std::string preferred_provider;
 
   if (user_token.empty()) {
@@ -153,10 +150,8 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     preferred_provider =
         user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
     const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
-    // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
     user_token = auth::GeniusTokenForSession(*session, connected);
     if (user_token.empty()) {
-      // Без BYO-токена строить граф не во что — честный 422 вместо обречённого 502.
       response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
       return ErrorGraph("no_genius_token");
     }
@@ -342,8 +337,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     }
   }
 
-  // Пустой граф, но seed уже разрешён: id/имя обязаны дойти до клиента,
-  // иначе /api/v1/graph?artist=X и граф по resolved id выглядят по-разному.
   if (order.empty()) return EmptyGraph(seed_id, data.seed.name);
 
   AdjList adj;
@@ -352,8 +345,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   node_ids.push_back(seed_id);
   adj[seed_id];
 
-  // Источник ребра — реальное происхождение треков (result.edge_sources),
-  // а не хардкод genius_credit.
   const auto source_for = [&result](std::int64_t x, std::int64_t y) {
     const auto lo = std::min(x, y);
     const auto hi = std::max(x, y);
@@ -373,7 +364,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
 
   {
     for (const auto& song : data.songs) {
-      // Источник ребра между коллабораторами — у породившего его трека.
       const auto song_source =
           IsYandexSongId(song.id) ? EdgeSource::YandexFeature : EdgeSource::GeniusCredit;
 
@@ -405,8 +395,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   }
 
   for (auto& [node, neighbours] : adj) {
-    // Слияние дублей сохраняет источник; яндексовым остаётся ребро, все
-    // вклады в которое яндексовые.
     std::unordered_map<std::int64_t, CollabEdge> merged;
     merged.reserve(neighbours.size());
     for (const auto& e : neighbours) {

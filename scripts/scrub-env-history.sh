@@ -1,24 +1,8 @@
 #!/usr/bin/env bash
-# Удаляет .env и .env.example из каждого коммита в истории репозитория.
-#
-# Требует: git-filter-repo (https://github.com/newren/git-filter-repo)
-#   pip install git-filter-repo
-#
-# Запасной вариант (если git-filter-repo недоступен): BFG Repo-Cleaner:
-#   java -jar bfg.jar --delete-files .env --delete-files .env.example <repo>.git
-#   cd <repo>.git && git reflog expire --expire=now --all && git gc --prune=now --aggressive
-#
-# Идемпотентно: безопасно перезапускать; filter-repo — no-op для путей,
-# которые больше не появляются в истории.
-#
-# ОПАСНО: переписывает историю. После запуска этого скрипта:
-#   1. Force-push каждой затронутой ветки:
-#        git push --force --all
-#        git push --force --tags
-#   2. Каждый разработчик ДОЛЖЕН переклонировать репозиторий (или hard-reset
-#      свои локальные копии на новую историю) — старые клоны несовместимы
-#      и не должны пушиться/мержиться обратно.
-#   3. Ротировать любые учётные данные, которые когда-либо были в удалённых файлах.
+# Удаляет .env и .env.example из каждого коммита истории.
+# Требует git-filter-repo (pip install git-filter-repo); без него — BFG Repo-Cleaner.
+# ОПАСНО: переписывает историю — после запуска force-push всех веток и тегов,
+# переклонирование у разработчиков и ротация учётных данных.
 set -euo pipefail
 
 if ! command -v git-filter-repo >/dev/null 2>&1; then
@@ -30,6 +14,7 @@ fi
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
+# Идемпотентно: no-op для путей, которых больше нет в истории
 git filter-repo --force --invert-paths --path .env --path .env.example
 
 echo "History rewritten. Remember to force-push and ask collaborators to re-clone."

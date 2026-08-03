@@ -12,7 +12,6 @@ source "$COMMON_ENTRYPOINT"
 
 load_env_profile
 
-# six-feat-auth владеет всем OAuth 2.0 флоу.
 : "${GENIUS_CLIENT_ID:?GENIUS_CLIENT_ID env var is required for OAuth — from https://genius.com/api-clients}"
 : "${GENIUS_CLIENT_SECRET:?GENIUS_CLIENT_SECRET env var is required for OAuth — keep it secret}"
 : "${APP_SECRET:?APP_SECRET env var is required for session encryption — generate with: openssl rand -hex 32, and MUST match the main six_feat services APP_SECRET}"
@@ -22,8 +21,6 @@ GENIUS_REDIRECT_URI="${GENIUS_REDIRECT_URI:-http://localhost:8083/auth/callback}
 COOKIE_SECURE="${COOKIE_SECURE:-true}"
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
 
-# Яндекс-вход опционален: пустой client-id → компонент деградирует (503).
-# Переменные обязаны попасть в config_vars, иначе static_config не соберётся.
 YANDEX_OAUTH_CLIENT_ID="${YANDEX_OAUTH_CLIENT_ID:-}"
 YANDEX_OAUTH_REDIRECT_URI="${YANDEX_OAUTH_REDIRECT_URI:-http://localhost:8083/auth/yandex/callback}"
 YANDEX_OAUTH_BASE_URL="${YANDEX_OAUTH_BASE_URL:-https://oauth.yandex.ru}"

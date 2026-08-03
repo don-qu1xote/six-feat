@@ -31,7 +31,6 @@ int main(int argc, char* argv[]) {
                                   .Append<components::Postgres>("postgres-db-1")
                                   .Append<six_feat::PersistentStore>()
                                   .Append<six_feat::GeniusGatewayClient>()
-                                  // Воркеру нужны оба провайдера и цепочка.
                                   .Append<six_feat::FgFanoutLimiter>()
                                   .Append<six_feat::YandexGatewayClient>()
                                   .Append<six_feat::YandexMusicSourceProvider>()

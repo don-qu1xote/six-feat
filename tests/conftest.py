@@ -1,56 +1,3 @@
-"""
-conftest.py — pytest fixtures для интеграционных тестов six-feat
-===============================================================
-
-Архитектура:
-  • Сервис — скомпилированный userver бинарник, общающийся по HTTP.
-  • Мы не можем внедрить Python-mock'и в него в рантайме, поэтому стратегия:
-
-    1. Суррогатный сервер (MockGeniusServer, крошечный HTTP-сервер в процессе)
-       слушает на настраиваемом порту и отдаёт заготовленные Genius-API ответы.
-       Бинарник сервиса запускается с тестовой конфигурацией, указывающей
-       genius-base-url на этот суррогат.
-
-    2. Persistent store работает против реального PostgreSQL (см.
-       postgres-db-1 в шаблоне тестовой конфигурации ниже), настроенного через
-       DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD — та же схема, что и в
-       docker-entrypoint.sh для prod/CI. Миграции схемы запускаются
-       автоматически при старте сервиса (см. persistent_store.cpp).
-
-    3. Фоновое обогащение теперь живёт в отдельном six-feat-enrichment
-       сервисе; экземпляр six_feat в профиле по умолчанию направляет свой
-       enrichment-client на порт, где никто не слушает, так что
-       EnqueueIfNeeded()/IsEnriching() деградируют до false/no-op без
-       лишнего шума. service_proc_bg / enrichment_proc_bg запускают реальный
-       six-feat-enrichment инстанс для тестов, которым он нужен.
-
-    4. Каждый /api/v1/graph* запрос теперь требует валидную OAuth
-       session cookie (см. auth::ExtractToken / oauth_handler.cpp). Вместо
-       реального Genius OAuth authorize/token round-trip тестовый бинарник
-       запускается с фиксированным, известным APP_SECRET (TEST_APP_SECRET)
-       и tests/session_crypto.py — точный Python-порт формата cookie
-       AES-256-GCM из src/auth/session_crypto.cpp — создаёт валидную
-       `six_feat_session` cookie напрямую.
-
-  Файл предоставляет:
-    • genius_mock   — фикстура, управляющая ответами суррогата
-    • client        — requests.Session, указывающий на запущенный сервис,
-                       предварительно аутентифицированный валидной cookie
-    • anon_client   — как `client`, но без session cookie, для проверки
-                       401 на защищённых endpoints
-    • auth_cookie   — сырое значение валидной `six_feat_session` cookie
-    • service_proc  — управляемый подпроцесс (редко нужен напрямую)
-
-Параметры окружения (переопределить через env или pytest.ini):
-    SIX_FEAT_BINARY             путь к собранному six_feat бинарнику
-                                (по умолчанию: ../build/six_feat)
-    SIX_FEAT_ENRICHMENT_BINARY  путь к собранному six_feat_enrichment бинарнику,
-                                используется только BG профилем
-                                (по умолчанию: ../build/services/six-feat-enrichment/six_feat_enrichment)
-    SIX_FEAT_PORT               HTTP порт сервиса           (по умолчанию: 18080)
-    MOCK_PORT                   порт суррогатного Genius API (по умолчанию: 18081)
-"""
-
 from __future__ import annotations
 
 import os
@@ -146,15 +93,12 @@ DB_CONNECTION_STRING = "postgresql://{user}:{password}@{host}:{port}/{dbname}".f
 
 
 class _MockState:
-    """Потокобезопасное хранилище заготовленных ответов и учёта вызовов."""
-
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._handlers: Dict[str, Callable] = {}
         self.calls: List[Dict[str, Any]] = []
 
     def register(self, path_prefix: str, handler: Callable) -> None:
-        """Зарегистрировать обработчик path → (status_int, body_dict)."""
         with self._lock:
             self._handlers[path_prefix] = handler
 
@@ -187,8 +131,6 @@ _mock_state = _MockState()
 
 
 class _GeniusRequestHandler(BaseHTTPRequestHandler):
-    """Минимальный HTTP/1.1 обработчик, делегирующий в _mock_state."""
-
     def log_message(self, fmt: str, *args: Any) -> None:
         pass
 
@@ -222,8 +164,6 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
         self._respond(parse_qs(parsed.query))
 
     def do_POST(self) -> None:
-        # /token и /info Яндекс-флоу живут на том же суррогатном сервере
-        # (см. yandex-oauth-config в конфиге тестов) — принимаем form-тело.
         length = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(length) if length else b""
         self._respond(parse_qs(raw_body.decode(errors="replace")))
@@ -523,6 +463,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-settings-enrichment-provider:
+      path: /api/v1/settings/enrichment-provider
+      method: PATCH
+      task_processor: main-task-processor
+
     handler-internal-neighbours:
       path: /internal/neighbours
       method: POST
@@ -603,8 +548,6 @@ components_manager:
       session-ttl-days: 90
       cookie-secure: false
 
-    # Оба base-url смотрят в тот же суррогатный сервер, что и Genius:
-    # он диспетчеризует по path (для /info и /token есть do_POST/do_GET).
     yandex-oauth-config:
       client-id: test-yandex-client-id
       redirect-uri: http://127.0.0.1:{auth_port}/auth/yandex/callback
@@ -911,15 +854,6 @@ def wait_for_status_ready(
     timeout: float = 5.0,
     poll_interval: float = 0.05,
 ) -> Dict[str, Any]:
-    """
-    Poll GET {status_url}?id=<artist_id> until `depth` reaches at least
-    `min_depth` (i.e. the async L1 write triggered by a preceding graph
-    request has settled) or `timeout` elapses.
-
-    Replaces fixed `time.sleep(0.5)` calls that guessed how long persistence
-    would take — those are flaky under load (too short) and always waste
-    time otherwise (too long).
-    """
     deadline = time.monotonic() + timeout
     last: Optional[Dict[str, Any]] = None
     while time.monotonic() < deadline:
@@ -937,7 +871,6 @@ def wait_for_status_ready(
 
 @pytest.fixture(scope="session")
 def mock_server() -> Generator[_MockState, None, None]:
-    """Start the surrogate Genius server once for the whole session."""
     srv = _start_mock_server()
     yield _mock_state
     srv.shutdown()
@@ -953,12 +886,6 @@ def tmp_db_dir() -> Generator[Path, None, None]:
 def genius_gateway_proc(
     tmp_db_dir: Path, mock_server: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Реальный six-feat-genius-gateway инстанс для профиля по умолчанию —
-    GeniusGatewayClient от service_proc общается с этим процессом вместо
-    прямого обращения к Genius API; этот процесс направлен на суррогатный
-    mock_server. Пропускается (как и service_proc), если бинарник не собран.
-    """
     if not GENIUS_GATEWAY_BINARY.exists():
         pytest.skip(
             f"Genius-gateway service binary not found at {GENIUS_GATEWAY_BINARY}. "
@@ -1062,20 +989,6 @@ def service_proc(
     yandex_gateway_proc: subprocess.Popen,
     auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Запустить бинарник сервиса с тестовой конфигурацией.
-    Пропускает всю сессию, если бинарник отсутствует.
-
-    Также зависит от auth_service_proc — AppSecretParityChecker проверяет
-    его при старте, и оба запущены с одинаковым TEST_APP_SECRET, так что
-    проверка parity проходит детерминированно для каждого теста, который
-    не использует намеренно несовпадающий секрет.
-
-    И от yandex_gateway_proc — MusicSourceProviderChain
-    резолвит YandexMusicSourceProvider/GeniusMusicSourceProvider из
-    ComponentContext при старте, так что оба апстрима (суррогатных)
-    должны существовать раньше, чем этот процесс поднимется.
-    """
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -1127,12 +1040,6 @@ def auth_service_proc(
     tmp_db_dir: Path,
     mock_server: _MockState,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Запустить отдельный six-feat-auth бинарник с тестовой конфигурацией —
-    tests/test_auth.py направляет /auth/* на этот процесс, а не на six_feat
-    тестовый бинарник (service_proc), который больше не регистрирует эти
-    обработчики. Пропускает сессию, если бинарник отсутствует.
-    """
     if not AUTH_BINARY.exists():
         pytest.skip(
             f"Auth service binary not found at {AUTH_BINARY}. "
@@ -1156,7 +1063,6 @@ def auth_service_proc(
             **os.environ,
             "APP_SECRET": TEST_APP_SECRET,
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
-            # Без него yandex-oauth-config деградирует и ручки отвечают 503.
             "YANDEX_OAUTH_CLIENT_SECRET": TEST_YANDEX_OAUTH_CLIENT_SECRET,
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
         },
@@ -1189,12 +1095,6 @@ TEST_APP_SECRET_WRONG = "e" * 64
 def auth_service_proc_badsecret(
     tmp_db_dir: Path, mock_server: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Второй six-feat-auth инстанс, запущенный с намеренно отличающимся
-    APP_SECRET от service_proc_badsecret ниже — доказывает, что
-    AppSecretParityChecker действительно обнаруживает несовпадение,
-    а не six-feat молча отдаёт 401 на каждую сессию.
-    """
     if not AUTH_BINARY.exists():
         pytest.skip(
             f"Auth service binary not found at {AUTH_BINARY}. "
@@ -1244,12 +1144,6 @@ def service_proc_badsecret(
     yandex_gateway_proc: subprocess.Popen,
     auth_service_proc_badsecret: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    six-feat инстанс, использующий ТОТ ЖЕ TEST_APP_SECRET, что и
-    service_proc, но направленный на auth_service_proc_badsecret (ДРУГОЙ
-    APP_SECRET) — его AppSecretParityChecker должен обнаружить и сообщить
-    о несовпадении через /readyz вместо молчаливой 401 на сессии.
-    """
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -1311,11 +1205,6 @@ GENIUS_GATEWAY_MONITOR_PORT_BG = int(
 )
 GENIUS_GATEWAY_BASE_BG = f"http://localhost:{GENIUS_GATEWAY_PORT_BG}"
 
-# [SF-YM-07] Свои порт/mock для BG-профиля, отдельные от session-scoped
-# yandex_gateway_proc/yandex_mock, которым пользуется обычный
-# service_proc/client — та же изоляция, что genius уже имеет здесь
-# (genius_gateway_proc_bg/mock_server_bg), полезная тестам, которым нужно
-# реально наблюдать, какой провайдер выигрывает в EnrichmentWorker.
 YANDEX_GATEWAY_PORT_BG = int(os.environ.get("SIX_FEAT_YANDEX_GATEWAY_PORT_BG", "18107"))
 YANDEX_GATEWAY_MONITOR_PORT_BG = int(
     os.environ.get("SIX_FEAT_YANDEX_GATEWAY_MONITOR_PORT_BG", "18108")
@@ -1325,12 +1214,6 @@ YANDEX_MOCK_PORT_BG = int(os.environ.get("YANDEX_MOCK_PORT_BG", "18109"))
 
 
 def _make_mock_handler(state: _MockState):
-    """Создаёт класс BaseHTTPRequestHandler, привязанный к `state` через замыкание.
-
-    Нужно, потому что _GeniusRequestHandler выше жёстко привязан к
-    модульному синглтону `_mock_state` — BG профилю нужна вторая,
-    независимая пара mock server/state без изменения того синглтона.
-    """
 
     class _BoundGeniusRequestHandler(BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *args: Any) -> None:
@@ -1374,9 +1257,6 @@ def _start_mock_server_on(port: int, state: _MockState) -> HTTPServer:
 
 
 def _make_yandex_mock_handler(state: _MockState):
-    """Как _make_mock_handler, но с do_POST — Яндекс device/token flow идёт
-    через POST с form-телом (см. _YandexRequestHandler выше), а не только
-    GET, которого достаточно суррогату Genius."""
 
     class _BoundYandexRequestHandler(BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *args: Any) -> None:
@@ -1429,7 +1309,6 @@ def _start_yandex_mock_server_on(port: int, state: _MockState) -> HTTPServer:
 
 @pytest.fixture(scope="session")
 def mock_server_bg() -> Generator[_MockState, None, None]:
-    """Independent surrogate Genius server for the BG-profile instance."""
     state = _MockState()
     srv = _start_mock_server_on(MOCK_PORT_BG, state)
     yield state
@@ -1438,9 +1317,6 @@ def mock_server_bg() -> Generator[_MockState, None, None]:
 
 @pytest.fixture(scope="session")
 def yandex_mock_server_bg() -> Generator[_MockState, None, None]:
-    """Независимый суррогатный Yandex Music сервер для BG-профиля —
-    собственное состояние, не разделяемое с обычным yandex_mock_server/
-    yandex_mock, которым пользуется service_proc/client по умолчанию."""
     state = _MockState()
     srv = _start_yandex_mock_server_on(YANDEX_MOCK_PORT_BG, state)
     yield state
@@ -1574,14 +1450,6 @@ components_manager:
 def genius_gateway_proc_bg(
     tmp_db_dir_bg: Path, mock_server_bg: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Реальный six-feat-genius-gateway инстанс для BG профиля —
-    тот же суррогатный Genius сервер, что и у service_proc_bg/enrichment_proc_bg
-    (mock_server_bg), с включёнными порогами backoff/CB (в отличие от
-    отключённых значений по умолчанию в genius_gateway_proc), чтобы
-    tests/test_bg_resilience.py наблюдал настоящее поведение
-    CircuitBreaker/retry-backoff. Пропускается, если бинарник не собран.
-    """
     if not GENIUS_GATEWAY_BINARY.exists():
         pytest.skip(
             f"Genius-gateway service binary not found at {GENIUS_GATEWAY_BINARY}. "
@@ -1629,13 +1497,6 @@ def genius_gateway_proc_bg(
 def yandex_gateway_proc_bg(
     tmp_db_dir_bg: Path, yandex_mock_server_bg: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Реальный six-feat-yandex-gateway инстанс для BG профиля — собственный
-    суррогатный Yandex Music сервер (yandex_mock_server_bg), отдельный от
-    yandex_gateway_proc, которым пользуется обычный service_proc/client.
-    Нужен тестам, наблюдающим, какой провайдер реально выигрывает внутри
-    EnrichmentWorker при переключении preferred_enrichment_provider.
-    """
     if not YANDEX_GATEWAY_BINARY.exists():
         pytest.skip(
             f"Yandex-gateway service binary not found at {YANDEX_GATEWAY_BINARY}. "
@@ -1688,13 +1549,6 @@ def enrichment_proc_bg(
     genius_gateway_proc_bg: subprocess.Popen,
     yandex_gateway_proc_bg: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Реальный six-feat-enrichment инстанс для BG профиля — та же БД и
-    суррогатные Genius/Yandex серверы (через genius_gateway_proc_bg и
-    yandex_gateway_proc_bg), что и у service_proc_bg, с queue-capacity=8,
-    чтобы фоновые deep-scan задачи реально выполнялись. Пропускается,
-    если бинарник не собран.
-    """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
             f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
@@ -1760,16 +1614,6 @@ _BAD_DB_CONNECTION_STRING = "postgresql://{user}:{password}@127.0.0.1:1/{dbname}
 def enrichment_proc_baddb(
     tmp_db_dir_bg: Path,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Отдельный six-feat-enrichment инстанс, направленный на недоступный
-    Postgres (см. _BAD_DB_CONNECTION_STRING), изолированный от
-    enrichment_proc_bg (свой порт, свой процесс), чтобы не влиять на
-    доступ к БД других тестов. sync-start: false — процесс всё равно
-    запускается и начинает обслуживать HTTP, как в production, вместо
-    того чтобы components::Run упал при старте, так что GET /readyz
-    можно наблюдать, сообщающий проверку БД как not_ready/503, а не
-    контейнер, который просто не стартует. Без зависимости от genius-gateway.
-    """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
             f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
@@ -1826,24 +1670,6 @@ ENRICHMENT_MONITOR_PORT_PRUNE = int(
 def enrichment_proc_prune(
     tmp_db_dir_bg: Path,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Отдельный six-feat-enrichment инстанс с включённой задачей prune
-    (PRUNE_TTL_DAYS установлен только в env этого процесса — читается
-    один раз при старте, поэтому переключение требует отдельного процесса),
-    и коротким interval-seconds, чтобы tests/test_prune.py не ждал целый
-    час для прогона. Изолирован от enrichment_proc_bg (свой порт, свой
-    процесс), чтобы не влиять на поведение обогащения других тестов.
-    Направлен на ту же реальную тестовую БД Postgres — tests/test_prune.py
-    заполняет/проверяет строки напрямую через psycopg2, а не через HTTP API.
-    Без зависимости от genius-gateway.
-
-    scope="module" (не "session"): это реальный фоновый процесс, активно
-    удаляющий устаревшие строки из общей тестовой БД с тиком в 1с. Сессионный
-    scope держал бы его работающим до конца всей pytest-сессии после
-    tests/test_prune.py, молча удаляя строки с устаревшими timestamp'ами,
-    которые любой следующий тест мог бы оставить — module scope убивает его
-    (SIGTERM), как только тесты test_prune.py завершены.
-    """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
             f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
@@ -1902,20 +1728,6 @@ def service_proc_bg(
     enrichment_proc_bg: subprocess.Popen,
     auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Второй инстанс бинарника сервиса, сконфигурированный с:
-      * enrichment-base-url, указывающим на реальный enrichment_proc_bg
-        (queue-capacity 8)                -> BG deep-scan реально работает.
-      * genius-gateway-client, указывающим на genius_gateway_proc_bg с
-        низким cb-failure-threshold (3) и backoff-max-attempts > 1, чтобы
-        CircuitBreaker/retry-backoff пути реально выполнялись.
-      * yandex-gateway-client, указывающим на собственный
-        yandex_gateway_proc_bg (не разделяемый с обычным service_proc),
-        чтобы тесты могли программировать суррогатный Yandex независимо.
-      * auth-base-url, указывающим на тот же session-scoped
-        auth_service_proc, что и service_proc — запущен с TEST_APP_SECRET.
-    Пропускается, если бинарник не собран.
-    """
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -1964,36 +1776,17 @@ def service_proc_bg(
 
 @pytest.fixture()
 def client_bg(service_proc_bg: subprocess.Popen, auth_cookie: str) -> requests.Session:  # type: ignore[type-arg]
-    """Как `client`, но общается с BG-profile инстансом сервиса."""
     return _make_session_with_cookie(auth_cookie)
 
 
 @pytest.fixture()
 def genius_mock_bg(mock_server_bg: _MockState) -> Generator[GeniusMock, None, None]:
-    """Как `genius_mock`, но программирует суррогатный сервер BG-профиля.
-
-    Сбрасывает состояние mock перед каждым тестом (как autouse фикстура
-    `reset_mock` для профиля по умолчанию) без добавления autuse фикстуры,
-    которая запускала бы второй инстанс сервиса для каждого теста в наборе.
-    """
     mock_server_bg.reset()
     yield GeniusMock(mock_server_bg)
 
 
 @pytest.fixture(scope="session")
 def auth_cookie() -> str:
-    """
-    Валидное значение cookie `six_feat_session`, зашифрованное TEST_APP_SECRET —
-    тем же секретом, с которым фикстура service_proc запускает бинарник.
-
-    graph/path обработчики вызывают auth::ExtractToken() и отклоняют любой
-    запрос без валидной session cookie (401 not_authenticated). Эта фикстура —
-    тестовый эквивалент завершения реального Genius OAuth логина: она создаёт
-    cookie, которую запущенный бинарник успешно расшифрует, несущую opaque
-    access token, который суррогатный mock Genius сервер не валидирует
-    (он диспетчеризует только по path/query params), так что любое
-    непустое значение токена работает end-to-end.
-    """
     return session_crypto.make_cookie(
         TEST_APP_SECRET,
         access_token="test-genius-access-token",
@@ -2016,44 +1809,21 @@ def _make_session_with_cookie(cookie_value: Optional[str]) -> requests.Session:
 
 @pytest.fixture(scope="session")
 def client(service_proc: subprocess.Popen, auth_cookie: str) -> requests.Session:  # type: ignore[type-arg]
-    """
-    requests.Session, предварительно настроенный для общения с тестовым
-    сервисом, несущий валидную session cookie. Без неё каждый
-    /api/v1/graph* и /api/v1/graph/path запрос получает 401.
-    """
     return _make_session_with_cookie(auth_cookie)
 
 
 @pytest.fixture()
 def anon_client(service_proc: subprocess.Popen) -> requests.Session:  # type: ignore[type-arg]
-    """
-    requests.Session БЕЗ session cookie — используется для проверки, что
-    защищённые endpoint'ы корректно отклоняют анонимные запросы с 401.
-    Function-scoped (не session-scoped), чтобы каждый тест получал чистую
-    cookie jar без утечки cookie из другой фикстуры.
-    """
     return _make_session_with_cookie(None)
 
 
 @pytest.fixture(scope="session")
 def auth_client(auth_service_proc: subprocess.Popen, auth_cookie: str) -> requests.Session:  # type: ignore[type-arg]
-    """
-    Как `client`, но общается с отдельным six-feat-auth сервисом
-    (AUTH_SERVICE_BASE) вместо six_feat — используется
-    tests/test_auth.py для проверок /auth/me аутентифицированного
-    вызывающего.
-    """
     return _make_session_with_cookie(auth_cookie)
 
 
 @pytest.fixture()
 def auth_anon_client(auth_service_proc: subprocess.Popen) -> requests.Session:  # type: ignore[type-arg]
-    """
-    Как `anon_client`, но общается с отдельным six-feat-auth сервисом
-    (AUTH_SERVICE_BASE) вместо six_feat — используется tests/test_auth.py
-    для /auth/login, /auth/callback и /auth/logout, которых больше нет
-    на six_feat тестовом бинарнике.
-    """
     return _make_session_with_cookie(None)
 
 
@@ -2062,24 +1832,6 @@ _isolated_rl_session: Optional[requests.Session] = None
 
 @pytest.fixture()
 def isolated_client(service_proc: subprocess.Popen) -> requests.Session:  # type: ignore[type-arg]
-    """
-    Как `client`, но с никогда не использовавшимся access token — и,
-    соответственно, с собственным PerIpRateLimit bucket'ом (rate limiting
-    в graph_handler.cpp/path_handler.cpp ключуется по токену вызывающего).
-    Burst-тесты, ожидающие 429, нуждаются в этом вместо общего session-scoped
-    `client`: тот bucket сохраняется на всю тестовую сессию, поэтому какой бы
-    burst ни запустился первым, он оставляет фиксированное окно или недавно
-    сброшенным, или уже превысившим лимит, и результат следующего burst-теста
-    зависит от межтестового тайминга, а не от собственной скорости запросов.
-
-    Переиспользует один модульный Session (и его connection pool) для всех
-    вызовов вместо создания нового на каждый тест: новый пул не имеет
-    установленных соединений, и открытие ~BURST_COUNT конкурентных новых TCP
-    соединений для одного burst'а само по себе достаточно медленно, чтобы
-    размазать burst за пределы 1с окна rate-limit. Прогревает пул один раз
-    через нетарифицируемый /healthz endpoint, чтобы сам таймированный burst
-    платил только за обработку запросов, а не за установку соединений.
-    """
     global _isolated_rl_session
     if _isolated_rl_session is None:
         _isolated_rl_session = _make_session_with_cookie(None)
@@ -2106,14 +1858,12 @@ def isolated_client(service_proc: subprocess.Popen) -> requests.Session:  # type
 
 @pytest.fixture(autouse=True)
 def reset_mock(mock_server: _MockState) -> Generator[None, None, None]:
-    """Очищает все регистрации mock перед каждым тестом."""
     mock_server.reset()
     yield
 
 
 @pytest.fixture(autouse=True, scope="class")
 def clean_db_state(request: pytest.FixtureRequest) -> None:
-    """Очищает таблицы данных перед каждым интеграционным тестом."""
     if "service_proc" not in request.fixturenames and "service_proc_bg" not in request.fixturenames:
         return
 
@@ -2133,31 +1883,10 @@ _unique_artist_id_counter = itertools.count(int(time.time() * 1_000_000))
 
 @pytest.fixture()
 def unique_artist_id() -> int:
-    """
-    Свежий, уникальный в пределах процесса синтетический id артиста для
-    тестов, которым нужна гарантия, что никакой другой тест (в этом файле
-    или любом другом) никогда не трогал этот id в текущей сессии.
-
-    ArtistRepository больше не добавляет L2 кеш поверх Postgres (L1),
-    так что это чисто об изоляции фикстур от данных, оставленных предыдущими
-    запусками долгоживущего postgres сервиса. Использование никогда ранее
-    не использованного id на тест обходит это вместо очистки таблиц между тестами.
-    """
     return next(_unique_artist_id_counter)
 
 
 class GeniusMock:
-    """
-    Fluent-helper для программирования суррогатного Genius сервера.
-
-    Типичное использование::
-
-        genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
-        genius_mock.artist(1, {"id": 1, "name": "Drake"})
-        genius_mock.songs(1, [101, 102])
-        genius_mock.song_detail(101, {...})
-    """
-
     def __init__(self, state: _MockState) -> None:
         self._state = state
 
@@ -2175,11 +1904,6 @@ class GeniusMock:
         self._state.register("/search", _handler)
 
     def resolve(self, query: str, candidates: List[Dict[str, Any]]) -> "GeniusMock":
-        """Учить mock, что возвращать для поискового запроса по имени.
-
-        Безопасно вызывать многократно с разными значениями `query` в одном
-        тесте — ответ каждого запроса хранится независимо.
-        """
         hits = [
             {
                 "result": {
@@ -2227,11 +1951,6 @@ class GeniusMock:
         return self
 
     def song_detail(self, song_id: int, detail: Dict[str, Any]) -> "GeniusMock":
-        """
-        ключи detail:
-          id, title, primary_artist (dict с id/name/...),
-          featured_artists (list), producer_artists (list), writer_artists (list)
-        """
 
         def _handler(path: str, params: Dict) -> tuple:
             if path == f"/songs/{song_id}":
@@ -2251,12 +1970,6 @@ class GeniusMock:
     def song_detail_slow(
         self, song_id: int, detail: Dict[str, Any], delay_seconds: float
     ) -> "GeniusMock":
-        """
-        Как song_detail(), но засыпает перед ответом. Используется, чтобы
-        расширить окно, в течение которого поставленная в очередь BG-enrichment
-        задача наблюдаемо выполняется (см. TestStatusEnrichingArtist в
-        tests/test_status.py).
-        """
 
         def _handler(path: str, params: Dict) -> tuple:
             if path == f"/songs/{song_id}":
@@ -2290,7 +2003,6 @@ class YandexMock:
         artists: List[Dict[str, Any]],
         title: Optional[str] = None,
     ) -> "YandexMock":
-        # `title` — реальное поле апстрима /tracks/{id}; дефолт сохраняет старые вызовы.
         track_title = title if title is not None else f"Yandex Track {track_id}"
 
         def _handler(path: str, params: Dict) -> tuple:
@@ -2456,10 +2168,6 @@ def yandex_mock(yandex_mock_server: _MockState) -> YandexMock:
 
 @pytest.fixture()
 def yandex_mock_bg(yandex_mock_server_bg: _MockState) -> YandexMock:
-    """Как `yandex_mock`, но программирует суррогатный Yandex-сервер
-    BG-профиля (yandex_gateway_proc_bg), изолированный от обычного
-    yandex_mock/service_proc — нужен тестам, которым важно наблюдать,
-    каким провайдером реально обогащается фон конкретного пользователя."""
     return YandexMock(yandex_mock_server_bg)
 
 
@@ -2471,16 +2179,6 @@ def _build_song_detail(
     collaborators: Optional[List[Dict]] = None,
     popularity: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """
-    Создаёт Genius-style payload деталей песни для genius_mock.song_detail().
-
-    collaborators: список dict с ключами id, name, role
-                   (role: primary|featured|producer|writer)
-    popularity: если задан, встраивается как stats.pageviews — поле, которое
-                GeniusGateway::FetchSongDetail читает в SongRecord.popularity.
-                Полностью опущен, когда None, чтобы покрыть случай
-                "upstream не передаёт эту статистику".
-    """
     detail: Dict[str, Any] = {
         "id": song_id,
         "title": title,

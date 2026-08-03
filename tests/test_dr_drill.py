@@ -1,10 +1,3 @@
-"""test_dr_drill.py — SF-INF-09: drill проходит на baseline-дампе и падает на битых.
-
-Дамп создаётся настоящим scripts/backup-postgres.sh, а не подделкой, иначе
-прогон проверял бы не тот путь, что работает в проде. Скипается вместе с
-SF-INF-08, если pg_dump старше сервера.
-"""
-
 from __future__ import annotations
 
 import json

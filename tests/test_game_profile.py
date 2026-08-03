@@ -1,27 +1,3 @@
-"""
-test_game_profile.py — [SF-GAME-12] integration tests for the game service's
-GET/PATCH /api/v1/game/profile.
-
-The game service identifies the player by decrypting the six_feat_session
-cookie locally (same APP_SECRET/session_crypto as the rest of the mesh), so a
-cookie minted here — exactly as tests/conftest.py's auth_cookie fixture does,
-with the same TEST_APP_SECRET the docker-compose stack launches every service
-with — authenticates end-to-end with no real Genius OAuth round-trip.
-
-Unlike the six-feat integration tests (which run against a per-test
-service_proc subprocess fixture), the game service needs Postgres, so these
-run against the running docker-compose stack: point GAME_SERVICE_ORIGIN at the
-public nginx origin (default http://localhost:8080, which proxies /api/v1/game/
-→ six-feat-game). The module skips itself if that origin isn't reachable, so a
-`pytest` run without the stack up doesn't fail collection.
-
-Scenarios (per the ticket):
-  1. valid session → profile is created on first sight and readable (GET).
-  2. no cookie → 401 in the unified RFC 7807 envelope (SF-API-11).
-  3. PATCH display_name persists (a follow-up GET reflects the new name).
-Plus: PATCH validation rejects an over-long / disallowed name with 400.
-"""
-
 from __future__ import annotations
 
 import os

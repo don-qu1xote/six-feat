@@ -1,61 +1,3 @@
-"""
-test_health.py — integration tests for GET /healthz and GET /readyz
-======================================================================
-
-The /healthz liveness probe must always return HTTP 200 with a JSON
-body containing at least {"status": "ok"} and an uptime_s field.
-
-/healthz is implemented (see src/http/health_handler.cpp, static_config.yaml:
-handler-healthz) and does not require authentication. The 404-skip below
-is kept as defensive scaffolding in case the handler is ever un-wired.
-
-[SF-INF-03] Unified health/readiness contract across all 4 services — see
-libs/six-feat-http/src/readiness_common.hpp for the shared wire
-format every service's /readyz now builds through:
-
-    200 {"status":"ready",    "checks":{"<name>":{"ok":true, "status":"..."}}}
-    503 {"status":"not_ready","checks":{"<name>":{"ok":false,"status":"..."}}}
-
-Every service now has BOTH /healthz (always 200 if the process is alive)
-and /readyz (reflects its own checks — a Postgres ping where there's a
-Postgres, a circuit-breaker check where there's an upstream circuit
-breaker). The exact SET of checks differs per service on purpose (see each
-service's own ReadinessHandler doc-comment for why); this file exercises
-the shared contract plus, where a check can actually be forced to fail
-without inventing a fake dependency, that it flips the service to
-not_ready/503.
-
-Scenarios covered (six-feat /healthz):
-  1.  Always 200 regardless of backend health
-  2.  Body contains {"status": "ok"}
-  3.  Body contains "uptime_s" (numeric, ≥ 0)
-  4.  Content-Type is application/json
-  5.  Fast response (< 2 s) — liveness probes must be cheap
-
-Scenarios covered (six-feat /readyz):
-  6.  200 ready, unified {"status":...,"checks":{...}} shape. The
-      app_secret_parity degradation scenario itself is already covered by
-      test_app_secret_parity.py — not duplicated here.
-
-Scenarios covered (enrichment/genius-gateway/auth /healthz):
-  7.  Each service's own /healthz (its own port, not proxied through
-      six-feat) is 200 with {"status":"ok"}.
-
-Scenarios covered (enrichment/genius-gateway/auth /readyz):
-  8.  enrichment: database check ok=true when Postgres is reachable
-      (enrichment_proc_bg); ok=false / overall 503 when it isn't
-      (enrichment_proc_baddb, a dedicated instance pointed at an
-      unreachable Postgres — see conftest.py).
-  9.  genius-gateway: circuit_breaker check ok=true/"closed" normally;
-      ok=false / overall 503 once the shared CircuitBreaker trips Open
-      (genius_gateway_proc_bg, whose cb-failure-threshold is low enough to
-      trip in a test — see test_bg_resilience.py for the same mechanism).
-  10. auth: always 200 ready with an empty checks{} — this service has no
-      runtime-degradable dependency (see services/auth/internal_handlers.hpp's
-      ReadinessHandler doc-comment), so there is no failure scenario to
-      construct; this only pins the contract shape.
-"""
-
 from __future__ import annotations
 
 import time
@@ -92,7 +34,6 @@ GRAPH_URL_BG = f"{SERVICE_BASE_BG}/api/v1/graph"
 
 
 def _skip_if_not_implemented(resp: requests.Response) -> None:
-    """Defensive: skip gracefully if the endpoint is ever un-wired (404)."""
     if resp.status_code == 404:
         pytest.skip("/healthz returned 404 — handler not registered in this build")
 
@@ -104,7 +45,6 @@ class TestHealthzStatus:
         assert resp.status_code == 200
 
     def test_returns_200_repeatedly(self, client: requests.Session, genius_mock):  # type: ignore[override]
-        """Liveness probe must be stable across consecutive calls."""
         for _ in range(3):
             resp = client.get(HEALTH_URL)
             _skip_if_not_implemented(resp)
@@ -238,14 +178,6 @@ class TestReadyzGeniusGateway:
         genius_mock_bg: GeniusMock,
         mock_server_bg,  # type: ignore
     ):
-        """
-        Trips the shared CircuitBreaker inside genius_gateway_proc_bg the
-        same way test_bg_resilience.py does (cb-failure-threshold=3 in
-        this profile) — an always-503 upstream search trips it on the
-        very first six-feat request — then reads THAT process's own
-        /readyz directly (not proxied through six-feat) to confirm it
-        reports the resulting Open state as not_ready/503.
-        """
         genius_mock_bg.search_error(503)
         resp = client_bg.get(GRAPH_URL_BG, params={"artist": "ReadyzCbTripArtist"})
         assert resp.status_code == 503

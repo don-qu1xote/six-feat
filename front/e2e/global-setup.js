@@ -1,14 +1,3 @@
-// front/e2e/global-setup.js — IDEA-33
-//
-// The `six_feat_session` cookie is AES-256-GCM-encrypted with a format only
-// implemented in C++ (src/auth/session_crypto.cpp) and its Python test port
-// (tests/session_crypto.py) — there's no JS implementation, and one isn't
-// worth adding for a single test. scripts/e2e_env.py mints a valid cookie
-// via that Python port when it starts the environment and writes it (along
-// with the base URL) to E2E_ENV_FILE; this just turns that into a Playwright
-// storageState file so the browser context in smoke.spec.js starts already
-// authenticated, the same way the Python integration suite's `client`
-// fixture does via tests/conftest.py's `auth_cookie`.
 import fs from "node:fs";
 
 export default async function globalSetup() {

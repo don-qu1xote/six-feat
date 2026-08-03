@@ -24,6 +24,6 @@ repos:
     hooks:
       - id: forbid-dotenv-file
         name: forbid committing .env
-        entry: bash -c 'echo "ERROR: refusing to commit .env — use .env.example with placeholders instead." >&2; exit 1'
+        entry: "bash -c 'echo \"ERROR: refusing to commit .env — use .env.example with placeholders instead.\" >&2; exit 1'"
         language: system
         files: '(^|/)\.env$'

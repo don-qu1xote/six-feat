@@ -1,6 +1,3 @@
-// [SF-YM-06] Регресс-тест на роль яндексовых рёбер: "feature" (ед.ч.) ломала
-// RoleAllowed/RoleRank (фильтры и стиль), RoleToInt (персист в "unknown").
-// Закрепляем, что роль провайдера осмысленна для каждого потребителя.
 
 #include <cstdint>
 #include <gtest/gtest.h>
@@ -10,12 +7,8 @@
 namespace six_feat {
 namespace {
 
-// Роль, которую YandexMusicSourceProvider ставит на каждое ребро и credit;
-// Яндекс не различает типы участия, поэтому она одна на всё.
 constexpr const char* kYandexEdgeRole = "featured";
 
-// Зеркало RoleToInt/IntToRole из persistent_store.cpp (в анонимном namespace,
-// снаружи недоступны): рассинхрон копии поймает интеграционный тест.
 std::int16_t RoleToIntMirror(const std::string& role) {
   if (role == "primary") return 1;
   if (role == "featured") return 2;
@@ -40,7 +33,6 @@ std::string IntToRoleMirror(std::int16_t r) {
 }
 
 TEST(YandexEdgeRole, PassesDefaultRoleMask) {
-  // Дефолтная маска — то, что видит пользователь, не трогавший фильтры.
   EXPECT_TRUE(RoleAllowed(kYandexEdgeRole, RoleMask{}));
 }
 
@@ -55,13 +47,11 @@ TEST(YandexEdgeRole, IsExcludedWhenFeaturedFilteredOut) {
 }
 
 TEST(YandexEdgeRole, HasNonDefaultRank) {
-  // 0 — ранг нераспознанной роли.
   EXPECT_GT(RoleRank(kYandexEdgeRole), 0);
   EXPECT_EQ(RoleRank(kYandexEdgeRole), RoleRank("featured"));
 }
 
 TEST(YandexEdgeRole, HasDedicatedEdgeStyle) {
-  // "dotted" — стиль-заглушка для нераспознанных ролей.
   EXPECT_NE(EdgeStyleForRole(kYandexEdgeRole), "dotted");
   EXPECT_EQ(EdgeStyleForRole(kYandexEdgeRole), "solid");
 }
@@ -73,7 +63,6 @@ TEST(YandexEdgeRole, SurvivesPersistRoundTrip) {
 }
 
 TEST(YandexEdgeRole, SingularFormIsNotSilentlyAccepted) {
-  // Страховка от возврата старой строки "feature".
   EXPECT_FALSE(RoleAllowed("feature", RoleMask{}));
   EXPECT_EQ(RoleRank("feature"), 0);
   EXPECT_EQ(EdgeStyleForRole("feature"), "dotted");

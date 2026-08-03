@@ -1,26 +1,3 @@
-"""
-test_upsert_batching.py — regression tests for SF-DB-01 (SF-DB-03)
-====================================================================
-
-PersistentStore::Impl::UpsertImpl (libs/six-feat-storage/src/
-persistent_store.cpp) batches the whole write with UNNEST(...) arrays
-instead of one INSERT per song/credit: seed upsert, artists upsert
-(de-duped by id before being sent), songs upsert, credits upsert,
-fetch_state upsert — 5 round-trips total, one transaction, regardless of
-how many songs/credits are in the payload. This file exercises that code
-path end to end (real binary + real Postgres) via psycopg2, without
-poking at C++ internals or adding any new logging/instrumentation:
-
-  (a) A collaborator credited on >=2 songs must be de-duped before the
-      UNNEST artists insert, and /api/v1/graph must still report exactly
-      one node per artist, one edge per pair and the correct set of
-      distinct roles.
-  (b) Upserting the exact same data a second time (forced via ?limit=,
-      which makes CollabService refetch instead of serving from L1) must
-      be idempotent: ON CONFLICT DO NOTHING on the batched inserts must
-      leave row counts unchanged, not duplicate anything.
-"""
-
 from __future__ import annotations
 
 import psycopg2
@@ -37,8 +14,6 @@ def _collab(collab_id: int, name: str, role: str = "featured") -> dict:
 
 
 def _row_counts(song_ids: list) -> dict:
-    """Direct DB counts via psycopg2 — bypasses the API/L1-cache layer so we
-    see exactly what UpsertImpl wrote, not what a cache decided to serve."""
     conn = psycopg2.connect(**DB_CONN_PARAMS)
     try:
         with conn.cursor() as cur:
@@ -67,9 +42,6 @@ def _row_counts(song_ids: list) -> dict:
 
 
 class TestUpsertBatchingDedup:
-    """A collaborator appearing on multiple songs must be de-duped before
-    the artists UNNEST insert, without losing any credit rows."""
-
     def test_shared_collaborator_yields_correct_unique_counts(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
@@ -117,9 +89,6 @@ class TestUpsertBatchingDedup:
 
 
 class TestUpsertBatchingIdempotency:
-    """Re-upserting identical data must not duplicate rows — ON CONFLICT DO
-    NOTHING on every batched (UNNEST) insert must hold across repeats."""
-
     def test_repeated_upsert_does_not_duplicate_rows(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):

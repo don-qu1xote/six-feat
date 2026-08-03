@@ -301,9 +301,6 @@ std::string CallbackHandler::HandleRequestThrow(const server::http::HttpRequest&
     return "";
   }
 
-  // provider_user_id у Genius не запрашивается (числовой id есть в /account,
-  // но переход на него сменил бы identity существующим пользователям);
-  // пустой uid → SessionUserId падает на прежний хеш имени.
   try {
     IssueSessionCookies(request, oauth_, access_token, genius_name, kProviderGenius, "");
   } catch (const std::exception& ex) {
@@ -435,7 +432,6 @@ std::string MeHandler::HandleRequestThrow(const server::http::HttpRequest& reque
       formats::json::ValueBuilder b(formats::json::Type::kObject);
       b["authenticated"] = true;
       const bool is_yandex = session->Provider() == kProviderYandex;
-      // Имя/provider заглушки нужны фронту (какой провайдер подключить в настройках).
       b["name"] =
           session->name.empty() ? (is_yandex ? "Yandex User" : "Genius User") : session->name;
       b["provider"] = std::string{session->Provider()};
@@ -456,8 +452,6 @@ YandexOAuthConfig::YandexOAuthConfig(const components::ComponentConfig& config,
       redirect_uri_(config["redirect-uri"].As<std::string>("")),
       oauth_base_url_(config["oauth-base-url"].As<std::string>("https://oauth.yandex.ru")),
       login_base_url_(config["login-base-url"].As<std::string>("https://login.yandex.ru")),
-      // Мягкая деградация: без Яндекс-приложения сервис поднимается,
-      // ручки /auth/yandex/* отвечают 503, Genius-вход работает.
       enabled_(!client_id_.empty() && !client_secret_.empty() && !redirect_uri_.empty()) {
   if (!enabled_) {
     LOG_WARNING() << "[YandexOAuth] disabled — need yandex-oauth-config.client-id, "
@@ -544,7 +538,6 @@ std::string YandexCallbackHandler::HandleRequestThrow(const server::http::HttpRe
     return "Yandex login is not configured on this instance";
   }
 
-  // CSRF: тот же state-в-куке, что у Genius-флоу.
   const std::string& state_param = request.GetArg("state");
   const std::string state_cookie = request.GetCookie("six_feat_oauth_state");
   if (state_param.empty() || state_cookie.empty() ||
@@ -578,8 +571,6 @@ std::string YandexCallbackHandler::HandleRequestThrow(const server::http::HttpRe
     return "";
   }
 
-  // Без неизменяемого id сессию не выписываем: иначе identity легла бы
-  // на изменяемое отображаемое имя — см. SessionUserId.
   if (identity.id.empty()) {
     LOG_ERROR() << "[YandexOAuth] login.yandex.ru/info returned no immutable `id` — "
                    "refusing to create a session keyed on a mutable display name";
@@ -629,7 +620,6 @@ std::string YandexCallbackHandler::ExchangeCode(const std::string& code) const {
 
 YandexCallbackHandler::YandexIdentity YandexCallbackHandler::FetchIdentity(
     const std::string& access_token) const {
-  // Яндекс ждёт схему "OAuth", не "Bearer".
   const auto resp = http_client_.CreateRequest()
                         .get(yandex_.LoginBaseUrl() + "/info?format=json")
                         .headers({{"Authorization", "OAuth " + access_token}})
@@ -646,7 +636,6 @@ YandexCallbackHandler::YandexIdentity YandexCallbackHandler::FetchIdentity(
 
   YandexIdentity out;
   out.id = json["id"].As<std::string>("");
-  // Только для показа; в identity не участвует (см. SessionUserId).
   out.display_name = json["display_name"].As<std::string>("");
   if (out.display_name.empty()) out.display_name = json["login"].As<std::string>("");
   return out;

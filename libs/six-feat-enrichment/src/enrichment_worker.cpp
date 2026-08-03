@@ -208,15 +208,10 @@ void EnrichmentWorker::WorkerLoop() {
       const int limit = gateway_.SongsLimitBg();
       engine::current_task::CancellationPoint();
 
-      // Тот же источник, что у дефолтного графа, но в background-полосе —
-      // и, в отличие от него, с per-user preferred_provider (SF-YM-07):
-      // порядок ПОПЫТОК для СВОИХ фоновых задач, не замена цепочки сервиса.
       auto full = source_.GetArtistSongs(
           ref, limit, Lane::Background, job.user_token, job.preferred_provider);
       full.seed = ref;
 
-      // Провайдер проглотил единичные сбои деталей внутри себя: отличить
-      // частичный скан от полного здесь нельзя — повышаем непустую выборку.
       if (!full.songs.empty()) {
         repo_.WriteThrough(full, Depth::Full);
         LOG_INFO() << "[EnrichmentWorker] completed artist " << ref.id << " '" << ref.name << "'"

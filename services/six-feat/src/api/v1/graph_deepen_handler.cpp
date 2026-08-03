@@ -129,10 +129,8 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
       return ErrorJson("not_authenticated", "Login with Genius to find more connections.");
     }
     const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
-    // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
     user_token = auth::GeniusTokenForSession(*session, connected);
     if (user_token.empty()) {
-      // Без BYO-токена deepen невозможен — честный 422 вместо обречённого 502.
       response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
       return ErrorJson("no_genius_token",
                        "Connect a Genius token in Settings to find more connections.");
@@ -208,8 +206,6 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
       LOG_WARNING() << "[GraphDeepenHandler] resolve neighbour " << neighbour_id << ": "
                     << ex.what();
     }
-    // Нерезолвнутое имя не выбрасывает ребро: id канонический (ADR-0009),
-    // имя/аватар — необязательная деталь оформления.
     if (!neighbour_ref) {
       ArtistRef bare;
       bare.id = neighbour_id;

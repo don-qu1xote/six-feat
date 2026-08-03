@@ -1,25 +1,3 @@
-"""
-mock_genius_gateway.py
-======================
-
-Python-уровневый mock для интерфейса GeniusGateway. Используется в
-unit-стиле тестах, проверяющих логику алгоритмов (BetweennessCentrality,
-BidirectionalBFS) без запущенного процесса сервиса.
-
-Mock отражает четыре публичных метода GeniusGateway:
-  - ResolveCandidates(query) → List[Candidate]
-  - FetchArtistById(id)      → Optional[ArtistRef]
-  - FetchSongList(artist_id, limit, lane) → List[int]
-  - FetchSongDetail(song_id, lane)        → Optional[SongRecord]
-
-Каждый метод можно запрограммировать:
-  - фиксированным возвращаемым значением (set_*_response)
-  - callable side-effect (set_*_side_effect)
-  - исключением (set_*_error)
-
-История вызовов записывается в `.calls` для assert'ов.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -64,19 +42,6 @@ class GeniusHttpError(Exception):
 
 
 class MockGeniusGateway:
-    """
-    Программируемый mock для интерфейса GeniusGateway.
-
-    Использование::
-
-        mock = MockGeniusGateway()
-        mock.set_resolve_response("Drake", [Candidate(id=1, name="Drake", score=0.99)])
-        mock.set_song_list_response(1, [101, 102])
-        mock.set_song_detail_response(101, SongRecord(id=101, title="God's Plan", credits=[...]))
-
-        mock.set_resolve_error(503)
-    """
-
     def __init__(self) -> None:
         self.calls: List[Dict[str, Any]] = []
         self._resolve: Dict[str, Any] = {}
@@ -101,7 +66,7 @@ class MockGeniusGateway:
         self._resolve[query] = GeniusHttpError(status_code)
         return self
 
-    def ResolveCandidates(self, query: str) -> List[Candidate]:
+    def ResolveCandidates(self, query: str) -> List[Candidate]:  # noqa: N802
         self.calls.append({"method": "ResolveCandidates", "query": query})
 
         if query in self._resolve:
@@ -124,7 +89,7 @@ class MockGeniusGateway:
         self._artists[artist_id] = GeniusHttpError(status_code)
         return self
 
-    def FetchArtistById(self, artist_id: int, lane: str = "Foreground") -> Optional[ArtistRef]:
+    def FetchArtistById(self, artist_id: int, lane: str = "Foreground") -> Optional[ArtistRef]:  # noqa: N802
         self.calls.append({"method": "FetchArtistById", "id": artist_id, "lane": lane})
         entry = self._artists.get(artist_id)
         if entry is None:
@@ -141,7 +106,7 @@ class MockGeniusGateway:
         self._song_lists[artist_id] = GeniusHttpError(status_code)
         return self
 
-    def FetchSongList(self, artist_id: int, limit: int, lane: str) -> List[int]:
+    def FetchSongList(self, artist_id: int, limit: int, lane: str) -> List[int]:  # noqa: N802
         self.calls.append(
             {
                 "method": "FetchSongList",
@@ -168,7 +133,6 @@ class MockGeniusGateway:
         return self
 
     def set_song_detail_slow(self, song_id: int, delay_s: float = 30.0) -> "MockGeniusGateway":
-        """Возвращает None после сна — симулирует сценарий таймаута."""
         import time
 
         def _slow(sid: int, lane: str):
@@ -178,7 +142,7 @@ class MockGeniusGateway:
         self._song_details[song_id] = _slow
         return self
 
-    def FetchSongDetail(self, song_id: int, lane: str = "Foreground") -> Optional[SongRecord]:
+    def FetchSongDetail(self, song_id: int, lane: str = "Foreground") -> Optional[SongRecord]:  # noqa: N802
         self.calls.append({"method": "FetchSongDetail", "song_id": song_id, "lane": lane})
         entry = self._song_details.get(song_id)
         if entry is None:
@@ -222,11 +186,6 @@ def make_song(
     primary: ArtistRef,
     collaborators: Optional[List[Dict[str, Any]]] = None,
 ) -> SongRecord:
-    """
-    Создаёт SongRecord с primary credit + опциональными collaborator'ами.
-
-    collaborators: список dict с ключами artist (ArtistRef) и role (str).
-    """
     credits = [TrackCredit(artist=primary, role="primary")]
     for c in collaborators or []:
         credits.append(TrackCredit(artist=c["artist"], role=c.get("role", "featured")))

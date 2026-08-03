@@ -1,35 +1,3 @@
-"""
-test_graceful_drain.py — integration tests for EnrichmentWorker's graceful
-shutdown drain (IDEA-6)
-============================================================================
-
-src/enrichment/enrichment_worker.cpp's destructor used to cancel the worker coroutine
-immediately on shutdown (queue_.Close(); task_.RequestCancel(); task_.Wait()),
-silently dropping any job still sitting in the queue. It now:
-
-  1. Closes the queue (stop accepting new jobs) but lets WorkerLoop drain
-     whatever is already queued — BlockingPop() keeps handing out queued
-     jobs until the queue is empty, only then returns nullopt.
-  2. Waits up to `drain-timeout-ms` for the worker task to finish on its own.
-  3. Only if it's still running after that window (e.g. stuck on a slow
-     Genius request) does it fall back to RequestCancel() + Wait().
-
-These tests run their own, dedicated six-feat-enrichment instances (NOT the
-shared, session-scoped `enrichment_proc_bg` from conftest.py) because each
-test needs to send SIGTERM at a precise moment and observe how long the
-process takes to exit — something a fixture shared with test_bg_resilience.py
-can't safely do.
-
-Scenarios covered:
-  (a) A queued job that finishes well within drain-timeout-ms completes
-      (depth reaches Full) before the process exits.
-  (b) A job stuck on a slow upstream call longer than drain-timeout-ms does
-      NOT block shutdown forever — the fallback RequestCancel() bounds exit
-      time to roughly drain-timeout-ms, not the slow call's duration.
-  (c) [ТЗ-6 / RequireNonNegative] A negative drain-timeout-ms fails fast at
-      startup instead of silently accepting a nonsensical value.
-"""
-
 from __future__ import annotations
 
 import os
@@ -99,10 +67,6 @@ def _start_genius_gateway(
     gateway_monitor_port: int,
     mock_port: int,
 ) -> subprocess.Popen:
-    """Launch a standalone six-feat-genius-gateway instance fronting
-    mock_server_a — [IDEA-46] enrichment now talks to Genius through this
-    process instead of the surrogate server directly.
-    """
     if not GENIUS_GATEWAY_BINARY.exists():
         pytest.skip(
             f"Genius-gateway service binary not found at {GENIUS_GATEWAY_BINARY}. "
@@ -161,10 +125,6 @@ def _start_enrichment(
     drain_timeout_ms: int,
     queue_capacity: int = 8,
 ) -> subprocess.Popen:
-    """Launch a standalone six-feat-enrichment instance the caller fully
-    owns: no other fixture shares it, so tests can SIGTERM it at will and
-    assert on exactly how long that takes.
-    """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
             f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
@@ -219,8 +179,6 @@ def mock_server_a() -> Generator[_MockState, None, None]:
 def genius_gateway_proc_a(
     tmp_drain_dir: Path, mock_server_a: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """[IDEA-46] Real six-feat-genius-gateway instance fronting mock_server_a
-    for this file's self-managed enrichment instances (see _start_enrichment)."""
     proc = _start_genius_gateway(
         tmp_drain_dir,
         gateway_port=_GATEWAY_PORT_A,

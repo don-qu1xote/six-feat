@@ -25,9 +25,6 @@ def _collab(collab_id: int, name: str, role: str = "featured") -> dict:
 
 @pytest.fixture()
 def deepen_client(service_proc) -> requests.Session:  # type: ignore[no-untyped-def]
-    """Своя сессия со свежим access_token: deepen лимитируется по токену (20/мин),
-    а общий `client` живёт весь прогон — его квоту выедает schemathesis из
-    test_contract_openapi.py, идущий раньше по алфавиту."""
     cookie = session_crypto.make_cookie(
         TEST_APP_SECRET,
         access_token=f"deepen-token-{uuid.uuid4().hex}",
@@ -174,9 +171,6 @@ class TestGraphDeepenAvailability:
 
 
 class TestGraphDeepenYandexSessionRequiresGeniusToken:
-    """Яндексовый токен сессии не годится для deepen (Genius-only):
-    без подключённого BYO — честный 422, не 502 «could not reach Genius»."""
-
     def test_yandex_session_with_no_connected_byo_token_is_honest_422_not_a_502(
         self, service_proc, genius_mock: GeniusMock
     ):

@@ -1,5 +1,3 @@
-"""test_uptime_check.py — SF-OBS-06: тесты внешнего synthetic-мониторинга."""
-
 from __future__ import annotations
 
 import json

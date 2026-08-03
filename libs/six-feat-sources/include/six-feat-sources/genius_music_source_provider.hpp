@@ -36,10 +36,6 @@ class GeniusMusicSourceProvider final : public userver::components::ComponentBas
 
  private:
   IExternalArtistLookup& genius_;
-  // [SF-ARCH-03] Ограничитель фан-аута — общий на сервис (FgFanoutLimiter), а
-  // не свой: в ту же foreground-полосу гейтвея фанится второй потребитель
-  // (CollabService::CheckDirectPath), и два независимых семафора молча
-  // складывались бы в двойной потолок.
   FgFanoutLimiter& fanout_;
 };
 

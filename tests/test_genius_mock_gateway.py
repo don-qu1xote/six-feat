@@ -1,18 +1,3 @@
-"""
-test_genius_mock_gateway.py — unit tests for tests/mocks/mock_genius_gateway.py
-==================================================================================
-
-MockGeniusGateway is shipped as a test utility for other test files to use,
-but until now no test exercised it directly — meaning a regression in the
-mock itself (which happened: see TestResolveCandidatesEmptyVsWildcard below)
-could silently corrupt the results of every test built on top of it without
-ever failing on its own.
-
-These tests pin down the mock's contract directly: response/error/
-side-effect programming for all four GeniusGateway methods, call-history
-tracking, and the assert_called/assert_not_called helpers.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -75,13 +60,6 @@ class TestResolveCandidates:
         assert result[0].name == "Drake"
 
     def test_empty_list_response_does_not_fall_through_to_wildcard_error(self):
-        """Regression test: an empty list is a valid, deliberately-configured
-        'no candidates found' response. A naive `dict.get(q) or dict.get('*')`
-        implementation treats `[]` as falsy and incorrectly falls through to
-        the wildcard handler — which previously meant a wildcard error
-        configured for 'unexpected queries' would also fire for explicitly-
-        programmed empty results. See mock_genius_gateway.py's
-        ResolveCandidates for the `if query in self._resolve` fix."""
         mock = MockGeniusGateway()
         mock.set_resolve_response("KnownButEmpty", [])
         mock.set_resolve_error(503, query="*")
@@ -200,10 +178,6 @@ class TestFetchSongDetail:
         assert exc_info.value.status_code == 503
 
     def test_slow_response_invokes_callable_form(self):
-        """set_song_detail_slow programs a callable side-effect; we don't
-        want to actually sleep in a unit test, so this verifies the
-        *callable* path is taken (FetchSongDetail's `callable(entry)`
-        branch) using a tiny delay instead of the 30s default."""
         mock = MockGeniusGateway()
         mock.set_song_detail_slow(101, delay_s=0.01)
         result = mock.FetchSongDetail(101)

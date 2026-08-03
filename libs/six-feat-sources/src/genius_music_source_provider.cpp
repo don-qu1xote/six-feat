@@ -51,7 +51,6 @@ std::vector<ProviderEdge> GeniusMusicSourceProvider::GetCollaborationEdges(
   return edges;
 }
 
-// Параллельный фан-аут по деталям треков, с общим ограничителем.
 ArtistSongs GeniusMusicSourceProvider::GetArtistSongs(const ArtistRef& seed,
                                                       int songs_limit,
                                                       Lane lane,

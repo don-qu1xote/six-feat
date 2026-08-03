@@ -18,11 +18,6 @@ GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
 
 def _stable_user_id(name: str) -> int:
-    """FNV-1a-хеш display name — копия six_feat::auth::StableUserId.
-
-    Тесты ходят с legacy-куками (без provider_user_id), для которых
-    auth::SessionUserId сохраняет прежний ключ по имени.
-    """
     h = 1469598103934665603
     for byte in name.encode("utf-8"):
         h ^= byte
@@ -254,11 +249,6 @@ class TestSettingsRequireSession:
 
 
 class TestPreferredEnrichmentProvider:
-    """[SF-YM-07] Порядок ПОПЫТОК для ФОНОВОГО обогащения конкретного
-    пользователя (EnrichmentWorker) — не замена сервисного дефолтного
-    порядка цепочки ([yandex, genius-fallback], static_config.yaml), и не
-    connection-статус (см. genius/yandex ключи в этом же ответе)."""
-
     def test_default_is_yandex_without_ever_setting_it(self, client: requests.Session):
         resp = client.get(SETTINGS_STATUS_URL)
         assert resp.status_code == 200
@@ -287,7 +277,6 @@ class TestPreferredEnrichmentProvider:
         resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "spotify"})
         assert resp.status_code == 400
 
-        # A rejected value must not have been silently stored.
         status_resp = client.get(SETTINGS_STATUS_URL)
         assert status_resp.json()["preferred_enrichment_provider"] == "yandex"
 
@@ -296,9 +285,6 @@ class TestPreferredEnrichmentProvider:
         assert resp.status_code == 400
 
     def test_preference_is_per_user_not_global(self, client: requests.Session):
-        """The whole point of SF-YM-07: switching the toggle must change
-        the order for THIS user's own background jobs only — a second,
-        unrelated session must keep seeing the yandex default untouched."""
         other = _session_for(f"Other Settings User {uuid.uuid4().hex}")
 
         patch_resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
@@ -310,8 +296,6 @@ class TestPreferredEnrichmentProvider:
     def test_setting_preference_does_not_affect_provider_connection_status(
         self, client: requests.Session
     ):
-        """preferred_enrichment_provider is a background-job knob, not a
-        connection — switching it must not connect/disconnect anything."""
         before = client.get(SETTINGS_STATUS_URL).json()
         client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
         after = client.get(SETTINGS_STATUS_URL).json()

@@ -1,33 +1,3 @@
-"""
-test_bg_resilience.py — integration tests for the paths the default test
-profile deliberately turns off (F-34)
-============================================================================
-
-tests/conftest.py's session-scoped `service_proc` (used by every other test
-file) launches the service with queue-capacity: 0, cb-failure-threshold: 100
-and backoff-max-attempts: 1 — so background enrichment, the circuit breaker
-and retry-with-backoff never actually execute anywhere in the suite.
-
-This file uses the second, independent `service_proc_bg` instance (see
-tests/conftest.py), backed by a real `enrichment_proc_bg` six-feat-enrichment
-instance, launched with:
-  * enrichment-worker queue-capacity: 8   -> BG deep-scan actually runs
-  * cb-failure-threshold: 3               -> CircuitBreaker actually trips
-  * backoff-max-attempts: 4               -> transient 5xx get retried
-
-Scenarios covered:
-  (a) A background deep-scan raises an artist's stored depth from
-      Foreground to Full (src/enrichment/enrichment_worker.cpp, src/http/status_handler.cpp).
-  (b) A run of 5xx responses trips the CircuitBreaker to Open; while Open,
-      requests fail fast without reaching the mock; after cb-open-seconds it
-      moves to HalfOpen and lets exactly one probe through, which either
-      trips it straight back to Open (probe fails) or resets it to Closed
-      (probe succeeds) (libs/six-feat-core/src/resilience.cpp).
-  (c) Transient 5xx responses are retried with backoff and the overall
-      request still succeeds once the upstream recovers
-      (src/genius/genius_gateway.cpp::GeniusGet).
-"""
-
 from __future__ import annotations
 
 import time
@@ -117,15 +87,6 @@ class TestCircuitBreakerLifecycle:
         genius_mock_bg: GeniusMock,
         mock_server_bg,  # type: ignore
     ):
-        """
-        cb-failure-threshold=3 / backoff-max-attempts=4 in this profile
-        means a single GeniusGet() call that keeps hitting 5xx retries
-        internally (see src/genius/genius_gateway.cpp), and each retry's failure
-        also feeds the (global, shared) CircuitBreaker. So the very first
-        /api/v1/graph request against an always-503 upstream fails 3 times
-        in a row and trips the breaker to Open before its own retry loop
-        would otherwise give up.
-        """
         genius_mock_bg.search_error(503)
         name = "CbLifecycleArtist"
 
@@ -180,14 +141,6 @@ class TestRetryWithBackoffOnTransient5xx:
         genius_mock_bg: GeniusMock,
         mock_server_bg,  # type: ignore
     ):
-        """
-        backoff-max-attempts=4 in this profile: a song-list fetch that
-        fails with 503 twice and then succeeds must be transparently
-        retried by GeniusGateway::GeniusGet's backoff loop, and the
-        overall /api/v1/graph request must still return 200 — this never
-        happens on the default profile (backoff-max-attempts=1, i.e. no
-        retry at all — see test_graph.py::TestGraphErrorHandling).
-        """
         artist_id = _ID_BASE + 201
         song_id = artist_id * 10
         name = "RetryArtist"

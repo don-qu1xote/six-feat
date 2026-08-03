@@ -1,26 +1,3 @@
-"""
-test_yandex_import.py — SF-YM-04: личный импорт плейлистов/лайков
-Яндекса как seed-подсказки.
-
-GET /api/v1/settings/yandex/playlists и GET /api/v1/settings/yandex/import
-читают СОБСТВЕННЫЕ плейлисты/лайки пользователя через six-feat-yandex-gateway
-(личный OAuth из device flow SF-YM-02), затем резолвят каждого встреченного
-Yandex-артиста в реальный Genius id через тот же fuzzy-поиск
-CollabService::ResolveByName, что и для ручного seed (ADR-0009: резолв
-только на границе, на реальном Genius id).
-
-Сценарии:
-  0. Обе ручки требуют сессию И подключённый личный Яндекс-токен (SF-YM-02)
-     — никогда не падают на сервисный токен (он только для графа по умолчанию,
-     SF-YM-01).
-  1. GET .../playlists отдаёт плейлисты + синтетическую запись «likes».
-  2. GET .../import?playlist=<id> резолвит N уникальных Yandex-артистов в
-     M реальных Genius id; N−M неразрешённых — честно помечены
-     (resolved=false, без поля id) — никогда не молчат и не роняют импорт.
-  3. GET .../import?playlist=likes — тот же путь, из лайков вместо плейлиста.
-  4. Граф от resolv-артиста идентичен графу обычного поиска по имени.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -42,14 +19,10 @@ GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
 
 def _disconnect_yandex(client: requests.Session) -> None:
-    """Отключает Яндекс-токен, если он был подключён другим тестом
-    (client session-scoped, возможна гонка с test_settings_tokens.py)."""
     client.post(SETTINGS_DISCONNECT_URL, params={"provider": "yandex"})
 
 
 def _connect_yandex(client: requests.Session, yandex_mock: YandexMock) -> None:
-    """Та же последовательность device-flow, что в test_settings_tokens.py —
-    каждый сценарий здесь сначала подключает личный Яндекс-токен."""
     device_code = f"dc-{uuid.uuid4().hex}"
     access_token = f"yandex-personal-{uuid.uuid4().hex}"
     yandex_mock.device_code(
@@ -190,7 +163,6 @@ class TestYandexImportResolvesArtists:
         assert by_name["Resolvable Artist"]["id"] == resolvable_genius_id
         assert by_name["Resolvable Artist"]["name"] == "Resolvable Artist"
 
-        # [ADR-0009] Честное «не найден» — без id=0, без тихого пропуска.
         ghost = by_name["Ghost Artist"]
         assert ghost["resolved"] is False
         assert "id" not in ghost
@@ -279,13 +251,6 @@ class TestYandexImportGraphMatchesNormalSearch:
 
 
 class TestYandexImportRequiresGeniusToken:
-    """[SF-YM-05] A Yandex-authenticated session's own access_token is a
-    Yandex OAuth token, never a Genius one — with no connected Genius BYO
-    token there is genuinely nothing to resolve names against. This must be
-    an honest 422 (same contract graph_handler.cpp/path_handler.cpp/
-    graph_deepen_handler.cpp already give for the same condition), not a
-    silent resolved=false on every single artist in the playlist."""
-
     def test_yandex_session_without_byo_genius_token_is_422(
         self, service_proc, yandex_mock: YandexMock, unique_artist_id: int
     ):

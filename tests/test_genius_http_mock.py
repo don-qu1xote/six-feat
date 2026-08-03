@@ -1,18 +1,3 @@
-"""
-test_genius_http_mock.py — unit tests for conftest.py's GeniusMock / _MockState
-===================================================================================
-
-GeniusMock is the surrogate Genius API used by every integration test in
-test_graph.py / test_path.py / test_rate_limit.py. A regression here is
-invisible in any individual test's own logic — it manifests as confusing
-502/genius_error failures several layers downstream in the real service,
-which is exactly what happened: see TestMultipleResolveCallsDoNotClobber
-below for the bug this pins down.
-
-These are pure-Python tests against conftest.py's own helper classes —
-no compiled binary, no running service needed.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -25,23 +10,6 @@ def _dispatch_search(state: _MockState, query: str):
 
 
 class TestMultipleResolveCallsDoNotClobber:
-    """
-    Regression test for a real bug: GeniusMock.resolve() used to register a
-    fresh closure directly on _MockState's "/search" path prefix on every
-    call. _MockState.register() does a plain dict assignment (last write
-    wins, no merging), so calling resolve() twice for two different artist
-    names — the standard from/to path-test pattern — silently discarded the
-    first registration. Any test that then queried the first artist's name
-    got an unregistered-path 404 from _MockState.dispatch()'s fallback,
-    which the real service's GeniusGateway::GeniusGet() turns into a
-    GeniusHttpError that propagates as an unrelated-looking 502
-    "genius_error" response several call-frames away from the actual cause.
-
-    Fixed by accumulating query->response into a single shared dict with
-    one persistent "/search" handler (see GeniusMock._search_responses /
-    _register_search_handler in conftest.py).
-    """
-
     def test_two_distinct_queries_both_resolve(self):
         state = _MockState()
         mock = GeniusMock(state)
@@ -57,9 +25,6 @@ class TestMultipleResolveCallsDoNotClobber:
         assert body_b["response"]["hits"][0]["result"]["primary_artist"]["id"] == 101
 
     def test_first_query_not_lost_after_second_registration(self):
-        """Direct regression check: register A, then B, then re-verify A
-        still resolves — this is the exact failure mode that previously
-        turned into a 502 in TestDirectPath/TestTwoHopPath/etc."""
         state = _MockState()
         mock = GeniusMock(state)
         mock.resolve("First", [{"id": 1, "name": "First", "score": 0.9}])
@@ -82,9 +47,6 @@ class TestMultipleResolveCallsDoNotClobber:
             assert body["response"]["hits"][0]["result"]["primary_artist"]["id"] == i
 
     def test_resolve_empty_coexists_with_other_resolves(self):
-        """Mirrors TestUnknownArtist in test_path.py: resolve_empty() for a
-        'ghost' artist registered alongside a real resolve() for a known
-        artist — both must independently work."""
         state = _MockState()
         mock = GeniusMock(state)
         mock.resolve_empty("GhostArtist")
@@ -99,8 +61,6 @@ class TestMultipleResolveCallsDoNotClobber:
         assert len(real_body["response"]["hits"]) == 1
 
     def test_resolve_called_in_either_order(self):
-        """resolve_empty() before resolve(), and vice versa, must both work
-        — order of registration must not matter."""
         state = _MockState()
         mock = GeniusMock(state)
         mock.resolve("RealArtist", [{"id": 500, "name": "RealArtist", "score": 0.99}])
@@ -123,9 +83,6 @@ class TestResolveBasics:
         assert body["response"]["hits"] == []
 
     def test_re_resolving_same_query_overwrites_that_querys_response_only(self):
-        """Calling resolve() twice for the SAME query name is a legitimate
-        way to change its programmed response mid-test; it must not affect
-        any other already-registered query."""
         state = _MockState()
         mock = GeniusMock(state)
         mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.9}])
@@ -151,8 +108,6 @@ class TestResolveBasics:
         assert artist == {"id": 1, "name": "Drake", "image_url": "img.png", "url": "http://x"}
 
     def test_multiple_candidates_for_one_query_all_present(self):
-        """Ambiguous-name scenario (e.g. test_graph.py's TestGraphAmbiguous):
-        a single query can map to multiple candidate hits."""
         state = _MockState()
         mock = GeniusMock(state)
         mock.resolve(
@@ -171,9 +126,6 @@ class TestResolveBasics:
 
 class TestSearchError:
     def test_search_error_overrides_all_queries(self):
-        """Unlike resolve(), search_error() is a deliberate blanket failure
-        for every /search query — it intentionally replaces the whole
-        handler rather than merging, which this test documents."""
         state = _MockState()
         mock = GeniusMock(state)
         mock.resolve("Known", [{"id": 1, "name": "Known", "score": 0.9}])
@@ -200,22 +152,6 @@ class TestSearchError:
 
 class TestSharedStateAcrossInstances:
     def test_second_instance_registration_does_not_see_first_instances_queries(self):
-        """Known limitation, not a guarantee: each GeniusMock instance owns
-        its own private _search_responses dict. Two separate instances
-        operating on the same _MockState do NOT merge their query sets —
-        the second instance's _register_search_handler() call replaces the
-        shared "/search" handler with one that only knows about its own
-        queries, so the first instance's earlier registration becomes
-        unreachable (back to a 404).
-
-        This is safe in the real test suite because the `genius_mock`
-        pytest fixture is function-scoped and hands out exactly one fresh
-        GeniusMock instance per test — every test in test_graph.py /
-        test_path.py calls .resolve() multiple times on that SAME instance,
-        which is the scenario TestMultipleResolveCallsDoNotClobber verifies
-        works correctly. This test exists only to make the boundary of that
-        guarantee explicit, so nobody accidentally relies on two separate
-        GeniusMock() instances composing."""
         state = _MockState()
         mock1 = GeniusMock(state)
         mock1.resolve("First", [{"id": 1, "name": "First", "score": 0.9}])

@@ -1,26 +1,3 @@
-"""
-test_app_secret_parity.py — SF-SEC-01 regression.
-
-six_feat decrypts the six_feat_session cookie LOCALLY with its own
-APP_SECRET (src/token_router.hpp) — no HTTP call to six-feat-auth on
-every request. Before AppSecretParityChecker existed, an APP_SECRET
-mismatch between the two services surfaced only as a silent 401 on every
-session-authenticated request: no config validation, no readiness signal.
-
-These tests assert /readyz now carries an explicit "app_secret_parity"
-check:
-  - "ok"       when six_feat and six-feat-auth share the same APP_SECRET
-               (service_proc / auth_service_proc, both TEST_APP_SECRET).
-  - "mismatch" (and an overall 503) when they don't (service_proc_badsecret,
-               pointed at auth_service_proc_badsecret, a deliberately
-               different APP_SECRET).
-
-The comparison itself never transmits either secret — only a non-invertible
-SHA-256 fingerprint (session_crypto::KeyFingerprint), published by
-six-feat-auth at GET /internal/key-fingerprint behind the shared internal
-secret.
-"""
-
 from __future__ import annotations
 
 import requests

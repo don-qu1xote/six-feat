@@ -51,8 +51,6 @@ inline std::optional<SessionData> RequireFullSession(
   return session;
 }
 
-// Токен сессии в Genius отдавать только от генисовой сессии: у яндексовой
-// это яндексовый OAuth-токен. Пустая строка = «Genius-доступа нет».
 inline std::string GeniusTokenForSession(const SessionData& session,
                                          const std::optional<std::string>& connected_genius) {
   if (connected_genius && !connected_genius->empty()) return *connected_genius;

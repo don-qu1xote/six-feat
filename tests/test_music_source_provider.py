@@ -1,16 +1,3 @@
-"""
-test_music_source_provider.py — MusicSourceProvider (SF-ARCH-02).
-
-Тесты internal-mesh (/internal/music-source/collaboration-edges) —
-упражняет MusicSourceProviderChain через скомпилированный бинарник с
-суррогатными апстримами.
-
-Сценарии:
-   1. YandexMusicSourceProvider (дефолт) -> role="featured"
-   2. Yandex недоступен -> GeniusMusicSourceProvider (fallback)
-   3. Нерезолвящийся артист -> явное "не найдено", не id=0
-"""
-
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -70,7 +57,6 @@ class TestYandexDefaultProvider:
         for e in edges:
             assert e["from"] == 9001
             assert e["source"] == "yandex_feature"
-            # Каноническая роль — "featured"; source="yandex_feature" — имя источника.
             assert e["role"] == "featured"
         assert {e["to"] for e in edges} == {9002, 9003}
 

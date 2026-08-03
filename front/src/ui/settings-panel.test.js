@@ -217,7 +217,6 @@ describe("[SF-YM-07] background enrichment provider toggle", () => {
 
     expect(setPreferredEnrichmentProvider).toHaveBeenCalledWith("genius");
 
-    // Simulate a page reload: a fresh fetch now reflects the saved choice.
     fetchSettingsStatus.mockResolvedValue({
       genius: { connected: false },
       yandex: { connected: false },

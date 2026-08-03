@@ -1,14 +1,3 @@
-"""
-test_auth_yandex.py — Яндекс как первичный провайдер сессии (SF-YM-05).
-
-Проверяет три требования тикета: вход через Яндекс создаёт полноценную
-сессию; Genius-вход без регресса, включая куки без полей prov/uid; identity
-пользователя консистентна (устойчива к смене отображаемого имени и не
-пересекается между провайдерами). Пункт 3 — не косметика: StableUserId
-раньше был хешом отображаемого имени, а он же ключ user_provider_tokens, и
-два человека с одинаковым именем в разных провайдерах получали один user_id.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -60,8 +49,6 @@ def _register_token_and_info(
     display_name: str = "Test Yandex User",
     login: str = "testyandexuser",
 ) -> None:
-    # /token и /info живут на том же суррогатном сервере (MOCK_PORT),
-    # что и genius-ручки, — не конфликтуют (у Genius: /oauth/token, /account).
     def _token_handler(path: str, params: dict) -> tuple[int, dict]:
         if (params.get("code") or [""])[0] != code:
             return 400, {"error": "invalid_grant"}
@@ -144,7 +131,6 @@ class TestYandexCallbackCsrf:
     def test_successful_login_creates_session(
         self, auth_anon_client: requests.Session, mock_server: _MockState
     ):
-        # Полный round-trip: authorize → code → /token → /info → кука.
         _register_token_and_info(mock_server, code="code-1")
         state = _login_and_get_state(auth_anon_client)
 
@@ -167,7 +153,6 @@ class TestYandexCallbackCsrf:
     def test_missing_immutable_id_refuses_session(
         self, auth_anon_client: requests.Session, mock_server: _MockState
     ):
-        # Без неизменяемого id сессия не выписывается — см. SessionUserId.
         mock_server.register("/token", lambda path, params: (200, {"access_token": "tok-no-id"}))
         mock_server.register("/info", lambda path, params: (200, {"display_name": "No Id User"}))
 
@@ -183,8 +168,6 @@ class TestYandexCallbackCsrf:
 
 
 class TestYandexSessionIsFullSession:
-    """Сессия от Яндекса должна проходить те же проверки, что генисовая."""
-
     def test_me_reports_authenticated_with_yandex_provider(self, auth_service_proc):
         client = _yandex_client("yandex-uid-1", "Иван")
         resp = client.get(ME_URL)
@@ -211,8 +194,6 @@ class TestYandexSessionIsFullSession:
     def test_passes_require_full_session_on_protected_endpoint(
         self, service_proc, genius_mock, unique_artist_id: int
     ):
-        # /api/v1/graph без валидной сессии отдаёт 401 — если Яндекс-сессия
-        # доходит до резолва артиста, RequireFullSession её принял.
         name = f"YandexSessionArtist{unique_artist_id}"
         genius_mock.resolve(name, [{"id": unique_artist_id, "name": name, "score": 0.99}])
         genius_mock.songs(unique_artist_id, [])
@@ -232,7 +213,6 @@ class TestYandexSessionIsFullSession:
 
 class TestGeniusLoginStillWorks:
     def test_me_reports_genius_provider_for_legacy_cookie(self, auth_service_proc):
-        # Кука без полей prov/uid — ровно та, что выписывалась до SF-YM-05.
         legacy = session_crypto.make_cookie(
             TEST_APP_SECRET, access_token="genius-token", ttl_seconds=3600, name="Legacy User"
         )
@@ -266,8 +246,6 @@ class TestGeniusLoginStillWorks:
 
 class TestUserIdentityConsistency:
     def test_same_provider_user_id_is_the_same_user_across_cookies(self, service_proc):
-        # Две разные куки одного и того же яндексового пользователя обязаны
-        # видеть одно и то же состояние подключений.
         first = _yandex_client("yandex-stable-1", "Первое Имя")
         connect = first.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": "byo-genius-token"})
         assert connect.status_code == 200
@@ -280,8 +258,6 @@ class TestUserIdentityConsistency:
             first.post(f"{SERVICE_BASE}/api/v1/settings/disconnect", params={"provider": "genius"})
 
     def test_identity_survives_display_name_change(self, service_proc):
-        # display_name задаёт пользователь; identity держится на неизменяемом
-        # id, поэтому переименование не должно отвязывать токены.
         before = _yandex_client("yandex-rename-1", "Старое Имя")
         connect = before.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": "byo-genius-token"})
         assert connect.status_code == 200
@@ -294,8 +270,6 @@ class TestUserIdentityConsistency:
             before.post(f"{SERVICE_BASE}/api/v1/settings/disconnect", params={"provider": "genius"})
 
     def test_same_display_name_different_provider_user_is_a_different_user(self, service_proc):
-        # Пока identity была хешом имени, эти двое схлопывались в одного
-        # пользователя, и второй получал доступ к токену первого.
         alice = _yandex_client("yandex-collide-a", "Одинаковое Имя")
         connect = alice.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": "alice-byo-token"})
         assert connect.status_code == 200
@@ -311,26 +285,18 @@ class TestUserIdentityConsistency:
             alice.post(f"{SERVICE_BASE}/api/v1/settings/disconnect", params={"provider": "genius"})
 
     def test_provider_namespaces_do_not_collide(self):
-        # Без сервиса: один и тот же id у разных провайдеров — разные users.
         yandex = session_crypto.session_user_id("yandex", "12345")
         genius = session_crypto.session_user_id("genius", "12345")
         assert yandex != genius
 
     def test_legacy_session_keeps_name_based_identity(self):
-        # Сессии без uid должны сохранять прежний ключ, иначе уже выданные
-        # Genius-пользователям записи стали бы недоступны.
         assert session_crypto.session_user_id("", "", name="Legacy User") == (
             session_crypto.stable_user_id("Legacy User")
         )
 
 
 class TestApiKeyOwnership:
-    """API-ключ принадлежит user_id, а не отображаемому имени."""
-
     def test_yandex_session_without_byo_genius_token_cannot_issue(self, service_proc):
-        # В ключ кладётся Genius-токен. У яндексовой сессии его нет, пока
-        # пользователь не подключил BYO — выдать заведомо нерабочий ключ
-        # (с яндексовым токеном внутри) нельзя.
         client = _yandex_client("yandex-nokey-1", "Без Токена")
         resp = client.post(f"{SERVICE_BASE}/api/v1/api-keys", json={})
         assert resp.status_code == 422
@@ -347,8 +313,6 @@ class TestApiKeyOwnership:
             client.post(f"{SERVICE_BASE}/api/v1/settings/disconnect", params={"provider": "genius"})
 
     def test_namesake_cannot_revoke_someone_elses_key(self, service_proc):
-        # Пока владение считалось по имени, второй пользователь с тем же
-        # display_name отзывал чужой ключ.
         owner = _yandex_client("yandex-owner-a", "Тёзка")
         connect = owner.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": "byo-owner-a"})
         assert connect.status_code == 200
@@ -377,14 +341,6 @@ class TestApiKeyOwnership:
 
 
 class TestYandexOAuthSoftDegradation:
-    """[SF-YM-05] auth_service_proc_badsecret (test_app_secret_parity.py's
-    fixture) happens to be exactly what's needed here too: it launches with
-    the same static config as auth_service_proc (client-id set) but WITHOUT
-    YANDEX_OAUTH_CLIENT_SECRET in its env, so YandexOAuthConfig::Enabled()
-    is false on this instance — a real, live 503 branch, not just code that
-    exists but was never actually exercised. Genius login on the SAME
-    instance stays up, proving the degradation is Yandex-only."""
-
     def _base(self) -> str:
         return f"http://localhost:{AUTH_PORT_BADSECRET}"
 

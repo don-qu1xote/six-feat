@@ -1,21 +1,3 @@
-"""
-test_game_season.py — [SF-GAME-21] integration tests for GET /api/v1/game/season,
-the season & achievements hub (game
-sight), its season-scoped podium, and the achievement catalog, in one call.
-Open endpoint — no session.
-
-Same harness convention as the other test_game_*.py files: runs against the
-docker-compose stack via GAME_SERVICE_ORIGIN, self-skipping if unreachable.
-No seeding needed — EnsureCurrentSeason materialises the season, and the
-achievement catalog ships with the game_* migrations.
-
-Scenarios:
-  1. shape: season {id,name,starts_ts,ends_ts}, a podium list, an
-     achievements catalog list of {code,title,descr}.
-  2. the window is the documented fixed 30 days (SF-GAME-18).
-  3. the season is deterministic — two calls agree on its id.
-"""
-
 from __future__ import annotations
 
 import os

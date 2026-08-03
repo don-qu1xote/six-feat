@@ -12,11 +12,6 @@ function countOccurrences(haystack, needle) {
   return haystack.split(needle).length - 1;
 }
 
-// [SF-WEB-73] Yandex is the single sign-in CTA everywhere the app links to a
-// login endpoint — the landing hero and the two game-screen prompts
-// (Cabinet, Season achievements). Genius login has no entry point left on
-// any public screen; it only exists from Settings (SF-YM-05), which these
-// tests don't touch since that panel is a separate, authenticated surface.
 describe("[SF-WEB-73] Yandex is the one sign-in CTA on the landing page", () => {
   it("renders exactly one auth-btn, and it's the Yandex sign-in", () => {
     expect(countOccurrences(html, 'class="auth-btn"')).toBe(1);

@@ -1,31 +1,3 @@
-"""
-test_game_leaderboard.py — [SF-GAME-17] integration tests for
-GET /api/v1/game/leaderboard, the per-player submit rate limit
-(SF-SEC-04 reuse), the client-supplied-score anti-cheat property, and the
-public GET /api/v1/game/profile?user=<id> lookup.
-
-Same harness convention as test_game_submit.py/test_game_validate.py: runs
-against the docker-compose stack via GAME_SERVICE_ORIGIN, self-skipping if
-unreachable. Real L1 collaboration data AND a game_challenges row are
-seeded directly via psycopg2, same technique as the other test_game_*.py
-files.
-
-Scenarios (per the ticket):
-  1. submit + top-N are correct: multiple players' best (not every) valid
-     attempt appears, ranked by score descending.
-  2. cursor pagination actually walks distinct pages (limit=1 across two
-     requests reaches both players, in score order, then next_cursor is
-     null).
-  3. an invalid (fabricated-hop) chain is rejected by the SERVER and never
-     appears on the leaderboard.
-  4. a client-supplied "score" field in the submit body is completely
-     ignored — the server always computes its own.
-  5. per-player submit rate limit (SF-SEC-04-backed): enough rapid
-     submissions from the SAME player eventually get a 429.
-  6. GET /api/v1/game/profile?user=<id>: public, no session, includes rank
-     + history; unknown user -> 404.
-"""
-
 from __future__ import annotations
 
 import os
@@ -107,7 +79,6 @@ def _seed_challenge(
 
 
 def _cookie_and_user_id() -> tuple[str, str]:
-    """Returns (cookie, name) for a never-before-seen player."""
     name = f"SFGAME17Player-{time.time_ns()}"
     cookie = session_crypto.make_cookie(
         TEST_APP_SECRET,
@@ -137,9 +108,6 @@ def _require_service() -> None:
 
 @pytest.fixture(scope="module")
 def direct_challenge_id() -> int:
-    """A-B direct (optimal_len=1); A-Y and Y-B real too (a 2-hop, worse-
-    than-optimal valid alternative); X shares nothing with B (fabricated-hop
-    target)."""
     _seed_collaboration(
         170_101,
         "SF-GAME-17 Direct Collab",

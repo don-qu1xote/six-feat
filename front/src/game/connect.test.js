@@ -1,9 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// connect.test.js — [SF-GAME-01] DOM-level coverage for the "Connect" game
-// surface controller (connect.js). Drives the real render() path off a
-// jsdom fixture; chain-graph.js's own canvas drawing is mocked out (no
-// real CanvasRenderingContext2D in jsdom).
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("./game-board.js", () => ({
@@ -64,11 +58,6 @@ import {
 } from "./game-api.js";
 import { navigateToSurface } from "../ui/router.js";
 
-// [SF-GAME-48] Реальный жест игрока на экране старта: выбрать оба конца и
-// нажать Start. Пик из автокомплита сам по себе партию БОЛЬШЕ НЕ начинает
-// (connect.js::pickEndpoint) — раньше начинал, и кнопка Start, ради которой
-// экран и делался, оказывалась мёртвой: она исчезала вместе с карточкой в тот
-// же момент, когда игрок выбирал второго артиста.
 function pickStart(name, id) {
   attachGeniusAutocomplete.mock.calls[0][2](name, null, id);
 }
@@ -162,11 +151,6 @@ function bindEls() {
   els.connectLeaderboard = document.getElementById("connect-leaderboard");
 }
 
-// [SF-GAME-34] Раньше здесь было три `await Promise.resolve()` — то есть
-// хелпер считал ВНУТРЕННЮЮ глубину промисов реализации, и любой лишний
-// async-хоп в продовом коде ронял тест, ничего не сломав по поведению.
-// Таймаут переводит нас через границу макротаска, полностью осушая очередь
-// микротасков, сколько бы уровней там ни было.
 async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -207,8 +191,6 @@ beforeEach(() => {
 
 describe("empty state", () => {
   it("hands the stage to the setup screen and disables the in-game controls", () => {
-    // [SF-GAME-47] Подсказка «pick a start and a goal» больше не нужна: пока
-    // партии нет, по центру сцены стоит сам экран выбора пары.
     expect(els.connectStageEmpty.hidden).toBe(true);
     expect(els.connectAddInput.disabled).toBe(true);
     expect(els.connectAddBtn.disabled).toBe(true);
@@ -242,7 +224,7 @@ describe("setStartArtist / setGoalArtist", () => {
   it("[design: ветвящийся веб] renders the current line (start→focus) in the panel, marking the focus", () => {
     setStartArtist("Drake");
     setGoalArtist("Adele");
-    commitHop("Rihanna"); // focus follows to Rihanna; goal not on the line until reached
+    commitHop("Rihanna");
     const walked = els.connectLineList.querySelectorAll(".clp-row:not(.is-ghost)");
     expect(walked.length).toBe(2);
     expect(walked[0].querySelector(".clp-row-name").textContent).toBe("Drake");
@@ -252,10 +234,6 @@ describe("setStartArtist / setGoalArtist", () => {
     expect(walked[1].classList.contains("is-focus")).toBe(true);
   });
 
-  // [SF-GAME-54] Цель показывается последней строкой ещё ДО того, как до неё
-  // дошли — призраком. Панель раньше показывала только пройденное, и куда
-  // игрок вообще идёт, читалось лишь из пилюли над графом. Призрак — не часть
-  // линии: он без data-name, поэтому клик по нему не пере-фокусирует.
   it("[SF-GAME-54] показывает цель призрачной строкой, пока до неё не дошли", () => {
     setStartArtist("Drake");
     setGoalArtist("Adele");
@@ -287,7 +265,7 @@ describe("setStartArtist / setGoalArtist", () => {
   it("[design: ветвящийся веб] clicking a line row re-focuses that node (branch point)", () => {
     setStartArtist("Drake");
     setGoalArtist("Adele");
-    commitHop("Rihanna"); // focus Rihanna
+    commitHop("Rihanna");
     const drakeRow = [...els.connectLineList.querySelectorAll(".clp-row")].find(
       (r) => r.dataset.name === "Drake",
     );
@@ -314,11 +292,10 @@ describe("setStartArtist / setGoalArtist", () => {
     setStartArtist("Drake");
     setGoalArtist("Adele");
     State.connect.rivalBanner = { name: "Alice", score: 950 };
-    resetGame(); // triggers a render() without going through syncGame's own reset
+    resetGame();
     expect(els.connectRivalPill.hidden).toBe(false);
     expect(els.connectRivalText.textContent).toBe("Chasing Alice · 950");
 
-    // A brand new chain (setGoalArtist again) always drops any stale banner.
     setGoalArtist("Rosalía");
     expect(els.connectRivalPill.hidden).toBe(true);
   });
@@ -333,15 +310,8 @@ describe("setStartArtist / setGoalArtist", () => {
   });
 
   it("[fix] re-expanding (Change) fills both fields with the CURRENT endpoints, not blank placeholders", () => {
-    // setStartArtist/setGoalArtist (e.g. the landing panel's own duel/daily/
-    // rival flows) never touch connectStartInput/connectGoalInput's .value
-    // directly — only a real user keystroke or an autocomplete pick does.
-    // Before this fix, Change always revealed two empty fields even with
-    // both endpoints already known.
     setStartArtist("Drake");
     setGoalArtist("Adele");
-    // Clear whatever the fields happen to hold from setup, to isolate what
-    // re-expanding itself does.
     els.connectStartInput.value = "";
     els.connectGoalInput.value = "";
 
@@ -351,12 +321,6 @@ describe("setStartArtist / setGoalArtist", () => {
   });
 });
 
-// [SF-GAME-48] Экран старта: партию начинает ИГРОК, а не автокомплит.
-// SF-GAME-47 уже вводил кнопку Start ровно за этим, но закрыл только ручной
-// ввод — пик из автокомплита звал setStartArtist/setGoalArtist напрямую и
-// стартовал партию мимо кнопки. Заодно это уносило с экрана саму карточку
-// (renderEndpoints прячет её, как только endpointsReady()), то есть кнопка
-// пропадала за миг до нажатия.
 describe("[SF-GAME-48] явный старт с экрана настройки", () => {
   it("выбор обоих концов в автокомплите НЕ начинает партию", async () => {
     pickStart("Drake", 100);
@@ -364,7 +328,6 @@ describe("[SF-GAME-48] явный старт с экрана настройки"
     await flush();
     expect(createChallenge).not.toHaveBeenCalled();
     expect(_currentChain()).toBeNull();
-    // Карточка выбора осталась на экране — жать Start ещё есть куда.
     expect(els.connectEndpoints.hidden).toBe(false);
   });
 
@@ -421,7 +384,7 @@ describe("challenge creation (design: real backend)", () => {
       ok: true,
       json: async () => ({ candidates: [{ id: 100, name: "Drake", image: null }] }),
     }));
-    els.connectStartInput.value = "Drake"; // typed, no autocomplete pick — no id yet
+    els.connectStartInput.value = "Drake";
     pickGoal("Adele", 900);
     els.connectStartBtn.click();
     await flush();
@@ -456,11 +419,11 @@ describe("commitHop", () => {
 
   it("[design: Lock in] reaching the goal completes the line but does NOT auto-submit", async () => {
     await flush();
-    commitHop("Adele"); // reaches the goal
+    commitHop("Adele");
     await flush();
     expect(_currentChain().completed).toBe(true);
     expect(submitChain).not.toHaveBeenCalled();
-    expect(els.connectLockin.disabled).toBe(false); // now the player can lock in
+    expect(els.connectLockin.disabled).toBe(false);
   });
 });
 
@@ -518,7 +481,7 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
   });
 
   it("Lock in is a no-op until the line reaches the goal", async () => {
-    commitHop("Rihanna"); // not the goal
+    commitHop("Rihanna");
     lockIn();
     await flush();
     expect(submitChain).not.toHaveBeenCalled();
@@ -562,7 +525,7 @@ describe("reaching the goal + Lock in (design: real backend submit)", () => {
   });
 
   it("tells the player honestly when a hop's id can't be resolved, without a fake score", async () => {
-    apiFetch.mockResolvedValue({ ok: false, json: async () => null }); // Rihanna's search fails
+    apiFetch.mockResolvedValue({ ok: false, json: async () => null });
     commitHop("Rihanna");
     commitHop("Adele");
     lockIn();
@@ -1033,15 +996,10 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
       to_name: "Adele",
     };
 
-    // См. комментарий у внешнего flush() выше — та же причина.
     async function flush() {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    // [SF-GAME-60] Слот дейли больше не исчезает молча ни в одном случае: он
-    // всегда на экране и объясняет, ЧТО именно произошло. Раньше 404 («на
-    // сегодня не опубликован») и 500 («сервис не ответил») схлопывались в
-    // один null и прятали блок одинаково — в логах прода видно оба случая.
     it("[SF-GAME-60] 404 — слот виден и говорит, что дейли ещё не опубликован", async () => {
       fetchDailyChallengeState.mockImplementation(async () => ({ status: "none", daily: null }));
       document.body.innerHTML = gameFixtureHtml();
@@ -1052,7 +1010,7 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
       expect(els.heroGameDailyPair.hidden).toBe(true);
       expect(els.heroGameDailyState.hidden).toBe(false);
       expect(els.heroGameDailyState.textContent).toMatch(/not published|no challenge published/i);
-      expect(els.btnHeroDailyRetry.hidden).toBe(true); // повторять нечего
+      expect(els.btnHeroDailyRetry.hidden).toBe(true);
       expect(els.heroGameRivals.hidden).toBe(true);
     });
 

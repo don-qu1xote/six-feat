@@ -113,10 +113,6 @@ const std::vector<const char*> kMigrationV6 = {
     ))SQL",
 };
 
-// Владение API-ключом переезжает с имени на user_id: имена не уникальны
-// между провайдерами входа, и тёзки могли отзывать чужие ключи. Строки до
-// миграции не бэкфиллятся: у них owner_id=0 — аутентификация работает,
-// но отозвать их владелец не может (Revoke сверяется по owner_id).
 const std::vector<const char*> kMigrationV7 = {
     "ALTER TABLE api_keys DROP COLUMN IF EXISTS owner",
     "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS owner_id BIGINT NOT NULL DEFAULT 0",
@@ -126,9 +122,6 @@ const std::vector<const char*> kMigrationV7 = {
     R"SQL(COMMENT ON COLUMN api_keys.owner_id IS 'auth::SessionUserId of the issuing session (SF-YM-05). Rows from before this migration were not backfilled and read owner_id=0: still valid for auth, but unrevokable via the self-service endpoint.')SQL",
 };
 
-// [SF-YM-07] Один ряд на пользователя, не per-provider (в отличие от
-// user_provider_tokens) — предпочтение общее для аккаунта независимо от
-// того, сколько провайдеров подключено.
 const std::vector<const char*> kMigrationV8 = {
     R"SQL(CREATE TABLE IF NOT EXISTS user_settings (
         user_id                       BIGINT NOT NULL PRIMARY KEY,
@@ -351,8 +344,6 @@ struct PersistentStore::Impl {
     if (roles.empty()) return {};
 
     return ExecuteReadQueryWithRetry([&] {
-      // Источник из диапазона song_id (kYandexSongIdOffset); смешанный
-      // случай подписывается genius_credit.
       auto res = cluster->Execute(read_host_type,
                                   kReadQueryCommandControl,
                                   "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w, "

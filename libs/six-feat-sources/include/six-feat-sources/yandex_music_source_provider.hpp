@@ -36,8 +36,6 @@ class YandexMusicSourceProvider final : public userver::components::ComponentBas
                              const std::string& user_token) const override;
 
  private:
-  // Резолв яндексового соартиста в канонический Genius id (ADR-0009);
-  // std::nullopt — не разрешился, ребро пропускается.
   std::optional<ArtistRef> ResolveToGeniusArtist(const std::string& yandex_name,
                                                  std::int64_t seed_id,
                                                  const std::string& user_token) const;

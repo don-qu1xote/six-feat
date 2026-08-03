@@ -1,13 +1,5 @@
 name: DR drill
 
-# SF-INF-09: ежемесячная проверка, что восстановление из бэкапа реально
-# работает. Держит docs/runbooks/disaster-recovery.md проверяемым фактом.
-#
-# Источник дампа — BACKUP_S3_URL, если он настроен. Если нет, брать реальный
-# бэкап в CI неоткуда: тогда job снимает дамп со своей же тестовой базы и
-# проверяет САМ МЕХАНИЗМ, помечая прогон ::warning::. Зелёный прогон без
-# секрета означает «restore работает», а не «ваши бэкапы целы».
-
 on:
   schedule:
     - cron: "0 4 1 * *"
@@ -71,8 +63,6 @@ jobs:
           apt-get install -y --no-install-recommends postgresql-client-16
           pg_dump --version
 
-      # Дамп берётся настоящим backup-postgres.sh, а не собирается вручную:
-      # прогон должен проверять тот же путь, что работает в проде.
       - name: Seed a stand-in baseline (no BACKUP_S3_URL configured)
         if: env.BACKUP_S3_URL == ''
         run: |

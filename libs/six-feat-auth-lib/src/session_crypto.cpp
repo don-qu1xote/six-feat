@@ -234,8 +234,6 @@ std::string Encrypt(std::string_view access_token,
     plain += JsonEscape(name);
     plain += "\"";
   }
-  // Поля пишутся только когда есть что писать: genius-сессии без uid
-  // остаются байт-в-байт теми же, что до SF-YM-05.
   if (!provider.empty()) {
     plain += ",\"prov\":\"";
     plain += JsonEscape(provider);

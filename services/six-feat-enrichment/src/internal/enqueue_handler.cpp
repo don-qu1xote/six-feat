@@ -44,7 +44,6 @@ std::string EnqueueHandler::HandleRequestThrow(const server::http::HttpRequest& 
     const auto body = formats::json::FromString(request.RequestBody());
     artist_id = body["artist_id"].As<std::int64_t>(0);
     user_token = body["user_token"].As<std::string>("");
-    // [SF-YM-07] Опционально — пустая строка значит "сервисный дефолт цепочки".
     preferred_provider = body["preferred_provider"].As<std::string>("");
     ref.id = artist_id;
     ref.name = body["name"].As<std::string>("");

@@ -28,12 +28,8 @@ class UserProviderTokenStore final : public userver::components::ComponentBase {
 
   bool Disconnect(std::int64_t user_id, const std::string& provider) const;
 
-  // [SF-YM-07] Один ряд на пользователя (user_settings), не per-provider —
-  // не связано с Connect/Get/Disconnect выше (те — per-provider токены).
   void SetPreferredEnrichmentProvider(std::int64_t user_id, const std::string& provider) const;
 
-  // "yandex" по умолчанию (нет ряда — как и решено владельцем), даже если
-  // provider когда-то был сохранён с невалидным значением напрямую в БД.
   std::string GetPreferredEnrichmentProvider(std::int64_t user_id) const;
 
  private:

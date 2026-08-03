@@ -12,7 +12,6 @@ source "$COMMON_ENTRYPOINT"
 
 load_env_profile
 
-# six-feat-genius-gateway не имеет OAuth/сессий и не работает с БД.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat / six-feat-enrichment, generate with: openssl rand -hex 32}"
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"

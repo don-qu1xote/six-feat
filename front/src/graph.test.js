@@ -371,11 +371,6 @@ describe("[SF-YM-03] mergeDeepenResult", () => {
       }),
     ];
 
-    // ROLE_PRIORITY ranks "producer" above "writer" (state.js) — merging in
-    // a Genius-tagged "producer" credit for the same pair should promote
-    // the combined edge's dominant role, not just silently drop the new
-    // information because a "writer"-tagged edge for this pair already
-    // existed.
     const result = mergeDeepenResult({
       seed_id: 1,
       nodes: [{ id: 2, name: "Existing" }],

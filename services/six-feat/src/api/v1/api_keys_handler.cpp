@@ -43,9 +43,6 @@ std::string ApiKeyIssueHandler::HandleRequestThrow(const server::http::HttpReque
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
 
-  // Пустой display_name не причина отказывать: владение по owner_id,
-  // имя — только label в блобе.
-  // Ключ несёт Genius-токен: у яндексовой сессии годится только BYO-токен.
   const auto owner_id = auth::SessionUserId(*session);
   const auto connected_genius = user_provider_tokens_.Get(owner_id, "genius");
   const std::string genius_token = auth::GeniusTokenForSession(*session, connected_genius);
@@ -78,10 +75,6 @@ std::string ApiKeyIssueHandler::HandleRequestThrow(const server::http::HttpReque
                                "body, if present, must be JSON with an optional string rate_tier")};
         }
 
-        // Время жизни ключа привязано к сроку СЕССИИ, а не BYO-токена
-        // (прежний tradeoff и для genius-сессий): если BYO истечёт раньше,
-        // запросы с ключом падают с genius-side 401 (token_invalid) до
-        // истечения самого ключа.
         const auto issued = api_key_store_.Issue(
             owner_id, session->name, genius_token, session->expires_at_unix, rate_tier);
 

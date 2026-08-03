@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# restore-postgres.sh — SF-INF-08: pg_restore из дампа backup-postgres.sh.
-# Без --yes-i-am-sure ничего не делает. Usage выводит --help.
+# pg_restore из дампа backup-postgres.sh; без --yes-i-am-sure ничего не делает, --help выводит usage.
 set -euo pipefail
 
 DB_HOST="${DB_HOST:-postgres}"

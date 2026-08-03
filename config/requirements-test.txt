@@ -1,34 +1,14 @@
-# requirements-test.txt — Python dependencies for six-feat integration tests
-#
-# Install with:
-#   pip install -r requirements-test.txt
-#
-# For CI, pin versions to avoid flaky builds.
-
+# Python-зависимости для интеграционных тестов six-feat (pip install -r requirements-test.txt)
 pytest>=9.1.1
 requests>=2.34.2
 pytest-timeout>=2.4.0
 pytest-cov>=7.1.0
 
-# [ТЗ-6] Required by tests/session_crypto.py — mints AES-256-GCM session
-# cookies (mirroring src/auth/session_crypto.cpp) so the test suite can
-# authenticate against the OAuth-gated /api/v1/graph and /api/v1/graph/path
-# endpoints without a real Genius OAuth round-trip.
+# session-куки AES-256-GCM для тестов с OAuth-гейтом (tests/session_crypto.py)
 cryptography>=49.0.0
 
-# [F-35] Direct Postgres connection used by the clean_db_state autouse
-# fixture (tests/conftest.py) to truncate data tables between tests, since
-# the service binary/DB are session-scoped and would otherwise leak state
-# across tests.
+# Прямое подключение к Postgres из clean_db_state (tests/conftest.py)
 psycopg2-binary>=2.9.12
 
-# [SF-API-18] Contract-тесты (test_contract_openapi.py) публичного API v1
-# против schemas/openapi/openapi.json — через schemathesis, транзитивно
-# подтягивает Hypothesis.
+# Contract-тесты OpenAPI через schemathesis (tests/test_contract_openapi.py)
 schemathesis>=4.24.3
-
-# Optional — uncomment if async test support is needed
-# pytest-asyncio>=0.23.0
-
-# Optional — for JSON schema validation in tests
-# jsonschema>=4.20.0

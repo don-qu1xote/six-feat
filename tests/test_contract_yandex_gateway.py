@@ -1,7 +1,3 @@
-"""
-test_contract_yandex_gateway.py — контрактные тесты six-feat-yandex-gateway
-"""
-
 from __future__ import annotations
 
 from typing import Any, Dict, Optional

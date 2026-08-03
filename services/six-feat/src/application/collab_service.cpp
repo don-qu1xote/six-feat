@@ -75,9 +75,6 @@ std::variant<ArtistRef, AmbiguousResult> CollabService::ResolveByName(
   return ResolveArtistByName(gateway_, query, user_token);
 }
 
-// Дефолтный граф идёт через цепочку источников (Яндекс, Genius — fallback) —
-// сам живой вызов остаётся сервисным дефолтным порядком; preferred_provider
-// (SF-YM-07) касается только enrichment enqueue в BuildRadialGraph ниже.
 ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
                                    const std::string& user_token,
                                    std::optional<int> limit_override) const {
@@ -476,9 +473,6 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
   return PathFindResult{{}, false};
 }
 
-// Источник выводится из id треков (NamespacedYandexSongId): он переживает
-// запись в Postgres и чтение из кэша. Ребро — яндексовое, только если все
-// общие треки пришли из Яндекса.
 RadialGraphResult CollabService::BuildRadialGraphWithSource(
     const ArtistRef& seed,
     const std::string& user_token,

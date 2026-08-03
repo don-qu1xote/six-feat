@@ -1,20 +1,3 @@
-"""
-test_api_keys.py — integration tests for X-Api-Key auth (SF-API-15)
-=====================================================================
-
-Scenarios covered:
-  1. POST /api/v1/api-keys (session-authenticated) issues a key with the
-     expected fields; issuing/revoking themselves require a real session
-     cookie and are never reachable via X-Api-Key.
-  2. A freshly issued key, presented via the X-Api-Key header with NO
-     session cookie attached, authenticates a data endpoint exactly like a
-     cookie would (same CollabService codepath).
-  3. An unknown/garbage key, or a key that has been revoked, is rejected
-     with 401 — never silently falls back to requiring the cookie instead.
-  4. Two distinct API keys get independent rate-limit counters: bursting
-     one key into 429 does not affect the other key's own bucket.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -59,9 +42,6 @@ def _burst_with_key(anon_client: requests.Session, key: str, artist: str) -> lis
 
 
 class TestIssueAndRevokeRequireSession:
-    """Issuance/revocation are session-cookie-only — never reachable via
-    X-Api-Key itself, so a leaked key can never mint further keys."""
-
     def test_anonymous_issue_returns_401(self, anon_client: requests.Session):
         resp = anon_client.post(API_KEYS_URL, json={})
         assert resp.status_code == 401
@@ -219,7 +199,5 @@ class TestPerKeyRateLimitIsIndependent:
             f"Expected at least one {RATE_LIMIT_STATUS} bursting key1; got {sorted(codes1)}"
         )
 
-        # key2's own bucket has seen zero requests so far — a single request
-        # must not be rate-limited just because key1 was.
         resp = anon_client.get(GRAPH_URL, params={"artist": name}, headers={"X-Api-Key": key2})
         assert resp.status_code != RATE_LIMIT_STATUS

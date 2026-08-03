@@ -86,7 +86,6 @@ std::vector<ProviderEdge> YandexMusicSourceProvider::GetCollaborationEdges(
       if (!resolved) continue;
       if (!seen_genius_ids.insert(resolved->id).second) continue;
 
-      // "featured" — единственная форма роли, которую знают фильтры/персист.
       edges.push_back({seed.id, resolved->id, EdgeSource::YandexFeature, "featured"});
     }
   }
@@ -94,11 +93,9 @@ std::vector<ProviderEdge> YandexMusicSourceProvider::GetCollaborationEdges(
   return edges;
 }
 
-// Тот же обход, но треки целиком (нужны для веса рёбер); роль — "featured"
-// (Яндекс не различает кредиты, ADR-0011).
 ArtistSongs YandexMusicSourceProvider::GetArtistSongs(const ArtistRef& seed,
                                                       int songs_limit,
-                                                      Lane /*lane*/,
+                                                      Lane,
                                                       const std::string& user_token) const {
   ArtistSongs out;
   out.seed = seed;
@@ -109,7 +106,6 @@ ArtistSongs YandexMusicSourceProvider::GetArtistSongs(const ArtistRef& seed,
 
   const auto track_ids = yandex_.FetchArtistTracks(yandex_seed_id);
 
-  // Кэш имя→Genius id на один обход: каждый промах — HTTP в Genius.
   std::unordered_map<std::string, std::optional<ArtistRef>> resolved_cache;
 
   for (const auto track_id : track_ids) {
@@ -145,7 +141,6 @@ ArtistSongs YandexMusicSourceProvider::GetArtistSongs(const ArtistRef& seed,
       song.credits.push_back({*resolved, "featured"});
     }
 
-    // Трек без опознанных соучастников не несёт рёбер.
     if (song.credits.size() < 2) continue;
     out.songs.push_back(std::move(song));
   }

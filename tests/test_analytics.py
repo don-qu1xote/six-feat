@@ -1,38 +1,3 @@
-"""
-test_analytics.py — unit tests for graph algorithm implementations
-==================================================================
-
-These tests verify the Python-reimplemented equivalents of analytics.cpp
-algorithms (BetweennessCentrality and BidirectionalBFS) and the
-InMemoryStore mock, which are the two most logic-dense components.
-
-They do NOT require a running service binary — they exercise pure Python
-logic only.  This provides fast, deterministic coverage of the core
-algorithmic contract that the integration tests cover more coarsely.
-
-Scenarios covered (BetweennessCentrality):
-  1. Path graph A-B-C → B has highest BC
-  2. Star graph → centre has BC > 0, leaves have BC = 0
-  3. Single node → BC = 0
-  4. Disconnected node → BC = 0
-  5. All nodes in a clique → all BC scores equal
-  6. Normalised BC is always in [0, 1]
-
-Scenarios covered (BidirectionalBFS):
-  1. Direct edge A-B
-  2. Two-hop path A-B-C
-  3. No path → empty list
-  4. Same src and dst → [src]
-  5. Prefers shortest path in multi-path graph
-
-Scenarios covered (InMemoryStore):
-  1. GetFetchDepth returns NONE for unknown artist
-  2. UpsertArtistSongs advances depth monotonically
-  3. LoadNeighbours respects role mask
-  4. LoadArtistSongs returns None if depth < want
-  5. Depth is never decremented
-"""
-
 from __future__ import annotations
 
 from typing import Dict, List
@@ -54,10 +19,6 @@ AdjList = Dict[int, List[CollabEdge]]
 
 
 def betweenness_centrality(adj: AdjList, nodes: List[int]) -> Dict[int, float]:
-    """
-    Brandes' O(V·E) betweenness centrality — Python port of analytics.cpp.
-    Returns a map node_id → raw (unnormalised) score.
-    """
     bc: Dict[int, float] = {n: 0.0 for n in nodes}
 
     for s in nodes:
@@ -99,10 +60,6 @@ def betweenness_centrality(adj: AdjList, nodes: List[int]) -> Dict[int, float]:
 
 
 def bidirectional_bfs(adj: AdjList, src: int, dst: int) -> List[int]:
-    """
-    BidirectionalBFS — Python port of analytics.cpp.
-    Returns shortest path [src, ..., dst] or [] if unreachable.
-    """
     if src == dst:
         return [src]
 
@@ -168,7 +125,6 @@ def bidirectional_bfs(adj: AdjList, src: int, dst: int) -> List[int]:
 
 
 def _make_adj(edges: List[tuple]) -> AdjList:
-    """Build an undirected adjacency list from (a, b, weight) tuples."""
     adj: AdjList = {}
     for a, b, w in edges:
         adj.setdefault(a, []).append(CollabEdge(neighbour=b, weight=w))
@@ -234,10 +190,6 @@ class TestBetweennessCentrality:
         assert bc == {}
 
     def test_disconnected_components_each_internal_bridge_scores(self):
-        """Two separate path graphs (1-2-3) and (10-20-30): each component's
-        bridge node (2 and 20) should score higher than its own endpoints,
-        and BC must not 'leak' across components (no path exists between
-        them, so cross-component pairs contribute zero to every node)."""
         adj = _make_adj([(1, 2, 1), (2, 3, 1), (10, 20, 1), (20, 30, 1)])
         nodes = [1, 2, 3, 10, 20, 30]
         bc = betweenness_centrality(adj, nodes)
@@ -247,10 +199,6 @@ class TestBetweennessCentrality:
         assert bc[20] > bc[30]
 
     def test_normalised_bc_in_unit_range(self):
-        """Mirrors the HTTP-level betweenness_normalised check in
-        test_graph.py, but at the algorithm level: normalised = raw / max,
-        guarding against max == 0 (e.g. a single node or fully symmetric
-        graph where every score is 0)."""
         adj = _make_adj([(0, i, 1) for i in range(1, 6)])
         nodes = [0, 1, 2, 3, 4, 5]
         bc = betweenness_centrality(adj, nodes)
@@ -260,10 +208,6 @@ class TestBetweennessCentrality:
             assert 0.0 <= normalised <= 1.0
 
     def test_normalised_bc_all_zero_graph_does_not_divide_by_zero(self):
-        """A graph with no internal bridges (e.g. two isolated edges, no
-        node sits between any pair) has every raw BC score equal to 0; the
-        normalisation step must guard against 0/0 rather than raising or
-        producing NaN."""
         adj = _make_adj([(1, 2, 1), (3, 4, 1)])
         nodes = [1, 2, 3, 4]
         bc = betweenness_centrality(adj, nodes)

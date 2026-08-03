@@ -7,18 +7,15 @@ six_feat_init_service()
 six_feat_embed_schema(handlers/six-feat/artist_handler     kArtistHandlerSchema    ARTIST_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/api_keys_issue_handler  kApiKeysIssueHandlerSchema  API_KEYS_ISSUE_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/api_keys_revoke_handler kApiKeysRevokeHandlerSchema API_KEYS_REVOKE_HANDLER_SCHEMA_HEADER)
-# [SF-YM-02] Настройки: BYO Genius токен + личный Яндекс device flow.
 six_feat_embed_schema(handlers/six-feat/settings_status_handler             kSettingsStatusHandlerSchema             SETTINGS_STATUS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_genius_connect_handler     kSettingsGeniusConnectHandlerSchema      SETTINGS_GENIUS_CONNECT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_disconnect_handler        kSettingsDisconnectHandlerSchema         SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_enrichment_provider_handler kSettingsEnrichmentProviderHandlerSchema SETTINGS_ENRICHMENT_PROVIDER_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_yandex_device_start_handler kSettingsYandexDeviceStartHandlerSchema SETTINGS_YANDEX_DEVICE_START_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_yandex_device_poll_handler  kSettingsYandexDevicePollHandlerSchema  SETTINGS_YANDEX_DEVICE_POLL_HANDLER_SCHEMA_HEADER)
-# [SF-YM-04] Импорт плейлистов/лайков — потребление seed-подсказок.
 six_feat_embed_schema(handlers/six-feat/settings_yandex_playlists_handler   kSettingsYandexPlaylistsHandlerSchema    SETTINGS_YANDEX_PLAYLISTS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_yandex_import_handler      kSettingsYandexImportHandlerSchema       SETTINGS_YANDEX_IMPORT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
-# [SF-YM-03] Углубление графа через Genius по запросу.
 six_feat_embed_schema(handlers/six-feat/graph_deepen_handler kGraphDeepenHandlerSchema GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
@@ -27,15 +24,12 @@ six_feat_embed_schema(handlers/six-feat/sse_status_handler kSseStatusHandlerSche
 six_feat_embed_schema(handlers/six-feat/readiness_handler  kReadinessHandlerSchema READINESS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/static_handler     kStaticHandlerSchema    STATIC_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/image_proxy_handler kImageProxyHandlerSchema IMAGE_PROXY_HANDLER_SCHEMA_HEADER)
-# [SF-GAME-13] Internal-mesh anti-cheat neighbours lookup.
 six_feat_embed_schema(handlers/six-feat/internal_neighbours_handler kInternalNeighboursHandlerSchema INTERNAL_NEIGHBOURS_HANDLER_SCHEMA_HEADER)
-# Internal-mesh тестовый/seam для MusicSourceProviderChain.
 six_feat_embed_schema(handlers/six-feat/music_source_edges_handler kMusicSourceEdgesHandlerSchema MUSIC_SOURCE_EDGES_HANDLER_SCHEMA_HEADER)
 
 six_feat_embed_schema(components/enrichment_client         kEnrichmentClientComponentSchema         ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/collab_service            kCollabServiceComponentSchema            COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/app_secret_parity_checker kAppSecretParityCheckerComponentSchema   APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER)
-# Схемы провайдеров встраивает libs/six-feat-sources.
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${ARTIST_HANDLER_SCHEMA_HEADER}

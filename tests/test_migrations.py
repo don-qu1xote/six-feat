@@ -1,22 +1,3 @@
-"""
-test_migrations.py — [SF-DB-05] parity between kMigrations
-(persistent_store.cpp) and the versioned reference copies under
-postgresql/migrations/V*.sql.
-
-kMigrations is what actually runs against Postgres (RunMigrations, applied
-in-process, gated by the schema_version table) — the V*.sql files are a
-documentation-only mirror with nothing enforcing they stay in sync. This
-test parses both sides and diffs them structurally (whitespace-normalized,
-per statement, in order) so drift becomes a test failure instead of silent
-doc rot. Pure text parsing — no C++ build, no live Postgres required.
-
-Scenarios covered:
-  1. Every kMigrations entry has a corresponding V{n}__*.sql file.
-  2. Every V*.sql file has a corresponding kMigrations entry (no orphans).
-  3. Per migration: the .sql file's statements match the C++ array's
-     statements, in order, modulo whitespace formatting.
-"""
-
 from __future__ import annotations
 
 import re
@@ -31,10 +12,6 @@ MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations"
 
 
 def _normalize(sql: str) -> str:
-    """Collapse all whitespace runs to a single space and drop a trailing
-    semicolon, so formatting differences (line breaks/indentation, the
-    .sql file's terminating ';' vs. the C++ literal's lack of one) don't
-    count as a mismatch — only actual DDL differences should."""
     sql = sql.strip()
     if sql.endswith(";"):
         sql = sql[:-1]
@@ -42,10 +19,6 @@ def _normalize(sql: str) -> str:
 
 
 def _extract_cpp_array(source: str, var_name: str) -> List[str]:
-    """Pull the ordered list of string-literal statements out of
-    `const std::vector<const char*> {var_name} = { ... };` in
-    persistent_store.cpp — handles both R"SQL(...)SQL" raw strings (used
-    for multi-line CREATE TABLE blocks) and plain "..." literals."""
     block_match = re.search(
         rf"const std::vector<const char\*>\s+{re.escape(var_name)}\s*=\s*\{{(.*?)\}};",
         source,
@@ -62,8 +35,6 @@ def _extract_cpp_array(source: str, var_name: str) -> List[str]:
 
 
 def _extract_migrations_list(source: str) -> List[Tuple[int, str]]:
-    """Parse `const std::vector<Migration> kMigrations = { {1, kMigrationV1}, ... };`
-    into an ordered [(version, cpp_array_var_name), ...] list."""
     block_match = re.search(
         r"const std::vector<Migration>\s+kMigrations\s*=\s*\{(.*?)\};",
         source,
@@ -78,8 +49,6 @@ def _extract_migrations_list(source: str) -> List[Tuple[int, str]]:
 
 
 def _extract_sql_file_statements(path: Path) -> List[str]:
-    """Strip `--` line comments and split the file into individual
-    semicolon-terminated statements, in order."""
     text = path.read_text()
     lines = [line.split("--", 1)[0] for line in text.splitlines()]
     text_no_comments = "\n".join(lines)
@@ -113,10 +82,6 @@ def test_every_versioned_sql_file_has_a_matching_migration():
 
 @pytest.mark.parametrize("version,var_name", _MIGRATIONS, ids=[f"V{v}" for v, _ in _MIGRATIONS])
 def test_sql_file_statements_match_cpp_array(version: int, var_name: str):
-    """[SF-DB-05] For each kMigrations entry, the statements actually
-    applied in-process (kMigrationV{N} in persistent_store.cpp) must be
-    exactly the same DDL, in the same order, as
-    postgresql/migrations/V{N}__*.sql — modulo whitespace formatting."""
     cpp_statements = [_normalize(s) for s in _extract_cpp_array(_CPP_SOURCE, var_name)]
 
     matches = list(MIGRATIONS_DIR.glob(f"V{version}__*.sql"))

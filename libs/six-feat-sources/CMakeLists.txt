@@ -1,7 +1,5 @@
 include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
-# Провайдеры вынесены из services/six-feat: фоновый воркер должен видеть
-# тот же набор источников, что и foreground-сервис.
 six_feat_embed_schema(components/yandex_music_source_provider kYandexMusicSourceProviderComponentSchema YANDEX_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/genius_music_source_provider kGeniusMusicSourceProviderComponentSchema GENIUS_MUSIC_SOURCE_PROVIDER_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/music_source_provider_chain  kMusicSourceProviderChainComponentSchema  MUSIC_SOURCE_PROVIDER_CHAIN_COMPONENT_SCHEMA_HEADER)

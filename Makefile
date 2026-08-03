@@ -33,8 +33,7 @@ fmt:
 	ruff format .
 	cd front && npm run format
 
-# Проверка форматирования ВСЕХ файлов — те же команды, что CI (lint-format)
-# и .githooks/pre-commit.
+# Те же команды, что CI (lint-format) и .githooks/pre-commit
 .PHONY: fmt-check
 fmt-check:
 	find libs services -type f \( -name '*.cpp' -o -name '*.hpp' \) | xargs clang-format --dry-run --Werror --style=file

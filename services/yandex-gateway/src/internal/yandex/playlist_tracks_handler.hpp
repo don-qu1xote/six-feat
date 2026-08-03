@@ -8,9 +8,6 @@
 
 namespace six_feat::yandex_gateway {
 
-// [SF-YM-04] Недостающее звено между PlaylistsHandler (только
-// метаданные) и «кто на этом плейлисте» — та же форма запроса
-// с личным токеном, что у PlaylistsHandler/LikedTracksHandler.
 class PlaylistTracksHandler final : public userver::server::handlers::HttpHandlerBase {
  public:
   static constexpr std::string_view kName = "handler-internal-yandex-playlist-tracks";

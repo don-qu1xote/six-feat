@@ -1,27 +1,3 @@
-"""
-test_image_normalization.py — SF-API-07 regression.
-
-Genius's own fallback avatar for an artist with no uploaded photo is a
-real, resolvable image URL (not a 404 or empty string) — confirmed against
-a live response: https://assets.genius.com/images/default_cover_image.png
-?1783625229 (filename is `default_cover_image.png` with a cache-busting
-query string, NOT `default_avatar_*.png`) — so it can't be told apart
-from a real photo by validity alone. Before this fix,
-GeniusGateway (libs/six-feat-genius/src/genius_gateway.cpp) passed
-that URL straight through into ArtistRef::image, so the front end rendered
-Genius's grey placeholder instead of its own themed one (front/src/state/
-helpers.js placeholderFor, used everywhere as `imageUrl ||
-placeholderFor(...)`, which only kicks in on an empty string).
-
-These tests exercise the real six-feat -> six-feat-genius-gateway chain
-(via the surrogate Genius server, same as test_graph.py) and assert:
-  - a default-avatar image_url is normalized away — the response node
-    carries no "image" field at all (graph_handler.cpp omits the key
-    entirely when ArtistRef::image is empty — see nb["image"] = ... only
-    inside `if (!data.seed.image.empty())`).
-  - a real photo URL survives untouched.
-"""
-
 from __future__ import annotations
 
 import requests

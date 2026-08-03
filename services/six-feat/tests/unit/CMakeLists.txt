@@ -1,11 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 project(six_feat_unit_tests CXX)
 
-# Независимый CMake-проект без find_package(userver) — компилирует чистые
-# .cpp напрямую (analytics.cpp, music_source_provider.cpp, artist_resolver.cpp),
-# вместо link на userver-зависимые libs/* таргеты. Нижний слой пирамиды тестов:
-# без userver, без Postgres, без бинарника сервиса.
-
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

@@ -1,5 +1,3 @@
-"""test_logging.py — SF-OBS-05: проверка ротации логов в docker-compose.yml."""
-
 from __future__ import annotations
 
 import os

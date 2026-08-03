@@ -1,41 +1,3 @@
-"""
-test_enrichment_provider_preference.py — end-to-end coverage for SF-YM-07's
-preferred_enrichment_provider actually changing which upstream (Yandex vs
-Genius) wins inside the real, running EnrichmentWorker.
-============================================================================
-
-SF-YM-07 threaded `preferred_provider` end-to-end (settings handler ->
-CollabService -> EnrichmentClient -> /internal/enqueue -> EnrichmentWorker ->
-MusicSourceProviderChain::OrderedProviders), but the original commit only
-verified it up to the HTTP wire format — nothing exercised the real
-background worker with two genuinely competing providers and checked which
-one's data actually ends up persisted.
-
-Technique: hit six-feat-enrichment's /internal/enqueue directly (same
-direct-internal-API pattern as test_graceful_drain.py), bypassing six-feat's
-own live /api/v1/graph endpoint entirely. This matters because
-CollabService::FetchFg (the live/foreground fetch) always uses the chain's
-default order regardless of any preference, and ArtistRepository's upserts
-are additive — so triggering the live path first would silently merge its
-(always yandex-first) result with whatever the background job later picks,
-making it impossible to attribute the observed graph to one provider.
-By only ever going through /internal/enqueue for this seed, the only writer
-of its data is the background job under test.
-
-Once /internal/status reports Depth::Full, /api/v1/graph?id=... is read
-through a Yandex-only session — per SF-YM-08, an already-fully-cached
-artist is servable by id without a Genius token, so this read also never
-touches the live path (network_needed=false), and the persisted graph
-reflects exclusively the background job's provider choice.
-
-Both providers are set up with a real, non-empty answer for the same seed,
-each with its own distinct collaborator — TrySongsProvidersInOrder returns
-the FIRST non-empty answer outright, so whichever provider is ordered first
-wins completely, never merging with the other's data. edge["source"]
-("yandex_feature" vs "genius_credit") is an additional, unambiguous
-provider-specific signal derived from the persisted song id's namespace.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -70,10 +32,6 @@ def _collab(collab_id: int, name: str, role: str = "featured") -> dict:
 
 
 def _yandex_only_session() -> requests.Session:
-    """Как _yandex_session() в test_graph.py — сессия с яндексовым
-    access_token (не Genius), несущим свой собственный user_id, независимый
-    от enqueue-запросов ниже (те идут напрямую в /internal/enqueue, вообще
-    без сессии — preferred_provider там передаётся явно в теле)."""
     sess = requests.Session()
     sess.headers["Accept"] = "application/json"
     cookie = session_crypto.make_cookie(
@@ -120,10 +78,6 @@ def _wait_for_full_depth(artist_id: int, timeout: float = 10.0) -> dict:
 
 
 class TestEnrichmentProviderPreferenceAffectsBackgroundWorker:
-    """[SF-YM-07] preferred_provider actually changes which upstream wins
-    inside the real EnrichmentWorker, per background job — not just
-    threaded through the wire format."""
-
     def _setup_competing_providers(
         self,
         genius_mock_bg: GeniusMock,
@@ -139,7 +93,6 @@ class TestEnrichmentProviderPreferenceAffectsBackgroundWorker:
         genius_collab_id = artist_id + 4
         genius_id_of_yandex_collab = artist_id + 5
 
-        # Genius side: a real, non-empty answer of its own.
         genius_mock_bg.songs(artist_id, [genius_song_id])
         genius_mock_bg.song_detail(
             genius_song_id,
@@ -152,7 +105,6 @@ class TestEnrichmentProviderPreferenceAffectsBackgroundWorker:
             ),
         )
 
-        # Yandex side: a different, real, non-empty answer.
         yandex_mock_bg.search_artist(name, [{"id": yandex_seed_id, "name": name}])
         yandex_mock_bg.artist_tracks(yandex_seed_id, [yandex_track_id])
         yandex_mock_bg.track_artists(
@@ -162,8 +114,6 @@ class TestEnrichmentProviderPreferenceAffectsBackgroundWorker:
                 {"id": yandex_collab_id, "name": "YandexOnlyCollab"},
             ],
         )
-        # YandexMusicSourceProvider always resolves a discovered co-artist's
-        # NAME into the shared Genius-id namespace, even on the "Yandex path".
         genius_mock_bg.resolve(
             "YandexOnlyCollab",
             [{"id": genius_id_of_yandex_collab, "name": "YandexOnlyCollab", "score": 0.95}],

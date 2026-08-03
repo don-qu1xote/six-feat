@@ -12,10 +12,6 @@ source "$COMMON_ENTRYPOINT"
 
 load_env_profile
 
-# six-feat-yandex-gateway не имеет OAuth-сессий/БД — только исходящий HTTP к
-# Яндекс.Музыке. Сервисный токен — обязательный дефолтный
-# источник рёбер графа, НЕ per-user. Device-flow client-id — задел под
-# SF-YM-04, не блокер, поэтому не required.
 : "${YANDEX_SERVICE_TOKEN:?YANDEX_SERVICE_TOKEN env var is required — a single Yandex Music OAuth token for the whole deployment (NOT per-user), see docs/DEVELOPMENT.md}"
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat / six-feat-enrichment, generate with: openssl rand -hex 32}"
 

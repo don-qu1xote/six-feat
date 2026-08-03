@@ -1,43 +1,3 @@
-"""
-test_sse_status.py — integration tests for GET /api/v1/status/stream
-=====================================================================
-
-The /api/v1/status/stream endpoint replaces the setInterval polling in
-script.js (ТЗ-3).  It is a Server-Sent Events (SSE) stream that pushes
-enrichment-progress events for a single artist and closes automatically
-when depth reaches 2 (Full-scan complete).
-
-Expected response:
-  Content-Type:      text/event-stream
-  Cache-Control:     no-cache
-  X-Accel-Buffering: no
-
-  data: {"depth": <int 0|1|2>, "song_count": <int>}\n\n
-  …repeated every ~2 s until depth >= 2, then stream ends.
-
-Scenarios covered:
-  0.  [F-29] Anonymous request (no session cookie) → HTTP 401
-  1.  Missing ?id param → 400
-  2.  Non-integer id → 400
-  3.  Response headers: Content-Type, Cache-Control, X-Accel-Buffering
-  4.  At least one SSE event is emitted before the stream closes
-  5.  Every received event is well-formed JSON with depth and song_count
-  6.  Stream closes itself once depth >= 2 (populated artist) — the server
-      ends the connection, tests must not fall back on their own read
-      timeout to observe termination
-  7.  Unknown artist emits events with depth=0 and song_count=0 (no hang)
-  8.  Client disconnect: server-side connection closes cleanly (no zombie)
-  9.  Concurrent connections for the same artist_id are independent
-  10. The connection is genuinely long-lived: multiple events are pushed
-      over real wall-clock time on one connection, not a burst of events
-      followed by an immediate close
-
-NOTE: SSE is a long-running response; tests use streaming=True and
-short read timeouts, and poll/read with a timeout instead of sleeping a
-fixed amount of time.  Tests are marked with `sse_endpoint` so CI can
-gate them separately while the feature lands.
-"""
-
 from __future__ import annotations
 
 import json
@@ -98,11 +58,6 @@ class TestSseRequiresAuth:
 
 
 def _parse_sse_events(raw: str) -> List[dict]:
-    """
-    Parse raw SSE text into a list of decoded JSON objects.
-    Only lines starting with "data: " are considered; comment/retry/id lines
-    are ignored.  Malformed JSON is silently dropped.
-    """
     events = []
     for line in raw.splitlines():
         line = line.strip()
@@ -125,18 +80,6 @@ def _read_sse_stream(
     session: Optional[requests.Session] = None,
     stats: Optional[dict] = None,
 ) -> Tuple[requests.Response, List[dict]]:
-    """
-    Open an SSE connection and read up to *max_events* events.
-    Returns (response, events_list).
-    Closes the connection when max_events is reached or the server ends the
-    stream, whichever comes first.
-
-    If *stats* is passed, it is populated with:
-      "timed_out": True if reading gave up on our own read_timeout rather
-                   than the server ending the stream on its own — useful to
-                   distinguish "server closed the stream" from "we stopped
-                   waiting", without any fixed sleep.
-    """
     sess = session or requests.Session()
     resp = sess.get(url, params=params, stream=True, timeout=(5.0, read_timeout))
     events: List[dict] = []
@@ -179,7 +122,6 @@ def _populate_artist(
     graph_url: str = GRAPH_URL,
     status_url: str = STATUS_URL,
 ) -> None:
-    """Trigger a graph request so L1 is populated for the given artist."""
     genius_mock.resolve(name, [{"id": artist_id, "name": name, "score": 0.99}])
     genius_mock.songs(artist_id, [artist_id * 10])
     genius_mock.song_detail(
@@ -228,10 +170,7 @@ class TestSseInvalidParam:
 
 
 class TestSseHeaders:
-    """Headers must be set correctly before any body is sent."""
-
     def _get_headers(self, client: requests.Session) -> requests.Response:
-        """Open stream, grab headers immediately, then close."""
         resp = client.get(SSE_URL, params={"id": "99999"}, stream=True, timeout=(5.0, 2.0))
         return resp
 
@@ -333,7 +272,6 @@ class TestSseEventSchema:
             )
 
     def test_depth_is_valid_enum_value(self, client: requests.Session, genius_mock: GeniusMock):
-        """depth must be 0, 1, or 2."""
         _, events = _read_sse_stream(
             SSE_URL,
             {"id": "99999"},
@@ -365,19 +303,6 @@ class TestSseStreamTermination:
     def test_stream_closes_after_full_scan(
         self, client_bg: requests.Session, genius_mock_bg: GeniusMock, unique_artist_id: int
     ):
-        """
-        Populate L1 to depth=2 by triggering a graph request, then open the
-        SSE stream.  The server must emit depth=2 and close the connection
-        *itself* — we must not be relying on our own read timeout to end the
-        loop, which is checked via `stats["timed_out"]`.
-
-        [F-34] Requires the bg-profile service instance (queue-capacity=8):
-        the default profile (`client`/`service_proc`) runs with
-        queue-capacity=0, so EnrichmentWorker::EnqueueIfNeeded() never
-        actually queues anything there and depth can never observably
-        advance past Foreground=1 — see the identical rationale in
-        test_status.py::TestStatusEnrichingArtist.
-        """
         artist_id = unique_artist_id
         _populate_artist(
             client_bg,
@@ -431,10 +356,6 @@ class TestSseStreamTermination:
     def test_stream_does_not_linger_after_depth_2(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
-        """
-        The server must close the stream shortly after emitting depth=2.
-        We read until depth=2 is seen and then assert no further events arrive.
-        """
         artist_id = unique_artist_id
         _populate_artist(client, genius_mock, artist_id, "LingerTestArtist")
 
@@ -483,11 +404,6 @@ class TestSseUnknownArtist:
     def test_unknown_artist_emits_zero_depth_events(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """
-        An artist id that was never fetched should yield depth=0 events
-        (the stream may stay open waiting for enrichment; we just check the
-        first event is well-formed with depth=0).
-        """
         _, events = _read_sse_stream(
             SSE_URL,
             {"id": "88888888"},
@@ -507,7 +423,6 @@ class TestSseUnknownArtist:
     def test_unknown_artist_does_not_return_error_status(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """An unknown id is not an error — the endpoint should return 200 and stream."""
         resp = client.get(SSE_URL, params={"id": "88888887"}, stream=True, timeout=(5.0, 3.0))
         _skip_if_not_implemented(resp)
         resp.close()
@@ -518,13 +433,6 @@ class TestSseLongLivedStream:
     def test_multiple_events_spaced_over_time_for_unknown_artist(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """
-        An artist that never advances past depth=0 keeps the connection open
-        forever (until we stop reading), so it is the simplest way to prove
-        the server pushes events periodically rather than all at once.
-        No fixed sleep is used — we just keep reading with a read timeout and
-        record wall-clock timestamps as events arrive.
-        """
         resp = client.get(SSE_URL, params={"id": "77777776"}, stream=True, timeout=(5.0, 9.0))
         _skip_if_not_implemented(resp)
 
@@ -571,13 +479,6 @@ class TestSseLongLivedStream:
     def test_multiple_events_spaced_over_time_for_unknown_artist(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """
-        An artist that never advances past depth=0 keeps the connection open
-        forever (until we stop reading), so it is the simplest way to prove
-        the server pushes events periodically rather than all at once.
-        No fixed sleep is used — we just keep reading with a read timeout and
-        record wall-clock timestamps as events arrive.
-        """
         resp = client.get(SSE_URL, params={"id": "77777776"}, stream=True, timeout=(5.0, 9.0))
         _skip_if_not_implemented(resp)
 
@@ -624,10 +525,6 @@ class TestSseClientDisconnect:
     def test_server_survives_abrupt_client_close(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """
-        Open a stream, receive one event, then abruptly close the TCP connection.
-        Verify the service is still responsive afterwards.
-        """
 
         resp = client.get(SSE_URL, params={"id": "99990"}, stream=True, timeout=(5.0, 6.0))
         _skip_if_not_implemented(resp)
@@ -667,10 +564,6 @@ class TestSseConcurrentConnections:
     def test_two_concurrent_streams_both_receive_events(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """
-        Two SSE connections for the same artist_id must each independently
-        receive events.  Neither should block or starve the other.
-        """
         results: List[List[dict]] = [[], []]
         errors: List[Optional[Exception]] = [None, None]
 
@@ -710,10 +603,6 @@ class TestSseConcurrentConnections:
     def test_concurrent_different_artists_are_isolated(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
-        """
-        Events from a stream for artist A must not appear in the stream for
-        artist B.  This validates per-connection state isolation.
-        """
         artist_a_id = unique_artist_id
         artist_b_id = 88888000
 
@@ -764,7 +653,6 @@ class TestSseContentType:
     def test_content_type_not_application_json(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """SSE streams must not be served as application/json."""
         resp = client.get(SSE_URL, params={"id": "99992"}, stream=True, timeout=(5.0, 2.0))
         _skip_if_not_implemented(resp)
         ct = resp.headers.get("content-type", "")
@@ -774,7 +662,6 @@ class TestSseContentType:
         )
 
     def test_content_type_charset_optional(self, client: requests.Session, genius_mock: GeniusMock):
-        """text/event-stream with or without charset is acceptable."""
         resp = client.get(SSE_URL, params={"id": "99993"}, stream=True, timeout=(5.0, 2.0))
         _skip_if_not_implemented(resp)
         ct = resp.headers.get("content-type", "").lower()
@@ -784,11 +671,6 @@ class TestSseContentType:
 
 class TestSseRegistration:
     def test_stream_endpoint_reachable(self, client: requests.Session, genius_mock: GeniusMock):
-        """
-        A simple reachability check: the endpoint must not return 404.
-        If it does, SseStatusHandler is not registered in main.cpp or the
-        path is missing from static_config.yaml.
-        """
         resp = client.get(SSE_URL, params={"id": "1"}, stream=True, timeout=(5.0, 2.0))
         resp.close()
         assert resp.status_code != 404, (

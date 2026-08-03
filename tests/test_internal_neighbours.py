@@ -1,40 +1,3 @@
-"""
-test_internal_neighbours.py — SF-GAME-13: contract + behavior tests for
-six-feat's internal anti-cheat endpoint.
-
-============================================================================
-Why this file exists
-============================================================================
-six-feat-game verifies a player-submitted hop A→B is a REAL collaboration by
-calling six-feat's POST /internal/neighbours (see services/game/
-neighbours_client.cpp) instead of ever talking to Genius itself — it has no
-Genius credentials of its own. Modeled on tests/test_contract_gateway.py
-(SF-TST-01): POST directly against the real, compiled six-feat binary
-(service_proc — the same process /api/v1/graph already runs on, no separate
-fixture needed) using request bodies shaped exactly like
-NeighboursClient::Neighbours is documented to send, and assert response
-shapes matching what internal_neighbours_handler.cpp's request-parsing/
-response-building code actually produces — the two independent sources of
-truth this file cross-checks (field names taken from neighbours_client.cpp's
-request-building code and internal_neighbours_handler.cpp's request-parsing
-code).
-
-TestNeighboursReflectsL1 below additionally exercises the real L1-only read
-path end to end: a collaboration is written into L1 exactly like any real
-graph request does (client.get(GRAPH_URL, ...) via genius_mock — the same
-lazy-fetch CollabService::FindPath itself relies on), then /internal/
-neighbours is queried directly, making zero further Genius calls of its own.
-
-Hardcoded small artist ids (matching test_graph.py's own Drake=1/Future=2
-convention, not the unique_artist_id fixture) are safe here: clean_db_state
-(conftest.py) truncates artists/songs/credits/fetch_state once per test
-CLASS whenever service_proc is in the fixture graph — both classes below
-pull it in transitively via the `client` fixture — so as long as the ids
-used by TestNeighboursReflectsL1's two tests don't collide with each other
-(they don't; disjoint ranges below), collisions with other test files' own
-hardcoded ids in other classes are a non-issue.
-"""
-
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
@@ -66,16 +29,11 @@ def _post(
 
 class TestNeighboursContract:
     def test_unknown_artist_returns_empty_list(self, service_proc):
-        """An artist_id six-feat has never seen is a valid request — an
-        empty neighbours list, not a 404 (matches FindPath silently not
-        expanding through data it doesn't have)."""
         resp = _post({"artist_id": 424242424, "role_mask": 15})
         assert resp.status_code == 200
         assert resp.json() == {"neighbours": []}
 
     def test_role_mask_is_optional(self, service_proc):
-        """Same "no filter" default ParseRoleMask("") gives every other
-        role-aware endpoint — omitting role_mask entirely must not 400."""
         resp = _post({"artist_id": 424242424})
         assert resp.status_code == 200
         assert resp.json() == {"neighbours": []}
@@ -113,8 +71,6 @@ class TestNeighboursContract:
         assert resp.status_code == 400
 
     def test_wrong_field_name_is_bad_request(self, service_proc):
-        """Pins the exact key ("artist_id") the client/handler agree on —
-        sending "id" instead must NOT silently succeed."""
         resp = _post({"id": 1})
         assert resp.status_code == 400
 

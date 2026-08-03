@@ -12,10 +12,8 @@ source "$COMMON_ENTRYPOINT"
 
 load_env_profile
 
-# APP_SECRET для локальной расшифровки six_feat_session cookie.
 : "${APP_SECRET:?APP_SECRET env var is required for session decryption — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
 
-# Общий секрет для внутренних вызовов к six-feat (POST /internal/neighbours).
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required for internal-mesh calls to six-feat — MUST match the rest of the mesh, generate with: openssl rand -hex 32}"
 
 : "${DB_NAME:?DB_NAME env var is required — Postgres database name}"
@@ -28,7 +26,6 @@ log_db_target "six-feat-game"
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
 SIX_FEAT_BASE_URL="${SIX_FEAT_BASE_URL:-http://six-feat:8080}"
 
-# ── Ожидание готовности Postgres ─────────────────────────────────────────────
 echo "[entrypoint] waiting for Postgres to be ready..."
 wait_for_postgres "${DB_HOST}" "${DB_PORT}" 120
 wait_for_postgres "${DB_REPLICA_HOST}" "${DB_REPLICA_PORT}" 10

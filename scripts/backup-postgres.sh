@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# backup-postgres.sh — SF-INF-08: pg_dump -Fc + верификация + ротация.
-# BACKUP_S3_URL + AWS_* — опциональная загрузка в S3-совместимое хранилище.
+# BACKUP_S3_URL + AWS_* — опциональная загрузка дампа в S3-совместимое хранилище
 set -euo pipefail
 
 DB_HOST="${DB_HOST:-postgres}"

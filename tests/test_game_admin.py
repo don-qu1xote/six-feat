@@ -1,27 +1,3 @@
-"""
-test_game_admin.py — [SF-GAME-21] integration tests for GET/POST
-/api/v1/game/admin, the owner-gated admin surface: a UI-gating status probe
-(GET) and on-demand daily-challenge publish (POST).
-
-Same harness convention as the other test_game_*.py files: runs against the
-docker-compose stack via GAME_SERVICE_ORIGIN, self-skipping if unreachable.
-
-The GATE paths (not-admin / unauthenticated) always run — they need no special
-configuration. The POSITIVE publish path needs the running game service to
-carry this test's admin name in its GAME_ADMIN_GENIUS_IDS allowlist, so it
-self-skips unless the SAME allowlist is visible to this test process too (set
-GAME_ADMIN_GENIUS_IDS=SFG21Admin on both the game service and the test env to
-activate it) — the same "skip when not configured" posture as the whole suite.
-
-Scenarios:
-  1. GET, unauthenticated -> 200 {"admin": false}.
-  2. GET, ordinary (non-allowlisted) session -> 200 {"admin": false}.
-  3. POST, unauthenticated -> 401.
-  4. POST, non-admin session -> 403.
-  5. (opt-in) GET admin session -> {"admin": true}; POST {from,to} publishes a
-     daily challenge and echoes it back.
-"""
-
 from __future__ import annotations
 
 import os

@@ -60,7 +60,6 @@ std::string TrackArtistsHandler::HandleRequestThrow(const server::http::HttpRequ
       return formats::json::ToString(b.ExtractValue());
     }
     b["found"] = true;
-    // `title` — новое поле; старые потребители читают только `artists`.
     b["title"] = found->title;
     formats::json::ValueBuilder arr(formats::json::Type::kArray);
     for (const auto& a : found->artists) arr.PushBack(detail::ArtistJson(a).ExtractValue());

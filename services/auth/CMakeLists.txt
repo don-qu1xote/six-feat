@@ -5,8 +5,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/presets/service.cmake)
 six_feat_init_service()
 
 six_feat_embed_schema(handlers/auth/key_fingerprint_handler kKeyFingerprintHandlerSchema AUTH_KEY_FINGERPRINT_HANDLER_SCHEMA_HEADER)
-# [SF-INF-03] Unified readiness contract — see internal_handlers.hpp's
-# ReadinessHandler doc-comment.
 six_feat_embed_schema(handlers/auth/readiness_handler       kAuthReadinessHandlerSchema  AUTH_READINESS_HANDLER_SCHEMA_HEADER)
 
 add_custom_target(six_feat_auth_schema_headers DEPENDS

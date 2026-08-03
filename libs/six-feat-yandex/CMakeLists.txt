@@ -2,8 +2,6 @@ include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 
 six_feat_embed_schema(components/yandex_music_gateway      kYandexMusicGatewayComponentSchema     YANDEX_MUSIC_GATEWAY_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/yandex_device_auth_client kYandexDeviceAuthClientComponentSchema YANDEX_DEVICE_AUTH_CLIENT_COMPONENT_SCHEMA_HEADER)
-# Consumer-side client (six-feat -> six-feat-yandex-gateway),
-# аналог GeniusGatewayClient для Genius.
 six_feat_embed_schema(components/yandex_gateway_client     kYandexGatewayClientComponentSchema    YANDEX_GATEWAY_CLIENT_COMPONENT_SCHEMA_HEADER)
 
 add_custom_target(six_feat_yandex_schema_headers DEPENDS

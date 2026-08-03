@@ -1,45 +1,3 @@
-"""
-test_api_auth_headers.py — SF-API-02: consolidated parametrized coverage of
-/api/v1/{graph, graph/path, search, status, status/stream}
-=============================================================================
-
-Builds on SF-API-01 (AuthenticatedHandlerBase / ApplySecurityHeaders — see
-authenticated_handler_base.hpp / security_headers.cpp): every one of the five
-handlers below calls Prologue()/PrologueStream() — which applies the shared
-hardening headers (5 as of [SF-SEC-03], see _assert_security_headers below)
-and rejects an unauthenticated caller with 401 — before it ever looks at its
-own query parameters.
-
-One parametrized test per concern, across all five endpoints:
-  1. no session cookie -> 401, with the endpoint's OWN error body. The five
-     handlers do NOT share one error format (see ErrorJson/ErrorGraph in
-     graph_handler.cpp/path_handler.cpp/search_handler.cpp vs. the raw
-     `{"error":"not_authenticated"}` literals in status_handler.cpp /
-     sse_status_handler.cpp) — each expected body below is copied verbatim
-     from the handler that produces it, not unified.
-  2. a valid auth_cookie -> the endpoint's success path (HTTP 200).
-  3. On every response (401 and 200 alike): X-Content-Type-Options: nosniff;
-     Strict-Transport-Security whenever this deployment is an HTTPS one
-     (IsHttpsDeployment() in security_headers.cpp, driven by the same
-     COOKIE_SECURE env var the running service_proc instance was launched
-     with — not by whether this test happens to talk http://); and, as of
-     [SF-SEC-03], Content-Security-Policy, Referrer-Policy: strict-origin-
-     when-cross-origin, and Permissions-Policy — the exact same values
-     static_handler.cpp's index.html/script.js responses carry (see
-     test_static_handlers.py), now applied uniformly by the same
-     ApplySecurityHeaders() call instead of being a static_handler.cpp-only
-     concern.
-
-Per-endpoint anonymous-401 status-code/body assertions already exist in
-test_graph.py (TestGraphRequiresAuth), test_path.py (TestPathRequiresAuth),
-test_status.py (TestStatusRequiresAuth) and test_sse_status.py
-(TestSseRequiresAuth) — this file does not re-add standalone copies of those.
-It adds the header assertions (new, SF-API-02) and folds the 401-body/200-path
-shape checks into one shared parametrization so all five endpoints are
-exercised uniformly instead of via five near-duplicate test classes.
-/api/v1/search had no dedicated test file before this — its cases are new.
-"""
-
 from __future__ import annotations
 
 import os
@@ -178,10 +136,6 @@ ENDPOINTS = [
 
 @pytest.mark.parametrize("url, expected_401_body, setup_fn, success_key, is_stream", ENDPOINTS)
 class TestApiAuthAndSecurityHeaders:
-    """[SF-API-02] Single parametrized sweep over all five protected
-    /api/v1 endpoints: anon-401 (+ its own body), auth-200, and the two
-    response headers ApplySecurityHeaders adds to every one of them."""
-
     def test_anonymous_returns_401_with_expected_body(
         self,
         anon_client: requests.Session,

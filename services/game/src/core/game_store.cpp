@@ -59,9 +59,6 @@ const std::vector<const char*> kGameMigrationV1 = {
         created_ts     BIGINT NOT NULL,
         UNIQUE (from_artist_id, to_artist_id, role_mask, kind)
     ))SQL",
-    // season_id денормализован в attempts для прямого индексного сканирования
-    // лидерборда сезона по (season_id, score DESC). Устанавливается при
-    // отправке; до этого NULL.
     R"SQL(CREATE TABLE IF NOT EXISTS game_attempts (
         id           BIGSERIAL PRIMARY KEY,
         challenge_id BIGINT NOT NULL REFERENCES game_challenges(id),
@@ -91,9 +88,6 @@ const std::vector<const char*> kGameMigrationV1 = {
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts)",
 };
 
-// Каталог достижений; код обязан существовать до того, как
-// EvaluateAndAwardAchievements сможет его выдать. ON CONFLICT DO NOTHING
-// делает повторный запуск безопасным.
 const std::vector<const char*> kGameMigrationV2 = {
     R"SQL(INSERT INTO game_achievements (code, title, descr) VALUES
         ('first_win', 'First Blood', 'Complete your first challenge'),
@@ -111,8 +105,6 @@ const std::vector<Migration> kGameMigrations = {
 
 constexpr int kGameTargetSchemaVersion = 2;
 
-// Применяет миграции последовательно в одной транзакции. EXCLUSIVE блокировка
-// сериализует конкурирующие инстансы. Идемпотентно.
 void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,
                    "CREATE TABLE IF NOT EXISTS game_schema_version ("
@@ -142,9 +134,6 @@ void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
   trx.Commit();
 }
 
-// Та же стратегия повторных попыток, что и в PersistentStore: поглощает
-// временные ошибки «пул ещё не готов» при старте. Недоступный Postgres
-// оставляет схему немигрированной (логируется, но не фатально).
 constexpr int kMigrationMaxAttempts = 10;
 constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
 constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
@@ -175,10 +164,6 @@ void RunGameMigrationsWithRetry(const storages::postgres::ClusterPtr& cluster) {
 struct GameStore::Impl {
   storages::postgres::ClusterPtr cluster;
 
-  // Одна попытка миграции в конструкторе (быстрый путь: Postgres уже
-  // доступен → схема готова до возврата). RunGameMigrations идемпотентна,
-  // поэтому фоновая повторная попытка в OnAllComponentsLoaded — дешёвая
-  // перепроверка.
   explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
     try {
       RunGameMigrations(cluster);
@@ -232,8 +217,6 @@ std::int64_t NowUnix() {
       .count();
 }
 
-// Ранг в лидерборде по elo (1-based): количество профилей со строго
-// бо́льшим elo + 1.
 int RankFor(const storages::postgres::ClusterPtr& cluster, int elo) {
   auto res = cluster->Execute(storages::postgres::ClusterHostType::kMaster,
                               "SELECT COUNT(*) FROM game_profiles WHERE elo > $1",
@@ -358,12 +341,9 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id,
                                            std::optional<std::int64_t> season_id) const {
   const int player_len = static_cast<int>(chain.size()) - 1;
 
-  // Транзакция: запись attempt и обновление профиля атомарны.
-  // Строка attempt = запись в лидерборд (GetLeaderboard читает game_attempts).
   auto trx = impl_->cluster->Begin(storages::postgres::ClusterHostType::kMaster,
                                    storages::postgres::TransactionOptions{});
 
-  // Счётчик ДО вставки — учитывает только предыдущие попытки.
   const auto prior_res =
       trx.Execute("SELECT COUNT(*) FROM game_attempts WHERE challenge_id = $1 AND user_id = $2",
                   challenge_id,
@@ -372,14 +352,10 @@ SubmitResult GameStore::RecordValidAttempt(std::int64_t user_id,
 
   const int score = ComputeScore(optimal_len, player_len, prior_attempts, elapsed_ms);
 
-  // FOR UPDATE: сериализует конкурентные отправки одного игрока (две
-  // вкладки браузера), предотвращая гонку read-then-write elo.
   const auto elo_res =
       trx.Execute("SELECT elo FROM game_profiles WHERE user_id = $1 FOR UPDATE", user_id);
   const int elo_before = elo_res.IsEmpty() ? 1200 : elo_res.Front()[0].As<int>();
 
-  // [fix: анти-абуз] Только первая успешная попытка меняет Elo/счётчик игр.
-  // Повторные отправки записываются, но не фармят рейтинг.
   const bool ranked = (prior_attempts == 0);
   const int elo_after =
       ranked ? UpdateElo(elo_before, optimal_len, score, kMaxScore).new_rating : elo_before;
@@ -439,8 +415,6 @@ std::vector<std::string> GameStore::EvaluateAndAwardAchievements(
 
   std::vector<std::string> newly_awarded;
   for (const auto& code : candidates) {
-    // ON CONFLICT DO NOTHING + RETURNING: существующая строка возвращает
-    // ноль строк → newly_awarded не дублирует уже полученные достижения.
     auto res = impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
                                        "INSERT INTO game_user_achievements (user_id, code, ts) "
                                        "VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING code",
@@ -491,9 +465,6 @@ std::vector<Achievement> GameStore::ListAchievements(std::int64_t user_id) const
   return out;
 }
 
-// Детерминированные 30-дневные окна от фиксированной эпохи (2024-01-01).
-// Два вызывающих кода всегда вычисляют одинаковые [starts_ts, ends_ts) без
-// координации; EXCLUSIVE блокировка арбитрирует только кто вставит запись.
 constexpr std::int64_t kSeasonEpoch = 1704067200;
 constexpr std::int64_t kSeasonLenSeconds = 30LL * 24 * 3600;
 
@@ -546,9 +517,6 @@ ChallengeUpsertResult GameStore::UpsertChallenge(std::int64_t from_artist_id,
                                                  const std::string& kind,
                                                  std::optional<std::int64_t> created_by,
                                                  std::optional<std::int64_t> season_id) const {
-  // DO UPDATE с no-op (kind = game_challenges.kind) нужен, чтобы RETURNING
-  // срабатывал при конфликте. (xmax = 0) — идиома Postgres для определения
-  // что строка была вставлена, а не обновлена.
   auto res = impl_->cluster->Execute(
       storages::postgres::ClusterHostType::kMaster,
       "INSERT INTO game_challenges "

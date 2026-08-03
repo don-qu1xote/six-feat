@@ -1,20 +1,3 @@
-"""
-test_game_link.py — [SF-GAME-21] integration tests for GET /api/v1/game/link,
-the live per-hop connection check (game
-before letting a player type an unconnected artist onto their web.
-
-Same harness convention as the other test_game_*.py files: runs against the
-docker-compose stack via GAME_SERVICE_ORIGIN, self-skipping if unreachable.
-Real L1 collaboration data is seeded directly via psycopg2, same technique as
-test_game_leaderboard.py. Open endpoint — no session involved.
-
-Scenarios:
-  1. a real one-hop collaboration -> {"linked": true}, in both directions
-     (the graph is undirected).
-  2. two artists that share no song -> {"linked": false}.
-  3. missing / non-numeric / non-positive from|to -> 400.
-"""
-
 from __future__ import annotations
 
 import os

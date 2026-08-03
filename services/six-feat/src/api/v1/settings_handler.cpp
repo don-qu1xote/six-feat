@@ -44,10 +44,6 @@ std::int64_t NowUnix() {
                                        .count());
 }
 
-// [SF-YM-04] Ограничение числа треков на один импорт — контроль
-// злоупотреблений/стоимости фан-аута (Yandex lookup + Genius resolve).
-// Меньше дефолта (20): каждый трек стоит FetchTrackArtists PLUS
-// per-unique-artist Genius resolve.
 constexpr std::size_t kImportMaxTracks = 20;
 
 bool ParseStrictNumericId(const std::string& param, std::int64_t& out_id) {
@@ -90,9 +86,6 @@ std::string SettingsStatusHandler::HandleRequestThrow(const server::http::HttpRe
   formats::json::ValueBuilder yandex(formats::json::Type::kObject);
   yandex["connected"] = yandex_connected;
   b["yandex"] = std::move(yandex);
-  // [SF-YM-07] Не про connection status — какой провайдер пробовать
-  // первым для ФОНОВОГО обогащения этого пользователя; читает фронт для
-  // рендера тумблера при загрузке страницы.
   b["preferred_enrichment_provider"] =
       user_provider_tokens_.GetPreferredEnrichmentProvider(user_id);
   return formats::json::ToString(b.ExtractValue());
@@ -194,9 +187,6 @@ yaml_config::Schema SettingsDisconnectHandler::GetStaticConfigSchema() {
       kSettingsDisconnectHandlerSchema);
 }
 
-// [SF-YM-07] Переключает, каким провайдером СНАЧАЛА пытаться фоново
-// обогащать граф ДЛЯ ЭТОГО пользователя — общий порядок цепочки сервиса
-// ([yandex, genius-fallback], static_config.yaml) остаётся неизменным.
 SettingsEnrichmentProviderHandler::SettingsEnrichmentProviderHandler(
     const components::ComponentConfig& config, const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
@@ -496,9 +486,6 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
   }
   if (track_ids.size() > kImportMaxTracks) track_ids.resize(kImportMaxTracks);
 
-  // Собираем уникальных Yandex-артистов с этих треков —
-  // первый встреченный name побеждает на yandex_id, та же дедупликация,
-  // что GeniusMusicSourceProvider использует для коллабораторов.
   std::unordered_map<std::int64_t, std::string> yandex_artists;
   std::vector<std::int64_t> yandex_artist_order;
   for (const auto track_id : track_ids) {
@@ -518,12 +505,9 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
     }
   }
 
-  // Тот же приоритет BYO-токена, что в graph_handler.cpp: на session-токен
-  // падает только для genius-сессии; у яндексовой без BYO токена нет вовсе.
   const auto connected_genius = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
   const std::string genius_token = auth::GeniusTokenForSession(*session, connected_genius);
   if (genius_token.empty()) {
-    // Резолвить имена не во что — честный 422 вместо молчаливого resolved=false.
     response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
     return BuildProblemJson(
         request,
@@ -540,10 +524,6 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
     formats::json::ValueBuilder ab(formats::json::Type::kObject);
     ab["yandex_name"] = yandex_name;
 
-    // [ADR-0009] Резолв происходит только здесь, на границе — имя, не
-    // находящее реальный Genius id, честно помечается resolved=false
-    // (без поля id) и никогда не становится кандидатом для графа/GAME;
-    // одно плохое имя не роняет весь импорт.
     std::variant<ArtistRef, AmbiguousResult> resolved;
     try {
       resolved = service_.ResolveByName(yandex_name, genius_token);

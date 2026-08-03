@@ -12,9 +12,6 @@ source "$COMMON_ENTRYPOINT"
 
 load_env_profile
 
-# six-feat-enrichment не имеет собственных OAuth/сессий — берёт user_token
-# из пересылаемого six_feat на каждом /internal/enqueue. Единственные
-# необходимые при старте секреты — общий внутренний ключ и Postgres.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six_feat, generate with: openssl rand -hex 32}"
 GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}"
 YANDEX_GATEWAY_BASE_URL="${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:8090}"
@@ -28,7 +25,6 @@ log_db_target "six-feat-enrichment"
 
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
 
-# ── Ожидание готовности Postgres ─────────────────────────────────────────────
 echo "[entrypoint] waiting for Postgres to be ready..."
 wait_for_postgres "${DB_HOST}" "${DB_PORT}" 120
 wait_for_postgres "${DB_REPLICA_HOST}" "${DB_REPLICA_PORT}" 10

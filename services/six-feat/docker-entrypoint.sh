@@ -12,31 +12,16 @@ source "$COMMON_ENTRYPOINT"
 
 load_env_profile
 
-# Серверный токен Genius больше не нужен — вся авторизация через OAuth.
-# Единственные секреты, необходимые при старте — OAuth-credentials
-# (зарегистрированы на https://genius.com/api-clients) и ключ шифрования сессий.
-
-# ── OAuth 2.0 ─────────────────────────────────────────────────────────────────
-# client_id не секрет (попадает в config_vars.yaml ниже).
-# client_secret + APP_SECRET — секреты, читаются напрямую из env
-# компонентами C++ (OAuthConfig / session_crypto::KeyFromEnv), на диск не пишутся.
 : "${GENIUS_CLIENT_ID:?GENIUS_CLIENT_ID env var is required for OAuth — from https://genius.com/api-clients}"
 : "${GENIUS_CLIENT_SECRET:?GENIUS_CLIENT_SECRET env var is required for OAuth — keep it secret}"
 : "${APP_SECRET:?APP_SECRET env var is required for session encryption — generate with: openssl rand -hex 32}"
 
-# ENRICHMENT_INTERNAL_SECRET читается из env напрямую EnrichmentClient
-# (в config_vars.yaml не пишется).
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six-feat-enrichment, generate with: openssl rand -hex 32}"
 ENRICHMENT_BASE_URL="${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}"
 GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}"
 AUTH_BASE_URL="${AUTH_BASE_URL:-http://six-feat-auth:8083}"
-# Яндекс — обязательный дефолтный источник рёбер графа
-# (MusicSourceProviderChain); сам сервисный токен читается напрямую из
-# YANDEX_SERVICE_TOKEN env компонентом YandexMusicGateway ВНУТРИ
-# six-feat-yandex-gateway (SF-YM-01) — здесь нужен только его base URL.
 YANDEX_GATEWAY_BASE_URL="${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:8090}"
 
-# ── PostgreSQL ────────────────────────────────────────────────────────────────
 : "${DB_NAME:?DB_NAME env var is required — Postgres database name}"
 : "${DB_USER:?DB_USER env var is required — Postgres user}"
 : "${DB_PASSWORD:?DB_PASSWORD env var is required — Postgres password, keep it secret}"
@@ -48,7 +33,6 @@ GENIUS_REDIRECT_URI="${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
 COOKIE_SECURE="${COOKIE_SECURE:-true}"
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
 
-# ── Кэширование фронтенд-бандлов ─────────────────────────────────────────────
 SCRIPT_FILENAME_FILE=/usr/share/six_feat/.script-filename
 if [[ ! -f "$SCRIPT_FILENAME_FILE" ]]; then
   echo "[entrypoint] ERROR: $SCRIPT_FILENAME_FILE missing — JS bundle was not baked into the image correctly" >&2
@@ -70,7 +54,6 @@ STYLE_FILE_PATH="/usr/share/six_feat/${STYLE_FILENAME}"
 echo "[entrypoint] serving JS bundle as ${SCRIPT_PATH}"
 echo "[entrypoint] serving CSS bundle as ${STYLE_PATH}"
 
-# ── Ожидание готовности Postgres ─────────────────────────────────────────────
 echo "[entrypoint] waiting for Postgres to be ready..."
 wait_for_postgres "${DB_HOST}" "${DB_PORT}" 120
 wait_for_postgres "${DB_REPLICA_HOST}" "${DB_REPLICA_PORT}" 10

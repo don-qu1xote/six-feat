@@ -1,20 +1,3 @@
-"""
-test_openapi.py — integration tests for GET /api/v1/openapi.json (SF-API-05)
-
-The document itself (schemas/openapi/openapi.json) is a checked-in, static
-artifact — this handler just serves it verbatim (six_feat::OpenApiHandler,
-a StaticFileHandler like handler-index/handler-script). Not behind auth
-(same as every other static-file handler): no session cookie needed.
-
-Scenarios covered:
-  1. GET /api/v1/openapi.json -> 200, application/json
-  2. Body parses as JSON and is a plausible OpenAPI 3.1 document
-     (openapi/info/paths present)
-  3. Every publicly documented path from SF-API-03..-11's scope
-     (/api/v1/graph, /api/v1/graph/path, /api/v1/search, /api/v1/status,
-     /api/v1/artist) is listed, each with a GET operation
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -71,8 +54,6 @@ class TestOpenApiDocument:
         assert "get" in data["paths"][path]
 
     def test_artist_path_documents_problem_json_errors(self, anon_client: requests.Session):
-        """[SF-API-11] The one handler that actually uses the new envelope
-        should document it, not the legacy {"error":...} shape."""
         data = anon_client.get(OPENAPI_URL).json()
         responses = data["paths"]["/api/v1/artist"]["get"]["responses"]
         not_found = responses["404"]

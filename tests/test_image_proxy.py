@@ -1,36 +1,3 @@
-"""
-test_image_proxy.py — integration tests for GET /api/v1/image (SF-API-12)
-============================================================================
-
-Same-origin proxy for Genius CDN artist/song avatars — see
-services/six-feat/src/http/image_proxy_handler.cpp for the full design.
-
-The service's real host allowlist (kDefaultAllowedImageHosts:
-images.genius.com, assets.genius.com) is compiled in and never overridden in
-production. For tests, the SUT's static config (see conftest.py's
-_TEST_CONFIG_TEMPLATE `handler-image.allowed-hosts`) instead allowlists
-"127.0.0.1" — ONLY in the test binary's own config, never in production —
-so these tests can point the handler at a local stub HTTP server
-(_ImageCdnMockServer below) instead of making real, non-deterministic calls
-to the actual internet (the same reason every other external dependency in
-this test suite — Genius API, six-feat-auth, six-feat-genius-gateway — is
-stubbed out rather than hit for real; see conftest.py's own module
-docstring).
-
-Scenarios covered:
-  0.  Anonymous request (no session cookie) → HTTP 401
-  1.  Missing ?url= param → 400
-  2.  Allowlisted host, real image response → 200, correct bytes,
-      Content-Type echoed, Cache-Control is long-lived+immutable
-  3.  Non-allowlisted domain → 400, upstream never contacted
-  4.  Private/link-local IP literal directly in ?url= → 400 (rejected by
-      the same allowlist check — never reaches the network)
-  5.  Upstream redirect (3xx) → rejected, not followed
-  6.  Upstream returns a non-image Content-Type → rejected (defense in
-      depth, even though the host itself was allowlisted)
-  7.  request_id in an error body matches the X-Request-Id response header
-"""
-
 from __future__ import annotations
 
 import threading
@@ -52,8 +19,6 @@ _FAKE_PNG_BYTES = bytes.fromhex(
 
 
 class _ImageCdnRequestHandler(BaseHTTPRequestHandler):
-    """Minimal stub standing in for images.genius.com/assets.genius.com."""
-
     def log_message(self, fmt: str, *args: object) -> None:
         pass
 
@@ -85,15 +50,6 @@ class _ImageCdnRequestHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def image_cdn_mock() -> Generator[str, None, None]:
-    """Starts the stub CDN once per module; yields its base URL.
-
-    Binds to port 0 (ephemeral) rather than a hardcoded port — a fixed port
-    collides under parallel test workers or with a leaked prior-run process
-    (OSError: [Errno 98] Address already in use). The OS-assigned port is
-    read back via server.server_address[1]; the test-config allowlist entry
-    for "127.0.0.1" (see conftest.py's _TEST_CONFIG_TEMPLATE) is host-only,
-    so any port works.
-    """
     server = HTTPServer(("127.0.0.1", 0), _ImageCdnRequestHandler)
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -105,7 +61,6 @@ def image_cdn_mock() -> Generator[str, None, None]:
 
 
 def _skip_if_not_implemented(resp: requests.Response) -> None:
-    """Defensive: skip gracefully if the endpoint is ever un-wired (404)."""
     if resp.status_code == 404:
         pytest.skip("/api/v1/image returned 404 — handler not registered in this build")
 
@@ -155,7 +110,6 @@ class TestImageProxyAllowlisted:
     def test_cache_control_is_long_lived_and_immutable(
         self, client: requests.Session, image_cdn_mock: str
     ):
-        """[SF-API-12] Genius CDN artwork is immutable per URL."""
         resp = client.get(IMAGE_URL, params={"url": f"{image_cdn_mock}/ok.png"})
         _skip_if_not_implemented(resp)
         cache_control = resp.headers.get("Cache-Control", "")
@@ -170,9 +124,6 @@ class TestImageProxyRejectsForeignDomain:
         assert resp.status_code == 400
 
     def test_lookalike_subdomain_trick_returns_400(self, client: requests.Session):
-        """A naive "endswith(genius.com)" or "startswith(images.genius.com)"
-        allowlist check would be fooled by one of these — the real check
-        must be an exact hostname match (see ParseUrl's own comment)."""
         resp = client.get(
             IMAGE_URL,
             params={"url": "https://images.genius.com.evil.com/x.png"},

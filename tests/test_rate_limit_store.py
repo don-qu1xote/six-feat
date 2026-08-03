@@ -1,31 +1,3 @@
-"""
-test_rate_limit_store.py — SF-SEC-04: PostgresRateLimitStore (backend: shared)
-================================================================================
-
-Verifies the actual claim behind this ticket: with rate-limit-store's
-`backend: shared`, TWO SEPARATE six-feat processes (simulating two replicas
-behind a load balancer) enforce ONE combined budget for the same rate-limit
-key, instead of each independently allowing up to the configured max — the
-bug PerIpRateLimit's original in-process-only implementation had (see
-core/rate_limit_store.hpp's own module comment): with N replicas, the
-effective limit used to become (configured limit) x N.
-
-Both processes are launched from the SAME _TEST_CONFIG_TEMPLATE conftest.py
-already uses for `service_proc`, with its rate-limit-store block patched
-from "backend: single" to "backend: shared" — same Postgres cluster
-(DB_CONNECTION_STRING) every other test uses, so this exercises the real
-migration (postgresql/migrations/V3__rate_buckets.sql / kMigrationV3) end to
-end, not a mock.
-
-Scenario:
-  1. 40 concurrent anonymous requests to replica A's /api/v1/graph + 40 to
-     replica B, all landing within the same 1s fixed window (both instances
-     see the caller as 127.0.0.1 — the ticket's "two clients, one IP").
-     The handler limit is 50/window; 80 combined must produce at least one
-     429 under a truly shared budget, where none would occur if each
-     replica were still counting independently (40 < 50 on each side).
-"""
-
 from __future__ import annotations
 
 import os
@@ -119,19 +91,6 @@ def _stop(proc: subprocess.Popen) -> None:  # type: ignore[type-arg]
 
 
 def _warm_up(base_url: str) -> None:
-    """[fix] One throwaway request per replica before the timed burst
-    below — forces both the HTTP listener and its (cold, min_pool_size: 1)
-    Postgres connection pool to actually grow past their very first
-    connection ahead of time. Without this, the real burst's own first
-    few requests paid that one-time connection-establishment cost, which
-    was enough to push the 80-request burst's total wall-clock time close
-    to (and sometimes past) the rate limiter's 1s fixed window. See
-    TestPathRateLimit's near-identical flake-fix comment in
-    test_rate_limit.py for the same underlying failure mode: a burst that
-    isn't processed fast enough silently straddles two fixed windows,
-    landing under the 50 cap in both and producing zero 429s even though
-    the shared budget was genuinely exceeded.
-    """
     try:
         requests.get(
             f"{base_url}/api/v1/graph",
@@ -143,14 +102,6 @@ def _warm_up(base_url: str) -> None:
 
 
 def _sleep_until_fresh_window(window_seconds: float = 1.0) -> None:
-    """[fix] Start the timed burst right after a rate-limit window
-    boundary instead of at a random point inside it, so it gets close to
-    the full window of headroom rather than possibly just the tail end of
-    one — the same fixed-window-straddling risk _warm_up above addresses
-    from the other side (making the burst itself faster instead of giving
-    it more room). window_seconds=1.0 matches GraphHandler's hardcoded
-    rate-limit window (see graph_handler.cpp's GraphHandler constructor).
-    """
     now = time.time()
     remainder = now % window_seconds
     if remainder < window_seconds * 0.1:
@@ -164,11 +115,6 @@ def shared_backend_replicas(
     auth_service_proc: subprocess.Popen,  # type: ignore[type-arg]
     mock_server,
 ) -> Generator[List[str], None, None]:
-    """Two six-feat processes ("replica A"/"replica B"), both configured
-    rate-limit-store.backend: shared and pointed at the same Postgres
-    cluster — so they share ONE rate_buckets table exactly like two real
-    replicas behind a load balancer would. Skips gracefully (matching
-    service_proc's own pattern) if the binary isn't built."""
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -196,11 +142,6 @@ def shared_backend_replicas(
 
 
 def _fire(base_url: str, n: int) -> List[requests.Response]:
-    """Fire n anonymous requests at base_url's /api/v1/graph as fast as
-    possible. No genius_mock/auth cookie needed — rate limiting runs before
-    both the Genius call and the auth check (see graph_handler.cpp's
-    HandleRequestThrow), so a 429 (or a 401 for whichever requests stay
-    under the budget) is all this test needs to observe."""
     url = f"{base_url}/api/v1/graph"
     session = requests.Session()
     responses: List[requests.Response] = []
@@ -221,15 +162,6 @@ def _fire(base_url: str, n: int) -> List[requests.Response]:
 
 class TestSharedRateLimitStore:
     def test_two_replicas_share_one_budget(self, shared_backend_replicas: List[str]):
-        """[SF-SEC-04] The graph handler's limit is 50 req/window (window=1s,
-        both hardcoded — see GraphHandler's constructor). 40 concurrent
-        requests to replica A plus 40 to replica B (80 combined, same
-        127.0.0.1 rate-limit key on both sides) must still trigger at least
-        one 429 under a genuinely shared budget. Under the pre-SF-SEC-04
-        in-process-only limiter, each replica would count its own 40
-        independently (well under its own 50-per-window cap), so NEITHER
-        would ever return 429 for this exact traffic pattern — this is
-        precisely the bug this ticket fixes."""
         base_a, base_b = shared_backend_replicas
 
         _sleep_until_fresh_window()

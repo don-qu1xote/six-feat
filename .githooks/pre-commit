@@ -20,30 +20,35 @@ fi
 
 fail=0
 
-# --- 1) Автоформатирование застейдженных файлов -----------------------------
 cpp_files=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
 if [ -n "$cpp_files" ]; then
     command -v clang-format >/dev/null 2>&1 || missing clang-format
-    echo "$cpp_files" | xargs -r clang-format -i --style=file
+    for f in $cpp_files; do
+        echo "pre-commit: форматирую $f"
+        clang-format -i --style=file "$f"
+    done
 fi
 
 py_files=$(echo "$staged" | grep -E '\.py$' || true)
 if [ -n "$py_files" ]; then
     command -v ruff >/dev/null 2>&1 || missing ruff
-    echo "$py_files" | xargs -r ruff format
+    for f in $py_files; do
+        echo "pre-commit: форматирую $f"
+        ruff format "$f"
+    done
 fi
 
 js_files=$(echo "$staged" | grep -E '^front/.*\.js$' || true)
 if [ -n "$js_files" ]; then
     command -v npx >/dev/null 2>&1 || missing npx
-    echo "$js_files" | while IFS= read -r file; do
-        (cd front && npx prettier --write "../$file" >/dev/null 2>&1)
+    for f in $js_files; do
+        echo "pre-commit: форматирую $f"
+        (cd front && npx prettier --write "../$f" >/dev/null 2>&1)
     done
 fi
 
 echo "$staged" | xargs -r git add --
 
-# --- 2) Проверка форматирования только изменённых файлов -------------------
 cpp_staged=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
 if [ -n "$cpp_staged" ]; then
     command -v clang-format >/dev/null 2>&1 || missing clang-format
@@ -75,7 +80,6 @@ if [ -n "$js_staged" ] && [ -d front/node_modules ] && command -v npx >/dev/null
     fi
 fi
 
-# --- 3) Проверка комментариев (только изменённые файлы) --------------------
 command -v python3 >/dev/null 2>&1 || missing python3
 py_staged_for_comments=$(echo "$staged" | grep -E '\.py$' || true)
 js_staged_for_comments=$(echo "$staged" | grep -E '\.(js|mjs|cjs)$' || true)
@@ -89,6 +93,7 @@ if [ -n "$py_staged_for_comments" ] || [ -n "$js_staged_for_comments" ] || [ -n 
         fi
     done
     if [ -n "$comment_targets" ]; then
+        echo "pre-commit: проверяю комментарии (только build-необходимые, на русском)"
         if ! python3 scripts/check_comments.py $comment_targets >/tmp/precommit-comments.log 2>&1; then
             echo "pre-commit: найдены комментарии, не нужные для билда или не на русском:"
             cat /tmp/precommit-comments.log
@@ -97,7 +102,6 @@ if [ -n "$py_staged_for_comments" ] || [ -n "$js_staged_for_comments" ] || [ -n 
     fi
 fi
 
-# --- 4) Проверка нейминга Python (только изменённые файлы) -----------------
 if [ -n "$py_staged" ]; then
     command -v ruff >/dev/null 2>&1 || missing ruff
     if ! echo "$py_staged" | xargs ruff check --select N >/tmp/precommit-ruff-naming.log 2>&1; then
@@ -107,7 +111,6 @@ if [ -n "$py_staged" ]; then
     fi
 fi
 
-# --- 5) Проверка camelCase в JS (только изменённые файлы) ------------------
 js_eslint_files=$(echo "$staged" | grep -E '^front/src/.*\.js$' || true)
 if [ -n "$js_eslint_files" ] && [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
     if ! echo "$js_eslint_files" | xargs npx eslint >/tmp/precommit-eslint.log 2>&1; then

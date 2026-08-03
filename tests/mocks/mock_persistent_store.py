@@ -1,29 +1,3 @@
-"""
-mock_persistent_store.py
-========================
-
-InMemoryStore — mock для PersistentStore на базе SQLite :memory:.
-
-Реализует тот же read/write API, что и PersistentStore, чтобы unit-тесты
-на уровне алгоритмов могли предзаполнять данные и проверять чтения без
-запущенного сервиса.
-
-Схема зеркалирует persistent_store.cpp точно, чтобы логика запросов
-валидировалась против реальной схемы.
-
-Публичный API (зеркалирует PersistentStore):
-  LoadArtistSongs(artist_id, want_depth) → Optional[ArtistSongs]
-  LoadArtistRef(artist_id)              → Optional[ArtistRef]
-  LoadNeighbours(artist_id, mask)       → List[CollabEdge]
-  GetFetchDepth(artist_id)              → Depth
-  UpsertArtistSongs(data, new_depth)    → None
-
-Дополнительные тестовые хелперы:
-  seed_artist(...)     — напрямую вставить строку артиста
-  seed_song(...)       — напрямую вставить песню + credits
-  seed_fetch_state(...)— напрямую установить fetch_state
-"""
-
 from __future__ import annotations
 
 import sqlite3
@@ -152,13 +126,6 @@ class RoleMask:
 
 
 class InMemoryStore:
-    """
-    Mock persistent store на базе SQLite :memory:.
-
-    Каждый экземпляр получает свою in-memory базу, чтобы тесты были
-    полностью изолированы.
-    """
-
     def __init__(self) -> None:
         self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._conn.executescript(_SCHEMA)
@@ -186,7 +153,6 @@ class InMemoryStore:
         title: str,
         credits: List[Tuple[int, str]],
     ) -> None:
-        """Вставить песню и её credits. Артисты должны существовать."""
         self._conn.execute(
             "INSERT OR IGNORE INTO songs(id, title) VALUES (?,?)",
             (song_id, title),
@@ -214,14 +180,14 @@ class InMemoryStore:
         )
         self._conn.commit()
 
-    def GetFetchDepth(self, artist_id: int) -> Depth:
+    def GetFetchDepth(self, artist_id: int) -> Depth:  # noqa: N802
         cur = self._conn.execute("SELECT depth FROM fetch_state WHERE artist_id = ?", (artist_id,))
         row = cur.fetchone()
         if row is None:
             return Depth.NONE
         return Depth(row[0])
 
-    def LoadArtistRef(self, artist_id: int) -> Optional[ArtistRef]:
+    def LoadArtistRef(self, artist_id: int) -> Optional[ArtistRef]:  # noqa: N802
         cur = self._conn.execute(
             "SELECT id, name, image_url, url FROM artists WHERE id = ?",
             (artist_id,),
@@ -231,7 +197,7 @@ class InMemoryStore:
             return None
         return ArtistRef(id=row[0], name=row[1], image=row[2] or "", url=row[3] or "")
 
-    def LoadArtistSongs(self, artist_id: int, want: Depth) -> Optional[ArtistSongs]:
+    def LoadArtistSongs(self, artist_id: int, want: Depth) -> Optional[ArtistSongs]:  # noqa: N802
         have = self.GetFetchDepth(artist_id)
         if have < want:
             return None
@@ -269,8 +235,7 @@ class InMemoryStore:
 
         return ArtistSongs(seed=ref, songs=songs)
 
-    def LoadNeighbours(self, artist_id: int, mask: RoleMask) -> List[CollabEdge]:
-        """Возвращает одношаговых соседей, отфильтрованных по role mask, с весом коллаборации."""
+    def LoadNeighbours(self, artist_id: int, mask: RoleMask) -> List[CollabEdge]:  # noqa: N802
         allowed = mask.allowed_ints()
         if not allowed:
             return []
@@ -288,7 +253,7 @@ class InMemoryStore:
         )
         return [CollabEdge(neighbour=row[0], weight=row[1]) for row in cur.fetchall()]
 
-    def UpsertArtistSongs(self, data: ArtistSongs, new_depth: Depth) -> None:
+    def UpsertArtistSongs(self, data: ArtistSongs, new_depth: Depth) -> None:  # noqa: N802
         seed = data.seed
         self._conn.execute(
             "INSERT OR REPLACE INTO artists(id, name, image_url, url) VALUES (?,?,?,?)",

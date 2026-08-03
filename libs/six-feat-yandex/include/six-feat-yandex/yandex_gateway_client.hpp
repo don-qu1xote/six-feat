@@ -37,7 +37,6 @@ struct YandexArtistRef {
   std::string image;
 };
 
-// Трек Яндекса вместе с заголовком — нужен дефолтному графу для названий.
 struct YandexTrackDetail {
   std::int64_t yandex_id{0};
   std::string title;
@@ -75,11 +74,6 @@ class YandexGatewayClient final : public userver::components::ComponentBase {
 
   YandexDeviceFlowPollResult PollDeviceFlow(const std::string& device_code) const;
 
-  // [SF-YM-04] Всё ниже требует подключённого личного Яндекс-токена
-  // (SF-YM-02) — не сервисного токена, который используют методы выше,
-  // и не входит в граф по умолчанию.
-
-  // std::nullopt — токен не резолвится в аккаунт (просрочен/невалиден).
   std::optional<std::string> FetchAccountUserId(const std::string& personal_token) const;
 
   std::vector<YandexPlaylistSummary> FetchPlaylists(const std::string& personal_token,

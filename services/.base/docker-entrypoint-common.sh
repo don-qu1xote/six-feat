@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
+# Общие функции docker-entrypoint всех сервисов: load_env_profile, wait_for_postgres,
+# build_db_connection_string, log_db_target. До вызова нужны DB_USER/DB_PASSWORD/DB_NAME;
+# DB_HOST/DB_PORT/DB_REPLICA_HOST/DB_REPLICA_PORT — опциональны.
 # shellcheck disable=SC2034
-#
-# Общие функции для docker-entrypoint.sh всех сервисов.
-# source-ится в каждом services/<name>/docker-entrypoint.sh перед его
-# собственной логикой. Предоставляет:
-#   load_env_profile     — загрузка ENV_PROFILE (fail-fast)
-#   wait_for_postgres    — ожидание готовности Postgres (pg_isready)
-#   build_db_connection_string — сборка multi-host DSN
-#   log_db_target        — единообразное логирование цели Postgres
-#
-# Переменные, которые ДОЛЖНЫ быть установлены до вызова:
-#   DB_USER, DB_PASSWORD, DB_NAME — обязательные
-# Переменные с дефолтами:
-#   DB_HOST, DB_PORT, DB_REPLICA_HOST, DB_REPLICA_PORT — опциональные
 
 load_env_profile() {
   ENV_PROFILE="${ENV_PROFILE:-dev}"
@@ -42,8 +32,7 @@ wait_for_postgres() {
   done
 }
 
-# Полная документация — в docs/DEVELOPMENT.md «Postgres cluster topology».
-# Собирает multi-host DSN только когда задана реплика, single-host иначе.
+# Multi-host DSN только когда задана реплика, иначе single-host
 build_db_connection_string() {
   DB_HOST="${DB_HOST:-postgres}"
   DB_PORT="${DB_PORT:-5432}"
