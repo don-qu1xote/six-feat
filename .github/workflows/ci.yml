@@ -252,7 +252,7 @@ jobs:
         run: ctest --test-dir build-unit-tests --output-on-failure
 
   test-backup:
-    name: "Test — backup/restore (SF-INF-08)"
+    name: "Test — backup/restore"
     runs-on: ubuntu-22.04
     needs: detect-changes
     container:

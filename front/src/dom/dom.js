@@ -251,6 +251,8 @@ export const els = {
   btnSettingsOpen: $("btn-settings-open"),
   settingsPanel: $("settings-panel"),
   settingsPanelClose: $("settings-panel-close"),
+  settingsSignedOutHint: $("settings-signed-out-hint"),
+  settingsCards: $("settings-cards"),
   settingsGeniusInput: $("settings-genius-input"),
   settingsGeniusConnectBtn: $("settings-genius-connect-btn"),
   settingsGeniusDisconnectBtn: $("settings-genius-disconnect-btn"),

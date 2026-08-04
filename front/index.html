@@ -1136,6 +1136,19 @@
           </svg>
         </button>
 
+        <!-- [SF-WEB-75] Settings used to live only inside .rail — unreachable
+         from the landing page (body.view-home hides .rail) and from all 5
+         game screens (their own full-bleed surfaces paint over .rail at
+         the same z-index, see game-screens.css/connect.css). One entry
+         point instead of duplicating a nav link into 5 near-identical
+         .game-rail blocks — z-docked (not z-panel, same as .rail/game
+         surfaces) so it survives on top of every surface. -->
+        <button class="settings-toggle" id="btn-settings-open" type="button" aria-label="Settings">
+          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <use href="#icon-gear" />
+          </svg>
+        </button>
+
         <nav class="rail rail-shell">
           <button class="brand" id="brand" type="button" title="Six Feet — back to start">
             <span class="dotmark"></span>
@@ -1250,12 +1263,6 @@
           </button>
 
           <div class="rail-spacer"></div>
-
-          <button class="rail-btn ui-btn ui-btn--ghost" id="btn-settings-open" data-tip="Settings">
-            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-              <use href="#icon-gear" /></svg
-            ><span class="rl">Settings</span>
-          </button>
 
           <span
             class="rail-btn"
@@ -1686,75 +1693,97 @@
             </button>
           </div>
 
-          <div class="settings-card ui-tile">
-            <div class="settings-card-title">
-              Your Genius token <span class="settings-card-sub">(find more connections)</span>
-            </div>
-            <p class="settings-card-hint">
-              Connecting your own Genius token also lets us use it to enrich the shared
-              collaboration database in the background — not just your own graph.
-            </p>
-            <input
-              class="ui-input"
-              id="settings-genius-input"
-              type="password"
-              placeholder="Paste your Genius token…"
-              autocomplete="off"
-            />
-            <div class="settings-card-actions">
-              <button type="button" class="ui-btn ui-btn--primary" id="settings-genius-connect-btn">
-                Connect
-              </button>
-              <button
-                type="button"
-                class="ui-btn ui-btn--ghost"
-                id="settings-genius-disconnect-btn"
-                hidden
-              >
-                Disconnect
-              </button>
-            </div>
-            <div class="settings-card-status" id="settings-genius-status">Not connected</div>
+          <!-- [SF-WEB-75] fetchSettingsStatus() used to swallow a 401 into a
+               silent no-op, leaving an anonymous visitor staring at the cards'
+               static default "Not connected" text with no indication that was
+               because they aren't signed in at all, not because they chose not
+               to connect anything. -->
+          <div class="settings-signed-out-hint" id="settings-signed-out-hint" hidden>
+            <p class="settings-card-hint">Sign in to manage settings.</p>
+            <a class="ui-btn ui-btn--primary" href="/auth/yandex/login">Sign in with Yandex</a>
           </div>
 
-          <!-- [SF-YM-07] Тумблер, не третья карточка — не connection status,
+          <div class="settings-cards" id="settings-cards">
+            <div class="settings-card ui-tile">
+              <div class="settings-card-title">
+                Your Genius token <span class="settings-card-sub">(find more connections)</span>
+              </div>
+              <p class="settings-card-hint">
+                Optional — Yandex is the default source for graphs and background enrichment.
+                Connecting your own Genius token can still help find extra connections Yandex
+                doesn't have, and deepens your own graph search.
+              </p>
+              <input
+                class="ui-input"
+                id="settings-genius-input"
+                type="password"
+                placeholder="Paste your Genius token…"
+                autocomplete="off"
+              />
+              <div class="settings-card-actions">
+                <button
+                  type="button"
+                  class="ui-btn ui-btn--primary"
+                  id="settings-genius-connect-btn"
+                >
+                  Connect
+                </button>
+                <button
+                  type="button"
+                  class="ui-btn ui-btn--ghost"
+                  id="settings-genius-disconnect-btn"
+                  hidden
+                >
+                  Disconnect
+                </button>
+              </div>
+              <div class="settings-card-status" id="settings-genius-status">Not connected</div>
+            </div>
+
+            <!-- [SF-YM-07] Тумблер, не третья карточка — не connection status,
            а порядок ПОПЫТОК для фонового обогащения ЭТОГО пользователя. -->
-          <div class="settings-card">
-            <div class="settings-card-title">Background enrichment provider</div>
-            <p class="settings-card-hint">
-              Which provider to try first when filling in the shared graph in the background for
-              your requests. The other one is still used as a fallback if the first doesn't have an
-              answer.
-            </p>
-            <select class="ui-input" id="settings-enrichment-provider-select">
-              <option value="yandex">Yandex first</option>
-              <option value="genius">Genius first</option>
-            </select>
-          </div>
+            <div class="settings-card">
+              <div class="settings-card-title">Background enrichment provider</div>
+              <p class="settings-card-hint">
+                Which provider to try first when filling in the shared graph in the background for
+                your requests. The other one is still used as a fallback if the first doesn't have
+                an answer.
+              </p>
+              <select class="ui-input" id="settings-enrichment-provider-select">
+                <option value="yandex">Yandex first</option>
+                <option value="genius">Genius first</option>
+              </select>
+            </div>
 
-          <div class="settings-card ui-tile">
-            <div class="settings-card-title">
-              Connect your Yandex <span class="settings-card-sub">(import playlists)</span>
+            <div class="settings-card ui-tile">
+              <div class="settings-card-title">
+                Connect your Yandex <span class="settings-card-sub">(import playlists)</span>
+              </div>
+              <p class="settings-card-hint">
+                Yandex is the default source for graphs and for background enrichment of the shared
+                collaboration database — not just your own graph. Connecting your personal account
+                here also lets you suggest artists from your own playlists and likes.
+              </p>
+              <div class="settings-card-actions">
+                <button
+                  type="button"
+                  class="ui-btn ui-btn--primary"
+                  id="settings-yandex-connect-btn"
+                >
+                  Connect Yandex
+                </button>
+                <button
+                  type="button"
+                  class="ui-btn ui-btn--ghost"
+                  id="settings-yandex-disconnect-btn"
+                  hidden
+                >
+                  Disconnect
+                </button>
+              </div>
+              <div class="settings-card-device-code" id="settings-yandex-device-code" hidden></div>
+              <div class="settings-card-status" id="settings-yandex-status">Not connected</div>
             </div>
-            <p class="settings-card-hint">
-              Only used to suggest artists from your own playlists and likes — never affects the
-              default graph or anyone else's.
-            </p>
-            <div class="settings-card-actions">
-              <button type="button" class="ui-btn ui-btn--primary" id="settings-yandex-connect-btn">
-                Connect Yandex
-              </button>
-              <button
-                type="button"
-                class="ui-btn ui-btn--ghost"
-                id="settings-yandex-disconnect-btn"
-                hidden
-              >
-                Disconnect
-              </button>
-            </div>
-            <div class="settings-card-device-code" id="settings-yandex-device-code" hidden></div>
-            <div class="settings-card-status" id="settings-yandex-status">Not connected</div>
           </div>
         </div>
 

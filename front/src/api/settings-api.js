@@ -10,6 +10,20 @@ async function getJson(url) {
   }
 }
 
+// [SF-WEB-75] Like getJson, but keeps the status code — getJson's plain
+
+// real server/network error, so callers had no way to tell "you're signed
+// out" from "something's broken".
+async function getJsonWithStatus(url) {
+  try {
+    const res = await apiFetch(url);
+    const data = res.ok ? await res.json().catch(() => null) : null;
+    return { status: res.status, data };
+  } catch {
+    return { status: null, data: null };
+  }
+}
+
 async function postJson(url, body, method = "POST") {
   try {
     const res = await apiFetch(url, {
@@ -24,7 +38,7 @@ async function postJson(url, body, method = "POST") {
 }
 
 export function fetchSettingsStatus() {
-  return getJson("/api/v1/settings/providers");
+  return getJsonWithStatus("/api/v1/settings/providers");
 }
 
 export function connectGeniusToken(token) {

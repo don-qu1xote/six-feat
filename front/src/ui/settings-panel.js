@@ -59,12 +59,21 @@ function _setYandexConnected(connected) {
 }
 
 export async function refreshSettingsStatus() {
-  const status = await fetchSettingsStatus();
-  if (!status) return;
-  _setGeniusConnected(!!status.genius?.connected);
-  _setYandexConnected(!!status.yandex?.connected);
+  const { status, data } = await fetchSettingsStatus();
+
+  // [SF-WEB-75] A 401 used to fall through to the plain `if (!data) return`
+
+  // static markup — indistinguishable from an anonymous visitor who ju
+  // hasn't connected anything, instead of one who isn't signed in at all
+  const signedOut = status === 401;
+  if (els.settingsSignedOutHint) els.settingsSignedOutHint.hidden = !signedOut;
+  if (els.settingsCards) els.settingsCards.hidden = signedOut;
+  if (signedOut || !data) return;
+
+  _setGeniusConnected(!!data.genius?.connected);
+  _setYandexConnected(!!data.yandex?.connected);
   if (els.settingsEnrichmentProviderSelect) {
-    els.settingsEnrichmentProviderSelect.value = status.preferred_enrichment_provider || "yandex";
+    els.settingsEnrichmentProviderSelect.value = data.preferred_enrichment_provider || "yandex";
   }
 }
 

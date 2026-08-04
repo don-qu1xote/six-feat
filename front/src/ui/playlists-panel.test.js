@@ -44,7 +44,7 @@ beforeEach(() => {
 
 describe("[SF-WEB-74] Playlists tab — connection gating", () => {
   it("shows the connect hint and no grid when Yandex isn't connected", async () => {
-    fetchSettingsStatus.mockResolvedValue({ yandex: { connected: false } });
+    fetchSettingsStatus.mockResolvedValue({ status: 200, data: { yandex: { connected: false } } });
 
     await activatePlaylistsTab();
 
@@ -54,7 +54,7 @@ describe("[SF-WEB-74] Playlists tab — connection gating", () => {
   });
 
   it("hides the connect hint and loads playlists once connected", async () => {
-    fetchSettingsStatus.mockResolvedValue({ yandex: { connected: true } });
+    fetchSettingsStatus.mockResolvedValue({ status: 200, data: { yandex: { connected: true } } });
     fetchYandexPlaylists.mockResolvedValue({
       type: "yandex_playlists",
       playlists: [{ id: "likes", kind: "likes", title: "Liked tracks", track_count: 0 }],
@@ -70,7 +70,7 @@ describe("[SF-WEB-74] Playlists tab — connection gating", () => {
 
 describe("[SF-WEB-74] Playlist cards render with covers", () => {
   beforeEach(() => {
-    fetchSettingsStatus.mockResolvedValue({ yandex: { connected: true } });
+    fetchSettingsStatus.mockResolvedValue({ status: 200, data: { yandex: { connected: true } } });
   });
 
   it("renders one card per playlist (plus likes), with a cover image", async () => {
@@ -121,7 +121,7 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
 
 describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
   beforeEach(() => {
-    fetchSettingsStatus.mockResolvedValue({ yandex: { connected: true } });
+    fetchSettingsStatus.mockResolvedValue({ status: 200, data: { yandex: { connected: true } } });
     fetchYandexPlaylists.mockResolvedValue({
       playlists: [{ id: "7", kind: "playlist", title: "Road Trip", track_count: 2 }],
     });

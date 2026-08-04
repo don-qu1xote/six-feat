@@ -28,8 +28,8 @@ async function _loadPlaylists() {
 }
 
 export async function activatePlaylistsTab() {
-  const status = await fetchSettingsStatus();
-  const connected = !!status?.yandex?.connected;
+  const { data } = await fetchSettingsStatus();
+  const connected = !!data?.yandex?.connected;
 
   if (els.playlistsConnectHint) els.playlistsConnectHint.hidden = connected;
   if (!connected) {

@@ -37,14 +37,18 @@ function renderSettingsMarkup() {
     <div id="settings-panel">
       <button id="settings-panel-close"></button>
 
+      <p id="settings-signed-out-hint" hidden>Sign in to manage settings.</p>
+
+      <div id="settings-cards">
       <div class="settings-card">
         <div class="settings-card-title">
           Your Genius token <span class="settings-card-sub">(find more connections)</span>
         </div>
         <p class="settings-card-hint">
-          Connecting your own Genius token also lets us use it to enrich the
-          shared collaboration database in the background — not just your
-          own graph.
+          Optional — Yandex is the default source for graphs and background
+          enrichment. Connecting your own Genius token can still help find
+          extra connections Yandex doesn't have, and deepens your own
+          graph search.
         </p>
         <input id="settings-genius-input" type="password" />
         <button id="settings-genius-connect-btn"></button>
@@ -65,13 +69,16 @@ function renderSettingsMarkup() {
           Connect your Yandex <span class="settings-card-sub">(import playlists)</span>
         </div>
         <p class="settings-card-hint">
-          Only used to suggest artists from your own playlists and likes —
-          never affects the default graph or anyone else's.
+          Yandex is the default source for graphs and for background
+          enrichment of the shared collaboration database — not just your
+          own graph. Connecting your personal account here also lets you
+          suggest artists from your own playlists and likes.
         </p>
         <button id="settings-yandex-connect-btn"></button>
         <button id="settings-yandex-disconnect-btn" hidden></button>
         <div id="settings-yandex-device-code" hidden></div>
         <div id="settings-yandex-status">Not connected</div>
+      </div>
       </div>
     </div>
   `;
@@ -79,6 +86,8 @@ function renderSettingsMarkup() {
   els.btnSettingsOpen = document.getElementById("btn-settings-open");
   els.settingsPanel = document.getElementById("settings-panel");
   els.settingsPanelClose = document.getElementById("settings-panel-close");
+  els.settingsSignedOutHint = document.getElementById("settings-signed-out-hint");
+  els.settingsCards = document.getElementById("settings-cards");
   els.settingsGeniusInput = document.getElementById("settings-genius-input");
   els.settingsGeniusConnectBtn = document.getElementById("settings-genius-connect-btn");
   els.settingsGeniusDisconnectBtn = document.getElementById("settings-genius-disconnect-btn");
@@ -95,19 +104,15 @@ function renderSettingsMarkup() {
 beforeEach(() => {
   renderSettingsMarkup();
   fetchSettingsStatus.mockResolvedValue({
-    genius: { connected: false },
-    yandex: { connected: false },
+    status: 200,
+    data: {
+      genius: { connected: false },
+      yandex: { connected: false },
+    },
   });
 });
 
 describe("[SF-YM-02] Settings panel renders both cards with the right explanations", () => {
-  it("renders the Genius card's consent line before any token is pasted", () => {
-    const hint =
-      document.querySelector("#settings-genius-input").previousElementSibling.textContent;
-    expect(hint).toMatch(/background/i);
-    expect(hint).toMatch(/shared collaboration database/i);
-  });
-
   it("renders the Genius card title mentioning 'find more connections'", () => {
     const title = document
       .getElementById("settings-genius-connect-btn")
@@ -126,13 +131,30 @@ describe("[SF-YM-02] Settings panel renders both cards with the right explanatio
     expect(title).toMatch(/import playlists/i);
   });
 
-  it("the Yandex card's hint does NOT repeat the shared-enrichment consent copy", () => {
+  // [SF-WEB-75] These two used to be swapped: the Genius card claimed IT
+  // enriched the shared graph in the background, the Yandex card claimed
+  // it "never affects the default graph" — exactly backwards from
+  // SF-ARCH-02/ADR-0011 (Yandex is the default source and the default
+  // background-enrichment provider; Genius is the optional add-on).
+  it("the Genius card's hint frames it as optional/deepening, not the default background enrichment", () => {
+    const hint = document
+      .getElementById("settings-genius-connect-btn")
+      .closest(".settings-card")
+      .querySelector(".settings-card-hint").textContent;
+    expect(hint).toMatch(/optional/i);
+    expect(hint).toMatch(/find\s+extra connections/i);
+    expect(hint).not.toMatch(/Genius token also lets us use it to enrich the shared/i);
+  });
+
+  it("the Yandex card's hint says it's the default source for background enrichment of the shared database", () => {
     const hint = document
       .getElementById("settings-yandex-connect-btn")
       .closest(".settings-card")
       .querySelector(".settings-card-hint").textContent;
-    expect(hint).not.toMatch(/background/i);
-    expect(hint).toMatch(/never affects/i);
+    expect(hint).toMatch(/default source/i);
+    expect(hint).toMatch(/background\s+enrichment/i);
+    expect(hint).toMatch(/shared collaboration database/i);
+    expect(hint).not.toMatch(/never affects the default graph/i);
   });
 
   it("the Genius and Yandex cards are separate elements, not one shared toggle", () => {
@@ -155,8 +177,11 @@ describe("[SF-YM-07] background enrichment provider toggle", () => {
 
   it("defaults to yandex when the fetched status omits the preference", async () => {
     fetchSettingsStatus.mockResolvedValue({
-      genius: { connected: false },
-      yandex: { connected: false },
+      status: 200,
+      data: {
+        genius: { connected: false },
+        yandex: { connected: false },
+      },
     });
     openSettingsPanel();
     await Promise.resolve();
@@ -167,9 +192,12 @@ describe("[SF-YM-07] background enrichment provider toggle", () => {
 
   it("reflects a fetched genius preference on open", async () => {
     fetchSettingsStatus.mockResolvedValue({
-      genius: { connected: true },
-      yandex: { connected: false },
-      preferred_enrichment_provider: "genius",
+      status: 200,
+      data: {
+        genius: { connected: true },
+        yandex: { connected: false },
+        preferred_enrichment_provider: "genius",
+      },
     });
     openSettingsPanel();
     await Promise.resolve();
@@ -180,9 +208,12 @@ describe("[SF-YM-07] background enrichment provider toggle", () => {
 
   it("persists the choice across a simulated reload (fetchSettingsStatus reflects the saved value)", async () => {
     fetchSettingsStatus.mockResolvedValue({
-      genius: { connected: false },
-      yandex: { connected: false },
-      preferred_enrichment_provider: "yandex",
+      status: 200,
+      data: {
+        genius: { connected: false },
+        yandex: { connected: false },
+        preferred_enrichment_provider: "yandex",
+      },
     });
     setPreferredEnrichmentProvider.mockResolvedValue({
       ok: true,
@@ -202,9 +233,12 @@ describe("[SF-YM-07] background enrichment provider toggle", () => {
     expect(setPreferredEnrichmentProvider).toHaveBeenCalledWith("genius");
 
     fetchSettingsStatus.mockResolvedValue({
-      genius: { connected: false },
-      yandex: { connected: false },
-      preferred_enrichment_provider: "genius",
+      status: 200,
+      data: {
+        genius: { connected: false },
+        yandex: { connected: false },
+        preferred_enrichment_provider: "genius",
+      },
     });
     openSettingsPanel();
     await Promise.resolve();
@@ -255,8 +289,11 @@ describe("[SF-YM-02] opening the panel refreshes connection status", () => {
 
   it("reflects a connected Genius token in the status text", async () => {
     fetchSettingsStatus.mockResolvedValue({
-      genius: { connected: true },
-      yandex: { connected: false },
+      status: 200,
+      data: {
+        genius: { connected: true },
+        yandex: { connected: false },
+      },
     });
     openSettingsPanel();
     await Promise.resolve();
@@ -417,5 +454,37 @@ describe("[SF-YM-02] connecting a personal Yandex account (device flow)", () => 
     closeSettingsPanel();
     await vi.advanceTimersByTimeAsync(5000);
     expect(pollYandexDeviceFlow).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("[SF-WEB-75] anonymous visitor sees an explicit sign-in call to action", () => {
+  beforeEach(() => {
+    setupSettingsPanel();
+  });
+
+  it("shows 'Sign in to manage settings' and hides the cards on a 401, instead of a silent empty state", async () => {
+    fetchSettingsStatus.mockResolvedValue({ status: 401, data: null });
+
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsSignedOutHint.hidden).toBe(false);
+    expect(els.settingsSignedOutHint.textContent).toMatch(/sign in to manage settings/i);
+    expect(els.settingsCards.hidden).toBe(true);
+  });
+
+  it("hides the sign-in hint and shows the cards once a real status comes back", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      status: 200,
+      data: { genius: { connected: false }, yandex: { connected: false } },
+    });
+
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsSignedOutHint.hidden).toBe(true);
+    expect(els.settingsCards.hidden).toBe(false);
   });
 });
