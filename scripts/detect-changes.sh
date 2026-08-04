@@ -134,6 +134,17 @@ if echo "$CHANGED_FILES" | grep -q "^libs/"; then
   FRONTEND="true"
 fi
 
+if echo "$TESTS" | grep -qE "six-feat|health|bg-resilience"; then
+  SERVICES="$SERVICES six-feat enrichment genius-gateway yandex-gateway auth"
+fi
+if echo "$TESTS" | grep -q "auth"; then
+  SERVICES="$SERVICES six-feat yandex-gateway auth genius-gateway"
+fi
+if echo "$TESTS" | grep -q "genius-gateway"; then
+  SERVICES="$SERVICES genius-gateway six-feat auth"
+fi
+SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
+
 fi  # workflow_dispatch
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
