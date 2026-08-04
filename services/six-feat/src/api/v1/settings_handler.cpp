@@ -392,7 +392,9 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
     // [SF-WEB-76] Own try/catch — a liked-tracks failure falls back to track_count 0.
     try {
       liked_track_ids = yandex_client_.FetchLikedTracks(*personal_token, *user_id);
-    } catch (const GeniusHttpError&) {
+    } catch (const GeniusHttpError& e) {
+      LOG_WARNING() << "[SettingsYandexPlaylistsHandler] liked-tracks fetch failed, "
+                    << "falling back to track_count 0: " << e.what();
     }
   }
   if (!user_id) {

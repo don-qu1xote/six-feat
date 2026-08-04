@@ -87,7 +87,7 @@ std::string ValidateHandler::HandleRequestThrow(const server::http::HttpRequest&
     case ChainValidationStatus::kInvalidHop:
       b["valid"] = false;
       b["reason"] = "invalid_hop";
-      b["invalid_hop_index"] = result.invalid_hop_index.value();
+      b["invalid_hop_index"] = result.invalid_hop_index.value_or(-1);
       return formats::json::ToString(b.ExtractValue());
 
     case ChainValidationStatus::kUnavailable:

@@ -30,7 +30,7 @@ const html = readFileSync(resolve(here, "../../index.html"), "utf8");
 
 describe("Connect panel redesign — matches Explore's scale, no boxed card", () => {
   it("hero-mode-panel-connect no longer carries the bento-tile card classes", () => {
-    const tag = html.match(/<div class="([^"]*)"\s+id="hero-mode-panel-connect"/);
+    const tag = html.match(/<div\s+class="([^"]*)"\s+id="hero-mode-panel-connect"/);
     expect(tag, "hero-mode-panel-connect element not found").toBeTruthy();
     expect(tag[1]).not.toMatch(/\bbento-tile\b/);
   });
