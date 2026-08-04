@@ -184,7 +184,10 @@
 .hero-mode-switch {
   display: flex;
   position: relative;
-  width: min(420px, 92vw);
+  /* [SF-WEB-76] 420px → 440px: four equal stops now share this pill
+     instead of three, and the active stop still needs to fit its own
+     icon+label without crowding — see .hero-mode-tab span below. */
+  width: min(440px, 92vw);
   margin: 0 auto;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -198,7 +201,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  /* [SF-WEB-76] gap removed — the label span animates its own
+     margin-left instead (see below) so an idle, label-hidden tab
+     doesn't reserve empty gap space next to a lone icon. */
   border: 0;
   background: transparent;
   border-radius: 999px;
@@ -213,8 +218,11 @@
   transition: color var(--duration-base) var(--ease-standard);
 }
 .hero-mode-tab .ri {
-  width: 15px;
-  height: 15px;
+  /* [SF-WEB-76] 15px → 16px: idle tabs are icon-only now (see .label
+     rule below), so the icon carries the whole tab's identity instead
+     of sharing the read with an always-visible label. */
+  width: 16px;
+  height: 16px;
   display: flex;
   flex-shrink: 0;
 }
@@ -225,6 +233,27 @@
   fill: none;
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
+}
+/* [SF-WEB-76] Compact tabs — idle stops show only their icon; the
+   label animates open (max-width + margin-left, not display:none) so
+   picking a tab reads as a deliberate reveal instead of a hard snap.
+   Kit motion tokens, same as this switch's own thumb/colour fades. */
+.hero-mode-tab span {
+  display: inline-block;
+  max-width: 0;
+  margin-left: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition:
+    max-width var(--duration-base) var(--ease-standard),
+    margin-left var(--duration-base) var(--ease-standard),
+    opacity var(--duration-base) var(--ease-standard);
+}
+.hero-mode-tab[aria-selected="true"] span {
+  max-width: 110px;
+  margin-left: var(--space-2);
+  opacity: 1;
 }
 .hero-mode-tab:hover {
   color: var(--paper);
@@ -238,7 +267,7 @@
   top: 3px;
   left: 3px;
   bottom: 3px;
-  width: calc(33.333% - 2px);
+  width: calc(25% - 1.5px);
   border-radius: 999px;
   background: linear-gradient(100deg, var(--signal), var(--pulse));
   /* [SF-WEB-24] Both tokens' own definitions (up top) name this rule as
@@ -247,18 +276,16 @@
      them here instead of just documenting the match. Same value. */
   transition: transform var(--duration-slow) var(--ease-standard);
 }
-/* Three equal stops — explore (default, 0), connect (1), game (2). */
+
 .hero-mode-switch[data-mode="connect"] .hero-mode-thumb {
   transform: translateX(100%);
 }
 .hero-mode-switch[data-mode="game"] .hero-mode-thumb {
   transform: translateX(200%);
 }
-
-/* Both mode panels occupy the same grid cell so toggling `.is-active`
-
-
-
+.hero-mode-switch[data-mode="playlists"] .hero-mode-thumb {
+  transform: translateX(300%);
+}
 
 .hero-mode-stage {
   display: grid;
@@ -318,24 +345,14 @@
   }
 }
 
-/* ─ Connect panel — two stacked autocomplete fields joined by a
-
-
-
-
-
-
-
-
-
-
-
-
 /* [SF-GAME-59] Игровая панель — тот же контейнер, что и Connect. Без него
    .hero-mode-panel центрирует детей (align-items:center), и поля ужимались
    до содержимого: ряд кнопок выходил шире полей, к которым он относится. */
+/* [SF-WEB-76] Playlists joins the same reset — its card grid needs the
+   full stage width too, not .hero-mode-panel's default centered column. */
 .hero-connect-panel,
-.hero-game-panel {
+.hero-game-panel,
+.hero-playlists-panel {
   width: 100%;
   text-align: left;
   align-items: stretch;

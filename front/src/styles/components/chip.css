@@ -4,9 +4,6 @@
    Rendering identical to pre-extraction; see src/styles/index.css
    for the import order that preserves the original cascade.
    ============================================================ */
-/* Chip — small pill-shaped toggle/suggestion (autocomplete suggestions,
-
-
 
 .ui-chip {
   display: inline-flex;

@@ -94,7 +94,7 @@ struct LeaderboardPage {
   std::optional<std::string> next_cursor;
 };
 
-enum class LeaderboardScope { kChallenge, kSeason };
+enum class LeaderboardScope : std::uint8_t { kChallenge, kSeason };
 
 struct AttemptSummary {
   std::int64_t challenge_id{0};

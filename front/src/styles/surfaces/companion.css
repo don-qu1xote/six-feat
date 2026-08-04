@@ -760,9 +760,6 @@
   display: flex;
 }
 
-/* Header tile — large "avatar + name" bento tile (.bento-tile added in
-
-
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -926,9 +923,6 @@
   align-items: center;
   gap: 4px;
 }
-/* .role-chip--* colours are defined once, near .path-edge-count below —
-
-
 
 /* Централити убрана — .centrality-indicator/.centrality-bar-*/
 /* .centrality-percent удалены полностью вместе с их единственным

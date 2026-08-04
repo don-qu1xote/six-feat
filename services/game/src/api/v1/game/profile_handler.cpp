@@ -172,7 +172,6 @@ std::string ProfileHandler::HandleRequestThrow(const server::http::HttpRequest& 
     return ProfileJson(profile, store_.ListAchievements(player->user_id));
   }
 
-  std::string parse_error;
   std::string requested;
   try {
     const auto body = formats::json::FromString(request.RequestBody());

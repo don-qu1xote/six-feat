@@ -38,7 +38,7 @@ std::string RejectedJson(const ChainValidationResult& result) {
   switch (result.status) {
     case ChainValidationStatus::kInvalidHop:
       b["reason"] = "invalid_hop";
-      b["invalid_hop_index"] = *result.invalid_hop_index;
+      b["invalid_hop_index"] = result.invalid_hop_index.value();
       break;
     case ChainValidationStatus::kEndpointMismatch:
     default:

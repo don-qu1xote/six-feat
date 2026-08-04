@@ -10,7 +10,7 @@
 
 namespace six_feat::game {
 
-enum class ChainValidationStatus {
+enum class ChainValidationStatus : std::uint8_t {
   kValid,
   kEndpointMismatch,
   kInvalidHop,

@@ -4,9 +4,8 @@
    Rendering identical to pre-extraction; see src/styles/index.css
    for the import order that preserves the original cascade.
    ============================================================ */
-/* ─── Design tokens ─────────────────────────────────────────────── */
+
 :root {
-  /* Color palette (unchanged) */
   --ink: #0b0e14;
   --ink-2: #0e1320;
   --panel: #141a28;
@@ -19,23 +18,12 @@
   --amber: #ffd27a;
   --warn: #ff8fa3;
   --neon: #ff2d78;
-  /* "primary" role accent (collabs without an explicit featured/producer/
-
 
   --primary2: #8fa6c9;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
   --r-sm: 10px;
   --r-md: 14px;
   --r-lg: 18px;
-
-  /* Text colour for content sitting directly on the bright signal→pulse
-
-
-
-
-
-
-
 
   --on-accent: #07120f;
 
@@ -55,8 +43,6 @@
      --signal-rgb/--pulse-rgb already fix everywhere else — this file was
      just missed). */
   --line-rgb: 40, 48, 68;
-  /* Radial glow behind the hero title (body background) — separate from
-
 
   --hero-glow: #14203a;
 
@@ -74,17 +60,15 @@
   --scrim-modal: rgba(9, 11, 17, 0.82);
   --chip-bg: rgba(14, 19, 32, 0.8);
 
-  /* ─ Typographic scale (major third: 1.25) ─ */
-  --text-xs: 0.694rem; /* 11.1px — metadata, labels, hints */
-  --text-sm: 0.833rem; /* 13.3px — secondary text, autocomplete */
-  --text-base: 1rem; /* 16px — body text (standard) */
-  --text-lg: 1.25rem; /* 20px — emphasis, larger labels */
-  --text-xl: 1.563rem; /* 25px — subheadings */
-  --text-2xl: 1.953rem; /* 31.2px — heading level 2 */
-  --text-3xl: 2.441rem; /* 39px — heading level 1 */
-  --text-hero: clamp(2.5rem, 6vw, 4rem); /* 40–64px — hero title */
+  --text-xs: 0.694rem;
+  --text-sm: 0.833rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.563rem;
+  --text-2xl: 1.953rem;
+  --text-3xl: 2.441rem;
+  --text-hero: clamp(2.5rem, 6vw, 4rem);
 
-  /* ─ Spacing scale (4px grid) ─ */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -112,33 +96,20 @@
      state.js's MOTION object (same readCssVar pattern COLOR already uses)
      — one source of truth for both CSS and JS motion, and it re-reads on
      every call so it can never fall out of sync with a theme/token edit. ─ */
-  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* already used by .hero-mode-thumb */
-  --ease-out: cubic-bezier(
-    0,
-    0,
-    0.58,
-    1
-  ); /* identical curve to the bare "ease-out" keyword it replaces — zero motion change, just token-sourced */
-  --ease-emphasized: cubic-bezier(
-    0.16,
-    0.9,
-    0.3,
-    1
-  ); /* hero↔graph FLIP fallback (dom/transition.js) — a more pronounced curve for that one big scene morph */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.58, 1);
+  --ease-emphasized: cubic-bezier(0.16, 0.9, 0.3, 1);
 
-  --duration-fast: 120ms; /* press feedback — .search button:active, .rail-btn[data-tip] */
-  --duration-base: 150ms; /* hover states — the most common transition length here */
-  --duration-med: 200ms; /* input focus / status-width transitions */
-  --duration-slow: 280ms; /* panel/rail expand-style transitions */
-  --duration-slower: 320ms; /* modal/backdrop enter */
-  --duration-xslow: 380ms; /* hero-mode landing crossfade */
-  --duration-flight: 420ms; /* JS-only (state.js MOTION.flight): the RAF flyout's own duration (vis-adapter/physics.js) AND the hero↔graph FLIP fallback (dom/transition.js) — already identical values in both places before this ticket, now one token instead of two coincidentally-matching literals */
-  --duration-camera: 500ms; /* JS-only (state.js MOTION.camera): network.fit()/focus() view-settle moves */
-  --duration-xxslow: 600ms; /* big, deliberate camera/decorator moves (fit-to-cluster, focus-on-select, canvas-decorator fade) */
-  --duration-loop: 800ms; /* looping animations (loading spinner) */
-
-  /* Staggered-reveal offsets (landing modal's h1/chips/etc cascading in) —
-
+  --duration-fast: 120ms;
+  --duration-base: 150ms;
+  --duration-med: 200ms;
+  --duration-slow: 280ms;
+  --duration-slower: 320ms;
+  --duration-xslow: 380ms;
+  --duration-flight: 420ms;
+  --duration-camera: 500ms;
+  --duration-xxslow: 600ms;
+  --duration-loop: 800ms;
 
   --stagger-1: 20ms;
   --stagger-2: 50ms;
@@ -196,9 +167,6 @@
      carrying (or now gaining) backdrop-filter: blur(...). */
   --glass-alpha: 0.74;
   --glass-fill: rgba(var(--panel-2-rgb), var(--glass-alpha));
-  /* Soft accent bloom for a panel's hairline border — paired with
-
-
 
   --glass-glow: 0 0 28px -6px rgba(var(--signal-rgb), 0.22);
 
@@ -213,11 +181,6 @@
      hex the way the pre-SF-WEB-42 literal rgba(94,230,197,...) did. */
   --focus-ring: 0 0 0 3px rgba(var(--signal-rgb), 0.35);
   --focus-ring-strong: 0 0 0 3px rgba(var(--signal-rgb), 0.45);
-  /* Same "hardcoded to dark theme's hex" bug the focus-ring literal had —
-
-
-
-
 
   --hover-tint: rgba(var(--pulse-rgb), 0.1);
   --active-tint: rgba(var(--signal-rgb), 0.12);

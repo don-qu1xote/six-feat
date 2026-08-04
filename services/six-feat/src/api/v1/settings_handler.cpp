@@ -382,15 +382,18 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
     user_id = yandex_client_.FetchAccountUserId(*personal_token);
     if (user_id) {
       playlists = yandex_client_.FetchPlaylists(*personal_token, *user_id);
-      // [SF-WEB-74] Real count instead of a hardcoded 0 — no cheap
-      // count-only endpoint exists yet, so this is the same fan-out the
-      // import flow already pays for the likes collection.
-      liked_track_ids = yandex_client_.FetchLikedTracks(*personal_token, *user_id);
     }
   } catch (const GeniusHttpError&) {
     response.SetStatus(server::http::HttpStatus::kBadGateway);
     return BuildProblemJson(
         request, server::http::HttpStatus::kBadGateway, "could not reach Yandex");
+  }
+  if (user_id) {
+    // [SF-WEB-76] Own try/catch — a liked-tracks failure falls back to track_count 0.
+    try {
+      liked_track_ids = yandex_client_.FetchLikedTracks(*personal_token, *user_id);
+    } catch (const GeniusHttpError&) {
+    }
   }
   if (!user_id) {
     response.SetStatus(server::http::HttpStatus::kBadGateway);
@@ -493,8 +496,7 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
                             "the connected Yandex token is no longer valid — reconnect it");
   }
   // [SF-WEB-74] Truncation used to be silent — capture the pre-truncation
-  // count so the client can honestly show "first N of M tracks scanned"
-  // instead of a resolved-artist count that looked complete either way.
+
   const std::size_t total_track_count = track_ids.size();
   const bool truncated = total_track_count > kImportMaxTracks;
   if (truncated) track_ids.resize(kImportMaxTracks);

@@ -13,9 +13,6 @@
   min-width: 0;
 }
 
-/* Visually-hidden but still exposed to assistive tech — used for <label>s
-
-
 .sr-only {
   position: absolute;
   width: 1px;

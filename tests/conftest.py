@@ -845,6 +845,30 @@ def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
     return False
 
 
+def _wait_for_schema(table: str, timeout: float = 15.0) -> bool:
+    """[SF-WEB-76] PersistentStore::OnAllComponentsLoaded() applies schema
+    migrations as a fire-and-forget async task — the port accepting
+    connections (see _wait_for_port) does not mean migrations have
+    finished, and /readyz's own DB check is a plain Ping(), not a schema
+    check. Poll for the table directly so tests don't race the migration
+    task."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            conn = psycopg2.connect(**DB_CONN_PARAMS)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT 1 FROM {table} LIMIT 1")
+                return True
+            finally:
+                conn.close()
+        except psycopg2.errors.UndefinedTable:
+            time.sleep(0.2)
+        except psycopg2.OperationalError:
+            time.sleep(0.2)
+    return False
+
+
 def wait_for_status_ready(
     client: requests.Session,
     status_url: str,
@@ -1025,6 +1049,11 @@ def service_proc(
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(f"Service did not start within timeout.\nstderr:\n{stderr}")
+
+    if not _wait_for_schema("artists"):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Schema migrations did not finish within timeout.\nstderr:\n{stderr}")
 
     yield proc
 
@@ -1765,6 +1794,11 @@ def service_proc_bg(
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(f"BG-profile service did not start within timeout.\nstderr:\n{stderr}")
 
+    if not _wait_for_schema("artists"):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Schema migrations did not finish within timeout.\nstderr:\n{stderr}")
+
     yield proc
 
     proc.send_signal(signal.SIGTERM)
@@ -2135,6 +2169,13 @@ class YandexMock:
     def liked_tracks(self, user_id: str, track_ids: List[int]) -> "YandexMock":
         def _handler(path: str, params: Dict) -> tuple:
             return 200, {"result": {"tracks": track_ids}}
+
+        self._state.register(f"/users/{user_id}/likes/tracks", _handler)
+        return self
+
+    def liked_tracks_error(self, user_id: str, status: int = 502) -> "YandexMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return status, {"error": "upstream error"}
 
         self._state.register(f"/users/{user_id}/likes/tracks", _handler)
         return self

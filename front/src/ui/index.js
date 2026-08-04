@@ -110,10 +110,3 @@ export {
   refreshSettingsStatus,
   setupSettingsPanel,
 } from "./settings-panel.js";
-
-export {
-  isPlaylistsPanelOpen,
-  openPlaylistsPanel,
-  closePlaylistsPanel,
-  setupPlaylistsPanel,
-} from "./playlists-panel.js";

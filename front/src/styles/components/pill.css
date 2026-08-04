@@ -4,7 +4,6 @@
    Rendering identical to pre-extraction; see src/styles/index.css
    for the import order that preserves the original cascade.
    ============================================================ */
-/* Pill — floating read-only badge (status/rate-limit/truncation style
 
 .ui-pill {
   display: inline-flex;

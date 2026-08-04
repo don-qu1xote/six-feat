@@ -31,7 +31,7 @@
   box-shadow: var(--shadow), var(--glass-glow);
   backdrop-filter: blur(var(--blur-scrim));
   padding: var(--space-4);
-  min-width: 0; /* allow grid children to shrink instead of overflowing */
+  min-width: 0;
 }
 .bento-tile--sm {
   padding: var(--space-3);
@@ -42,8 +42,6 @@
 .bento-tile--lg {
   padding: var(--space-5);
 }
-/* Span modifiers for use inside a parent with display:grid — set the
-
 
 .bento-tile--wide {
   grid-column: 1 / -1;
@@ -51,9 +49,6 @@
 .bento-tile--tall {
   grid-row: span 2;
 }
-/* Flat variant — same padding/radius rhythm but no separate background/
-
-
 
 .bento-tile--flat {
   background: rgba(var(--panel-rgb), 0.4);

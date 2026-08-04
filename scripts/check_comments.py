@@ -129,13 +129,15 @@ def extract_cpp_line_comments(source: str) -> list[tuple[int, int, int, str]]:
         if ch == "/" and nxt == "/":
             start_col = i
             rest = source[i + 2 :]
-            end = rest.find("\n")
-            if end == -1:
+            nl_idx = rest.find("\n")
+            if nl_idx == -1:
                 end = len(rest)
             else:
-                end += 1
+                end = nl_idx + 1
             results.append((line, start_col, i + 2 + end, "//" + rest[:end]))
             i += 2 + end
+            if nl_idx != -1:
+                line += 1
             continue
 
         if ch == "R" and nxt == '"':
@@ -323,13 +325,15 @@ def extract_js_line_comments(source: str) -> list[tuple[int, int, int, str]]:
         if ch == "/" and nxt == "/":
             start_col = i
             rest = source[i + 2 :]
-            end = rest.find("\n")
-            if end == -1:
+            nl_idx = rest.find("\n")
+            if nl_idx == -1:
                 end = len(rest)
             else:
-                end += 1
+                end = nl_idx + 1
             results.append((line, start_col, i + 2 + end, "//" + rest[:end]))
             i += 2 + end
+            if nl_idx != -1:
+                line += 1
             continue
 
         if ch == "`":
@@ -535,6 +539,29 @@ def is_violation(text: str, lang: str) -> bool:
     return True
 
 
+def line_start_offsets(lines: list[str]) -> list[int]:
+    starts = [0]
+    for l in lines[:-1]:
+        starts.append(starts[-1] + len(l) + 1)
+    return starts
+
+
+def strip_block_comment(lines, line_starts, lineno, col, end_col, text) -> None:
+    start_idx = lineno - 1
+    end_idx = start_idx + text.count("\n")
+    rel_col = col - line_starts[start_idx]
+    rel_end = end_col - line_starts[end_idx]
+    if start_idx == end_idx:
+        line = lines[start_idx]
+        lines[start_idx] = line[:rel_col] + line[rel_end:]
+    else:
+        lines[start_idx] = lines[start_idx][:rel_col]
+        for idx in range(start_idx + 1, end_idx):
+            lines[idx] = ""
+        if end_idx < len(lines):
+            lines[end_idx] = lines[end_idx][rel_end:]
+
+
 def strip_file(filepath: str) -> int:
     path = Path(filepath)
     if is_test_file(filepath):
@@ -572,7 +599,8 @@ def strip_file(filepath: str) -> int:
                 line_idx = lineno - 1
                 if line_idx < len(lines):
                     line = lines[line_idx]
-                    comment_start = line[:col]
+                    rel_col = col - line_start_offsets(lines)[line_idx]
+                    comment_start = line[:rel_col]
                     lines[line_idx] = comment_start.rstrip()
                 source = "\n".join(lines)
                 removed += 1
@@ -581,17 +609,7 @@ def strip_file(filepath: str) -> int:
         for lineno, col, end_col, text in reversed(block_comments):
             if is_violation(text, lang):
                 lines = source.split("\n")
-                start_line_idx = lineno - 1
-                end_line_idx = start_line_idx + text.count("\n")
-                if start_line_idx == end_line_idx:
-                    line = lines[start_line_idx]
-                    lines[start_line_idx] = line[:col] + line[end_col:]
-                else:
-                    lines[start_line_idx] = lines[start_line_idx][:col]
-                    for idx in range(start_line_idx + 1, end_line_idx):
-                        lines[idx] = ""
-                    if end_line_idx < len(lines):
-                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
                 removed += 1
     elif lang == "js":
@@ -602,7 +620,8 @@ def strip_file(filepath: str) -> int:
                 line_idx = lineno - 1
                 if line_idx < len(lines):
                     line = lines[line_idx]
-                    comment_start = line[:col]
+                    rel_col = col - line_start_offsets(lines)[line_idx]
+                    comment_start = line[:rel_col]
                     lines[line_idx] = comment_start.rstrip()
                 source = "\n".join(lines)
                 removed += 1
@@ -611,17 +630,7 @@ def strip_file(filepath: str) -> int:
         for lineno, col, end_col, text in reversed(block_comments):
             if is_violation(text, lang):
                 lines = source.split("\n")
-                start_line_idx = lineno - 1
-                end_line_idx = start_line_idx + text.count("\n")
-                if start_line_idx == end_line_idx:
-                    line = lines[start_line_idx]
-                    lines[start_line_idx] = line[:col] + line[end_col:]
-                else:
-                    lines[start_line_idx] = lines[start_line_idx][:col]
-                    for idx in range(start_line_idx + 1, end_line_idx):
-                        lines[idx] = ""
-                    if end_line_idx < len(lines):
-                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
                 removed += 1
     elif lang == "css":
@@ -629,17 +638,7 @@ def strip_file(filepath: str) -> int:
         for lineno, col, end_col, text in reversed(block_comments):
             if is_violation(text, lang):
                 lines = source.split("\n")
-                start_line_idx = lineno - 1
-                end_line_idx = start_line_idx + text.count("\n")
-                if start_line_idx == end_line_idx:
-                    line = lines[start_line_idx]
-                    lines[start_line_idx] = line[:col] + line[end_col:]
-                else:
-                    lines[start_line_idx] = lines[start_line_idx][:col]
-                    for idx in range(start_line_idx + 1, end_line_idx):
-                        lines[idx] = ""
-                    if end_line_idx < len(lines):
-                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
                 removed += 1
     elif lang == "html":
@@ -647,17 +646,7 @@ def strip_file(filepath: str) -> int:
         for lineno, col, end_col, text in reversed(block_comments):
             if is_violation(text, lang):
                 lines = source.split("\n")
-                start_line_idx = lineno - 1
-                end_line_idx = start_line_idx + text.count("\n")
-                if start_line_idx == end_line_idx:
-                    line = lines[start_line_idx]
-                    lines[start_line_idx] = line[:col] + line[end_col:]
-                else:
-                    lines[start_line_idx] = lines[start_line_idx][:col]
-                    for idx in range(start_line_idx + 1, end_line_idx):
-                        lines[idx] = ""
-                    if end_line_idx < len(lines):
-                        lines[end_line_idx] = lines[end_line_idx][end_col:]
+                strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
                 removed += 1
 

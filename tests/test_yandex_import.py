@@ -148,6 +148,23 @@ class TestYandexPlaylistsListing:
         by_id = {p["id"]: p for p in resp.json()["playlists"]}
         assert by_id["likes"]["track_count"] == 3
 
+    def test_liked_tracks_fetch_failure_falls_back_to_zero_not_a_502(
+        self, client: requests.Session, yandex_mock: YandexMock, unique_artist_id: int
+    ):
+        """[SF-WEB-76] A liked-tracks fetch failure used to 502 the whole
+        listing even though the playlists themselves fetched fine."""
+        _connect_yandex(client, yandex_mock)
+        uid = str(unique_artist_id)
+        yandex_mock.account(uid)
+        yandex_mock.playlists(uid, [{"id": 7, "title": "Road Trip", "track_count": 12}])
+        yandex_mock.liked_tracks_error(uid)
+
+        resp = client.get(YANDEX_PLAYLISTS_URL)
+        assert resp.status_code == 200, resp.text
+        by_id = {p["id"]: p for p in resp.json()["playlists"]}
+        assert by_id["likes"]["track_count"] == 0
+        assert by_id["7"]["title"] == "Road Trip"
+
 
 class TestYandexImportValidation:
     def test_missing_playlist_param_is_400(

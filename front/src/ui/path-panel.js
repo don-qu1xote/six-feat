@@ -6,6 +6,7 @@ import { isPathPanelOpen, openPathPanel, closePathPanel } from "./modals.js";
 import { attachNodeAutocomplete } from "./autocomplete.js";
 import { runServerPath } from "./path-result.js";
 import { onSurfaceChange, getCurrentSurface, SURFACE_GAME } from "./router.js";
+import { activatePlaylistsTab } from "./playlists-panel.js";
 
 export function setupPathPanel() {
   els.btnFindPath?.addEventListener("click", () => {
@@ -75,12 +76,22 @@ export function setupHeroModeSwitch() {
   const tabExplore = els.heroModeTabExplore;
   const tabConnect = els.heroModeTabConnect;
   const tabGame = els.heroModeTabGame;
+  const tabPlaylists = els.heroModeTabPlaylists;
   const panelExplore = els.heroModePanelExplore;
   const panelConnect = els.heroModePanelConnect;
   const panelGame = els.heroModePanelGame;
+  const panelPlaylists = els.heroModePanelPlaylists;
   if (!switchEl || !tabExplore || !tabConnect || !panelExplore || !panelConnect) return;
 
-  const tabs = [tabExplore, tabConnect, tabGame].filter(Boolean);
+  const tabs = [tabExplore, tabConnect, tabGame, tabPlaylists].filter(Boolean);
+  const modeForTab = (tab) =>
+    tab === tabConnect
+      ? "connect"
+      : tab === tabGame
+        ? "game"
+        : tab === tabPlaylists
+          ? "playlists"
+          : "explore";
 
   function activate(mode) {
     State.heroMode = mode;
@@ -94,13 +105,19 @@ export function setupHeroModeSwitch() {
       tabGame.setAttribute("aria-selected", String(mode === "game"));
       tabGame.tabIndex = mode === "game" ? 0 : -1;
     }
+    if (tabPlaylists) {
+      tabPlaylists.setAttribute("aria-selected", String(mode === "playlists"));
+      tabPlaylists.tabIndex = mode === "playlists" ? 0 : -1;
+    }
 
     panelExplore.classList.toggle("is-active", mode === "explore");
     panelConnect.classList.toggle("is-active", mode === "connect");
     panelGame?.classList.toggle("is-active", mode === "game");
+    panelPlaylists?.classList.toggle("is-active", mode === "playlists");
 
     if (mode === "connect") els.heroPathFromInput?.focus();
     else if (mode === "explore") els.heroInput?.focus();
+    else if (mode === "playlists") activatePlaylistsTab();
   }
 
   tabExplore.addEventListener("click", () => {
@@ -112,6 +129,9 @@ export function setupHeroModeSwitch() {
   tabGame?.addEventListener("click", () => {
     if (State.heroMode !== "game") activate("game");
   });
+  tabPlaylists?.addEventListener("click", () => {
+    if (State.heroMode !== "playlists") activate("playlists");
+  });
 
   onSurfaceChange((surface) => {
     const onGame = surface === SURFACE_GAME;
@@ -119,6 +139,7 @@ export function setupHeroModeSwitch() {
     tabGame?.setAttribute("aria-selected", String(onGame));
     tabExplore.setAttribute("aria-selected", String(!onGame && State.heroMode === "explore"));
     tabConnect.setAttribute("aria-selected", String(!onGame && State.heroMode === "connect"));
+    tabPlaylists?.setAttribute("aria-selected", String(!onGame && State.heroMode === "playlists"));
   });
   if (getCurrentSurface() === SURFACE_GAME) {
     switchEl.dataset.mode = "game";
@@ -136,7 +157,7 @@ export function setupHeroModeSwitch() {
     else if (e.key === "ArrowLeft") next = tabs[(i - 1 + tabs.length) % tabs.length];
     else next = tabs[(i + 1) % tabs.length];
     next.focus();
-    activate(next === tabConnect ? "connect" : next === tabGame ? "game" : "explore");
+    activate(modeForTab(next));
   });
 }
 

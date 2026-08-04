@@ -100,7 +100,6 @@
   margin-right: var(--space-1);
 }
 
-/* FIX #4: Flexbox layout for role chips */
 .sidebar-role-chip {
   display: flex;
   align-items: center;

@@ -98,128 +98,122 @@
    верху той же колонки, — то есть один и тот же выход дважды в одном рейле, а
    спейсер существовал только чтобы её туда отжать. */
 
-/* Play surface (connect.css owns its inner split) adopts the same rail-left
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+.connect-surface {
+  flex-direction: row;
+}
+
+.game-screen {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-surface, 20);
+  display: none;
+  flex-direction: row;
+  background: var(--ink);
+  background-image: radial-gradient(circle, rgba(var(--line-rgb), 0.5) 1px, transparent 1px);
+  background-size: 26px 26px;
+  overflow: hidden;
+}
+.game-screen.show {
+  display: flex;
+}
+
+.game-screen-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-8) var(--space-10);
+  overflow-y: auto;
+}
+.game-screen-body--wide {
+  max-width: 1080px;
+}
+
+.gs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+.gs-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: var(--text-2xl);
+  color: var(--paper);
+}
+.gs-title--sm {
+  font-size: var(--text-lg);
+}
+.gs-sub {
+  color: var(--mist);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
+.gs-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--r-md);
+  background: rgba(var(--panel-rgb), 0.7);
+  border: 1px solid var(--line);
+}
+.gs-tab {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--mist);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--duration-base) var(--ease-standard),
+    background-color var(--duration-base) var(--ease-standard);
+}
+.gs-tab:hover {
+  color: var(--paper);
+}
+.gs-tab.is-active {
+  color: var(--ink);
+  background: var(--signal);
+}
+.gs-empty {
+  color: var(--mist);
+  font-size: var(--text-sm);
+  padding: var(--space-5) 0;
+  text-align: center;
+}
+.gs-signin {
+  display: inline-block;
+  margin-top: var(--space-2);
+  color: var(--signal);
+  font-weight: 700;
+  text-decoration: none;
+}
+.gs-signin:hover {
+  text-decoration: underline;
+}
+
+.gw-av {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.gw-av--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-2);
+  color: var(--signal);
+  border: 1px solid var(--line);
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
 
 .lb-list {
   list-style: none;
@@ -270,7 +264,7 @@ a.lb-name:hover {
 }
 
 /* ── Profile · personal cabinet (ЛК) ──────────────────────────────────────── */
-/* .pf-head / .pf-name / .pf-rank are also reused by the admin panel below. */
+
 .pf-head {
   display: flex;
   align-items: center;
@@ -424,7 +418,6 @@ a.lb-name:hover {
   margin: 0 0 var(--space-4);
 }
 
-/* Achievements + history (populated by game-windows.js renderBadges/renderHistory). */
 .pf-badges {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -486,7 +479,6 @@ a.lb-name:hover {
   font-size: var(--text-xs);
 }
 
-/* ── Challenges browser ───────────────────────────────────────────────────── */
 /* [SF-GAME-46] Строка поиска. Инпут — .ui-input кита, кнопка сброса —
    .ui-btn--icon; здесь только раскладка «иконка ‖ поле ‖ сброс». */
 .ch-search {
@@ -587,7 +579,6 @@ a.lb-name:hover {
   margin: var(--space-5) auto 0;
 }
 
-/* ── Season & achievements ────────────────────────────────────────────────── */
 /* [SF-GAME-33] .ui-panel — материал; здесь раскладка сезонного героя. */
 .sn-hero {
   display: flex;
@@ -704,7 +695,6 @@ a.lb-name:hover {
   font-size: var(--text-xs);
 }
 
-/* ── Admin panel (owner-only, embedded in Profile) ────────────────────────── */
 /* [SF-GAME-33] .ui-panel — материал; здесь только «это админская зона»:
    янтарная рамка и подложка поверх стекла панели. */
 .admin-panel {
@@ -765,16 +755,13 @@ a.lb-name:hover {
   min-height: 1.2em;
 }
 
-/* The REAL #network, relocated into the game's graph column (game-board.js) —
-
-
-
-
-
-
-
-
-
+.connect-canvas #network {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
 
 .pf-badge {
   flex-direction: row;
@@ -988,7 +975,6 @@ a.lb-name:hover {
   backdrop-filter: blur(14px);
 }
 
-/* ── "Game" flag on the reused explorer graph ─────────────────────────────── */
 .connect-game-flag {
   display: inline-flex;
   align-items: center;
@@ -1009,7 +995,6 @@ a.lb-name:hover {
   fill: var(--ink);
 }
 
-/* ── Narrow screens ───────────────────────────────────────────────────────── */
 @media (max-width: 760px) {
   .cab-hero {
     grid-template-columns: 1fr;

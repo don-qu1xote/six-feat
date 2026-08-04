@@ -368,7 +368,9 @@ describe("[SF-GAME-59] панель игры на главной стоит на
   it("общий контейнер hero-панели покрывает и Connect, и Game", () => {
     const idx = css.indexOf(".hero-game-panel");
     expect(idx, ".hero-game-panel не участвует ни в одном правиле").toBeGreaterThan(-1);
-    expect(css).toMatch(/\.hero-connect-panel,\s*\n?\s*\.hero-game-panel\s*\{[^}]*width:\s*100%/);
+    expect(css).toMatch(
+      /\.hero-connect-panel,\s*\n?\s*\.hero-game-panel,?\s*(\n?\s*\.hero-playlists-panel,?\s*)?\{[^}]*width:\s*100%/,
+    );
   });
 });
 

@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("./docked-panel.js", () => ({
-  registerDockedPanel: vi.fn((panel) => panel),
-  closeOtherDockedPanels: vi.fn(),
-}));
 vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
 vi.mock("../api/settings-api.js", () => ({
   fetchSettingsStatus: vi.fn(),
@@ -13,11 +9,7 @@ vi.mock("../api/settings-api.js", () => ({
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
 import { els } from "../dom/dom.js";
-import {
-  setupPlaylistsPanel,
-  openPlaylistsPanel,
-  isPlaylistsPanelOpen,
-} from "./playlists-panel.js";
+import { activatePlaylistsTab } from "./playlists-panel.js";
 import { showToast } from "./toast.js";
 import { searchArtist } from "../api/api.js";
 import {
@@ -28,9 +20,7 @@ import {
 
 function renderPlaylistsMarkup() {
   document.body.innerHTML = `
-    <button id="btn-playlists-open"></button>
-    <div id="playlists-panel">
-      <button id="playlists-panel-close"></button>
+    <div id="hero-mode-panel-playlists">
       <p id="playlists-connect-hint" hidden></p>
       <div id="playlists-grid" hidden></div>
       <div id="playlists-artist-section" hidden>
@@ -40,9 +30,7 @@ function renderPlaylistsMarkup() {
     </div>
   `;
 
-  els.btnPlaylistsOpen = document.getElementById("btn-playlists-open");
-  els.playlistsPanel = document.getElementById("playlists-panel");
-  els.playlistsPanelClose = document.getElementById("playlists-panel-close");
+  els.heroModePanelPlaylists = document.getElementById("hero-mode-panel-playlists");
   els.playlistsConnectHint = document.getElementById("playlists-connect-hint");
   els.playlistsGrid = document.getElementById("playlists-grid");
   els.playlistsArtistSection = document.getElementById("playlists-artist-section");
@@ -52,14 +40,13 @@ function renderPlaylistsMarkup() {
 
 beforeEach(() => {
   renderPlaylistsMarkup();
-  setupPlaylistsPanel();
 });
 
 describe("[SF-WEB-74] Playlists tab — connection gating", () => {
   it("shows the connect hint and no grid when Yandex isn't connected", async () => {
     fetchSettingsStatus.mockResolvedValue({ yandex: { connected: false } });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
 
     expect(els.playlistsConnectHint.hidden).toBe(false);
     expect(els.playlistsGrid.hidden).toBe(true);
@@ -73,7 +60,7 @@ describe("[SF-WEB-74] Playlists tab — connection gating", () => {
       playlists: [{ id: "likes", kind: "likes", title: "Liked tracks", track_count: 0 }],
     });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
 
     expect(els.playlistsConnectHint.hidden).toBe(true);
     expect(fetchYandexPlaylists).toHaveBeenCalledTimes(1);
@@ -100,7 +87,7 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
       ],
     });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
 
     const cards = els.playlistsGrid.querySelectorAll(".playlist-card[data-playlist-id]");
     expect(cards).toHaveLength(2);
@@ -116,7 +103,7 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
       playlists: [{ id: "9", kind: "playlist", title: "No Cover Here", track_count: 3 }],
     });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
 
     const card = els.playlistsGrid.querySelector('[data-playlist-id="9"]');
     const img = card.querySelector(".playlist-card-cover");
@@ -126,7 +113,7 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
   it("shows a toast and no grid when the playlists fetch fails", async () => {
     fetchYandexPlaylists.mockResolvedValue(null);
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
 
     expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/couldn't load/i));
   });
@@ -162,7 +149,7 @@ describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
       scanned_track_count: 2,
     });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
     els.playlistsGrid.querySelector('[data-playlist-id="7"]').click();
     await Promise.resolve();
     await Promise.resolve();
@@ -185,7 +172,7 @@ describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
     expect(unresolved.dataset.artistName).toBeUndefined();
   });
 
-  it("clicking a resolved artist card closes the panel and calls searchArtist once", async () => {
+  it("clicking a resolved artist card calls searchArtist once", async () => {
     fetchYandexImport.mockResolvedValue({
       artists: [
         { yandex_name: "Resolvable Artist", resolved: true, id: 42, name: "Resolvable Artist" },
@@ -197,14 +184,13 @@ describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
       scanned_track_count: 1,
     });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
     els.playlistsGrid.querySelector('[data-playlist-id="7"]').click();
     await Promise.resolve();
     await Promise.resolve();
 
     els.playlistsArtistGrid.querySelector("[data-artist-name]").click();
 
-    expect(isPlaylistsPanelOpen()).toBe(false);
     expect(searchArtist).toHaveBeenCalledWith("Resolvable Artist", false, true);
     expect(searchArtist).toHaveBeenCalledTimes(1);
   });
@@ -219,7 +205,7 @@ describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
       scanned_track_count: 20,
     });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
     els.playlistsGrid.querySelector('[data-playlist-id="7"]').click();
     await Promise.resolve();
     await Promise.resolve();
@@ -238,7 +224,7 @@ describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
       scanned_track_count: 2,
     });
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
     els.playlistsGrid.querySelector('[data-playlist-id="7"]').click();
     await Promise.resolve();
     await Promise.resolve();
@@ -249,7 +235,7 @@ describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
   it("shows a toast and no results when the import fetch fails", async () => {
     fetchYandexImport.mockResolvedValue(null);
 
-    await openPlaylistsPanel();
+    await activatePlaylistsTab();
     els.playlistsGrid.querySelector('[data-playlist-id="7"]').click();
     await Promise.resolve();
     await Promise.resolve();

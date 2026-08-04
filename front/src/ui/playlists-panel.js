@@ -1,5 +1,4 @@
 import { els } from "../dom/dom.js";
-import { registerDockedPanel, closeOtherDockedPanels } from "./docked-panel.js";
 import { showToast } from "./toast.js";
 import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { searchArtist } from "../api/api.js";
@@ -8,16 +7,6 @@ import {
   fetchYandexPlaylists,
   fetchYandexImport,
 } from "../api/settings-api.js";
-
-let _panel = null;
-
-export function isPlaylistsPanelOpen() {
-  return !!els.playlistsPanel?.classList.contains("show");
-}
-
-export function closePlaylistsPanel() {
-  els.playlistsPanel?.classList.remove("show");
-}
 
 function _resetResults() {
   if (els.playlistsArtistSection) els.playlistsArtistSection.hidden = true;
@@ -38,11 +27,7 @@ async function _loadPlaylists() {
   _resetResults();
 }
 
-export async function openPlaylistsPanel() {
-  if (!els.playlistsPanel) return;
-  closeOtherDockedPanels(_panel);
-  els.playlistsPanel.classList.add("show");
-
+export async function activatePlaylistsTab() {
   const status = await fetchSettingsStatus();
   const connected = !!status?.yandex?.connected;
 
@@ -124,23 +109,5 @@ async function _handlePlaylistPick(playlistId) {
 
 function _handleArtistPick(name) {
   if (!name) return;
-  closePlaylistsPanel();
   searchArtist(name, false, true);
-}
-
-export function setupPlaylistsPanel() {
-  if (!els.playlistsPanel) return;
-
-  _panel = registerDockedPanel({
-    el: els.playlistsPanel,
-    trigger: els.btnPlaylistsOpen,
-    isOpen: isPlaylistsPanelOpen,
-    close: closePlaylistsPanel,
-  });
-
-  els.btnPlaylistsOpen?.addEventListener("click", () => {
-    if (isPlaylistsPanelOpen()) closePlaylistsPanel();
-    else openPlaylistsPanel();
-  });
-  els.playlistsPanelClose?.addEventListener("click", closePlaylistsPanel);
 }

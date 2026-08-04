@@ -40,7 +40,6 @@
   gap: var(--space-4);
 }
 
-/* ── LEFT: graph explorer ─────────────────────────────────────────────── */
 .connect-graph-col {
   position: relative;
   min-width: 0;
@@ -189,7 +188,6 @@
   display: none;
 }
 
-/* Endpoint editor — opened by the quest pill; a popover under the HUD. */
 .connect-endpoints {
   display: flex;
   flex-direction: column;
@@ -219,7 +217,6 @@
   letter-spacing: 0.04em;
 }
 
-/* Graph rail — zoom / fit. */
 .connect-graph-rail {
   position: absolute;
   top: var(--space-4);
@@ -258,7 +255,7 @@
   width: 18px;
   height: 18px;
 }
-/* Icons on the floating quest/PAR/timer/rival pills. */
+
 .cp-ico {
   width: 13px;
   height: 13px;
@@ -281,7 +278,6 @@
   height: 20px;
 }
 
-/* ── RIGHT: "Your line" panel ─────────────────────────────────────────── */
 /* [SF-GAME-49] Оболочка карточки — .ui-panel из кита (см. класс в разметке).
    Раньше здесь лежала ПОБУКВЕННАЯ копия его рецепта (--glass-fill +
    --elevation-2/--glass-glow + blur(--blur-scrim) + --r-lg + --line): ровно
@@ -565,7 +561,7 @@
   background: var(--hover-tint);
   border-color: var(--pulse);
 }
-/* Vertical connector between consecutive avatars. */
+
 .clp-line > .clp-row + .clp-row::before {
   content: "";
   position: absolute;
@@ -575,7 +571,7 @@
   height: 2px;
   background: var(--line);
 }
-/* The focused node — the branch point the next add attaches to. */
+
 .clp-row.is-focus {
   background: var(--active-tint);
   border-color: var(--signal);
@@ -662,7 +658,6 @@
   clip-path: inset(50%);
 }
 
-/* Status + score breakdown. */
 .clp-status {
   font-size: var(--text-sm);
   color: var(--warn);
@@ -679,7 +674,6 @@
   display: none;
 }
 
-/* Footer: SCORE + Lock in. */
 .clp-foot {
   margin-top: auto;
   flex-shrink: 0;
@@ -872,7 +866,6 @@
   white-space: nowrap;
 }
 
-/* ── Leaderboard (inside the panel). ──────────────────────────────────── */
 .connect-leaderboard {
   padding: var(--space-3);
   border: 1px solid var(--line);
@@ -913,7 +906,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Responsive: stack graph over panel on narrow screens. ────────────── */
 @media (max-width: 900px) {
   .connect-split {
     grid-template-columns: minmax(0, 1fr);

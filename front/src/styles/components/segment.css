@@ -4,17 +4,6 @@
    Rendering identical to pre-extraction; see src/styles/index.css
    for the import order that preserves the original cascade.
    ============================================================ */
-/* Segment — pill-shaped group container for a small, FIXED, single-row
-
-
-
-
-
-
-
-
-
-
 
 /* [SF-WEB-42] backdrop-filter added — same glass language as .ui-panel/
    .bento-tile (components/panel.css, tile.css): this container's own

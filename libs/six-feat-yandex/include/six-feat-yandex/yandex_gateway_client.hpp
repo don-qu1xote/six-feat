@@ -48,8 +48,7 @@ struct YandexPlaylistSummary {
   std::string title;
   int track_count{0};
   // [SF-WEB-74] Passed through as-is from Yandex Music, same as
-  // ArtistRef::image — no server-side rewrite/proxy (SF-API-12's proxy is
-  // opt-in, client-side only, for canvas-tainting consumers).
+
   std::string cover_url;
 };
 

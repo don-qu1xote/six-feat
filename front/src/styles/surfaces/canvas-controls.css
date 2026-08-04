@@ -59,45 +59,6 @@
   border-color: var(--pulse);
 }
 
-/* [SF-WEB-74] Same reasoning/shape as .theme-toggle above (direct
-   .canvas-chrome child so it survives body.view-home's .rail
-   display:none), offset to its left so the two sit side by side. */
-.playlists-toggle {
-  position: absolute;
-  top: var(--space-4);
-  left: calc(50% - 46px);
-  transform: translateX(-50%);
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--chip-bg);
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  color: var(--mist);
-  backdrop-filter: blur(var(--blur-chip));
-  box-shadow: var(--shadow);
-  transition:
-    border-color var(--duration-base) var(--ease-standard),
-    color var(--duration-base) var(--ease-standard),
-    background var(--duration-base) var(--ease-standard);
-}
-.playlists-toggle .ri {
-  width: 17px;
-  height: 17px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-}
-.playlists-toggle:hover {
-  color: var(--paper);
-  border-color: var(--pulse);
-}
-
 .flip-ghost {
   position: fixed;
   z-index: var(--z-overlay);
@@ -722,9 +683,6 @@ body.view-home .role-filter-segment {
   color: var(--mist);
   line-height: 1.5;
 }
-/* :focus-within (not :has() — kept off this codebase's CSS for browser-
-
-
 .status-icon-btn:hover .info-popover,
 .status-icon-btn:focus-within .info-popover,
 .status-icon-btn.open .info-popover {

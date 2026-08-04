@@ -45,9 +45,11 @@ export const els = {
   heroModeTabExplore: $("hero-mode-tab-explore"),
   heroModeTabConnect: $("hero-mode-tab-connect"),
   heroModeTabGame: $("hero-mode-tab-game"),
+  heroModeTabPlaylists: $("hero-mode-tab-playlists"),
   heroModePanelExplore: $("hero-mode-panel-explore"),
   heroModePanelConnect: $("hero-mode-panel-connect"),
   heroModePanelGame: $("hero-mode-panel-game"),
+  heroModePanelPlaylists: $("hero-mode-panel-playlists"),
 
   heroPathFromInput: $("hero-path-from-input"),
   heroPathToInput: $("hero-path-to-input"),
@@ -259,9 +261,6 @@ export const els = {
   settingsYandexStatus: $("settings-yandex-status"),
   settingsYandexDeviceCode: $("settings-yandex-device-code"),
 
-  btnPlaylistsOpen: $("btn-playlists-open"),
-  playlistsPanel: $("playlists-panel"),
-  playlistsPanelClose: $("playlists-panel-close"),
   playlistsConnectHint: $("playlists-connect-hint"),
   playlistsGrid: $("playlists-grid"),
   playlistsArtistSection: $("playlists-artist-section"),

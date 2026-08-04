@@ -79,9 +79,12 @@ fi
 
 js_staged=$(echo "$staged" | grep -E '^front/.*\.js$' || true)
 if [ -n "$js_staged" ] && [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
-    if ! echo "$js_staged" | while IFS= read -r file; do
-        (cd front && npx prettier --check "../$file" >/dev/null 2>&1)
-    done; then
+    : >/tmp/precommit-prettier.log
+    js_prettier_fail=0
+    while IFS= read -r file; do
+        (cd front && npx prettier --check "../$file" >>/tmp/precommit-prettier.log 2>&1) || js_prettier_fail=1
+    done <<<"$js_staged"
+    if [ "$js_prettier_fail" -ne 0 ]; then
         echo "pre-commit: JS не отформатирован (prettier --check):"
         tail -20 /tmp/precommit-prettier.log
         fail=1
@@ -90,9 +93,12 @@ fi
 
 css_html_staged=$(echo "$staged" | grep -E '\.(css|html)$' || true)
 if [ -n "$css_html_staged" ] && [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
-    if ! echo "$css_html_staged" | while IFS= read -r file; do
-        (cd front && npx prettier --check "../$file" >/dev/null 2>&1)
-    done; then
+    : >/tmp/precommit-prettier.log
+    css_html_prettier_fail=0
+    while IFS= read -r file; do
+        (cd front && npx prettier --check "../$file" >>/tmp/precommit-prettier.log 2>&1) || css_html_prettier_fail=1
+    done <<<"$css_html_staged"
+    if [ "$css_html_prettier_fail" -ne 0 ]; then
         echo "pre-commit: CSS/HTML не отформатирован (prettier --check):"
         tail -20 /tmp/precommit-prettier.log
         fail=1

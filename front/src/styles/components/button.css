@@ -81,9 +81,6 @@
   cursor: progress;
 }
 
-/* Primary — the one bright accent-gradient CTA per screen (hero "Map
-
-
 .ui-btn--primary {
   border-color: transparent;
   color: var(--on-accent);
@@ -102,8 +99,6 @@
   box-shadow: var(--focus-ring-strong);
 }
 
-/* Ghost — chromeless until interacted with (rail buttons, in-panel
-
 .ui-btn--ghost {
   border-color: transparent;
   background: transparent;
@@ -112,20 +107,6 @@
   background: rgba(255, 255, 255, 0.05);
   border-color: var(--line);
 }
-
-/* Icon-only — fixed circular footprint, no label. Every other icon-button
-
-
-
-
-
-
-
-
-
-
-
-
 
 .ui-btn--icon {
   padding: 0;

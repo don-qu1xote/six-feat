@@ -698,6 +698,26 @@
             </svg>
             <span>Game</span>
           </button>
+          <!-- [SF-WEB-74/76] Fourth, equal segment — folded in from the
+             earlier standalone floating icon + docked panel per the
+             approved compact-tabs design review. Same in-place panel
+             toggle as Explore/Connect/Game (path-panel.js's
+             setupHeroModeSwitch); playlists-panel.js owns rendering the
+             card grid once this tab activates. -->
+          <button
+            type="button"
+            class="hero-mode-tab"
+            id="hero-mode-tab-playlists"
+            role="tab"
+            aria-selected="false"
+            aria-controls="hero-mode-panel-playlists"
+            tabindex="-1"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-disc" />
+            </svg>
+            <span>Playlists</span>
+          </button>
           <span class="hero-mode-thumb" aria-hidden="true"></span>
         </div>
 
@@ -939,11 +959,6 @@
               </button>
             </div>
 
-            <!-- "or pick a rival" — real GET /api/v1/game/leaderboard?
-
-
-
-
             <div class="hero-game-rivals" id="hero-game-rivals" hidden>
               <span class="rivals-eyebrow">or pick a rival</span>
               <div class="rivals-list" id="hero-game-rivals-list"></div>
@@ -1039,6 +1054,32 @@
               <a class="dock-btn" href="#/game/challenges">Browse</a>
             </div>
           </div>
+
+          <!-- [SF-WEB-74/76] Playlists — card grid (cover + title + track
+             count) instead of a list; picking a playlist swaps in its
+             resolved artists, also as cards. playlists-panel.js owns all
+             rendering, triggered by setupHeroModeSwitch's activate(). -->
+          <div
+            class="hero-mode-panel hero-playlists-panel"
+            id="hero-mode-panel-playlists"
+            role="tabpanel"
+            aria-labelledby="hero-mode-tab-playlists"
+          >
+            <p class="settings-card-hint" id="playlists-connect-hint" hidden>
+              Connect your Yandex account in Settings to import artists from your playlists and
+              likes.
+            </p>
+
+            <div class="playlist-card-grid" id="playlists-grid" hidden></div>
+
+            <div class="playlists-import-results" id="playlists-artist-section" hidden>
+              <p class="playlists-truncated-hint" id="playlists-truncated-hint" hidden></p>
+              <div
+                class="playlist-card-grid playlist-card-grid--artists"
+                id="playlists-artist-grid"
+              ></div>
+            </div>
+          </div>
         </div>
 
         <div class="auth-bar" id="auth-bar">
@@ -1092,23 +1133,6 @@
         >
           <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
             <use href="#icon-sun" />
-          </svg>
-        </button>
-
-        <!-- [SF-WEB-74] Own tab, not a Settings subsection — playlist/likes
-             browsing+import lives here now; Settings only owns the Yandex
-             connect/disconnect status. A direct .canvas-chrome child, not
-             .rail (same reasoning as theme-toggle above): the rail is fully
-             display:none on body.view-home, and this needs to stay reachable
-             from the landing page too, not only inside the graph. -->
-        <button
-          class="playlists-toggle"
-          id="btn-playlists-open"
-          type="button"
-          aria-label="Playlists"
-        >
-          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <use href="#icon-disc" />
           </svg>
         </button>
 
@@ -1734,40 +1758,6 @@
           </div>
         </div>
 
-        <!-- [SF-WEB-74] Playlists tab — browsing/importing playlists moved here
-         wholesale from the Settings→Yandex card (was duplicated nowhere
-         else, this is the one home for it now). Only a source of
-         seed-suggestions — nothing here reaches the graph/GAME until an
-         artist is resolved to a real Genius id AND explicitly picked
-         (searchArtist()), same contract as before. -->
-        <div class="playlists-panel ui-panel" id="playlists-panel">
-          <div class="settings-panel-header">
-            <div class="settings-title">Playlists</div>
-            <button
-              class="settings-close"
-              id="playlists-panel-close"
-              title="Close"
-              aria-label="Close"
-            >
-              ×
-            </button>
-          </div>
-
-          <p class="settings-card-hint" id="playlists-connect-hint" hidden>
-            Connect your Yandex account in Settings to import artists from your playlists and likes.
-          </p>
-
-          <div class="playlist-card-grid" id="playlists-grid" hidden></div>
-
-          <div class="playlists-import-results" id="playlists-artist-section" hidden>
-            <p class="playlists-truncated-hint" id="playlists-truncated-hint" hidden></p>
-            <div
-              class="playlist-card-grid playlist-card-grid--artists"
-              id="playlists-artist-grid"
-            ></div>
-          </div>
-        </div>
-
         <div class="overlay" id="loading"><span class="spinner"></span> Charting the network…</div>
 
         <div
@@ -1897,7 +1887,6 @@
         >
       </nav>
       <div class="connect-split">
-        <!-- ── LEFT: graph explorer ─────────────────────────────────────── -->
         <div class="connect-graph-col">
           <!-- [SF-GAME-48] Один слой над сценой в двух композициях, а не два
              разных блока. Пока партии нет — слой растянут на всю сцену и
@@ -1917,9 +1906,6 @@
                 ><svg class="cgf-ico" viewBox="0 0 24 24"><use href="#icon-game"></use></svg
                 >Game</span
               >
-              <!-- Quest target pill — click to change the start/goal (opens the
-
-
               <button
                 type="button"
                 id="connect-endpoints-summary"
@@ -2008,7 +1994,6 @@
             </div>
           </div>
 
-          <!-- Graph rail — zoom / fit, driving the live vis.Network. -->
           <div class="connect-graph-rail">
             <button type="button" id="connect-zoom-in" class="cgr-btn" aria-label="Zoom in">
               <svg class="cgr-ico" viewBox="0 0 24 24" aria-hidden="true">
@@ -2047,7 +2032,6 @@
           </p>
         </div>
 
-        <!-- ── RIGHT: "Your line" docked panel ──────────────────────────── -->
         <!-- [SF-GAME-49] Панель живёт по правилам .companion-panel Explorer'а:
            оболочка карточки — кит (.ui-panel), а не своя копия того же
            стекла; заголовки секций — mono/uppercase/xs, как .path-title;
@@ -2079,16 +2063,11 @@
             </div>
           </header>
 
-          <!-- "or pick a rival" banner — set when the player started this
-
-
           <span class="clp-rival" id="connect-rival-pill" hidden
             ><svg class="clp-rival-ico" viewBox="0 0 24 24" aria-hidden="true">
               <use href="#icon-trophy"></use></svg
             ><span id="connect-rival-text"></span
           ></span>
-
-          <!-- The player's own line, always visible (this is THEIR chain, not
 
           <ol class="clp-line" id="connect-line-list" aria-live="polite"></ol>
 
@@ -2140,7 +2119,6 @@
 
           <div class="connect-leaderboard" id="connect-leaderboard" aria-live="polite" hidden></div>
 
-          <!-- Status line (rejection reason / "gave up") + score breakdown. -->
           <div class="clp-status" id="connect-finish-label"></div>
           <p class="clp-detail" id="connect-finish-detail" hidden></p>
 
@@ -2358,7 +2336,6 @@
             </div>
           </section>
 
-          <!-- Stat tiles -->
           <div class="cab-tiles">
             <div class="ui-tile cab-tile">
               <span class="cab-tile-v" id="pf-elo">—</span><span class="cab-tile-l">Elo</span>
@@ -2599,7 +2576,6 @@
         >
       </nav>
       <div class="game-screen-body game-screen-body--wide">
-        <!-- Season hero — glass panel keyed to amber (the trophy/season tone). -->
         <section class="ui-panel sn-hero">
           <span class="sn-hero-badge" aria-hidden="true">
             <svg class="sn-hero-ico" viewBox="0 0 24 24"><use href="#icon-trophy"></use></svg>
@@ -2618,7 +2594,6 @@
           </div>
         </section>
 
-        <!-- Podium — the season-scoped top few, links out to the full board. -->
         <section class="sn-section">
           <header class="gs-head">
             <h2 class="gs-title gs-title--sm">Top of the season</h2>
@@ -2632,7 +2607,6 @@
           </p>
         </section>
 
-        <!-- Achievements wall — every catalog badge, earned lit / locked dimmed. -->
         <section class="sn-section">
           <header class="gs-head">
             <h2 class="gs-title gs-title--sm">Achievements</h2>
