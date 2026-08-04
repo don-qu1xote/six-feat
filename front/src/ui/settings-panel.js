@@ -61,10 +61,6 @@ function _setYandexConnected(connected) {
 export async function refreshSettingsStatus() {
   const { status, data } = await fetchSettingsStatus();
 
-  // [SF-WEB-75] A 401 used to fall through to the plain `if (!data) return`
-
-  // static markup — indistinguishable from an anonymous visitor who ju
-  // hasn't connected anything, instead of one who isn't signed in at all
   const signedOut = status === 401;
   if (els.settingsSignedOutHint) els.settingsSignedOutHint.hidden = !signedOut;
   if (els.settingsCards) els.settingsCards.hidden = signedOut;

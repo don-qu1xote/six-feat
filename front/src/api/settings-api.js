@@ -10,10 +10,6 @@ async function getJson(url) {
   }
 }
 
-// [SF-WEB-75] Like getJson, but keeps the status code — getJson's plain
-
-// real server/network error, so callers had no way to tell "you're signed
-// out" from "something's broken".
 async function getJsonWithStatus(url) {
   try {
     const res = await apiFetch(url);

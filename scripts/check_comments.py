@@ -581,7 +581,7 @@ def strip_file(filepath: str) -> int:
 
     if lang == "py":
         line_comments = extract_py_line_comments(source)
-        for lineno, col, text in line_comments:
+        for lineno, col, text in reversed(line_comments):
             if is_violation(text, lang):
                 lines = source.split("\n")
                 line_idx = lineno - 1
@@ -593,7 +593,7 @@ def strip_file(filepath: str) -> int:
                 removed += 1
     elif lang == "cpp":
         line_comments = extract_cpp_line_comments(source)
-        for lineno, col, end_col, text in line_comments:
+        for lineno, col, end_col, text in reversed(line_comments):
             if is_violation(text, lang):
                 lines = source.split("\n")
                 line_idx = lineno - 1
@@ -614,7 +614,7 @@ def strip_file(filepath: str) -> int:
                 removed += 1
     elif lang == "js":
         line_comments = extract_js_line_comments(source)
-        for lineno, col, end_col, text in line_comments:
+        for lineno, col, end_col, text in reversed(line_comments):
             if is_violation(text, lang):
                 lines = source.split("\n")
                 line_idx = lineno - 1
