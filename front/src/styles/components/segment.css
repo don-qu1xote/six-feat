@@ -1,15 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   ui-segment — SF-WEB-11 kit.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
-
-/* [SF-WEB-42] backdrop-filter added — same glass language as .ui-panel/
-   .bento-tile (components/panel.css, tile.css): this container's own
-   fill was already translucent (rgba(var(--panel-rgb),.8)), it just
-   never had anything blurring what showed through it. Background/border/
-   padding/gap otherwise unchanged. */
 .ui-segment {
   display: inline-flex;
   position: relative;

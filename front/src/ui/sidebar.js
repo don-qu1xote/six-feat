@@ -14,6 +14,7 @@ import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } 
 import { searchArtist, deepenArtistConnections } from "../api/api.js";
 import { showToast } from "./toast.js";
 import { closeComparePanel } from "./compare-panel.js";
+import { t, tPlural } from "../i18n/i18n.js";
 
 function wrapRoleIconSidebar(roleIconUseString) {
   return `<svg class="role-icon" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">${roleIconUseString}</svg>`;
@@ -120,7 +121,7 @@ function buildPathTrackHTML(nodeId, pathInfo) {
     const avatar = n ? n.imageUrl || placeholderFor(name, n.isSeed) : placeholderFor(name, false);
     const isCurrent = id === nodeId;
     parts.push(`
-      <div class="path-node-card" data-node-id="${id}" title="${escapeHtml(name)}${isCurrent ? " (this artist)" : ""}" style="${isCurrent ? "cursor:default;border-color:var(--signal);" : "cursor:pointer;"}">
+      <div class="path-node-card" data-node-id="${id}" title="${escapeHtml(name)}${isCurrent ? escapeHtml(t("sidebar.thisArtist")) : ""}" style="${isCurrent ? "cursor:default;border-color:var(--signal);" : "cursor:pointer;"}">
         <img class="path-node-avatar" src="${escapeHtml(avatar)}" data-fallback="${escapeHtml(placeholderFor(name, false))}" alt="" />
         <div class="path-node-name truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
       </div>`);
@@ -136,7 +137,7 @@ function buildPathTrackHTML(nodeId, pathInfo) {
       const trackCount = edge?.weight ?? 0;
       const roleWord = role !== "primary" ? role : "collab";
       parts.push(
-        `<div class="path-edge-connector" data-edge-id="${edge?.id || `${lo}_${hi}`}" role="button" tabindex="0" title="${escapeHtml(roleWord)} · ${trackCount} track${trackCount === 1 ? "" : "s"}">` +
+        `<div class="path-edge-connector" data-edge-id="${edge?.id || `${lo}_${hi}`}" role="button" tabindex="0" title="${escapeHtml(roleWord)} · ${escapeHtml(tPlural("playlists.trackCount", trackCount))}">` +
           `<span class="path-edge-label role-chip--${roleSlug}">${icon} ${trackCount}</span>` +
           `</div>`,
       );
@@ -150,7 +151,7 @@ function syncObjectActionBar(node) {
 
   if (els.objActionExpand) {
     els.objActionExpand.onclick = () => {
-      showToast(`Expanding ${node.name}…`, 1800, true);
+      showToast(t("sidebar.expandingToast", { name: node.name }), 1800, true);
       State._clickedNodeId = node.id;
       searchArtist(node.name, true, true);
     };
@@ -190,24 +191,24 @@ export function showArtistSidebar(nodeId) {
   els.sidebarName.textContent = node.name;
   els.sidebarName.title = node.name;
   const collab = node._totalCollabs || node.totalWeight || 0;
-  const expanded = State.expandedNodes.has(node.id) ? " · expanded ✓" : "";
-  els.sidebarMeta.textContent = `${collab} collab${collab === 1 ? "" : "s"}${expanded}`;
+  const expanded = State.expandedNodes.has(node.id) ? t("sidebar.expandedSuffix") : "";
+  els.sidebarMeta.textContent = `${tPlural("sidebar.collabCount", collab)}${expanded}`;
 
   const tracks = node._topTracks || [];
   if (tracks.length) {
     els.sidebarTracks.innerHTML = tracks
-      .map((t) => {
-        const roles = t.roles || [];
+      .map((track) => {
+        const roles = track.roles || [];
         const mainR = roles[0] ? roles[0].toLowerCase().replace(/[^a-z0-9]/g, "") : "primary";
         const icon = wrapRoleIconSidebar(ROLE_ICON[mainR] || "");
         return `<div class="sidebar-track">
-        <span class="sidebar-track-name">${escapeHtml(t.song || "Untitled")}</span>
+        <span class="sidebar-track-name">${escapeHtml(track.song || t("tooltip.untitled"))}</span>
         <span class="sidebar-track-role role-chip--${mainR}" title="${escapeHtml(roles[0] || "primary")}">${icon}</span>
       </div>`;
       })
       .join("");
   } else {
-    els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">No track data.</div>`;
+    els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">${escapeHtml(t("tooltip.noTracks"))}</div>`;
   }
 
   els.sidebarRoleBreakdownTile.style.display = "";
@@ -271,7 +272,7 @@ export function showEdgeSidebar(edgeId, nameById) {
   els.sidebarAvatar.alt = "";
   els.sidebarAvatar.classList.remove("is-seed");
   els.sidebarName.textContent = `${fromName} × ${toName}`;
-  els.sidebarMeta.innerHTML = `${edge.weight} shared track${edge.weight === 1 ? "" : "s"} · <span title="${escapeHtml(role)}">${icon}</span>`;
+  els.sidebarMeta.innerHTML = `${escapeHtml(tPlural("tooltip.sharedTracks", edge.weight))} · <span title="${escapeHtml(role)}">${icon}</span>`;
 
   const collabs = edge.collaborations || [];
   const songs = edge.songs || [];
@@ -288,7 +289,7 @@ export function showEdgeSidebar(edgeId, nameById) {
           })
           .join(" ");
         return `<div class="sidebar-track">
-        <span class="sidebar-track-name">${escapeHtml(c.song || "Untitled")}</span>
+        <span class="sidebar-track-name">${escapeHtml(c.song || t("tooltip.untitled"))}</span>
         <span style="display:flex;gap:3px;flex-wrap:wrap">${chips}</span>
       </div>`;
       })
@@ -298,13 +299,13 @@ export function showEdgeSidebar(edgeId, nameById) {
       .map(
         (title) => `
       <div class="sidebar-track">
-        <span class="sidebar-track-name">${escapeHtml(typeof title === "string" ? title : title.song || title.title || "Untitled")}</span>
+        <span class="sidebar-track-name">${escapeHtml(typeof title === "string" ? title : title.song || title.title || t("tooltip.untitled"))}</span>
         <span class="sidebar-track-role role-chip--${roleSlug}" title="${escapeHtml(role)}">${icon}</span>
       </div>`,
       )
       .join("");
   } else {
-    els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">No track data.</div>`;
+    els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">${escapeHtml(t("tooltip.noTracks"))}</div>`;
   }
 
   els.sidebarPathTile.style.display = "none";

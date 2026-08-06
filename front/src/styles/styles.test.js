@@ -26,7 +26,7 @@ describe("SF-WEB-40 design-system CSS bundle", () => {
   it("drives both themes from tokens (dark :root + light override), not hardcoded", () => {
     expect(css).toContain(":root");
     expect(css).toMatch(/\[data-theme=("?)light\1\]/);
-    // A few tokens both themes redefine — proof the palette is variable-driven.
+
     for (const token of ["--signal", "--pulse", "--paper", "--ink", "--mist"]) {
       expect(css, `token ${token} missing`).toContain(token);
     }
@@ -49,7 +49,7 @@ describe("SF-WEB-40 design-system CSS bundle", () => {
       // rail / controls / status
       ".rail",
       ".rail-btn",
-      ".theme-toggle",
+      ".settings-toggle",
       ".seed-card",
       ".canvas-zoom-cluster",
       ".role-filter-segment",

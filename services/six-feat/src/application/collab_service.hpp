@@ -59,15 +59,28 @@ class CollabService final : public userver::components::ComponentBase {
   std::variant<ArtistRef, AmbiguousResult> ResolveByName(const std::string& query,
                                                          const std::string& user_token) const;
 
+  // [SF-YM-08] Резолв/статус БЕЗ внешнего гейтвея и БЕЗ user_token — только
+  // то, что уже есть в repo_ (резолвлено кем-то раньше или обогащено
+  // фоново). Используются хендлерами, чтобы не требовать Genius-токен там,
+  // где кэша уже достаточно.
+  std::optional<ArtistRef> CachedSeed(std::int64_t id) const;
+
+  Depth CachedDepth(std::int64_t id) const;
+
+  std::optional<std::variant<ArtistRef, AmbiguousResult>> ResolveByNameFromCache(
+      const std::string& query) const;
+
   ArtistSongs BuildRadialGraph(const ArtistRef& seed,
                                const std::string& user_token,
                                std::optional<int> limit_override = std::nullopt,
-                               const std::string& preferred_provider = "") const;
+                               const std::string& preferred_provider = "",
+                               bool enrichment_enabled = true) const;
 
   RadialGraphResult BuildRadialGraphWithSource(const ArtistRef& seed,
                                                const std::string& user_token,
                                                std::optional<int> limit_override = std::nullopt,
-                                               const std::string& preferred_provider = "") const;
+                                               const std::string& preferred_provider = "",
+                                               bool enrichment_enabled = true) const;
 
   PathContext CheckDirectPath(const ArtistRef& from,
                               const ArtistRef& to,
@@ -79,7 +92,8 @@ class CollabService final : public userver::components::ComponentBase {
                           const RoleMask& mask,
                           userver::engine::Deadline deadline,
                           const std::string& user_token,
-                          const std::string& preferred_provider = "") const;
+                          const std::string& preferred_provider = "",
+                          bool enrichment_enabled = true) const;
 
   double MatchThreshold() const {
     return gateway_.MatchThreshold();

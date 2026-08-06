@@ -1,17 +1,15 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   Hero landing: recent-search chips, include-roles, Explore/Connect mode switch, connect panel, auth bar.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   justify-content: center;
 }
+
+.chips[hidden] {
+  display: none;
+}
 .chips-label {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--mist);
   text-align: center;
@@ -20,7 +18,7 @@
   margin-bottom: calc(-1 * var(--space-2));
 }
 .chip {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--mist);
   background: transparent;
@@ -67,7 +65,7 @@
   border-radius: 999px;
   background: rgba(var(--panel-rgb), 0.8);
   color: var(--mist);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   letter-spacing: 0.04em;
   padding: var(--space-2) var(--space-3);
@@ -160,33 +158,10 @@
   background: rgba(255, 210, 122, 0.1);
 }
 
-/* ─ IDEA-41 + [design: 3-way switch] hero mode switch (Explore / Connect /
-   Game) ──────────────────────────────────────────────────────────────
-   Replaces the old hidden "Find a path" toggle button + a dual-input
-   panel that only ever appeared below the hero search. A segmented
-   tablist now sits above the hero search itself: "Explore" is the
-   existing single-artist graph search, "Connect" swaps in a two-input
-   path finder — both still crossfade in .hero-mode-stage's shared grid
-   cell, unchanged from IDEA-41. "Game" is the third, EQUAL segment
-   (approved mockup: all three share one thumb, not a visually-demoted
-   afterthought) — it navigates to #/game instead of toggling a panel
-   (see path-panel.js's setupHeroModeSwitch), but looks and behaves like
-   any other tab in this switch otherwise: same aria-selected treatment,
-   same thumb sliding under it once #/game is the current surface. */
-/* [SF-WEB-24] border/radius/background/padding here already match the
-   SF-WEB-11 kit's .ui-segment recipe exactly (border:1px solid
-   var(--line); border-radius:999px; background:rgba(var(--panel-rgb),
-   .8); padding:3px) — same pill-segment shell as .role-filter-segment,
-   just not sharing the class since this is a tablist, not a button
-   group. Kept as its own rule (not .ui-segment in markup) so this
-   component's own selected-state thumb keeps working exactly as
-   .ui-segment's own doc comment says every segment consumer should. */
 .hero-mode-switch {
   display: flex;
   position: relative;
-  /* [SF-WEB-76] 420px → 440px: four equal stops now share this pill
-     instead of three, and the active stop still needs to fit its own
-     icon+label without crowding — see .hero-mode-tab span below. */
+
   width: min(440px, 92vw);
   margin: 0 auto;
   border: 1px solid var(--line);
@@ -201,9 +176,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* [SF-WEB-76] gap removed — the label span animates its own
-     margin-left instead (see below) so an idle, label-hidden tab
-     doesn't reserve empty gap space next to a lone icon. */
+
   border: 0;
   background: transparent;
   border-radius: 999px;
@@ -213,14 +186,10 @@
   font-weight: 600;
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
-  /* [SF-WEB-24] Kit motion tokens (were .18s ease) — same pattern
-     .ui-chip/.ui-btn already use for their own hover-color fade. */
+
   transition: color var(--duration-base) var(--ease-standard);
 }
 .hero-mode-tab .ri {
-  /* [SF-WEB-76] 15px → 16px: idle tabs are icon-only now (see .label
-     rule below), so the icon carries the whole tab's identity instead
-     of sharing the read with an always-visible label. */
   width: 16px;
   height: 16px;
   display: flex;
@@ -234,10 +203,7 @@
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
-/* [SF-WEB-76] Compact tabs — idle stops show only their icon; the
-   label animates open (max-width + margin-left, not display:none) so
-   picking a tab reads as a deliberate reveal instead of a hard snap.
-   Kit motion tokens, same as this switch's own thumb/colour fades. */
+
 .hero-mode-tab span {
   display: inline-block;
   max-width: 0;
@@ -270,10 +236,7 @@
   width: calc(25% - 1.5px);
   border-radius: 999px;
   background: linear-gradient(100deg, var(--signal), var(--pulse));
-  /* [SF-WEB-24] Both tokens' own definitions (up top) name this rule as
-     their reason for existing (".28s" → --duration-slow, the literal
-     cubic-bezier → --ease-standard) — finishes actually referencing
-     them here instead of just documenting the match. Same value. */
+
   transition: transform var(--duration-slow) var(--ease-standard);
 }
 
@@ -348,8 +311,7 @@
 /* [SF-GAME-59] Игровая панель — тот же контейнер, что и Connect. Без него
    .hero-mode-panel центрирует детей (align-items:center), и поля ужимались
    до содержимого: ряд кнопок выходил шире полей, к которым он относится. */
-/* [SF-WEB-76] Playlists joins the same reset — its card grid needs the
-   full stage width too, not .hero-mode-panel's default centered column. */
+
 .hero-connect-panel,
 .hero-game-panel,
 .hero-playlists-panel {
@@ -470,11 +432,7 @@
 .hero-connect-actions .dock-btn {
   flex-shrink: 0;
 }
-/* [fix] Was also `.hero-connect-panel .path-result { ... }` here — the
-   loading/error status that used to render inline into that element now
-   goes through the shared canvas-wide overlay/toast instead (see
-   runServerPath's own comment, ui/path-result.js); .path-result and its
-   markup are gone. */
+
 .hero-connect-panel .hop-chain {
   width: 100%;
 }
@@ -488,12 +446,6 @@
   }
 }
 
-/* ─ [design: challenge setup, revised] Game panel — a "vs" duel, not
-   Connect's route-track (feedback: the two read as the same trick
-   reused right next to each other). Each side is its own compact card:
-   a ring-avatar (signal/pulse, matching chain-graph.js's own node
-   colors) + inline input, no separate label row, no big empty card —
-   the whole panel is exactly as tall as the two rows it needs. ─ */
 .hero-game-panel {
   display: flex;
   flex-direction: column;
@@ -560,11 +512,6 @@
   object-fit: cover;
 }
 
-/* ─ [design: Today's Challenge + or pick a rival] Both real-data rows sit
-   ABOVE the divider, each ONE compact line — the first mockup's "large
-   amount of empty space" complaint was a tall vertical card; this is
-   exactly as tall as its own content, same posture as .hero-game-duel
-   above. ─ */
 /* [SF-GAME-60] Плитка кита (.ui-tile в разметке) вместо своей копии
    panel+line+r-md, как у строк лидерборда и истории. Слот всегда на экране,
    поэтому [hidden]-guard ему больше не нужен — прячутся только внутренние
@@ -688,7 +635,7 @@
 }
 .rival-chip .rc-rank {
   color: var(--mist);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
 .rival-chip .rc-score {
@@ -734,7 +681,7 @@
   flex-wrap: wrap;
   justify-content: center;
   margin-top: var(--space-5);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--mist);
 }

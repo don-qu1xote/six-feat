@@ -67,6 +67,19 @@ std::string GeniusErrorGraph(const GeniusHttpError& e, server::http::HttpRespons
   return ErrorGraph("could not reach Genius");
 }
 
+std::string AmbiguousGraphJson(const AmbiguousResult& ar) {
+  formats::json::ValueBuilder out(formats::json::Type::kObject);
+  out["type"] = std::string{"graph"};
+  out["ambiguous"] = true;
+  out["query"] = ar.query;
+  formats::json::ValueBuilder arr(formats::json::Type::kArray);
+  for (const auto& c : ar.candidates) {
+    arr.PushBack(dto::ToJson(dto::ToDto(c)));
+  }
+  out["candidates"] = std::move(arr);
+  return formats::json::ToString(out.ExtractValue());
+}
+
 std::string RateLimitKey(const server::http::HttpRequest& request, const auth::OAuthConfig& oauth) {
   std::string token = auth::ExtractToken(request, oauth.SessionKey());
   if (!token.empty()) return token;
@@ -141,21 +154,7 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
                      std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
   std::string preferred_provider;
-
-  if (user_token.empty()) {
-    const auto session = auth::RequireFullSession(request, oauth_);
-    if (!session) {
-      return ErrorGraph("not_authenticated");
-    }
-    preferred_provider =
-        user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
-    const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
-    user_token = auth::GeniusTokenForSession(*session, connected);
-    if (user_token.empty()) {
-      response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
-      return ErrorGraph("no_genius_token");
-    }
-  }
+  bool enrichment_enabled = true;
 
   const RoleMask mask = ParseRoleMask(request.GetArg("roles"));
 
@@ -176,65 +175,112 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     limit_override = parsed;
   }
 
-  ArtistRef seed;
   const std::string& id_arg = request.GetArg("id");
+  const std::string& artist_arg = request.GetArg("artist");
+  if (id_arg.empty() && artist_arg.empty()) {
+    response.SetStatus(server::http::HttpStatus::kBadRequest);
+    return ErrorGraph("'artist' or 'id' required");
+  }
+
+  std::int64_t parsed_id = 0;
   if (!id_arg.empty()) {
-    std::int64_t id = 0;
     try {
-      id = std::stoll(id_arg);
+      parsed_id = std::stoll(id_arg);
     } catch (...) {
       response.SetStatus(server::http::HttpStatus::kBadRequest);
       return ErrorGraph("'id' must be numeric");
     }
-    std::optional<ArtistRef> ref;
-    try {
-      ref = service_.ResolveById(id, user_token);
-    } catch (const GeniusHttpError& e) {
-      return GeniusErrorGraph(e, response);
-    } catch (...) {
-      response.SetStatus(server::http::HttpStatus::kBadGateway);
-      return ErrorGraph("could not reach Genius");
-    }
-    if (!ref) return EmptyGraph();
-    seed = *ref;
-  } else {
-    const std::string& artist = request.GetArg("artist");
-    if (artist.empty()) {
-      response.SetStatus(server::http::HttpStatus::kBadRequest);
-      return ErrorGraph("'artist' or 'id' required");
-    }
+  }
 
-    std::variant<ArtistRef, AmbiguousResult> resolved;
-    try {
-      resolved = service_.ResolveByName(artist, user_token);
-    } catch (const GeniusHttpError& e) {
-      return GeniusErrorGraph(e, response);
-    } catch (...) {
-      response.SetStatus(server::http::HttpStatus::kBadGateway);
-      return ErrorGraph("could not reach Genius");
+  // [SF-YM-08] Сначала — сид из уже известного репозиторию, без единого
+  // похода во внешний гейтвей. Это то, что доступно Yandex-only сессии без
+  // BYO Genius-токена: резолвить СОВСЕМ новое имя без Genius сегодня не во
+  // что (см. artist_resolver.hpp), но артист, уже известный кому-то
+  // раньше (чужой Genius-поиск, фоновое обогащение), находится локально.
+  ArtistRef seed;
+  bool have_seed = false;
+  if (!id_arg.empty()) {
+    if (auto cached = service_.CachedSeed(parsed_id)) {
+      seed = *cached;
+      have_seed = true;
     }
+  } else if (auto cached = service_.ResolveByNameFromCache(artist_arg)) {
+    if (std::holds_alternative<AmbiguousResult>(*cached)) {
+      return AmbiguousGraphJson(std::get<AmbiguousResult>(*cached));
+    }
+    seed = std::get<ArtistRef>(*cached);
+    have_seed = true;
+  }
 
-    if (std::holds_alternative<AmbiguousResult>(resolved)) {
-      const auto& ar = std::get<AmbiguousResult>(resolved);
-      if (ar.candidates.empty()) return EmptyGraph();
-      formats::json::ValueBuilder out(formats::json::Type::kObject);
-      out["type"] = std::string{"graph"};
-      out["ambiguous"] = true;
-      out["query"] = ar.query;
-      formats::json::ValueBuilder arr(formats::json::Type::kArray);
-      for (const auto& c : ar.candidates) {
-        arr.PushBack(dto::ToJson(dto::ToDto(c)));
+  // Даже уже известный сид может потребовать сеть: limit override форсит
+  // рефетч (см. BuildRadialGraph), Depth < Foreground — песни ещё не
+  // подтянуты целиком.
+  const bool seed_fully_cached = have_seed && !limit_override.has_value() &&
+                                 service_.CachedDepth(seed.id) >= Depth::kForeground;
+
+  if (user_token.empty()) {
+    // Валидная сессия обязательна ВСЕГДА (ТЗ-6) — seed_fully_cached ниже
+    // освобождает только от требования Genius-токена, не от аутентификации:
+    // иначе полностью анонимный запрос на уже закэшированный id/имя прошёл
+    // бы без единой проверки сессии.
+    const auto session = auth::RequireFullSession(request, oauth_);
+    if (!session) {
+      return ErrorGraph("not_authenticated");
+    }
+    preferred_provider =
+        user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
+    enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));
+    if (!seed_fully_cached) {
+      const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
+      // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
+      user_token = auth::GeniusTokenForSession(*session, connected);
+      if (user_token.empty()) {
+        // Без BYO-токена нового не резолвить и не дообогатить — честный 422
+        // вместо обречённого 502. Мы здесь только потому, что seed_fully_cached
+        // уже false (см. выше) — уже известного сида это не касается.
+        response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+        return ErrorGraph("no_genius_token");
       }
-      out["candidates"] = std::move(arr);
-      return formats::json::ToString(out.ExtractValue());
     }
-    seed = std::get<ArtistRef>(resolved);
+  }
+
+  if (!have_seed) {
+    if (!id_arg.empty()) {
+      std::optional<ArtistRef> ref;
+      try {
+        ref = service_.ResolveById(parsed_id, user_token);
+      } catch (const GeniusHttpError& e) {
+        return GeniusErrorGraph(e, response);
+      } catch (...) {
+        response.SetStatus(server::http::HttpStatus::kBadGateway);
+        return ErrorGraph("could not reach Genius");
+      }
+      if (!ref) return EmptyGraph();
+      seed = *ref;
+    } else {
+      std::variant<ArtistRef, AmbiguousResult> resolved;
+      try {
+        resolved = service_.ResolveByName(artist_arg, user_token);
+      } catch (const GeniusHttpError& e) {
+        return GeniusErrorGraph(e, response);
+      } catch (...) {
+        response.SetStatus(server::http::HttpStatus::kBadGateway);
+        return ErrorGraph("could not reach Genius");
+      }
+
+      if (std::holds_alternative<AmbiguousResult>(resolved)) {
+        const auto& ar = std::get<AmbiguousResult>(resolved);
+        if (ar.candidates.empty()) return EmptyGraph();
+        return AmbiguousGraphJson(ar);
+      }
+      seed = std::get<ArtistRef>(resolved);
+    }
   }
 
   RadialGraphResult radial_result;
   try {
-    radial_result =
-        service_.BuildRadialGraphWithSource(seed, user_token, limit_override, preferred_provider);
+    radial_result = service_.BuildRadialGraphWithSource(
+        seed, user_token, limit_override, preferred_provider, enrichment_enabled);
   } catch (const GeniusHttpError& e) {
     return GeniusErrorGraph(e, response);
   } catch (...) {

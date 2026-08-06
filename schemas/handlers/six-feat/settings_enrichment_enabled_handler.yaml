@@ -1,0 +1,6 @@
+type: object
+description: >-
+    Enrichment on/off switch handler configuration (SF-WEB-77).
+    Session-authenticated only.
+additionalProperties: false
+properties: {}

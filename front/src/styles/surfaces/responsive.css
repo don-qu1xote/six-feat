@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   Viewport + reduced-motion media queries.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 @media (max-width: 700px) {
   .rail {
     width: 48px;
@@ -32,12 +26,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* [fix] Was ".canvas-chrome" (the element itself only, no descendant
-     selector) — unlike ".search-modal, .search-modal *" right next to it,
-     this never actually reached anything INSIDE canvas-chrome: rail-btn
-     hovers, the companion/compare/path panels' open/close transitions,
-     tooltips, the context-panel's own opacity fade — all still animated
-     under reduced-motion. ".canvas-chrome *" closes that gap. */
   .search-modal,
   .search-modal *,
   .canvas-chrome,

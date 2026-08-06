@@ -1,10 +1,7 @@
 import { els } from "../dom/dom.js";
+import { t } from "../i18n/i18n.js";
 
-const LOADING_PHRASES = [
-  (artist) => `Charting ${artist}'s world…`,
-  (artist) => `Mapping ${artist}'s collaborators…`,
-  (artist) => `Tracing routes through ${artist}'s catalog…`,
-];
+const LOADING_PHRASE_KEYS = ["loading.artist1", "loading.artist2", "loading.artist3"];
 
 export function showLoading(on, artist, message) {
   if (on) {
@@ -12,8 +9,8 @@ export function showLoading(on, artist, message) {
     const label = message
       ? message
       : artist
-        ? LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)](artist)
-        : "Charting the network…";
+        ? t(LOADING_PHRASE_KEYS[Math.floor(Math.random() * LOADING_PHRASE_KEYS.length)], { artist })
+        : t("loading.text");
     els.loading.innerHTML = "";
     if (spinner) els.loading.appendChild(spinner);
     els.loading.appendChild(document.createTextNode(" " + label));

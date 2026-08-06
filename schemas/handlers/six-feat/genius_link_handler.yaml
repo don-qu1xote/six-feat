@@ -1,0 +1,8 @@
+type: object
+description: >-
+  Internal receiver for services/auth's CallbackHandler "link:" state relay —
+  attaches a Genius token to an existing user_id (auth::UserProviderTokenStore)
+  without going through a session cookie. Gated on X-Internal-Secret like the
+  other /internal/ handlers, never exposed publicly.
+additionalProperties: false
+properties: {}

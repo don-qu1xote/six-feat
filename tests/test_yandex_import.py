@@ -201,7 +201,7 @@ class TestYandexImportTruncation:
         _connect_yandex(client, yandex_mock)
         yandex_mock.account(uid)
 
-        track_ids = list(range(700_000, 700_025))  # 25 tracks, over the limit of 20
+        track_ids = list(range(700_000, 700_025))
         yandex_mock.playlist_tracks(uid, 11, track_ids)
         for tid in track_ids:
             yandex_mock.track_artists(tid, [])
@@ -225,7 +225,7 @@ class TestYandexImportTruncation:
         _connect_yandex(client, yandex_mock)
         yandex_mock.account(uid)
 
-        track_ids = list(range(701_000, 701_005))  # 5 tracks, under the limit
+        track_ids = list(range(701_000, 701_005))
         yandex_mock.playlist_tracks(uid, 12, track_ids)
         for tid in track_ids:
             yandex_mock.track_artists(tid, [])
@@ -375,23 +375,84 @@ class TestYandexImportGraphMatchesNormalSearch:
         assert by_name["type"] == "graph"
 
 
-class TestYandexImportRequiresGeniusToken:
-    def test_yandex_session_without_byo_genius_token_is_422(
-        self, service_proc, yandex_mock: YandexMock, unique_artist_id: int
-    ):
-        sess = requests.Session()
-        sess.headers["Accept"] = "application/json"
-        cookie = session_crypto.make_cookie(
-            TEST_APP_SECRET,
-            access_token="yandex-session-token-not-valid-for-genius",
-            provider="yandex",
-            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
-        )
-        sess.cookies.update({"six_feat_session": cookie})
+def _new_yandex_only_session() -> requests.Session:
+    """A session whose OWN token is a Yandex login token, not a Genius one —
+    the common case: sign-in is Yandex, Genius is an optional extra most
+    users never connect. Distinct from `client`, whose session token is
+    itself a valid Genius token."""
+    sess = requests.Session()
+    sess.headers["Accept"] = "application/json"
+    cookie = session_crypto.make_cookie(
+        TEST_APP_SECRET,
+        access_token="yandex-session-token-not-valid-for-genius",
+        provider="yandex",
+        provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
+    )
+    sess.cookies.update({"six_feat_session": cookie})
+    return sess
 
+
+class TestYandexImportWithoutGeniusToken:
+    """[SF-WEB-80] Import used to hard-require a Genius token for the whole
+    request — a Yandex-only session (no Genius connected) got a flat 422
+    before a single artist was even looked up, even for artists everyone
+    already knows about. Resolution is cache-first now (same pattern as
+    graph_handler.cpp's seed lookup, SF-YM-08): a Genius token is only
+    needed for artists the shared cache has never seen."""
+
+    def test_cached_artist_resolves_without_a_genius_token(
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        yandex_mock: YandexMock,
+        unique_artist_id: int,
+    ):
+        genius_id = unique_artist_id + 1
+        name = f"CachedViaGraph{genius_id}"
+        genius_mock.resolve(name, [{"id": genius_id, "name": name, "score": 0.99}])
+        genius_mock.artist(genius_id, {"id": genius_id, "name": name})
+        genius_mock.songs(genius_id, [])
+        graph_resp = client.get(GRAPH_URL, params={"artist": name})
+        assert graph_resp.status_code == 200, graph_resp.text
+
+        sess = _new_yandex_only_session()
+        _connect_yandex(sess, yandex_mock)
+        uid = str(unique_artist_id)
+        yandex_mock.account(uid)
+        yandex_mock.playlist_tracks(uid, 13, [1301])
+        yandex_mock.track_artists(1301, [{"id": 9401, "name": name}])
+
+        resp = sess.get(YANDEX_IMPORT_URL, params={"playlist": "13"})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["resolved_count"] == 1
+        assert data["artists"][0]["resolved"] is True
+        assert data["artists"][0]["id"] == genius_id
+
+    def test_uncached_artist_without_genius_token_is_unresolved_not_a_422(
+        self, yandex_mock: YandexMock, unique_artist_id: int
+    ):
+        sess = _new_yandex_only_session()
+        _connect_yandex(sess, yandex_mock)
+        uid = str(unique_artist_id)
+        yandex_mock.account(uid)
+        yandex_mock.playlist_tracks(uid, 14, [1401])
+        yandex_mock.track_artists(1401, [{"id": 9501, "name": f"NeverCached{unique_artist_id}"}])
+
+        resp = sess.get(YANDEX_IMPORT_URL, params={"playlist": "14"})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["resolved_count"] == 0
+        assert data["artists"][0]["resolved"] is False
+
+    def test_empty_likes_import_without_genius_token_still_succeeds(
+        self, yandex_mock: YandexMock, unique_artist_id: int
+    ):
+        sess = _new_yandex_only_session()
         _connect_yandex(sess, yandex_mock)
         yandex_mock.account(str(unique_artist_id))
         yandex_mock.liked_tracks(str(unique_artist_id), [])
 
         resp = sess.get(YANDEX_IMPORT_URL, params={"playlist": "likes"})
-        assert resp.status_code == 422
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["resolved_count"] == 0

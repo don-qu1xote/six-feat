@@ -19,6 +19,13 @@ env:
   USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
   POSTGRES_IMAGE: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
   K6_VERSION: "0.55.0"
+  # [SF-WEB-77] Same pins .githooks/pre-commit enforces locally (it checks
+  # `clang-format --version`/`ruff --version` against these exact strings
+  # before formatting) — so a commit that passes the local hook is
+  # guaranteed to hit lint-format with byte-identical tool output, not just
+  # "some version of the same tool".
+  CLANG_FORMAT_VERSION: "18.1.8"
+  RUFF_VERSION: "0.16.0"
 
 jobs:
   verify-env-parity:
@@ -149,10 +156,10 @@ jobs:
           node-version: "20"
 
       - name: Install clang-format (pinned)
-        run: pip install --user "clang-format==18.1.8"
+        run: pip install --user "clang-format==${CLANG_FORMAT_VERSION}"
 
-      - name: Install ruff
-        run: pip install --user ruff
+      - name: Install ruff (pinned)
+        run: pip install --user "ruff==${RUFF_VERSION}"
 
       - name: Check C++ formatting (all files)
         run: |

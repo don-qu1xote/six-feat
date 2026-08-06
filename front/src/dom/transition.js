@@ -21,7 +21,7 @@ export function runHeroGraphTransition(mutate, direction) {
   runFlipFallback(mutate, direction);
 }
 
-function getMorphTarget(direction) {
+function getMorphTarget(_direction) {
   return $("btn-search-open");
 }
 

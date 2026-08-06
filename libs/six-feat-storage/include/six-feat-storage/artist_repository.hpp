@@ -27,6 +27,8 @@ class ArtistRepository final : public userver::components::ComponentBase, public
 
   std::optional<ArtistRef> Lookup(std::int64_t artist_id) const override;
 
+  std::vector<ArtistRef> SearchByName(const std::string& query, int limit) const override;
+
   std::vector<CollabEdge> Neighbours(std::int64_t artist_id, const RoleMask& mask) const override;
 
   Depth GetFetchDepth(std::int64_t artist_id) const override;

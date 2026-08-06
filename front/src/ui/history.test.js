@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { State, GRAPH_DEFAULT_LIMIT } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { serializeGraphState, parseGraphState, loadArtistFromUrl } from "./history.js";
+import {
+  serializeGraphState,
+  parseGraphState,
+  loadArtistFromUrl,
+  setupChipsVisibility,
+} from "./history.js";
 
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
@@ -121,5 +126,68 @@ describe("loadArtistFromUrl — syncs the visible role-filter buttons to the URL
     expect(els.canvasFilterWriter.classList.contains("active")).toBe(true);
 
     window.location = realLocation;
+  });
+});
+
+describe("setupChipsVisibility — chips stay hidden until the search field is focused (SF-WEB-78)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    els.heroInput = document.createElement("input");
+    els.chipsLabel = document.createElement("div");
+    els.chipsLabel.hidden = true;
+    els.chips = document.createElement("div");
+    els.chips.hidden = true;
+    document.body.append(els.heroInput, els.chipsLabel, els.chips);
+    setupChipsVisibility();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("reveals the chips on focus", () => {
+    els.heroInput.dispatchEvent(new Event("focus"));
+    expect(els.chipsLabel.hidden).toBe(false);
+    expect(els.chips.hidden).toBe(false);
+  });
+
+  it("hides the chips again shortly after blur", () => {
+    els.heroInput.dispatchEvent(new Event("focus"));
+    els.heroInput.dispatchEvent(new Event("blur"));
+    expect(els.chips.hidden).toBe(false);
+    vi.advanceTimersByTime(150);
+    expect(els.chipsLabel.hidden).toBe(true);
+    expect(els.chips.hidden).toBe(true);
+  });
+
+  it("does not hide on blur before the click on a chip has a chance to register", () => {
+    els.heroInput.dispatchEvent(new Event("focus"));
+    els.heroInput.dispatchEvent(new Event("blur"));
+    vi.advanceTimersByTime(50);
+    els.chips.dispatchEvent(new Event("click", { bubbles: true }));
+    expect(els.chips.hidden).toBe(true);
+    vi.advanceTimersByTime(150);
+    expect(els.chips.hidden).toBe(true);
+  });
+
+  it("[SF-WEB-89] hides the chips once a query is typed, so the results dropdown below doesn't cover them", () => {
+    els.heroInput.dispatchEvent(new Event("focus"));
+    expect(els.chips.hidden).toBe(false);
+
+    els.heroInput.value = "Ken";
+    els.heroInput.dispatchEvent(new Event("input"));
+    expect(els.chips.hidden).toBe(true);
+    expect(els.chipsLabel.hidden).toBe(true);
+  });
+
+  it("[SF-WEB-89] shows the chips again once the query is cleared back to empty", () => {
+    els.heroInput.dispatchEvent(new Event("focus"));
+    els.heroInput.value = "Ken";
+    els.heroInput.dispatchEvent(new Event("input"));
+    expect(els.chips.hidden).toBe(true);
+
+    els.heroInput.value = "";
+    els.heroInput.dispatchEvent(new Event("input"));
+    expect(els.chips.hidden).toBe(false);
   });
 });

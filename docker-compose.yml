@@ -308,6 +308,10 @@ services:
 
       APP_SECRET: "${APP_SECRET:?Set APP_SECRET — generate with: openssl rand -hex 32}"
       GENIUS_REDIRECT_URI: ${GENIUS_REDIRECT_URI:-http://localhost:8080/auth/callback}
+      # [SF-WEB-78] Where CallbackHandler relays a completed Genius
+      # account-link to (POST /internal/genius-link) — see
+      # oauth_handler.cpp's RelayGeniusLink().
+      SIX_FEAT_BASE_URL: ${SIX_FEAT_BASE_URL:-http://six-feat:8080}
 
       # Пустой client-id отключает Яндекс-вход без ошибки
       YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}

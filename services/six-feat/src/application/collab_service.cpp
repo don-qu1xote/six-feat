@@ -75,6 +75,20 @@ std::variant<ArtistRef, AmbiguousResult> CollabService::ResolveByName(
   return ResolveArtistByName(gateway_, query, user_token);
 }
 
+std::optional<ArtistRef> CollabService::CachedSeed(std::int64_t id) const {
+  return repo_.Lookup(id);
+}
+
+Depth CollabService::CachedDepth(std::int64_t id) const {
+  return repo_.GetFetchDepth(id);
+}
+
+std::optional<std::variant<ArtistRef, AmbiguousResult>> CollabService::ResolveByNameFromCache(
+    const std::string& query) const {
+  return ResolveArtistByNameFromCache(repo_, query);
+}
+
+// Дефолтный граф идёт через цепочку источников (Яндекс, Genius — fallback).
 ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
                                    const std::string& user_token,
                                    std::optional<int> limit_override) const {
@@ -90,7 +104,8 @@ ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
 ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
                                             const std::string& user_token,
                                             std::optional<int> limit_override,
-                                            const std::string& preferred_provider) const {
+                                            const std::string& preferred_provider,
+                                            bool enrichment_enabled) const {
   auto result = repo_.GetArtistSongs(seed, Depth::kForeground);
 
   const bool force_refetch = limit_override.has_value() && !result.network_needed;
@@ -111,7 +126,11 @@ ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
       }
     }
   }
-  enrichment_.EnqueueIfNeeded(seed, user_token, preferred_provider);
+  // [SF-YM-08] Без токена дообогатить всё равно нечем (см. graph_handler.cpp
+  // seed_fully_cached) — не тратим внутренний запрос к enrichment впустую.
+  if (!user_token.empty() && enrichment_enabled) {
+    enrichment_.EnqueueIfNeeded(seed, user_token, preferred_provider);
+  }
   return std::move(result.data);
 }
 
@@ -271,7 +290,8 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
                                        const RoleMask& mask,
                                        engine::Deadline deadline,
                                        const std::string& user_token,
-                                       const std::string& preferred_provider) const {
+                                       const std::string& preferred_provider,
+                                       bool enrichment_enabled) const {
   {
     auto direct = CheckDirectPath(from, to, mask, user_token);
     if (!direct.path.empty()) {
@@ -335,12 +355,14 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
     if (deadline.IsReached()) {
       LOG_WARNING() << "[Service] FindPath deadline exceeded at round " << round
                     << ", delegating frontier to BG";
-      for (const auto& [nid, edges] : adj) {
-        if (!known_ids.count(nid)) {
-          ArtistRef fref;
-          fref.id = nid;
-          if (const auto it = node_info.find(nid); it != node_info.end()) fref = it->second;
-          enrichment_.EnqueueIfNeeded(fref, user_token, preferred_provider);
+      if (enrichment_enabled) {
+        for (const auto& [nid, edges] : adj) {
+          if (!known_ids.count(nid)) {
+            ArtistRef fref;
+            fref.id = nid;
+            if (const auto it = node_info.find(nid); it != node_info.end()) fref = it->second;
+            enrichment_.EnqueueIfNeeded(fref, user_token, preferred_provider);
+          }
         }
       }
       return PathFindResult{{}, true};
@@ -465,7 +487,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
         LOG_WARNING() << "[Service] expand task " << et.ref.id << ": " << ex.what();
       }
       known_ids.insert(et.ref.id);
-      enrichment_.EnqueueIfNeeded(et.ref, user_token, preferred_provider);
+      if (enrichment_enabled) enrichment_.EnqueueIfNeeded(et.ref, user_token, preferred_provider);
     }
 
     append_delta();
@@ -475,13 +497,14 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
   return PathFindResult{{}, false};
 }
 
-RadialGraphResult CollabService::BuildRadialGraphWithSource(
-    const ArtistRef& seed,
-    const std::string& user_token,
-    std::optional<int> limit_override,
-    const std::string& preferred_provider) const {
+RadialGraphResult CollabService::BuildRadialGraphWithSource(const ArtistRef& seed,
+                                                            const std::string& user_token,
+                                                            std::optional<int> limit_override,
+                                                            const std::string& preferred_provider,
+                                                            bool enrichment_enabled) const {
   RadialGraphResult result;
-  result.data = BuildRadialGraph(seed, user_token, limit_override, preferred_provider);
+  result.data =
+      BuildRadialGraph(seed, user_token, limit_override, preferred_provider, enrichment_enabled);
 
   std::unordered_map<std::int64_t, bool> all_yandex;
   for (const auto& song : result.data.songs) {

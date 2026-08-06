@@ -316,6 +316,10 @@ a.lb-name:hover {
   height: 100%;
   object-fit: cover;
 }
+
+.pf-avatar[hidden] {
+  display: none;
+}
 .cab-eyebrow {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -603,6 +607,10 @@ a.lb-name:hover {
   height: 26px;
   fill: var(--amber);
 }
+
+.sn-hero-badge[hidden] {
+  display: none;
+}
 .sn-hero-main {
   flex: 1;
   min-width: 0;
@@ -716,6 +724,10 @@ a.lb-name:hover {
   justify-content: center;
   background: rgba(var(--amber-rgb), 0.14);
   border: 1px solid var(--amber);
+}
+
+.admin-badge[hidden] {
+  display: none;
 }
 .admin-ico {
   width: 22px;
@@ -993,6 +1005,10 @@ a.lb-name:hover {
   width: 15px;
   height: 15px;
   fill: var(--ink);
+}
+
+.connect-game-flag[hidden] {
+  display: none;
 }
 
 @media (max-width: 760px) {

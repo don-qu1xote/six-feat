@@ -1,15 +1,3 @@
-/* ══════════════════════════════════════════════════════════════════════════
-   surfaces/connect.css — [design: Split · Graph + Track] "Connect" game (#/game).
-
-   Two columns: LEFT is the full clickable graph explorer (a real vis.Network,
-   chain-graph.js — hover/zoom/drag, the same visual grammar as the Explorer's
-   own graph). RIGHT is a docked "Your line" panel: the chain the player has
-   built, an autocomplete to add the next collaborator, live score + Lock in.
-   Nodes are picked either by clicking the graph OR through the panel; both
-   drive the same commitHop() pipeline. Built on the existing tokens
-   (--signal = start, --amber = hop, --pulse = goal), no game-specific colors.
-   ══════════════════════════════════════════════════════════════════════════ */
-
 .connect-surface {
   position: absolute;
   inset: 0;
@@ -330,6 +318,10 @@
   border: 2px solid var(--line);
   background: var(--panel-2);
   color: var(--mist);
+}
+
+.clp-pole-av[hidden] {
+  display: none;
 }
 .clp-pole-av img {
   width: 100%;
@@ -1044,6 +1036,10 @@
 .clp-pips {
   display: flex;
   gap: 4px;
+}
+
+.clp-pips[hidden] {
+  display: none;
 }
 .clp-pip {
   flex: 1 1 0;

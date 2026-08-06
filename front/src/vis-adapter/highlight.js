@@ -623,7 +623,7 @@ function _applyDefault() {
   if (eU.length) State.edgesDS.update(eU);
 }
 
-export function recolorInPlace(nameById) {
+export function recolorInPlace(_nameById) {
   if (!State.nodesDS || !State.edgesDS) return;
 
   const nU = State.graphNodes.map((n) => {

@@ -19,6 +19,16 @@
 server {
     listen ${NGINX_PUBLIC_PORT};
 
+    # Docker's embedded DNS. Без него nginx резолвит имена upstream'ов
+    # (six-feat, six-feat-auth, six-feat-game) ОДИН раз на старте и кэширует
+    # IP навсегда: любой `docker compose up -d <service>`, пересоздающий
+    # контейнер, даёт ему новый IP в сети, а nginx продолжает стучаться на
+    # старый и отвечает 502 Bad Gateway, хотя сервис жив и healthy.
+    # valid=10s заставляет перечитывать запись, а хранение адреса в
+    # переменной ($auth_upstream и т.п. ниже) — резолвить её в рантайме на
+    # каждый запрос, а не на этапе разбора конфига.
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
     # [SF-PERF-04] /api/v1/graph responses (nodes + edges + per-edge
     # collaborations) can get large for a dense seed — compress them at the
     # proxy layer instead of teaching every individual userver handler to do
@@ -56,7 +66,8 @@ server {
     gzip_types application/json;
 
     location /auth/ {
-        proxy_pass http://six-feat-auth:${SIX_FEAT_AUTH_PORT};
+        set $auth_upstream six-feat-auth;
+        proxy_pass http://$auth_upstream:${SIX_FEAT_AUTH_PORT};
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
@@ -93,7 +104,8 @@ server {
     #     the symptom, this compounds the same "nothing reaches the client
     #     until close" failure mode from a different angle.
     location /api/v1/status/stream {
-        proxy_pass http://six-feat:${SIX_FEAT_PORT};
+        set $stream_upstream six-feat;
+        proxy_pass http://$stream_upstream:${SIX_FEAT_PORT};
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
@@ -118,7 +130,8 @@ server {
     # Matched before the generic / below (nginx picks the longest matching
     # prefix) so /api/v1/game/* never falls through to six-feat itself.
     location /api/v1/game/ {
-        proxy_pass http://six-feat-game:${SIX_FEAT_GAME_PORT};
+        set $game_upstream six-feat-game;
+        proxy_pass http://$game_upstream:${SIX_FEAT_GAME_PORT};
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
@@ -128,7 +141,8 @@ server {
     }
 
     location / {
-        proxy_pass http://six-feat:${SIX_FEAT_PORT};
+        set $app_upstream six-feat;
+        proxy_pass http://$app_upstream:${SIX_FEAT_PORT};
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;

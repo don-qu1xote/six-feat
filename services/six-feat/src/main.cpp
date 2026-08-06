@@ -35,6 +35,7 @@
 #include "api/v1/status_handler.hpp"
 #include "application/collab_service.hpp"
 #include "infrastructure/enrichment_client.hpp"
+#include "internal/genius_link_handler.hpp"
 #include "internal/music_source_edges_handler.hpp"
 #include "internal/neighbours_handler.hpp"
 #include "system/readiness_handler.hpp"
@@ -75,8 +76,11 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::ApiKeyRevokeHandler>()
                                   .Append<six_feat::SettingsStatusHandler>()
                                   .Append<six_feat::SettingsGeniusConnectHandler>()
+                                  .Append<six_feat::SettingsGeniusLinkStartHandler>()
+                                  .Append<six_feat::GeniusLinkHandler>()
                                   .Append<six_feat::SettingsDisconnectHandler>()
                                   .Append<six_feat::SettingsEnrichmentProviderHandler>()
+                                  .Append<six_feat::SettingsEnrichmentEnabledHandler>()
                                   .Append<six_feat::SettingsYandexDeviceStartHandler>()
                                   .Append<six_feat::SettingsYandexDevicePollHandler>()
                                   .Append<six_feat::SettingsYandexPlaylistsHandler>()

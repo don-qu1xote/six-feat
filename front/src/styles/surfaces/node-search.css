@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   Docked 'Find on map' node-search overlay.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 /* ТЗ ("Find on map" должен выглядеть как find-path на этой странице):
    раньше это был полноэкранный тёмный оверлей (scrim + blur на весь
    канвас) с карточкой по центру — тяжёлый command-palette-стиль,
@@ -11,16 +5,7 @@
    докнутая карточка в углу канвы, что и .path-panel/.search-modal.
    docked: тот же материал, то же место, граф вокруг остаётся живым
    и видимым, а не гаснет под сплошным затемнением. */
-/* [SF-WEB-24] display:none/.show — an instant swap, not a fade — is
-   deliberately left alone here (unlike .search-modal.docked's opacity-
-   based hide just above, which can transition). This overlay is only
-   ever removed from layout, never just visually hidden, so it also
-   drops out of tab order for free the moment it closes; adding a
-   fade would mean switching to an opacity/visibility-based hide
-   instead, which does NOT drop focusable children from tab order on
-   its own and would need extra visibility-delay/JS work to preserve
-   today's behaviour — out of scope for a shell-only unification
-   (see closeOtherDockedPanels for a similar note, ui/docked-panel.js). */
+
 .node-search-overlay {
   position: absolute;
   z-index: var(--z-docked);
@@ -38,11 +23,7 @@
 .node-search-overlay.show {
   display: flex;
 }
-/* [SF-WEB-43] The exact .ui-panel recipe (components/panel.css) —
-   background/box-shadow now literally match .search-modal.docked
-   .search-wrap/.companion-panel (search.css/panel.css) instead of the
-   opaque pre-SF-WEB-42 --panel-2 fill this predated. One shell, one
-   source — see observatory.test.js. */
+
 .node-search-box {
   background: var(--glass-fill);
   border: 1px solid var(--line);
@@ -56,7 +37,7 @@
   gap: var(--space-3);
 }
 .node-search-hint {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--mist);
   letter-spacing: 0.14em;
@@ -87,9 +68,7 @@
     background var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard);
 }
-/* [SF-WEB-43] var(--signal-rgb) (tokens.css) replaces the literal
-   rgba(94,230,197,...) — same fix as .ac-item/.dock-btn, so every
-   docked-surface result row hovers with the same theme-aware source. */
+
 .ns-item:hover,
 .ns-item.ns-active {
   background: rgba(var(--signal-rgb), 0.08);
@@ -101,7 +80,7 @@
 }
 .ns-weight {
   color: var(--mist);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
 .ns-empty {

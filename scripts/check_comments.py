@@ -65,13 +65,6 @@ def is_directive(text: str, lang: str) -> bool:
     for pat in BLOCK_DIRECTIVE_PATTERNS.get(lang, []):
         if pat.search(text):
             return True
-    if re.match(r"^\s*(?:/\*|//|<!--)\s*\[", text):
-        return True
-    if lang in ("css", "html") and re.search(
-        r"(?:SF-WEB-\d+|\[design:|IDEA-\d+|F-\d+|\[game\s*#|\[style\s+pass)",
-        text,
-    ):
-        return True
     return False
 
 
@@ -285,6 +278,66 @@ def extract_py_line_comments(source: str) -> list[tuple[int, int, str]]:
     return results
 
 
+_JS_REGEX_PREV_KEYWORDS = (
+    "return",
+    "typeof",
+    "instanceof",
+    "in",
+    "of",
+    "new",
+    "delete",
+    "void",
+    "case",
+    "do",
+    "else",
+    "yield",
+    "await",
+)
+
+
+def js_regex_starts_at(source: str, i: int) -> bool:
+    # Отличает regex-литерал от деления по предыдущему значащему токену.
+    # Без этого /can't be scored/i читается как начало строки с апострофом,
+    # и всё содержимое файла после него разбирается со сбитым состоянием.
+    j = i - 1
+    while j >= 0 and source[j] in " \t\r\n":
+        j -= 1
+    if j < 0:
+        return True
+    prev = source[j]
+    if prev in "(,=:[!&|?{};+-*%~^<>":
+        return True
+    if prev.isalnum() or prev == "_" or prev == "$":
+        k = j
+        while k >= 0 and (source[k].isalnum() or source[k] in "_$"):
+            k -= 1
+        return source[k + 1 : j + 1] in _JS_REGEX_PREV_KEYWORDS
+    return False
+
+
+def js_skip_regex(source: str, i: int) -> int:
+    # i указывает на открывающий '/'. Возвращает индекс за закрывающим '/'.
+    n = len(source)
+    j = i + 1
+    in_class = False
+    while j < n:
+        ch = source[j]
+        if ch == "\\":
+            j += 2
+            continue
+        if ch == "\n":
+            return i + 1
+        if in_class:
+            if ch == "]":
+                in_class = False
+        elif ch == "[":
+            in_class = True
+        elif ch == "/":
+            return j + 1
+        j += 1
+    return i + 1
+
+
 def extract_js_line_comments(source: str) -> list[tuple[int, int, int, str]]:
     results: list[tuple[int, int, int, str]] = []
     i = 0
@@ -334,6 +387,10 @@ def extract_js_line_comments(source: str) -> list[tuple[int, int, int, str]]:
             i += 2 + end
             if nl_idx != -1:
                 line += 1
+            continue
+
+        if ch == "/" and nxt != "*" and js_regex_starts_at(source, i):
+            i = js_skip_regex(source, i)
             continue
 
         if ch == "`":
@@ -416,6 +473,16 @@ def extract_js_block_comments(source: str) -> list[tuple[int, int, int, str]]:
             block_start_col = i
             block_text = "/*"
             i += 2
+            continue
+
+        if ch == "/" and nxt == "/":
+            rest = source[i + 2 :]
+            nl_idx = rest.find("\n")
+            i += 2 + (len(rest) if nl_idx == -1 else nl_idx)
+            continue
+
+        if ch == "/" and js_regex_starts_at(source, i):
+            i = js_skip_regex(source, i)
             continue
 
         if ch == "`":

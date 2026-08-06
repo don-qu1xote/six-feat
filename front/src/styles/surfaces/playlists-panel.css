@@ -1,8 +1,3 @@
-/* [SF-WEB-74/76] Playlists card grid — the fourth hero-mode-panel's own
-   content (was a standalone docked panel; now lives inline in the
-   landing switch, see hero.css's .hero-playlists-panel), styled with
-   the existing .bento-tile card material (components/tile.css,
-   SF-WEB-11 kit) instead of a new visual system. */
 .playlist-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -54,4 +49,27 @@
   font-size: var(--text-xs);
   color: var(--mist);
   margin: 0;
+}
+
+#playlists-device-code {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.playlists-device-code-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.playlists-device-code-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--paper);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--space-1) var(--space-3);
 }

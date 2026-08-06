@@ -1,6 +1,6 @@
 import { State, MOTION, visAnimation } from "../state/state.js";
-import { debounce, escapeHtml, placeholderFor } from "../state/helpers.js";
-import { els, $ } from "../dom/dom.js";
+import { debounce, escapeHtml } from "../state/helpers.js";
+import { els } from "../dom/dom.js";
 import { setFocus, highlightPath, restoreDefaultColors } from "../vis-adapter/index.js";
 import { hideArtistSidebar, showArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";

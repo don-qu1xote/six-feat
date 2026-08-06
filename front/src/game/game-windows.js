@@ -3,6 +3,7 @@ import { els } from "../dom/dom.js";
 import { escapeHtml, initialOf } from "../state/helpers.js";
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
 import { showToast } from "../ui/toast.js";
+import { t, tPlural } from "../i18n/i18n.js";
 import {
   onSurfaceChange,
   getCurrentSurface,
@@ -49,9 +50,7 @@ function daysLeft(endTs) {
 function setEmpty(el, { unavailable, emptyText }) {
   if (!el) return;
   el.hidden = false;
-  el.textContent = unavailable
-    ? "Couldn't reach the game service — this list isn't loaded, not empty. Try again in a moment."
-    : emptyText;
+  el.textContent = unavailable ? t("game.list.unavailable") : emptyText;
 }
 
 let _lbScope = "season";
@@ -65,8 +64,8 @@ function renderLbList(entries, { unavailable = false, scope = "season" } = {}) {
       unavailable,
       emptyText:
         scope === "challenge"
-          ? "No scored lines here yet — be the first to lock one in."
-          : "No ranked players this season yet — be the first to lock in a line.",
+          ? t("game.leaderboard.emptyChallenge")
+          : t("game.leaderboard.emptySeason"),
     });
     return;
   }
@@ -75,8 +74,8 @@ function renderLbList(entries, { unavailable = false, scope = "season" } = {}) {
   els.lbList.innerHTML = entries
     .map((e, i) => {
       const meta = byElo
-        ? `${e.games ?? 0} game${e.games === 1 ? "" : "s"}`
-        : `${e.hops} hop${e.hops === 1 ? "" : "s"}`;
+        ? tPlural("game.leaderboard.gamesCount", e.games ?? 0)
+        : tPlural("game.leaderboard.hopsCount", e.hops);
       const value = byElo ? (e.elo ?? "—") : e.score;
       return (
         `<li class="ui-tile lb-row"><span class="lb-rank">${i + 1}</span>` +
@@ -97,8 +96,8 @@ async function loadLeaderboard() {
     const challengeId = State.connect?.game?.challengeId || null;
     if (els.lbScopeLabel) {
       els.lbScopeLabel.textContent = challengeId
-        ? "This challenge — best line per player."
-        : "Start a challenge on the Play screen to see its board.";
+        ? t("game.leaderboard.challengeHint")
+        : t("game.board.emptyHint");
     }
     if (!challengeId) {
       renderLbList([], { scope: "challenge" });
@@ -110,7 +109,7 @@ async function loadLeaderboard() {
     return;
   }
 
-  if (els.lbScopeLabel) els.lbScopeLabel.textContent = "This season — players by Elo rating.";
+  if (els.lbScopeLabel) els.lbScopeLabel.textContent = t("game.leaderboard.seasonHint");
   let seasonUnavailable = false;
   let season = State.connect?.seasonId ? { id: State.connect.seasonId } : null;
   if (!season) {
@@ -179,7 +178,7 @@ function renderHistory(history) {
       (h) =>
         `<li class="ui-tile pf-attempt pf-attempt--${h.valid ? "ok" : "bad"}">` +
         `<span class="pf-attempt-score">${h.valid ? h.score : "—"}</span>` +
-        `<span class="pf-attempt-meta">${h.valid ? `${h.hops} hop${h.hops === 1 ? "" : "s"}` : "invalid line"}</span>` +
+        `<span class="pf-attempt-meta">${h.valid ? escapeHtml(tPlural("game.leaderboard.hopsCount", h.hops)) : escapeHtml(t("game.profile.invalidLine"))}</span>` +
         `<span class="pf-attempt-date">${formatDate(h.ts)}</span></li>`,
     )
     .join("");
@@ -202,7 +201,10 @@ async function loadProfile() {
       : escapeHtml(initialOf(profile.display_name || "?"));
   }
   if (els.pfName) els.pfName.textContent = profile.display_name || "—";
-  if (els.pfRank) els.pfRank.textContent = profile.rank ? `Rank #${profile.rank}` : "Unranked";
+  if (els.pfRank)
+    els.pfRank.textContent = profile.rank
+      ? t("game.leaderboard.rank", { rank: profile.rank })
+      : t("game.leaderboard.unranked");
   if (els.pfElo) els.pfElo.textContent = profile.elo ?? "—";
   if (els.pfGames) els.pfGames.textContent = profile.games ?? "—";
   const badges = Array.isArray(profile.achievements) ? profile.achievements : [];
@@ -222,21 +224,21 @@ async function loadProfile() {
 
 async function onEditName() {
   const current = _profile?.display_name || "";
-  const next = (window.prompt("Display name", current) || "").trim();
+  const next = (window.prompt(t("game.profile.displayNameLabel"), current) || "").trim();
   if (!next || next === current) return;
   const updated = await updateDisplayName(next);
   if (!updated) {
-    showToast("Couldn't change your name — it may be too long or not allowed.", 4200);
+    showToast(t("game.toast.nameChangeError"), 4200);
     return;
   }
   _profile = updated;
   if (els.pfName) els.pfName.textContent = updated.display_name || "—";
-  showToast("✅ Name updated.", 2200, true);
+  showToast(t("game.toast.nameUpdated"), 2200, true);
 }
 
 function onShareProfile() {
   if (!_profile) {
-    showToast("Sign in to share your profile.", 3000);
+    showToast(t("game.toast.signInToShare"), 3000);
     return;
   }
   const url = new URL(window.location.href);
@@ -246,12 +248,12 @@ function onShareProfile() {
 
   const write = navigator.clipboard?.writeText?.(link);
   if (!write || typeof write.then !== "function") {
-    showToast(`Copy: ${link}`, 6000);
+    showToast(t("toast.copyFallback", { link }), 6000);
     return;
   }
   write
-    .then(() => showToast("🔗 Profile link copied!", 2000, true))
-    .catch(() => showToast(`Copy: ${link}`, 6000));
+    .then(() => showToast(t("game.toast.profileLinkCopied"), 2000, true))
+    .catch(() => showToast(t("toast.copyFallback", { link }), 6000));
 }
 
 function setupProfileActions() {
@@ -272,7 +274,7 @@ async function resolveAdminField(inputEl, pickedId) {
 
 async function onPublishDaily() {
   if (els.adminPublishDaily) els.adminPublishDaily.disabled = true;
-  if (els.adminStatus) els.adminStatus.textContent = "Publishing…";
+  if (els.adminStatus) els.adminStatus.textContent = t("game.profile.publishing");
 
   const [from, to] = await Promise.all([
     resolveAdminField(els.adminFromInput, _adminFromId),
@@ -282,7 +284,9 @@ async function onPublishDaily() {
   if (bad.length) {
     if (els.adminPublishDaily) els.adminPublishDaily.disabled = false;
     if (els.adminStatus) {
-      els.adminStatus.textContent = `Couldn't find ${bad.join(" or ")} on Genius. Pick the artist from the suggestions, or clear the field to let the server choose.`;
+      els.adminStatus.textContent = t("game.admin.notFoundOnGenius", {
+        names: bad.join(" or "),
+      });
     }
     return;
   }
@@ -291,15 +295,17 @@ async function onPublishDaily() {
   if (els.adminPublishDaily) els.adminPublishDaily.disabled = false;
   if (!res || !res.id) {
     if (els.adminStatus) {
-      els.adminStatus.textContent =
-        "Couldn't publish — that pair isn't connected in the graph yet, or you're not signed in as an admin.";
+      els.adminStatus.textContent = t("game.admin.publishFailed");
     }
     return;
   }
   if (els.adminStatus) {
-    els.adminStatus.textContent = `Published daily challenge #${res.id} · PAR ${res.optimal_len ?? "?"}.`;
+    els.adminStatus.textContent = t("game.admin.published", {
+      id: res.id,
+      par: res.optimal_len ?? "?",
+    });
   }
-  showToast("✅ Daily challenge published.", 2600, true);
+  showToast(t("game.toast.dailyPublished"), 2600, true);
 }
 
 function setupAdminPanel() {
@@ -356,8 +362,8 @@ function renderChallenges(reset, { unavailable = false } = {}) {
     setEmpty(els.chEmpty, {
       unavailable,
       emptyText: _chQuery
-        ? `Nothing matches “${_chQuery}”. Try another artist, or clear the search.`
-        : "No challenges published yet — start one from the Play screen and it shows up here.",
+        ? t("game.challenges.emptyQuery", { query: _chQuery })
+        : t("game.challenges.emptyDefault"),
     });
     if (els.chMore) els.chMore.hidden = true;
     return;
@@ -427,7 +433,7 @@ function renderPodium(entries, { unavailable = false } = {}) {
     els.snPodium.innerHTML = "";
     setEmpty(els.snPodiumEmpty, {
       unavailable,
-      emptyText: "Nobody on the podium yet — this season is still wide open.",
+      emptyText: t("game.season.podiumEmpty"),
     });
     return;
   }
@@ -438,7 +444,7 @@ function renderPodium(entries, { unavailable = false } = {}) {
       (e, i) =>
         `<li class="ui-tile lb-row"><span class="lb-rank">${i + 1}</span>` +
         `<span class="lb-name">${escapeHtml(e.display_name || "—")}</span>` +
-        `<span class="lb-hops">${e.games ?? 0} game${e.games === 1 ? "" : "s"}</span>` +
+        `<span class="lb-hops">${escapeHtml(tPlural("game.leaderboard.gamesCount", e.games ?? 0))}</span>` +
         `<span class="lb-score">${e.elo ?? "—"}</span></li>`,
     )
     .join("");
@@ -450,8 +456,8 @@ function renderAchievements(catalog, earnedCodes) {
   if (els.snAchCount) els.snAchCount.textContent = `${earnedCodes.size} / ${list.length}`;
   if (els.snAchHint) {
     els.snAchHint.textContent = earnedCodes.size
-      ? "Lit tiles are yours; the rest are still up for grabs."
-      : "Play a round to start lighting these up.";
+      ? t("game.achievements.earnedHint")
+      : t("game.achievements.emptyHint");
   }
   els.snAchGrid.innerHTML = list
     .map((a) => {
@@ -472,14 +478,14 @@ async function loadSeason() {
   if (token !== _snToken) return;
 
   const season = view?.season;
-  if (els.snName) els.snName.textContent = season?.name || "Season";
+  if (els.snName) els.snName.textContent = season?.name || t("game.season.label");
   if (els.snDates && season) {
     els.snDates.textContent = `${formatDate(season.starts_ts)} — ${formatDate(season.ends_ts)}`;
   }
   if (els.snCountdown && season) {
     const d = daysLeft(season.ends_ts);
     els.snCountdown.textContent =
-      d == null ? "" : d === 0 ? "Ends today" : `${d} day${d === 1 ? "" : "s"} left`;
+      d == null ? "" : d === 0 ? t("game.season.endsToday") : tPlural("game.season.daysLeft", d);
   }
   if (els.snProgressFill && season) {
     const total = Number(season.ends_ts) - Number(season.starts_ts);

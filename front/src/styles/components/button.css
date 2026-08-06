@@ -1,24 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   ui-btn (+ primary/ghost/icon variants) — SF-WEB-11 kit.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
-/* ─── SF-WEB-11: component kit ──────────────────────────────────────
-   Sprint 4 foundation — one small, token-driven vocabulary (button /
-   chip / segment / panel / tile / pill) so controls stop each inventing
-   their own padding/radius/hover recipe (see .rail-btn/.chip/
-   .role-filter-btn/.dock-btn/.bento-tile above — same intent, several
-   parallel implementations). This step only ADDS these classes
-   alongside the existing ones on rail buttons / hero buttons / chips /
-   sidebar tiles — nothing moves, nothing is hidden, no JS/behaviour
-   changes. Deliberately placed early in the cascade (same position as
-   .bento-tile above): every component-specific rule further down this
-   stylesheet keeps full authority to override anything it customizes
-   (e.g. .rail-btn's own width/padding driving its hover-expand
-   animation) — this block only fills in the parts a specific rule
-   *doesn't* already set (focus ring, base transition, default
-   hover/active feel), so applying it can't regress an existing control. */
 .ui-btn {
   display: inline-flex;
   align-items: center;
@@ -45,10 +24,7 @@
     background var(--duration-fast) var(--ease-standard),
     box-shadow var(--duration-fast) var(--ease-standard);
 }
-/* [SF-WEB-42] var(--hover-tint)/var(--active-tint) (tokens.css) replace
-   the literal rgba(185,138,255,.10)/rgba(94,230,197,.12) below and in
-   .active/[aria-pressed]/[aria-selected] — themed the same way
-   --focus-ring is, see that rule's own comment. */
+
 .ui-btn:hover {
   color: var(--paper);
   border-color: var(--pulse);
@@ -81,6 +57,10 @@
   cursor: progress;
 }
 
+.ui-btn[hidden] {
+  display: none;
+}
+
 .ui-btn--primary {
   border-color: transparent;
   color: var(--on-accent);
@@ -92,9 +72,7 @@
   filter: brightness(1.06);
   background: linear-gradient(100deg, var(--signal), var(--pulse));
 }
-/* [SF-WEB-42] --focus-ring-strong (tokens.css) — same rationale as
-   .ui-btn:focus-visible above, deliberately the louder of the two ring
-   tokens since this sits on its own bright accent-gradient fill. */
+
 .ui-btn--primary:focus-visible {
   box-shadow: var(--focus-ring-strong);
 }

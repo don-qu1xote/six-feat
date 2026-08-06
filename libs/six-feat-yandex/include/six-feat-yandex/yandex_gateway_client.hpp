@@ -47,7 +47,6 @@ struct YandexPlaylistSummary {
   std::int64_t yandex_id{0};
   std::string title;
   int track_count{0};
-  // [SF-WEB-74] Passed through as-is from Yandex Music, same as
 
   std::string cover_url;
 };

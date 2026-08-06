@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   Bento tile material + size/span modifiers (SF-WEB-11 kit).
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 /* ─── ТЗ-206: Bento tile system ─────────────────────────────────────
    Each self-contained block of information (status/seed card, hop-chain
    path panel, artist sidebar sections — avatar+name, top tracks, role

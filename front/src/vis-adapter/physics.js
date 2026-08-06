@@ -63,7 +63,7 @@ export function resetFastRenderMode() {
   _fastRenderActive = false;
 }
 
-export function nudgePhysics(ms, noFit) {
+export function nudgePhysics(ms, _noFit) {
   if (!State.network) return;
   const requested = ms || PHYSICS_SETTLE_MS;
   const settleMs =
@@ -88,7 +88,7 @@ export function _fitToExpandedCluster() {
       nodes: nodeIds,
       animation: visAnimation(MOTION.xxslow),
     });
-  } catch (e) {}
+  } catch {}
 }
 
 export function mergeNetwork(nameById, savedPositions, options = {}) {
@@ -224,7 +224,7 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
           scale: Math.max(0.14, Math.min(sc, 1.25)),
           animation: visAnimation(MOTION.xxslow),
         });
-      } catch (e) {}
+      } catch {}
     },
   });
 }

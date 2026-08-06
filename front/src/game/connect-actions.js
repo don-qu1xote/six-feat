@@ -1,6 +1,7 @@
 import { els } from "../dom/dom.js";
 import { navigateToSurface, SURFACE_GAME } from "../ui/router.js";
 import { showToast } from "../ui/toast.js";
+import { t } from "../i18n/i18n.js";
 import {
   createConnectChain,
   chainNodes,
@@ -99,11 +100,7 @@ async function submitRound() {
   const game = s.game;
   if (!game || !game.completed) return;
   if (!game.challengeId) {
-    showToast(
-      "Couldn't verify this challenge — try again from a fresh start/goal pick.",
-      4800,
-      true,
-    );
+    showToast(t("game.toast.verifyFailed"), 4800, true);
     render();
     return;
   }
@@ -111,11 +108,7 @@ async function submitRound() {
   const ids = await Promise.all(names.map(resolveId));
   if (s.game !== game) return;
   if (ids.some((id) => id == null)) {
-    showToast(
-      "Couldn't identify one of the names in your chain, so this attempt can't be scored — the win still counts.",
-      5200,
-      true,
-    );
+    showToast(t("game.toast.scoreIdFailed"), 5200, true);
     render();
     return;
   }
@@ -123,7 +116,7 @@ async function submitRound() {
   const response = await submitChain(game.challengeId, ids, elapsedMs(game));
   if (s.game !== game) return;
   if (!response) {
-    showToast("Couldn't reach the game service to score this attempt.", 4800, true);
+    showToast(t("game.toast.scoreUnreachable"), 4800, true);
     render();
     return;
   }
@@ -198,10 +191,7 @@ export async function commitTypedHop(name) {
   const linked = await isLinkedToFocus(clean, idFor(clean));
   if (s.game !== game) return null;
   if (linked === false) {
-    showToast(
-      `${clean} isn't a known collaborator of ${focusName(game)} — pick from the graph or try another.`,
-      4600,
-    );
+    showToast(t("game.toast.notCollaborator", { name: clean, focus: focusName(game) }), 4600);
     return { ok: false, reason: "unlinked" };
   }
   return commitHop(clean);
@@ -261,7 +251,7 @@ export function startFromSetup() {
   const from = (els.connectStartInput?.value || "").trim();
   const to = (els.connectGoalInput?.value || "").trim();
   if (!from || !to) {
-    showToast("Pick both artists first.");
+    showToast(t("game.toast.pickBoth"));
     return;
   }
   setStartArtist(from);
@@ -285,12 +275,12 @@ export function shareCurrentChallenge() {
   const link = url.toString();
   const write = navigator.clipboard?.writeText?.(link);
   if (!write || typeof write.then !== "function") {
-    showToast(`Copy: ${link}`, 6000);
+    showToast(t("toast.copyFallback", { link }), 6000);
     return;
   }
   write
-    .then(() => showToast("🔗 Link copied!", 2000, true))
-    .catch(() => showToast(`Copy: ${link}`, 6000));
+    .then(() => showToast(t("game.toast.linkCopied"), 2000, true))
+    .catch(() => showToast(t("toast.copyFallback", { link }), 6000));
 }
 
 export function startChallengeByRefs(from, to, rival) {

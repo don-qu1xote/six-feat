@@ -1,6 +1,7 @@
 import { State, ROLE_ICON } from "../state/state.js";
 import { escapeHtml } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
+import { t, tPlural } from "../i18n/i18n.js";
 
 function wrapRoleIconGraph(roleIconUseString) {
   return `<svg class="role-icon" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">${roleIconUseString}</svg>`;
@@ -76,16 +77,14 @@ export function buildNodeTooltip(node) {
   el.className = "tt";
   const seedBadge = node.isSeed ? ` <span class="tt-seed">focus</span>` : "";
   const isExpanded = State.expandedNodes.has(node.id)
-    ? `<div class="tt-meta" style="color:var(--signal)">expanded ✓</div>`
+    ? `<div class="tt-meta" style="color:var(--signal)">${t("tooltip.expanded")}</div>`
     : "";
   const inGame = State.game?.mode === true;
-  const hint = inGame
-    ? "click → play this hop"
-    : "click → details · dbl-click → expand · ctrl+click → set as seed";
+  const hint = inGame ? t("tooltip.hintGame") : t("tooltip.hint");
   el.innerHTML =
     `<div class="tt-name">${escapeHtml(node.name)}${seedBadge}</div>` +
     (node.totalWeight
-      ? `<div class="tt-meta">${node.totalWeight} collab${node.totalWeight === 1 ? "" : "s"}</div>`
+      ? `<div class="tt-meta">${tPlural("sidebar.collabCount", node.totalWeight)}</div>`
       : "") +
     (inGame ? "" : isExpanded) +
     `<div class="tt-hint">${hint}</div>`;
@@ -113,19 +112,19 @@ export function buildEdgeTooltip(e, nameById) {
       })
       .join("");
     rows +=
-      `<li class="tt-row"><span class="tt-song">${escapeHtml(c.song || "Untitled")}</span>` +
+      `<li class="tt-row"><span class="tt-song">${escapeHtml(c.song || t("tooltip.untitled"))}</span>` +
       `<span class="tt-roles">${pills}</span></li>`;
   }
-  if (!rows) rows = `<li class="tt-empty">No track details available.</li>`;
+  if (!rows) rows = `<li class="tt-empty">${t("tooltip.noTracks")}</li>`;
 
   const el = document.createElement("div");
   el.className = "tt";
   el.innerHTML =
     `<div class="tt-head"><span class="tt-name">${escapeHtml(fromName)}</span>` +
     `<span class="tt-x"> × </span><span class="tt-name">${escapeHtml(toName)}</span></div>` +
-    `<div class="tt-meta">${weight} shared track${weight === 1 ? "" : "s"} ` +
+    `<div class="tt-meta">${tPlural("tooltip.sharedTracks", weight)} ` +
     `<span class="tt-role-badge tt-role-badge--${escapeHtml(role)}" title="${escapeHtml(role)}">${icon}</span></div>` +
     `<ul class="tt-list">${rows}</ul>` +
-    `<div class="tt-hint">click edge → full detail in panel</div>`;
+    `<div class="tt-hint">${t("tooltip.edgeHint")}</div>`;
   return el;
 }

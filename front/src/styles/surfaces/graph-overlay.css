@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   Loading overlay/spinner, toast, vis.js tooltip skin.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 .overlay {
   position: absolute;
   z-index: var(--z-graph-overlay);
@@ -13,7 +7,7 @@
   display: none;
   align-items: center;
   gap: var(--space-3);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--paper);
   background: rgba(var(--ink2-rgb), 0.9);
@@ -92,10 +86,6 @@
   background: rgba(0, 0, 0, 0.08);
 }
 
-/* [SF-WEB-45] Same glass-shell recipe as .ui-panel (components/panel.css) —
-   the graph's tooltip floats over the canvas exactly like the companion
-   panel / docked search shells, so it gets the same treatment instead of
-   the old solid --panel fill. */
 div.vis-tooltip {
   position: absolute;
   background: var(--glass-fill) !important;
@@ -123,7 +113,7 @@ div.vis-tooltip {
   display: block;
 }
 .vis-tooltip .tt-seed {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -149,7 +139,7 @@ div.vis-tooltip {
   font-weight: 400;
 }
 .vis-tooltip .tt-meta {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   letter-spacing: 0.05em;
   text-transform: uppercase;

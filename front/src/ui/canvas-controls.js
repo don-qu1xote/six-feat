@@ -27,6 +27,7 @@ import {
 } from "./modals.js";
 import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
+import { isSettingsPanelOpen, closeSettingsPanel } from "./settings-panel.js";
 import { renderEmptyState } from "./canvas-states.js";
 import { navigateToSurface, SURFACE_GRAPH } from "./router.js";
 
@@ -422,6 +423,10 @@ export function setupKeyboard() {
       }
       if (els.candidateOverlay?.classList.contains("show")) {
         hideCandidatePicker();
+        return;
+      }
+      if (isSettingsPanelOpen()) {
+        closeSettingsPanel();
         return;
       }
       if (els.nodeSearchOverlay.classList.contains("show")) {

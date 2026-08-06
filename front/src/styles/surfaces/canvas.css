@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   Graph canvas: #network blur-on-search, decorator starfield, unified empty/loading/error slot.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 /* Баг: blur на search-modal не работал визуально, потому что vis.js
    рисует граф на <canvas>, а backdrop-filter на некоторых
    браузерах/GPU не подхватывает содержимое канваса через
@@ -38,11 +32,6 @@
   display: block;
 }
 
-/* [SF-WEB-19] Unified empty/loading/error canvas surface — see
-   src/ui/canvas-states.js. Sits above the decorator starfield (z-index:1)
-   so onboarding copy is legible over it; .ui-state-card carries its own
-   pointer-events since the slot itself must stay click-through when
-   hidden (or when only the decorator behind it should be interactive). */
 .ui-state-slot {
   position: absolute;
   inset: 0;
@@ -56,14 +45,7 @@
 .ui-state-slot.show {
   display: flex;
 }
-/* [SF-WEB-19 fix] #search-modal.is-first-visit has no backdrop
-   (background:transparent — see below), so anything sitting behind it
-   was fully visible through/around it: on first load the onboarding
-   card and the modal's own copy were both on screen at once, text
-   overlapping. Requires #canvas-state to be a later DOM sibling of
-   #search-modal (see index.html body markup) — this selector can only
-   match forward. Higher specificity than .ui-state-slot.show above
-   (one extra ID), so it wins without !important. */
+
 #search-modal:not(.is-closed) ~ .ui-state-slot {
   display: none;
 }
@@ -96,7 +78,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--mist);
 }
@@ -130,13 +112,6 @@
   }
 }
 
-/* [SF-WEB-50] "Dandelion" motif — a few static nodes wired to the implied
-   seed center, layered under the ambient .decor-dot starfield (drawn
-   first in the SVG — see canvas-decorator.js). Deliberately understated:
-   thin, low-opacity lines and a slightly larger but still faint node so
-   the whole thing reads as atmosphere, not a second thing competing with
-   the h1/search field for attention. Neither element animates (no
-   prefers-reduced-motion branch needed — they were never in motion). */
 .decor-edge {
   stroke: var(--signal);
   stroke-width: 1;

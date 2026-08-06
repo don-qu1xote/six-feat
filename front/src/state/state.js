@@ -213,6 +213,7 @@ const interactionSlice = {
   heroMode: "explore",
 
   theme: "dark",
+  lang: "en",
 
   surface: "graph",
 
@@ -317,6 +318,7 @@ bridge("activeFilters", interactionSlice);
 bridge("history", interactionSlice);
 bridge("heroMode", interactionSlice);
 bridge("theme", interactionSlice);
+bridge("lang", interactionSlice);
 bridge("surface", interactionSlice);
 bridge("bubbleSetsEnabled", interactionSlice);
 

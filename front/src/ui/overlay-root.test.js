@@ -83,7 +83,7 @@ describe("[SF-WEB-41] overlay-root portal — дропдаун не обреза
     });
     openDropdown(dd);
     expect(dd.style.position).toBe("fixed");
-    expect(dd.style.top).toBe("128px"); // bottom(120) + gap(8)
+    expect(dd.style.top).toBe("128px");
     expect(dd.style.left).toBe("40px");
     expect(dd.style.minWidth).toBe("300px");
   });

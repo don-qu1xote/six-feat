@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   On-canvas chrome: theme toggle, rail, zoom/role clusters, status/seed/badges, help, context-panel.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 .canvas-chrome {
   position: absolute;
   inset: 0;
@@ -19,21 +13,10 @@
   z-index: var(--z-canvas);
 }
 
-/* IDEA-23: top-center avoids both the rail column (top-left) and the
-   context-panel/docked-search column (top-right) in the graph view,
-   and sits clear of the vertically-centred hero content on the landing
-   page — the one spot free in both view-home and view-graph.
-   [SF-WEB-75] z-docked, not z-panel: .rail/.game-screen/.connect-surface
-   are all z-panel, and whichever paints last (DOM order) covers the
-   others at an equal z-index — game-screens.css/connect.css's full-bleed
-   surfaces were silently covering these three (still in the DOM, not
-   hidden, just painted over) on all 5 game screens. One z-index step up
-   keeps them reachable everywhere without touching game/connect's own
-   layering. */
-.theme-toggle,
 .settings-toggle {
   position: absolute;
   top: var(--space-4);
+  right: var(--space-4);
   z-index: var(--z-docked);
   width: 34px;
   height: 34px;
@@ -49,7 +32,6 @@
   backdrop-filter: blur(var(--blur-chip));
   box-shadow: var(--shadow);
 }
-.theme-toggle .ri,
 .settings-toggle .ri {
   width: 17px;
   height: 17px;
@@ -58,21 +40,9 @@
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
-.theme-toggle:hover,
 .settings-toggle:hover {
   color: var(--paper);
   border-color: var(--pulse);
-}
-
-.theme-toggle {
-  left: 50%;
-  transform: translateX(-50%);
-}
-/* [SF-WEB-75] Same material as .theme-toggle, offset to its right so the
-   two sit side by side. */
-.settings-toggle {
-  left: calc(50% + 46px);
-  transform: translateX(-50%);
 }
 
 .flip-ghost {
@@ -117,8 +87,6 @@ body.view-home .rail,
 body.view-home .status,
 body.view-home .context-panel,
 body.view-home .actions-bar,
-/* [SF-WEB-14] the two other canvas-only clusters — .object-action-bar
-   is already covered, it's a descendant of .context-panel above. */
 body.view-home .canvas-zoom-cluster,
 body.view-home .role-filter-segment {
   display: none;
@@ -324,9 +292,7 @@ body.view-home .role-filter-segment {
 .rail-shell:hover .rail-btn.active {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
-/* [SF-WEB-14] #filter-featured/-producer/-writer (the rail's own copies)
-   were removed — #canvas-filter-* (the new always-visible canvas
-   segment) took over their spot, same active-colour treatment. */
+
 #canvas-filter-featured.active {
   color: var(--signal);
   border-color: rgba(94, 230, 197, 0.5);
@@ -380,12 +346,6 @@ body.view-home .role-filter-segment {
   border-color: rgba(94, 230, 197, 0.4);
 }
 
-/* [SF-WEB-14] Clean canvas: only the graph + these two always-visible
-   clusters live directly over the canvas now — the object action bar
-   moved into the companion panel's node context, see [SF-WEB-27] near
-   .sidebar-body below. Both clusters are .ui-segment (SF-WEB-11 kit) —
-   icon-only .ui-btn children, no text labels, unlike the rail's
-   hover-expand rows. */
 .canvas-zoom-cluster {
   position: absolute;
   right: var(--space-4);
@@ -423,12 +383,7 @@ body.view-home .role-filter-segment {
      что уже стоит на .ui-btn в ките. */
   text-decoration: none;
 }
-/* [SF-WEB-43] var(--hover-tint)/var(--active-tint) (tokens.css) replace
-   the literal rgba(185,138,255,.10)/rgba(94,230,197,.12) — the same
-   "hardcoded to dark theme's hex" fix SF-WEB-42 already applied to
-   .ui-btn/.ui-chip, extended here to .dock-btn (a surface-level control,
-   out of SF-WEB-42's shell-only scope, but the docked search button
-   above now matches it exactly and needs it to actually match). */
+
 .dock-btn:hover {
   color: var(--paper);
   border-color: var(--pulse);
@@ -439,14 +394,11 @@ body.view-home .role-filter-segment {
   border-color: var(--signal);
   background: var(--active-tint);
 }
-/* [fix] Docked panels keep the "graph is hero, chrome stays calm" rule
-   (no bright accent-gradient fill on docked buttons — see .search-modal
-   .docked .search button's own comment) — but with every action in a
-   row sharing the exact same neutral .dock-btn recipe, nothing signals
-   which one is the actual submit action vs. a secondary control (Find
-   path vs. Clear). A signal-coloured border/icon does that without
-   breaking the calm-chrome rule: still no fill, still not competing with
-   the canvas, just legible as "this is the one that does the thing". */
+
+.dock-btn[hidden] {
+  display: none;
+}
+
 .dock-btn--primary {
   border-color: rgba(var(--signal-rgb), 0.5);
   color: var(--paper);
@@ -532,7 +484,7 @@ body.view-home .role-filter-segment {
   min-width: 0;
 }
 .seed-card-eyebrow {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -545,13 +497,6 @@ body.view-home .role-filter-segment {
   max-width: 180px;
 }
 
-/* [SF-WEB-48] Was a permanently-visible "N/M req/s" text pill — raw and
-   always on the eye. Now a quiet micro dot: calm (dim, static) while
-   there's headroom, the raw reading moved to a hover-only `title` (see
-   updateRateLimitIndicator in canvas-controls.js). .rate-limit-badge--low
-   is the exact same class/threshold the old text-recolor used — it just
-   "wakes" the dot instead (brighter + a soft pulse) rather than tinting
-   text nobody was reading at a glance anyway. */
 .rate-limit-badge {
   display: inline-flex;
   align-items: center;
@@ -587,15 +532,11 @@ body.view-home .role-filter-segment {
   }
 }
 
-/* [SF-WEB-05] Same pill shape as .rate-limit-badge — icon + short text,
-   neutral (mist) while just "partial", amber while background
-   enrichment is actively running (same accent .truncation-icon-btn
-   uses for "worth a second look"). */
 .scan-status-badge {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--mist);
   white-space: nowrap;
@@ -623,19 +564,6 @@ body.view-home .role-filter-segment {
   border-color: rgba(255, 210, 122, 0.4);
 }
 
-/* IDEA-50 / [style pass]: was a permanently-expanded pill ("Showing top
-   N collaborations — there may be more.") sitting at full text width
-   next to seed-card — visibly the biggest thing in the row and the
-   main reason the row read as uneven. Collapsed to a single
-   .status-icon-btn (same 26px circle as info-btn/help-btn below) that
-   *is* the "Show more collaborations" action (click = same effect as
-   the old inline button) — no separate nested control, so it's a plain
-   <button>, not the div-wrapping-a-button workaround an earlier pass
-   needed. Native `title` (same idiom as #help-btn's own tooltip)
-   surfaces the descriptive text on hover/focus, kept in sync with the
-   count in canvas-controls.js::updateTruncationBanner. Amber stays as
-   the accent (border + text color) so it still reads as "worth a
-   second look" among the neutral info/help icons. */
 .truncation-icon-btn {
   color: var(--amber);
   border-color: rgba(255, 210, 122, 0.4);
@@ -752,7 +680,7 @@ body.view-home .role-filter-segment {
   margin-bottom: var(--space-3);
 }
 .help-box-title {
-  font-family: "Syne", sans-serif;
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: var(--text-sm);
   color: var(--paper);
@@ -788,7 +716,7 @@ body.view-home .role-filter-segment {
   color: var(--mist);
 }
 .help-row kbd {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--paper);
   background: rgba(255, 255, 255, 0.06);

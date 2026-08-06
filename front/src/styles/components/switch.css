@@ -1,0 +1,45 @@
+.ui-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ui-switch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+.ui-switch-track {
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(var(--panel-rgb), 0.6);
+  border: 1px solid var(--line);
+  transition: background var(--duration-base) var(--ease-standard);
+}
+.ui-switch-thumb {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--mist);
+  transition:
+    transform var(--duration-base) var(--ease-standard),
+    background var(--duration-base) var(--ease-standard);
+}
+.ui-switch input:checked + .ui-switch-track {
+  background: var(--signal);
+  border-color: var(--signal);
+}
+.ui-switch input:checked + .ui-switch-track .ui-switch-thumb {
+  background: var(--paper);
+  transform: translateX(18px);
+}
+.ui-switch input:focus-visible + .ui-switch-track {
+  box-shadow: var(--focus-ring);
+}

@@ -2,6 +2,7 @@ import { State } from "../state/state.js";
 import { escapeHtml, placeholderFor, debounce } from "../state/helpers.js";
 import { apiFetch } from "../api/net.js";
 import { openDropdown, closeDropdown, anchorDropdown } from "./overlay-root.js";
+import { t } from "../i18n/i18n.js";
 
 export function createGeniusAc() {
   let _acController = null;
@@ -16,7 +17,7 @@ export function createGeniusAc() {
     _acController = new AbortController();
     const signal = _acController.signal;
 
-    dropdownEl.innerHTML = `<div class="ac-spinner">Searching…</div>`;
+    dropdownEl.innerHTML = `<div class="ac-spinner">${escapeHtml(t("autocomplete.searching"))}</div>`;
     openDropdown(dropdownEl);
     try {
       const res = await apiFetch(`/api/v1/search?q=${encodeURIComponent(query)}`, { signal });
@@ -67,10 +68,21 @@ export function createGeniusAc() {
   }, 300);
 }
 
-export function attachGeniusAutocomplete(inputEl, dropdownEl, onSelect, geniusAcFn) {
+// [SF-WEB-89] showHistory:false lets #hero-input skip this dropdown's own history list, since its chips row below already covers that (was a floating duplicate hiding the chips whenever focused-empty).
+export function attachGeniusAutocomplete(
+  inputEl,
+  dropdownEl,
+  onSelect,
+  geniusAcFn,
+  { showHistory = true } = {},
+) {
   const _ac = geniusAcFn || createGeniusAc();
   anchorDropdown(dropdownEl, inputEl);
   function showHistoryDropdown() {
+    if (!showHistory) {
+      closeDropdown(dropdownEl);
+      return;
+    }
     const items = State.history.slice(0, 5);
     if (!items.length) {
       closeDropdown(dropdownEl);

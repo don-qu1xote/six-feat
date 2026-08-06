@@ -3,6 +3,7 @@ import { escapeHtml } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist } from "../api/api.js";
 import { showToast } from "./toast.js";
+import { t } from "../i18n/i18n.js";
 
 export function loadHistory() {
   try {
@@ -40,7 +41,7 @@ export function renderChips() {
   const names = hasHistory ? State.history.slice(0, 5) : DEFAULT_CHIPS;
 
   if (els.chipsLabel)
-    els.chipsLabel.textContent = hasHistory ? "Recent searches" : "Try one of these";
+    els.chipsLabel.textContent = hasHistory ? t("hero.chips.labelRecent") : t("hero.chips.label");
 
   els.chips.innerHTML = names
     .map(
@@ -48,6 +49,48 @@ export function renderChips() {
         `<button class="chip" data-artist="${escapeHtml(name)}">${escapeHtml(name)}</button>`,
     )
     .join("");
+}
+
+window.addEventListener("six-feat-langchange", renderChips);
+
+// [SF-WEB-78] Chips (recent searches or, for a first-time visitor, curated
+// examples) used to render permanently under the search bar — on every
+// landing, whether or not the user asked to see anything. Now hidden until
+// the search field is actually focused, matching how a real search box's
+// suggestions behave, and re-hidden once something is picked. blur uses a
+// short delay: it fires (moving focus off the input) before the chip's own
+// click handler runs, so hiding immediately would remove the chip before
+// its click could register.
+let _chipsHideTimer = null;
+
+function showChips() {
+  clearTimeout(_chipsHideTimer);
+  if (els.chipsLabel) els.chipsLabel.hidden = false;
+  if (els.chips) els.chips.hidden = false;
+}
+
+function hideChips() {
+  if (els.chipsLabel) els.chipsLabel.hidden = true;
+  if (els.chips) els.chips.hidden = true;
+}
+
+export function setupChipsVisibility() {
+  if (!els.heroInput) return;
+  els.heroInput.addEventListener("focus", showChips);
+  // [SF-WEB-89] A non-empty query hides chips — the floating results dropdown would cover them otherwise.
+  els.heroInput.addEventListener("input", () => {
+    if (els.heroInput.value.trim()) hideChips();
+    else showChips();
+  });
+  els.heroInput.addEventListener("blur", () => {
+    _chipsHideTimer = setTimeout(hideChips, 150);
+  });
+  if (els.chips) {
+    els.chips.addEventListener("click", () => {
+      clearTimeout(_chipsHideTimer);
+      hideChips();
+    });
+  }
 }
 
 function encodeIds(ids) {
@@ -160,6 +203,6 @@ export function copyShareableLink() {
   const url = window.location.href;
   navigator.clipboard
     .writeText(url)
-    .then(() => showToast("🔗 Link copied!", 2000, true))
-    .catch(() => showToast(`Copy: ${url}`, 5000));
+    .then(() => showToast(t("game.toast.linkCopied"), 2000, true))
+    .catch(() => showToast(t("toast.copyFallback", { link: url }), 5000));
 }

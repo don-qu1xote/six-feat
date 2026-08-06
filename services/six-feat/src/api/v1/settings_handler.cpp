@@ -1,17 +1,21 @@
 #include "settings_handler.hpp"
 
 #include "schemas/handlers/six-feat/settings_disconnect_handler_schema.hpp"
+#include "schemas/handlers/six-feat/settings_enrichment_enabled_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_enrichment_provider_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_genius_connect_handler_schema.hpp"
+#include "schemas/handlers/six-feat/settings_genius_link_start_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_status_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_yandex_device_poll_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_yandex_device_start_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_yandex_import_handler_schema.hpp"
 #include "schemas/handlers/six-feat/settings_yandex_playlists_handler_schema.hpp"
 
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
+#include <openssl/rand.h>
 #include <six-feat-auth-lib/user_identity.hpp>
 #include <six-feat-core/error_response.hpp>
 #include <six-feat-core/request_id.hpp>
@@ -54,13 +58,46 @@ bool ParseStrictNumericId(const std::string& param, std::int64_t& out_id) {
   return ec == std::errc{} && ptr == end;
 }
 
+std::string GeniusLinkUrlEncode(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() * 3);
+  static constexpr std::string_view kHex{"0123456789ABCDEF"};
+  for (unsigned char c : s) {
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+        c == '_' || c == '.' || c == '~') {
+      out += static_cast<char>(c);
+    } else {
+      out += '%';
+      out += kHex[c >> 4];
+      out += kHex[c & 0x0F];
+    }
+  }
+  return out;
+}
+
+std::string GeniusLinkRandomState() {
+  std::array<unsigned char, 16> rand_bytes{};
+  if (RAND_bytes(rand_bytes.data(), 16) != 1) {
+    throw std::runtime_error("RAND_bytes failed");
+  }
+  static constexpr std::string_view kHex{"0123456789abcdef"};
+  std::string out;
+  out.reserve(32);
+  for (auto b : rand_bytes) {
+    out += kHex[b >> 4];
+    out += kHex[b & 0x0F];
+  }
+  return out;
+}
+
 }  // namespace
 
 SettingsStatusHandler::SettingsStatusHandler(const components::ComponentConfig& config,
                                              const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
-      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()) {}
+      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()),
+      parity_checker_(context.FindComponent<AppSecretParityChecker>()) {}
 
 std::string SettingsStatusHandler::HandleRequestThrow(const server::http::HttpRequest& request,
                                                       server::request::RequestContext&) const {
@@ -72,22 +109,36 @@ std::string SettingsStatusHandler::HandleRequestThrow(const server::http::HttpRe
 
   const auto session = auth::RequireFullSession(request, oauth_);
   if (!session) {
+    if (parity_checker_.GetStatus() == AppSecretParityChecker::Status::kMismatch) {
+      response.SetStatus(server::http::HttpStatus::kServiceUnavailable);
+      formats::json::ValueBuilder b(formats::json::Type::kObject);
+      b["error"] = std::string{"backend_misconfigured"};
+      b["detail"] = std::string{
+          "six-feat and six-feat-auth have different APP_SECRET values — sessions minted by "
+          "one can't be read by the other. Restart both with the same APP_SECRET."};
+      return formats::json::ToString(b.ExtractValue());
+    }
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
 
   const auto user_id = auth::SessionUserId(*session);
   const bool genius_connected = user_provider_tokens_.Get(user_id, "genius").has_value();
-  const bool yandex_connected = user_provider_tokens_.Get(user_id, "yandex").has_value();
+
+  const bool yandex_connected = session->Provider() == auth::kProviderYandex ||
+                                user_provider_tokens_.Get(user_id, "yandex").has_value();
 
   formats::json::ValueBuilder b(formats::json::Type::kObject);
   formats::json::ValueBuilder genius(formats::json::Type::kObject);
   genius["connected"] = genius_connected;
+
+  genius["link_enabled"] = true;
   b["genius"] = std::move(genius);
   formats::json::ValueBuilder yandex(formats::json::Type::kObject);
   yandex["connected"] = yandex_connected;
   b["yandex"] = std::move(yandex);
   b["preferred_enrichment_provider"] =
       user_provider_tokens_.GetPreferredEnrichmentProvider(user_id);
+  b["enrichment_enabled"] = user_provider_tokens_.GetEnrichmentEnabled(user_id);
   return formats::json::ToString(b.ExtractValue());
 }
 
@@ -234,6 +285,49 @@ yaml_config::Schema SettingsEnrichmentProviderHandler::GetStaticConfigSchema() {
       kSettingsEnrichmentProviderHandlerSchema);
 }
 
+SettingsEnrichmentEnabledHandler::SettingsEnrichmentEnabledHandler(
+    const components::ComponentConfig& config, const components::ComponentContext& context)
+    : HttpHandlerBase(config, context),
+      oauth_(context.FindComponent<auth::OAuthConfig>()),
+      user_provider_tokens_(context.FindComponent<auth::UserProviderTokenStore>()) {}
+
+std::string SettingsEnrichmentEnabledHandler::HandleRequestThrow(
+    const server::http::HttpRequest& request, server::request::RequestContext&) const {
+  EnsureRequestId(request);
+  ApplySecurityHeaders(request);
+
+  auto& response = request.GetHttpResponse();
+  response.SetContentType(http::ContentType{"application/json; charset=utf-8"});
+
+  const auto session = auth::RequireFullSession(request, oauth_);
+  if (!session) {
+    return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
+  }
+
+  bool enabled = false;
+  try {
+    const auto body = formats::json::FromString(request.RequestBody());
+    if (!body.HasMember("enabled")) throw std::runtime_error("missing enabled");
+    enabled = body["enabled"].As<bool>();
+  } catch (const std::exception&) {
+    response.SetStatus(server::http::HttpStatus::kBadRequest);
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kBadRequest, "body must be JSON with a boolean enabled");
+  }
+
+  const auto user_id = auth::SessionUserId(*session);
+  user_provider_tokens_.SetEnrichmentEnabled(user_id, enabled);
+
+  formats::json::ValueBuilder b(formats::json::Type::kObject);
+  b["enrichment_enabled"] = enabled;
+  return formats::json::ToString(b.ExtractValue());
+}
+
+yaml_config::Schema SettingsEnrichmentEnabledHandler::GetStaticConfigSchema() {
+  return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
+      kSettingsEnrichmentEnabledHandlerSchema);
+}
+
 SettingsYandexDeviceStartHandler::SettingsYandexDeviceStartHandler(
     const components::ComponentConfig& config, const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
@@ -367,21 +461,21 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
 
-  const auto personal_token = user_provider_tokens_.Get(auth::SessionUserId(*session), "yandex");
-  if (!personal_token) {
+  const auto connected_yandex = user_provider_tokens_.Get(auth::SessionUserId(*session), "yandex");
+  const std::string yandex_token = auth::YandexTokenForSession(*session, connected_yandex);
+  if (yandex_token.empty()) {
     response.SetStatus(server::http::HttpStatus::kNotFound);
-    return BuildProblemJson(request,
-                            server::http::HttpStatus::kNotFound,
-                            "no personal Yandex account connected — connect one in Settings first");
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kNotFound, "sign in with Yandex to use playlists");
   }
 
   std::optional<std::string> user_id;
   std::vector<YandexPlaylistSummary> playlists;
   std::vector<std::int64_t> liked_track_ids;
   try {
-    user_id = yandex_client_.FetchAccountUserId(*personal_token);
+    user_id = yandex_client_.FetchAccountUserId(yandex_token);
     if (user_id) {
-      playlists = yandex_client_.FetchPlaylists(*personal_token, *user_id);
+      playlists = yandex_client_.FetchPlaylists(yandex_token, *user_id);
     }
   } catch (const GeniusHttpError&) {
     response.SetStatus(server::http::HttpStatus::kBadGateway);
@@ -389,9 +483,8 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
         request, server::http::HttpStatus::kBadGateway, "could not reach Yandex");
   }
   if (user_id) {
-    // [SF-WEB-76] Own try/catch — a liked-tracks failure falls back to track_count 0.
     try {
-      liked_track_ids = yandex_client_.FetchLikedTracks(*personal_token, *user_id);
+      liked_track_ids = yandex_client_.FetchLikedTracks(yandex_token, *user_id);
     } catch (const GeniusHttpError& e) {
       LOG_WARNING() << "[SettingsYandexPlaylistsHandler] liked-tracks fetch failed, "
                     << "falling back to track_count 0: " << e.what();
@@ -454,12 +547,12 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
     return BuildProblemJson(request, server::http::HttpStatus::kUnauthorized, "not authenticated");
   }
 
-  const auto personal_token = user_provider_tokens_.Get(auth::SessionUserId(*session), "yandex");
-  if (!personal_token) {
+  const auto connected_yandex = user_provider_tokens_.Get(auth::SessionUserId(*session), "yandex");
+  const std::string yandex_token = auth::YandexTokenForSession(*session, connected_yandex);
+  if (yandex_token.empty()) {
     response.SetStatus(server::http::HttpStatus::kNotFound);
-    return BuildProblemJson(request,
-                            server::http::HttpStatus::kNotFound,
-                            "no personal Yandex account connected — connect one in Settings first");
+    return BuildProblemJson(
+        request, server::http::HttpStatus::kNotFound, "sign in with Yandex to use playlists");
   }
 
   const std::string& playlist_arg = request.GetArg("playlist");
@@ -480,11 +573,11 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
   std::optional<std::string> user_id;
   std::vector<std::int64_t> track_ids;
   try {
-    user_id = yandex_client_.FetchAccountUserId(*personal_token);
+    user_id = yandex_client_.FetchAccountUserId(yandex_token);
     if (user_id) {
       track_ids = is_likes
-                      ? yandex_client_.FetchLikedTracks(*personal_token, *user_id)
-                      : yandex_client_.FetchPlaylistTracks(*personal_token, *user_id, playlist_id);
+                      ? yandex_client_.FetchLikedTracks(yandex_token, *user_id)
+                      : yandex_client_.FetchPlaylistTracks(yandex_token, *user_id, playlist_id);
     }
   } catch (const GeniusHttpError&) {
     response.SetStatus(server::http::HttpStatus::kBadGateway);
@@ -497,7 +590,6 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
                             server::http::HttpStatus::kBadGateway,
                             "the connected Yandex token is no longer valid — reconnect it");
   }
-  // [SF-WEB-74] Truncation used to be silent — capture the pre-truncation
 
   const std::size_t total_track_count = track_ids.size();
   const bool truncated = total_track_count > kImportMaxTracks;
@@ -524,14 +616,6 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
 
   const auto connected_genius = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
   const std::string genius_token = auth::GeniusTokenForSession(*session, connected_genius);
-  if (genius_token.empty()) {
-    response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
-    return BuildProblemJson(
-        request,
-        server::http::HttpStatus::kUnprocessableEntity,
-        "no Genius token available for this session — connect a Genius token in settings "
-        "before importing");
-  }
 
   formats::json::ValueBuilder artists_b(formats::json::Type::kArray);
   int resolved_count = 0;
@@ -541,19 +625,22 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
     formats::json::ValueBuilder ab(formats::json::Type::kObject);
     ab["yandex_name"] = yandex_name;
 
-    std::variant<ArtistRef, AmbiguousResult> resolved;
-    try {
-      resolved = service_.ResolveByName(yandex_name, genius_token);
-    } catch (const std::exception& ex) {
-      LOG_WARNING() << "[SettingsYandexImportHandler] resolve '" << yandex_name
-                    << "': " << ex.what();
-      ab["resolved"] = false;
-      artists_b.PushBack(std::move(ab));
-      continue;
+    std::optional<std::variant<ArtistRef, AmbiguousResult>> resolved =
+        service_.ResolveByNameFromCache(yandex_name);
+    if (!resolved && !genius_token.empty()) {
+      try {
+        resolved = service_.ResolveByName(yandex_name, genius_token);
+      } catch (const std::exception& ex) {
+        LOG_WARNING() << "[SettingsYandexImportHandler] resolve '" << yandex_name
+                      << "': " << ex.what();
+        ab["resolved"] = false;
+        artists_b.PushBack(std::move(ab));
+        continue;
+      }
     }
 
-    if (std::holds_alternative<ArtistRef>(resolved)) {
-      const auto& ref = std::get<ArtistRef>(resolved);
+    if (resolved && std::holds_alternative<ArtistRef>(*resolved)) {
+      const auto& ref = std::get<ArtistRef>(*resolved);
       ab["resolved"] = true;
       ab["id"] = ref.id;
       ab["name"] = ref.name;
@@ -582,6 +669,54 @@ std::string SettingsYandexImportHandler::HandleRequestThrow(
 yaml_config::Schema SettingsYandexImportHandler::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
       kSettingsYandexImportHandlerSchema);
+}
+
+SettingsGeniusLinkStartHandler::SettingsGeniusLinkStartHandler(
+    const components::ComponentConfig& config, const components::ComponentContext& context)
+    : HttpHandlerBase(config, context), oauth_(context.FindComponent<auth::OAuthConfig>()) {}
+
+std::string SettingsGeniusLinkStartHandler::HandleRequestThrow(
+    const server::http::HttpRequest& request, server::request::RequestContext&) const {
+  EnsureRequestId(request);
+  ApplySecurityHeaders(request);
+
+  auto& response = request.GetHttpResponse();
+
+  const auto session = auth::RequireFullSession(request, oauth_);
+  if (!session) {
+    response.SetStatus(server::http::HttpStatus::kFound);
+    response.SetHeader(std::string_view("Location"), "/");
+    return "";
+  }
+
+  const std::string state = std::string{"link:"} + GeniusLinkRandomState();
+
+  server::http::Cookie state_cookie{"six_feat_oauth_state", state};
+  state_cookie.SetMaxAge(std::chrono::seconds{300});
+  state_cookie.SetHttpOnly();
+  if (oauth_.CookieSecure()) state_cookie.SetSecure();
+  state_cookie.SetSameSite("Lax");
+  state_cookie.SetPath("/");
+  response.SetCookie(state_cookie);
+
+  const std::string redirect = oauth_.GeniusBaseUrl() +
+                               "/oauth/authorize"
+                               "?client_id=" +
+                               GeniusLinkUrlEncode(oauth_.ClientId()) +
+                               "&redirect_uri=" + GeniusLinkUrlEncode(oauth_.RedirectUri()) +
+                               "&scope=me"
+                               "&response_type=code"
+                               "&state=" +
+                               GeniusLinkUrlEncode(state);
+
+  response.SetStatus(server::http::HttpStatus::kFound);
+  response.SetHeader(std::string_view("Location"), redirect);
+  return "";
+}
+
+yaml_config::Schema SettingsGeniusLinkStartHandler::GetStaticConfigSchema() {
+  return yaml_config::MergeSchemas<server::handlers::HttpHandlerBase>(
+      kSettingsGeniusLinkStartHandlerSchema);
 }
 
 }  // namespace six_feat

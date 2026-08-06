@@ -832,3 +832,71 @@ class TestGraphYandexSessionRequiresGeniusToken:
         resp = sess.get(GRAPH_URL, params={"artist": seed_name})
         assert resp.status_code == 200, resp.text
         assert resp.json()["seed_id"] == unique_artist_id
+
+
+class TestGraphYandexSessionServesAlreadyCachedArtistWithoutGeniusToken:
+    """[SF-YM-08] Артист, уже полностью подтянутый (Depth::Foreground) кем-то
+    с Genius-токеном ранее, доступен Yandex-only сессии без BYO-токена —
+    и по id, и по имени, без единого нового похода в Genius/Yandex. Только
+    СОВСЕМ новое имя/id, которых ещё ни у кого не было, честно требует
+    токен (см. test_no_connected_byo_token_is_honest_422_not_a_502 выше —
+    он не должен был перестать проходить)."""
+
+    def _seed_via_genius(
+        self, client: requests.Session, genius_mock: GeniusMock, artist_id: int, name: str
+    ) -> None:
+        genius_mock.artist(artist_id, {"id": artist_id, "name": name})
+        genius_mock.songs(artist_id, [artist_id * 1000 + 1])
+        genius_mock.song_detail(
+            artist_id * 1000 + 1,
+            _build_song_detail(
+                artist_id * 1000 + 1,
+                "Some Song",
+                artist_id,
+                name,
+                collaborators=[_collab(artist_id * 1000 + 2, "Some Collaborator")],
+            ),
+        )
+        resp = client.get(GRAPH_URL, params={"id": str(artist_id)})
+        assert resp.status_code == 200
+
+    def test_by_id_succeeds_for_already_cached_artist(
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        unique_artist_id: int,
+    ):
+        self._seed_via_genius(client, genius_mock, unique_artist_id, "Cached Artist")
+
+        sess = _yandex_session()
+        resp = sess.get(GRAPH_URL, params={"id": str(unique_artist_id)})
+
+        assert resp.status_code == 200
+        assert resp.json()["seed_id"] == unique_artist_id
+
+    def test_by_name_succeeds_for_already_cached_artist(
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        unique_artist_id: int,
+    ):
+        name = f"Cached Artist {unique_artist_id}"
+        self._seed_via_genius(client, genius_mock, unique_artist_id, name)
+
+        sess = _yandex_session()
+        resp = sess.get(GRAPH_URL, params={"artist": name})
+
+        assert resp.status_code == 200
+        assert resp.json()["seed_id"] == unique_artist_id
+
+    def test_by_name_still_422s_when_no_one_has_ever_resolved_it(
+        self, service_proc, genius_mock: GeniusMock
+    ):
+        """Regression guard for the fix above: a name nobody has ever
+        resolved (so it can't be in the local cache) must still require a
+        Genius token, not silently fall through to an empty/wrong graph."""
+        sess = _yandex_session()
+        resp = sess.get(GRAPH_URL, params={"artist": "Definitely Never Seen This Artist Before"})
+
+        assert resp.status_code == 422
+        assert resp.json().get("error") == "no_genius_token"

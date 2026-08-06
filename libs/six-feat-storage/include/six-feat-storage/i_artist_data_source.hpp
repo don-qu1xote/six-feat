@@ -4,6 +4,7 @@
 #include <optional>
 #include <six-feat-domain/domain_types.hpp>
 #include <six-feat-storage/analytics.hpp>
+#include <string>
 #include <vector>
 
 namespace six_feat {
@@ -21,6 +22,10 @@ class IArtistDataSource {
   virtual GetResult GetArtistSongs(const ArtistRef& ref, Depth want) const = 0;
 
   virtual std::optional<ArtistRef> Lookup(std::int64_t artist_id) const = 0;
+
+  // [SF-YM-08] Локальный поиск по имени среди уже резолвленных артистов —
+  // без похода во внешний гейтвей (Genius/Yandex).
+  virtual std::vector<ArtistRef> SearchByName(const std::string& query, int limit) const = 0;
 
   virtual std::vector<CollabEdge> Neighbours(std::int64_t artist_id,
                                              const RoleMask& mask) const = 0;

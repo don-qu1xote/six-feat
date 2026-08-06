@@ -8,6 +8,7 @@ import {
 } from "../ui/router.js";
 import { attachGeniusAutocomplete } from "../ui/autocomplete.js";
 import { showToast } from "../ui/toast.js";
+import { t } from "../i18n/i18n.js";
 import { zoomBoard, fitBoard, mountBoard, unmountBoard } from "./game-board.js";
 import { fetchDailyChallengeState, fetchLeaderboard } from "./game-api.js";
 import { slice, setPhoto, setId, parseGameShareState } from "./connect-store.js";
@@ -195,7 +196,7 @@ function startChallengeFromLanding() {
   const from = (els.heroGameFromInput?.value || "").trim();
   const to = (els.heroGameToInput?.value || "").trim();
   if (!from || !to) {
-    showToast("Enter both artist names.");
+    showToast(t("game.toast.enterBothNames"));
     return;
   }
   setStartArtist(from);
@@ -277,10 +278,10 @@ function renderDailyState(state, daily) {
     line.hidden = showPair;
     line.textContent =
       state === "loading"
-        ? "Loading today's challenge…"
+        ? t("hero.game.loading")
         : state === "none"
-          ? "No challenge published for today yet — set your own pair below."
-          : "Couldn't reach the game service — today's challenge isn't loaded, not missing.";
+          ? t("hero.game.none")
+          : t("hero.game.unavailable");
     line.classList.toggle("is-error", state === "unavailable");
   }
   if (els.heroGameDivider) els.heroGameDivider.hidden = false;

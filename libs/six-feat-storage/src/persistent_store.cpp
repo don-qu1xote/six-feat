@@ -129,6 +129,11 @@ const std::vector<const char*> kMigrationV8 = {
     ))SQL",
 };
 
+const std::vector<const char*> kMigrationV9 = {
+    R"SQL(ALTER TABLE user_settings
+        ADD COLUMN IF NOT EXISTS enrichment_enabled BOOLEAN NOT NULL DEFAULT true)SQL",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
@@ -138,9 +143,10 @@ const std::vector<Migration> kMigrations = {
     {6, kMigrationV6},
     {7, kMigrationV7},
     {8, kMigrationV8},
+    {9, kMigrationV9},
 };
 
-constexpr int kTargetSchemaVersion = 8;
+constexpr int kTargetSchemaVersion = 9;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,
@@ -287,6 +293,35 @@ struct PersistentStore::Impl {
       r.image = row[1].As<std::optional<std::string>>().value_or("");
       r.url = row[2].As<std::optional<std::string>>().value_or("");
       return std::optional<ArtistRef>{std::move(r)};
+    });
+  }
+
+  // [SF-YM-08] Поиск среди УЖЕ известных артистов (без похода во внешний
+  // гейтвей) — не подменяет Genius Search: возвращает только то, что уже
+  // резолвлено (кем-то с Genius-токеном или фоновым обогащением) и лежит в
+  // этой таблице. Точное совпадение по имени — первым, иначе по длине имени
+  // (короче — обычно точнее при ILIKE-подстроке).
+  std::vector<ArtistRef> SearchByName(const std::string& query, int limit) const {
+    return ExecuteReadQueryWithRetry([&] {
+      auto res =
+          cluster->Execute(read_host_type,
+                           kReadQueryCommandControl,
+                           "SELECT id, name, image_url, url FROM artists WHERE name ILIKE $1 "
+                           "ORDER BY (lower(name) = lower($2)) DESC, length(name) ASC LIMIT $3",
+                           "%" + query + "%",
+                           query,
+                           limit);
+      std::vector<ArtistRef> out;
+      out.reserve(res.Size());
+      for (const auto& row : res) {
+        ArtistRef r;
+        r.id = row[0].As<std::int64_t>();
+        r.name = row[1].As<std::string>();
+        r.image = row[2].As<std::optional<std::string>>().value_or("");
+        r.url = row[3].As<std::optional<std::string>>().value_or("");
+        out.push_back(std::move(r));
+      }
+      return out;
     });
   }
 
@@ -548,6 +583,11 @@ std::optional<ArtistSongs> PersistentStore::LoadArtistSongs(std::int64_t artist_
 
 std::optional<ArtistRef> PersistentStore::LoadArtistRef(std::int64_t artist_id) const {
   return impl_->LoadRef(artist_id);
+}
+
+std::vector<ArtistRef> PersistentStore::SearchArtistsByName(const std::string& query,
+                                                            int limit) const {
+  return impl_->SearchByName(query, limit);
 }
 
 std::vector<CollabEdge> PersistentStore::LoadNeighbours(std::int64_t artist_id,

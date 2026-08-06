@@ -1,10 +1,20 @@
 #pragma once
 
+#include <algorithm>
+#include <cctype>
 #include <optional>
 #include <six-feat-storage/i_artist_data_source.hpp>
+#include <string>
 #include <unordered_map>
 
 namespace six_feat::test {
+
+inline std::string FakeArtistDataSourceToLowerAscii(const std::string& s) {
+  std::string out = s;
+  std::transform(
+      out.begin(), out.end(), out.begin(), [](unsigned char c) { return std::tolower(c); });
+  return out;
+}
 
 class FakeArtistDataSource final : public IArtistDataSource {
  public:
@@ -32,6 +42,23 @@ class FakeArtistDataSource final : public IArtistDataSource {
     const auto it = artists_.find(artist_id);
     if (it == artists_.end()) return std::nullopt;
     return it->second;
+  }
+
+  std::vector<ArtistRef> SearchByName(const std::string& query, int limit) const override {
+    const std::string needle = FakeArtistDataSourceToLowerAscii(query);
+    std::vector<ArtistRef> out;
+    for (const auto& [id, ref] : artists_) {
+      if (FakeArtistDataSourceToLowerAscii(ref.name).find(needle) == std::string::npos) continue;
+      out.push_back(ref);
+    }
+    std::sort(out.begin(), out.end(), [&](const ArtistRef& a, const ArtistRef& b) {
+      const bool a_exact = FakeArtistDataSourceToLowerAscii(a.name) == needle;
+      const bool b_exact = FakeArtistDataSourceToLowerAscii(b.name) == needle;
+      if (a_exact != b_exact) return a_exact;
+      return a.name.size() < b.name.size();
+    });
+    if (static_cast<int>(out.size()) > limit) out.resize(static_cast<std::size_t>(limit));
+    return out;
   }
 
   std::vector<CollabEdge> Neighbours(std::int64_t artist_id, const RoleMask&) const override {

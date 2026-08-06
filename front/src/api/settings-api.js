@@ -13,7 +13,7 @@ async function getJson(url) {
 async function getJsonWithStatus(url) {
   try {
     const res = await apiFetch(url);
-    const data = res.ok ? await res.json().catch(() => null) : null;
+    const data = await res.json().catch(() => null);
     return { status: res.status, data };
   } catch {
     return { status: null, data: null };
@@ -53,14 +53,18 @@ export function pollYandexDeviceFlow(deviceCode) {
   return postJson("/api/v1/settings/yandex/device/poll", { device_code: deviceCode });
 }
 
+// [SF-WEB-86] A Yandex *login* session isn't enough to read the Music API —
+// the login OAuth app has no Music API scope, only the device-flow one does.
+// The status is returned (not swallowed like getJson does) so the caller can
+// tell "no playlist grant yet" (502) apart from a real fetch failure.
 export function fetchYandexPlaylists() {
-  return getJson("/api/v1/settings/yandex/playlists");
+  return getJsonWithStatus("/api/v1/settings/yandex/playlists");
 }
 
 export function fetchYandexImport(playlistId) {
   return getJson(`/api/v1/settings/yandex/import?playlist=${encodeURIComponent(playlistId)}`);
 }
 
-export function setPreferredEnrichmentProvider(provider) {
-  return postJson("/api/v1/settings/enrichment-provider", { provider }, "PATCH");
+export function setEnrichmentEnabled(enabled) {
+  return postJson("/api/v1/settings/enrichment-enabled", { enabled }, "PATCH");
 }

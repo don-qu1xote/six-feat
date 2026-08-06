@@ -1,5 +1,7 @@
 import { $ } from "../dom/dom.js";
 import { showToast } from "../ui/index.js";
+import { openSettingsPanel, refreshSettingsStatus } from "../ui/settings-panel.js";
+import { t } from "../i18n/i18n.js";
 import { apiFetch } from "./net.js";
 
 function getCookie(name) {
@@ -9,13 +11,35 @@ function getCookie(name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function handleGeniusLinkRedirect(params) {
+  const status = params.get("genius_link");
+  if (!status) return false;
+  if (status === "connected") {
+    showToast(t("auth.geniusLinkedToast"));
+    openSettingsPanel();
+    refreshSettingsStatus();
+  } else if (status === "denied") {
+    showToast(t("auth.geniusLinkDeniedToast"));
+  } else if (status === "error") {
+    showToast(t("auth.geniusLinkErrorToast"));
+  }
+  params.delete("genius_link");
+  return true;
+}
+
 function handleAuthRedirect() {
   const params = new URLSearchParams(window.location.search);
+  let changed = handleGeniusLinkRedirect(params);
+
   const a = params.get("auth");
-  if (!a) return;
-  if (a === "denied") showToast("Sign-in was cancelled.");
-  else if (a === "error") showToast("Sign-in failed — please try again.");
-  params.delete("auth");
+  if (a) {
+    if (a === "denied") showToast(t("auth.signInCancelled"));
+    else if (a === "error") showToast(t("auth.signInFailed"));
+    params.delete("auth");
+    changed = true;
+  }
+
+  if (!changed) return;
   const qs = params.toString();
   const clean = window.location.pathname + (qs ? `?${qs}` : "");
   window.history.replaceState({}, "", clean);
@@ -39,7 +63,8 @@ export async function checkAuth() {
     if (hint) hint.style.display = "none";
     if (user) user.style.display = "flex";
     if (name)
-      name.textContent = data.name || (data.provider === "yandex" ? "Yandex User" : "Genius User");
+      name.textContent =
+        data.name || t(data.provider === "yandex" ? "auth.yandexUser" : "auth.geniusUser");
     if (badge) badge.style.display = "inline-flex";
   } else {
     if (hint) hint.style.display = "flex";

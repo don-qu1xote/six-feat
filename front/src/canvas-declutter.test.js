@@ -121,7 +121,7 @@ describe("[SF-WEB-31 follow-up 2] landing wordmark replaces the eyebrow+slogan",
 describe("[SF-WEB-50] landing folded into Observatory", () => {
   it("pairs the wordmark with exactly one short thesis line, not a return to the old explanatory paragraph", () => {
     expect(html).toContain('<div class="hero-header">');
-    expect(html).toMatch(/<p class="hero-tagline">[^<]{1,60}<\/p>/);
+    expect(html).toMatch(/<p class="hero-tagline"[^>]*>[^<]{1,60}<\/p>/);
     expect(html).not.toContain("Search an artist to map who they've made songs with");
     expect(html).not.toContain("Trace the people behind the");
   });

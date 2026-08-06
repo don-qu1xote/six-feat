@@ -322,9 +322,14 @@ std::vector<std::int64_t> YandexMusicGateway::FetchPlaylistTracks(const std::str
 std::optional<std::string> YandexMusicGateway::FetchAccountUserId(const std::string& personal_token,
                                                                   Lane lane) const {
   const std::string url = yandex_base_url_ + "/account/status";
-  const auto json = formats::json::FromString(YandexGetWithToken(url, lane, personal_token));
+  const auto body = YandexGetWithToken(url, lane, personal_token);
+  const auto json = formats::json::FromString(body);
   const auto uid = json["result"]["account"]["uid"].As<std::int64_t>(0);
-  if (!uid) return std::nullopt;
+  if (!uid) {
+    LOG_WARNING() << "[YMGW] request_id=" << CurrentRequestId()
+                  << " account/status returned no uid, raw body: " << body;
+    return std::nullopt;
+  }
   return std::to_string(uid);
 }
 

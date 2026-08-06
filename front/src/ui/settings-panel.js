@@ -1,32 +1,24 @@
 import { els } from "../dom/dom.js";
+import { State } from "../state/state.js";
+import { t, setLang } from "../i18n/i18n.js";
 import { registerDockedPanel, closeOtherDockedPanels } from "./docked-panel.js";
 import { showToast } from "./toast.js";
+import { setTheme } from "./theme.js";
 import {
   fetchSettingsStatus,
   connectGeniusToken,
   disconnectProvider,
-  startYandexDeviceFlow,
-  pollYandexDeviceFlow,
-  setPreferredEnrichmentProvider,
+  setEnrichmentEnabled,
 } from "../api/settings-api.js";
 
 let _panel = null;
-let _yandexPollTimer = null;
 
 export function isSettingsPanelOpen() {
   return !!els.settingsPanel?.classList.contains("show");
 }
 
-function _stopYandexPolling() {
-  if (_yandexPollTimer) {
-    clearTimeout(_yandexPollTimer);
-    _yandexPollTimer = null;
-  }
-}
-
 export function closeSettingsPanel() {
   els.settingsPanel?.classList.remove("show");
-  _stopYandexPolling();
 }
 
 export function openSettingsPanel() {
@@ -36,142 +28,93 @@ export function openSettingsPanel() {
   refreshSettingsStatus();
 }
 
-function _setGeniusConnected(connected) {
+function _setGeniusConnected(connected, linkEnabled) {
   if (els.settingsGeniusStatus) {
-    els.settingsGeniusStatus.textContent = connected ? "Connected" : "Not connected";
+    els.settingsGeniusStatus.textContent = t(
+      connected ? "settings.genius.connected" : "settings.genius.notConnected",
+    );
+    els.settingsGeniusStatus.classList.toggle("is-connected", connected);
   }
   if (els.settingsGeniusDisconnectBtn) els.settingsGeniusDisconnectBtn.hidden = !connected;
+  if (els.settingsGeniusLinkBtn) els.settingsGeniusLinkBtn.hidden = connected || !linkEnabled;
   if (els.settingsGeniusConnectBtn) {
-    els.settingsGeniusConnectBtn.textContent = connected ? "Replace token" : "Connect";
-  }
-}
-
-function _setYandexConnected(connected) {
-  if (els.settingsYandexStatus) {
-    els.settingsYandexStatus.textContent = connected ? "Connected" : "Not connected";
-  }
-  if (els.settingsYandexDisconnectBtn) els.settingsYandexDisconnectBtn.hidden = !connected;
-  if (els.settingsYandexConnectBtn) els.settingsYandexConnectBtn.hidden = connected;
-  if (connected && els.settingsYandexDeviceCode) {
-    els.settingsYandexDeviceCode.hidden = true;
-    els.settingsYandexDeviceCode.textContent = "";
+    els.settingsGeniusConnectBtn.textContent = t(
+      connected ? "settings.genius.replace" : "settings.genius.connect",
+    );
   }
 }
 
 export async function refreshSettingsStatus() {
+  if (els.settingsThemeSelect) els.settingsThemeSelect.value = State.theme || "dark";
+  if (els.settingsLangSelect) els.settingsLangSelect.value = State.lang || "en";
+
   const { status, data } = await fetchSettingsStatus();
 
-  const signedOut = status === 401;
+  const misconfigured = status === 503 && data?.error === "backend_misconfigured";
+  const signedOut = status === 401 && !misconfigured;
   if (els.settingsSignedOutHint) els.settingsSignedOutHint.hidden = !signedOut;
-  if (els.settingsCards) els.settingsCards.hidden = signedOut;
-  if (signedOut || !data) return;
+  if (els.settingsMisconfiguredHint) els.settingsMisconfiguredHint.hidden = !misconfigured;
+  if (els.settingsCards) els.settingsCards.hidden = signedOut || misconfigured;
+  if (signedOut || misconfigured || !data) return;
 
-  _setGeniusConnected(!!data.genius?.connected);
-  _setYandexConnected(!!data.yandex?.connected);
-  if (els.settingsEnrichmentProviderSelect) {
-    els.settingsEnrichmentProviderSelect.value = data.preferred_enrichment_provider || "yandex";
+  _setGeniusConnected(!!data.genius?.connected, !!data.genius?.link_enabled);
+  if (els.settingsEnrichmentToggle) {
+    els.settingsEnrichmentToggle.checked = data.enrichment_enabled !== false;
   }
 }
 
-async function _handleEnrichmentProviderChange() {
-  const provider = els.settingsEnrichmentProviderSelect?.value;
-  if (provider !== "yandex" && provider !== "genius") return;
-  const result = await setPreferredEnrichmentProvider(provider);
+function _handleThemeChange() {
+  const theme = els.settingsThemeSelect?.value;
+  if (theme !== "light" && theme !== "dark") return;
+  setTheme(theme);
+}
+
+function _handleLangChange() {
+  const lang = els.settingsLangSelect?.value;
+  if (lang !== "en" && lang !== "ru") return;
+  setLang(lang);
+}
+
+async function _handleEnrichmentToggleChange() {
+  const enabled = !!els.settingsEnrichmentToggle?.checked;
+  const result = await setEnrichmentEnabled(enabled);
   if (!result.ok) {
-    showToast("Couldn't save that preference — please try again.");
-    return;
+    showToast(t("settings.enrichment.saveError"));
+    if (els.settingsEnrichmentToggle) els.settingsEnrichmentToggle.checked = !enabled;
   }
-  showToast(provider === "yandex" ? "Yandex will be tried first." : "Genius will be tried first.");
 }
 
 async function _handleGeniusConnect() {
   const token = els.settingsGeniusInput?.value?.trim();
   if (!token) {
-    showToast("Paste a Genius token first.");
+    showToast(t("settings.genius.pasteFirst"));
     return;
   }
   const result = await connectGeniusToken(token);
   if (!result.ok) {
-    showToast("Couldn't connect that token — please try again.");
+    showToast(t("settings.genius.connectError"));
     return;
   }
   if (els.settingsGeniusInput) els.settingsGeniusInput.value = "";
-  showToast("Genius token connected.");
-  _setGeniusConnected(true);
+  showToast(t("settings.genius.connectedToast"));
+  _setGeniusConnected(true, true);
 }
 
 async function _handleGeniusDisconnect() {
   const result = await disconnectProvider("genius");
   if (!result.ok && result.status !== 404) {
-    showToast("Couldn't disconnect — please try again.");
+    showToast(t("settings.disconnectError"));
     return;
   }
-  showToast("Genius token disconnected.");
-  _setGeniusConnected(false);
-}
-
-async function _pollYandexOnce(deviceCode, intervalMs) {
-  const result = await pollYandexDeviceFlow(deviceCode);
-  if (!isSettingsPanelOpen()) return;
-
-  const status = result.data?.status;
-  if (status === "connected") {
-    showToast("Yandex account connected.");
-    _setYandexConnected(true);
-    return;
-  }
-  if (status === "denied") {
-    showToast("Yandex sign-in was cancelled.");
-    if (els.settingsYandexDeviceCode) els.settingsYandexDeviceCode.hidden = true;
-    return;
-  }
-  if (status === "expired") {
-    showToast("That code expired — try connecting again.");
-    if (els.settingsYandexDeviceCode) els.settingsYandexDeviceCode.hidden = true;
-    return;
-  }
-
-  _yandexPollTimer = setTimeout(() => _pollYandexOnce(deviceCode, intervalMs), intervalMs);
-}
-
-async function _handleYandexConnect() {
-  const result = await startYandexDeviceFlow();
-  if (!result.ok || !result.data?.device_code) {
-    showToast("Couldn't reach Yandex — please try again.");
-    return;
-  }
-  const {
-    device_code: deviceCode,
-    user_code: userCode,
-    verification_url: url,
-    interval,
-  } = result.data;
-
-  if (els.settingsYandexDeviceCode) {
-    els.settingsYandexDeviceCode.hidden = false;
-    els.settingsYandexDeviceCode.textContent = `Enter code ${userCode} at ${url}`;
-  }
-
-  _stopYandexPolling();
-  const intervalMs = Math.max(1, interval || 5) * 1000;
-  _yandexPollTimer = setTimeout(() => _pollYandexOnce(deviceCode, intervalMs), intervalMs);
-}
-
-async function _handleYandexDisconnect() {
-  const result = await disconnectProvider("yandex");
-  if (!result.ok && result.status !== 404) {
-    showToast("Couldn't disconnect — please try again.");
-    return;
-  }
-  showToast("Yandex account disconnected.");
-  _setYandexConnected(false);
+  showToast(t("settings.genius.disconnectedToast"));
+  _setGeniusConnected(false, true);
 }
 
 export function setupSettingsPanel() {
   if (!els.settingsPanel) return;
 
   _panel = registerDockedPanel({
-    el: els.settingsPanel,
+    el: els.settingsBox,
     trigger: els.btnSettingsOpen,
     isOpen: isSettingsPanelOpen,
     close: closeSettingsPanel,
@@ -183,9 +126,10 @@ export function setupSettingsPanel() {
   });
   els.settingsPanelClose?.addEventListener("click", closeSettingsPanel);
 
+  els.settingsThemeSelect?.addEventListener("change", _handleThemeChange);
+  els.settingsLangSelect?.addEventListener("change", _handleLangChange);
+
   els.settingsGeniusConnectBtn?.addEventListener("click", _handleGeniusConnect);
   els.settingsGeniusDisconnectBtn?.addEventListener("click", _handleGeniusDisconnect);
-  els.settingsEnrichmentProviderSelect?.addEventListener("change", _handleEnrichmentProviderChange);
-  els.settingsYandexConnectBtn?.addEventListener("click", _handleYandexConnect);
-  els.settingsYandexDisconnectBtn?.addEventListener("click", _handleYandexDisconnect);
+  els.settingsEnrichmentToggle?.addEventListener("change", _handleEnrichmentToggleChange);
 }

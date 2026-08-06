@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   ui-panel / ui-tile — SF-WEB-11 kit.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 /* Panel / tile — the .bento-tile "material" under new names ahead of a
 
 
@@ -20,10 +14,7 @@
   background: var(--glass-fill);
   border: 1px solid var(--line);
   box-shadow: var(--elevation-2), var(--glass-glow);
-  /* [SF-WEB-24] Same backdrop-blur the other two docked-panel shells
-     (.search-modal.docked .search-wrap/.node-search-box) already use —
-     .companion-panel (the sole .ui-panel consumer) is the same kind of
-     floating-over-canvas surface, so it gets the same shell treatment. */
+
   backdrop-filter: blur(var(--blur-scrim));
   padding: var(--space-4);
   min-width: 0;

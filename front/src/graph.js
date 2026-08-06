@@ -22,7 +22,6 @@ import {
   initNetwork,
   refreshNetwork,
   mergeNetwork,
-  nodeVisual,
   edgeVisual,
   invalidateColorCache,
 } from "./vis-adapter/index.js";
@@ -164,7 +163,7 @@ export function mergeDeepenResult(deepen) {
   };
 }
 
-export function buildNodeState(n, seedId, existingIds, graph) {
+export function buildNodeState(n, seedId, existingIds, _graph) {
   const isSeed = n.id === seedId;
   const domRole = "primary";
   const rs = roleStyle(domRole);

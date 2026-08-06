@@ -19,7 +19,6 @@ import {
   updateRateLimitIndicator,
   updateScanStatus,
 } from "../ui/index.js";
-import { restoreDefaultColors } from "../vis-adapter/index.js";
 import { apiFetch, throwForStatus, redirectToLogin } from "./net.js";
 
 const _searchDebounced = debounce(

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <six-feat-auth-lib/session_crypto.hpp>
 #include <string>
 #include <userver/clients/http/client.hpp>
@@ -86,8 +87,12 @@ class CallbackHandler final : public userver::server::handlers::HttpHandlerBase 
 
   std::string FetchGeniusName(const std::string& access_token) const;
 
+  bool RelayGeniusLink(std::int64_t user_id, const std::string& access_token) const;
+
   const OAuthConfig& oauth_;
   userver::clients::http::Client& http_client_;
+  std::string six_feat_base_url_;
+  std::string internal_secret_;
 };
 
 class YandexOAuthConfig final : public userver::components::ComponentBase {

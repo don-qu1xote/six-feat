@@ -71,3 +71,27 @@ describe("[SF-GAME-51] attachGeniusAutocomplete — пустая история"
     expect(dd.querySelectorAll(".ac-history").length).toBe(1);
   });
 });
+
+describe("[SF-WEB-89] attachGeniusAutocomplete — showHistory:false", () => {
+  it("doesn't open the history dropdown on focus when the field has its own chips row for that", () => {
+    State.history = ["Gorillaz"];
+    const { input, dd } = makeInputAndDropdown();
+    attachGeniusAutocomplete(input, dd, () => {}, undefined, { showHistory: false });
+
+    input.dispatchEvent(new Event("focus"));
+
+    expect(dd.classList.contains("open")).toBe(false);
+    expect(dd.querySelectorAll(".ac-history").length).toBe(0);
+  });
+
+  it("doesn't open the history dropdown when the input is cleared back to empty", () => {
+    State.history = ["Gorillaz"];
+    const { input, dd } = makeInputAndDropdown();
+    attachGeniusAutocomplete(input, dd, () => {}, undefined, { showHistory: false });
+
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+
+    expect(dd.classList.contains("open")).toBe(false);
+  });
+});

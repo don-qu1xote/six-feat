@@ -468,8 +468,23 @@ components_manager:
       method: PATCH
       task_processor: main-task-processor
 
+    handler-settings-enrichment-enabled:
+      path: /api/v1/settings/enrichment-enabled
+      method: PATCH
+      task_processor: main-task-processor
+
+    handler-settings-genius-link-start:
+      path: /api/v1/settings/genius/link/start
+      method: GET
+      task_processor: main-task-processor
+
     handler-internal-neighbours:
       path: /internal/neighbours
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-genius-link:
+      path: /internal/genius-link
       method: POST
       task_processor: main-task-processor
 
@@ -1094,6 +1109,7 @@ def auth_service_proc(
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
             "YANDEX_OAUTH_CLIENT_SECRET": TEST_YANDEX_OAUTH_CLIENT_SECRET,
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+            "SIX_FEAT_BASE_URL": SERVICE_BASE,
         },
     )
 
@@ -2019,6 +2035,18 @@ class GeniusMock:
             return status, {"error": "upstream error"}
 
         self._state.register("/search", _handler)
+        return self
+
+    def token_exchange(self, access_token: str, name: str = "") -> "GeniusMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"access_token": access_token}
+
+        self._state.register("/oauth/token", _handler)
+
+        def _account_handler(path: str, params: Dict) -> tuple:
+            return 200, {"response": {"user": {"name": name}}}
+
+        self._state.register("/account", _account_handler)
         return self
 
 

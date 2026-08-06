@@ -1,8 +1,11 @@
 #pragma once
 
+#include "auth/app_secret_parity_checker.hpp"
+
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-auth-lib/user_provider_token_store.hpp>
 #include <six-feat-yandex/yandex_gateway_client.hpp>
+#include <string>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
 #include <userver/server/handlers/http_handler_base.hpp>
@@ -28,6 +31,7 @@ class SettingsStatusHandler final : public userver::server::handlers::HttpHandle
  private:
   auth::OAuthConfig& oauth_;
   auth::UserProviderTokenStore& user_provider_tokens_;
+  AppSecretParityChecker& parity_checker_;
 };
 
 class SettingsGeniusConnectHandler final : public userver::server::handlers::HttpHandlerBase {
@@ -70,6 +74,23 @@ class SettingsEnrichmentProviderHandler final : public userver::server::handlers
 
   SettingsEnrichmentProviderHandler(const userver::components::ComponentConfig& config,
                                     const userver::components::ComponentContext& context);
+
+  std::string HandleRequestThrow(const userver::server::http::HttpRequest& request,
+                                 userver::server::request::RequestContext& context) const override;
+
+  static userver::yaml_config::Schema GetStaticConfigSchema();
+
+ private:
+  auth::OAuthConfig& oauth_;
+  auth::UserProviderTokenStore& user_provider_tokens_;
+};
+
+class SettingsEnrichmentEnabledHandler final : public userver::server::handlers::HttpHandlerBase {
+ public:
+  static constexpr std::string_view kName = "handler-settings-enrichment-enabled";
+
+  SettingsEnrichmentEnabledHandler(const userver::components::ComponentConfig& config,
+                                   const userver::components::ComponentContext& context);
 
   std::string HandleRequestThrow(const userver::server::http::HttpRequest& request,
                                  userver::server::request::RequestContext& context) const override;
@@ -151,6 +172,22 @@ class SettingsYandexImportHandler final : public userver::server::handlers::Http
   YandexGatewayClient& yandex_client_;
   auth::UserProviderTokenStore& user_provider_tokens_;
   CollabService& service_;
+};
+
+class SettingsGeniusLinkStartHandler final : public userver::server::handlers::HttpHandlerBase {
+ public:
+  static constexpr std::string_view kName = "handler-settings-genius-link-start";
+
+  SettingsGeniusLinkStartHandler(const userver::components::ComponentConfig& config,
+                                 const userver::components::ComponentContext& context);
+
+  std::string HandleRequestThrow(const userver::server::http::HttpRequest& request,
+                                 userver::server::request::RequestContext& context) const override;
+
+  static userver::yaml_config::Schema GetStaticConfigSchema();
+
+ private:
+  auth::OAuthConfig& oauth_;
 };
 
 }  // namespace six_feat

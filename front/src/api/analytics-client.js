@@ -1,5 +1,4 @@
 import { State, setPathHighlight } from "../state/state.js";
-import { els } from "../dom/dom.js";
 import { restoreDefaultColors } from "../vis-adapter/index.js";
 export { highlightPath } from "../vis-adapter/index.js";
 

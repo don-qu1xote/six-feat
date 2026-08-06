@@ -37,6 +37,11 @@ class PersistentStore final : public userver::components::ComponentBase {
 
   std::optional<ArtistRef> LoadArtistRef(std::int64_t artist_id) const;
 
+  // [SF-YM-08] Только среди уже резолвленных артистов — не ходит во внешний
+  // гейтвей (Genius/Yandex). Для Yandex-only сессий без BYO Genius-токена
+  // это единственный поиск по имени, доступный без 422.
+  std::vector<ArtistRef> SearchArtistsByName(const std::string& query, int limit) const;
+
   std::vector<CollabEdge> LoadNeighbours(std::int64_t artist_id, const RoleMask& mask) const;
 
   Depth GetFetchDepth(std::int64_t artist_id) const;

@@ -575,7 +575,7 @@ describe("[game #2] commitTypedHop — live connection check", () => {
     await flush();
     expect(checkLink).toHaveBeenCalledWith(100, 500);
     expect(showToast).toHaveBeenCalled();
-    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake"]); // not added
+    expect(_currentChain().nodes.map((n) => n.name)).toEqual(["Drake"]);
   });
 
   it("adds a typed artist the server confirms is connected", async () => {

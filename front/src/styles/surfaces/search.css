@@ -1,9 +1,3 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   Landing + docked search modal (hero search box, is-first-visit, docked corner card).
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
 .search-modal {
   position: absolute;
   inset: 0;
@@ -43,10 +37,7 @@
   pointer-events: none;
   backdrop-filter: blur(0);
 }
-/* [SF-WEB-50] .hero-header wraps h1 + the new .hero-tagline (index.html) —
-   was just "h1" before this ticket; same selector role (the fade/rise
-   treatment used to target h1 directly), now targets the wrapper so the
-   tagline fades with it as one unit instead of needing its own rule. */
+
 .search-modal.is-closed .hero-header {
   opacity: 0;
   transform: translateY(-16px);
@@ -129,13 +120,7 @@
   text-align: left;
   background: transparent;
   backdrop-filter: none;
-  /* [SF-WEB-24] Docked-only entry/exit timing, kit tokens (--duration-
-     slow: "panel/rail expand-style transitions" — exactly this) — the
-     base .search-modal transition above (opacity/backdrop-filter/
-     background, .32s) is shared with the full-screen landing mode and
-     stays untouched; this adds the transform .is-closed already
-     declared below but never actually animated (no matching transition
-     property existed for it before). */
+
   transition: transform var(--duration-slow) var(--ease-standard);
 }
 .search-modal.docked.is-closed {
@@ -147,16 +132,7 @@
 .search-modal.docked .auth-bar {
   display: none;
 }
-/* [SF-WEB-43] The exact .ui-panel recipe (components/panel.css) —
-   background/border/radius/box-shadow/backdrop-filter/padding all
-   literally the same var() chain, not a parallel one that happens to
-   read close. Was background: var(--panel-2) (opaque) + box-shadow:
-   var(--elevation-2) alone — pre-dated SF-WEB-42's glass pass on
-   .ui-panel and never got the --glass-fill/--glass-glow update, so this
-   card alone stayed the old flat material while .node-search-box/
-   .companion-panel (both already on .ui-panel) picked it up. One shell,
-   one source now — see search.css/node-search.css/panel.css sharing the
-   same tokens, checked in observatory.test.js. */
+
 .search-modal.docked .search-wrap {
   width: 100%;
   margin: 0;
@@ -171,18 +147,7 @@
   width: 100%;
   margin-top: var(--space-3);
 }
-/* [SF-WEB-30] Docked search = new-seed (Explore) search box only. The
-   Explore/Connect switch, the Connect (path-finder) panel, and the
-   role-filter row each duplicated a canonical, canvas-native entry
-   point that already exists once graph is open — #btn-find-path
-   (openPathPanel) and .role-filter-segment respectively. Hidden here
-   rather than removed from markup, since the SAME #search-modal
-   element is reused, unchanged, by the full-screen landing modal
-   (.is-first-visit), where all three remain the only entry point for a
-   first-time visitor with no graph/rail yet to offer them elsewhere.
-   modals.js::openSearchModal forces Explore active on every docked
-   open, so a Connect-mode selection left over from the landing modal
-   can never leave the (now hidden) Connect panel active underneath. */
+
 .search-modal.docked .hero-mode-switch,
 .search-modal.docked .include-roles-row,
 .search-modal.docked #hero-mode-panel-connect {
@@ -198,19 +163,7 @@
    .rail-btn — везде компактно и приглушённо). Ниже переопределяем
    визуал ТОЛЬКО внутри .docked — сама вёрстка и вся JS-логика (тот же
    #hero-input, тот же submit) не меняются. */
-/* [SF-WEB-43] Matches .path-input's (companion.css) declaration value-
-   for-value — same field, same surface family (both live in a docked
-   card over the graph). Was close but not literal: same padding/radius/
-   background idle, but inherited the base hero .search input's .18s
-   triple transition and panel-swap-on-focus (background: var(--panel-2)
-   + a 4px signal glow) instead of .path-input's single border-color-only
-   transition/focus — a docked field that behaved subtly differently from
-   every other docked field next to it. #node-search-input already
-   carries the literal .path-input class (see index.html) for the exact
-   same reason; #hero-input can't (it's shared with the full-screen
-   landing mode, where the larger .search input recipe is correct), so
-   the values are mirrored here via the .docked descendant selector
-   instead. */
+
 .search-modal.docked .search input {
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
@@ -223,12 +176,7 @@
   background: rgba(var(--panel-rgb), 0.9);
   box-shadow: none;
 }
-/* [SF-WEB-43] Matches .dock-btn's (canvas-controls.css) declaration —
-   the same compact docked-action-button role .node-search-box/.path-
-   panel's own buttons already use. Was its own background/hover/border
-   recipe (rgba(255,255,255,.05) hover — a plain white tint, not the
-   shared --hover-tint token every other docked/kit control hovers with)
-   instead of the one .dock-btn already establishes. */
+
 .search-modal.docked .search button {
   background: rgba(var(--panel-rgb), 0.8);
   color: var(--paper);
@@ -255,7 +203,7 @@
    нужен (короткое название само по себе не переносится на несколько
    строк на разумной ширине экрана). */
 .search-modal h1 {
-  font-family: "Syne", sans-serif;
+  font-family: var(--font-display);
   font-weight: 800;
   font-size: var(--text-hero);
   line-height: 1.04;
@@ -268,10 +216,6 @@
   color: transparent;
 }
 
-/* [SF-WEB-50] Wraps h1 + the one thesis line (.hero-tagline) so they pair
-   tightly under their own small gap, independent of .search-modal's own
-   (larger) gap between major blocks — the tagline reads as part of the
-   headline, not a separate section. */
 .hero-header {
   display: flex;
   flex-direction: column;

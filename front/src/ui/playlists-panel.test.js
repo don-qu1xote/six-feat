@@ -5,23 +5,31 @@ vi.mock("../api/settings-api.js", () => ({
   fetchSettingsStatus: vi.fn(),
   fetchYandexPlaylists: vi.fn(),
   fetchYandexImport: vi.fn(),
+  startYandexDeviceFlow: vi.fn(),
+  pollYandexDeviceFlow: vi.fn(),
 }));
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
 
 import { els } from "../dom/dom.js";
-import { activatePlaylistsTab } from "./playlists-panel.js";
+import { activatePlaylistsTab, setupPlaylistsPanel } from "./playlists-panel.js";
 import { showToast } from "./toast.js";
 import { searchArtist } from "../api/api.js";
 import {
   fetchSettingsStatus,
   fetchYandexPlaylists,
   fetchYandexImport,
+  startYandexDeviceFlow,
+  pollYandexDeviceFlow,
 } from "../api/settings-api.js";
 
 function renderPlaylistsMarkup() {
   document.body.innerHTML = `
     <div id="hero-mode-panel-playlists">
       <p id="playlists-connect-hint" hidden></p>
+      <div id="playlists-grant-hint" hidden>
+        <button type="button" id="playlists-grant-btn"></button>
+        <p id="playlists-device-code" hidden></p>
+      </div>
       <div id="playlists-grid" hidden></div>
       <div id="playlists-artist-section" hidden>
         <p id="playlists-truncated-hint" hidden></p>
@@ -32,10 +40,15 @@ function renderPlaylistsMarkup() {
 
   els.heroModePanelPlaylists = document.getElementById("hero-mode-panel-playlists");
   els.playlistsConnectHint = document.getElementById("playlists-connect-hint");
+  els.playlistsGrantHint = document.getElementById("playlists-grant-hint");
+  els.playlistsGrantBtn = document.getElementById("playlists-grant-btn");
+  els.playlistsDeviceCode = document.getElementById("playlists-device-code");
   els.playlistsGrid = document.getElementById("playlists-grid");
   els.playlistsArtistSection = document.getElementById("playlists-artist-section");
   els.playlistsTruncatedHint = document.getElementById("playlists-truncated-hint");
   els.playlistsArtistGrid = document.getElementById("playlists-artist-grid");
+
+  setupPlaylistsPanel();
 }
 
 beforeEach(() => {
@@ -56,8 +69,11 @@ describe("[SF-WEB-74] Playlists tab — connection gating", () => {
   it("hides the connect hint and loads playlists once connected", async () => {
     fetchSettingsStatus.mockResolvedValue({ status: 200, data: { yandex: { connected: true } } });
     fetchYandexPlaylists.mockResolvedValue({
-      type: "yandex_playlists",
-      playlists: [{ id: "likes", kind: "likes", title: "Liked tracks", track_count: 0 }],
+      status: 200,
+      data: {
+        type: "yandex_playlists",
+        playlists: [{ id: "likes", kind: "likes", title: "Liked tracks", track_count: 0 }],
+      },
     });
 
     await activatePlaylistsTab();
@@ -75,16 +91,19 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
 
   it("renders one card per playlist (plus likes), with a cover image", async () => {
     fetchYandexPlaylists.mockResolvedValue({
-      playlists: [
-        { id: "likes", kind: "likes", title: "Liked tracks", track_count: 5 },
-        {
-          id: "7",
-          kind: "playlist",
-          title: "Road Trip",
-          track_count: 12,
-          cover_url: "https://example.test/cover.jpg",
-        },
-      ],
+      status: 200,
+      data: {
+        playlists: [
+          { id: "likes", kind: "likes", title: "Liked tracks", track_count: 5 },
+          {
+            id: "7",
+            kind: "playlist",
+            title: "Road Trip",
+            track_count: 12,
+            cover_url: "https://example.test/cover.jpg",
+          },
+        ],
+      },
     });
 
     await activatePlaylistsTab();
@@ -100,7 +119,8 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
 
   it("falls back to a placeholder image when a playlist has no cover_url", async () => {
     fetchYandexPlaylists.mockResolvedValue({
-      playlists: [{ id: "9", kind: "playlist", title: "No Cover Here", track_count: 3 }],
+      status: 200,
+      data: { playlists: [{ id: "9", kind: "playlist", title: "No Cover Here", track_count: 3 }] },
     });
 
     await activatePlaylistsTab();
@@ -111,11 +131,122 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
   });
 
   it("shows a toast and no grid when the playlists fetch fails", async () => {
-    fetchYandexPlaylists.mockResolvedValue(null);
+    fetchYandexPlaylists.mockResolvedValue({ status: null, data: null });
 
     await activatePlaylistsTab();
 
     expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/couldn't load/i));
+  });
+
+  it("shows the grant-access prompt (not a toast) when the login token lacks Music API scope", async () => {
+    fetchYandexPlaylists.mockResolvedValue({
+      status: 502,
+      data: { detail: "the connected Yandex token is no longer valid — reconnect it" },
+    });
+
+    await activatePlaylistsTab();
+
+    expect(els.playlistsGrantHint.hidden).toBe(false);
+    expect(els.playlistsGrid.hidden).toBe(true);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("shows the grant-access prompt (not a toast) when no Yandex account is connected (404)", async () => {
+    fetchYandexPlaylists.mockResolvedValue({
+      status: 404,
+      data: { detail: "sign in with Yandex to use playlists" },
+    });
+
+    await activatePlaylistsTab();
+
+    expect(els.playlistsGrantHint.hidden).toBe(false);
+    expect(els.playlistsGrid.hidden).toBe(true);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("starts the device flow and shows the code when 'Grant playlist access' is clicked", async () => {
+    fetchYandexPlaylists.mockResolvedValue({ status: 502, data: null });
+    startYandexDeviceFlow.mockResolvedValue({
+      ok: true,
+      data: {
+        device_code: "dc-1",
+        user_code: "ABCD-1234",
+        verification_url: "https://ya.ru/device",
+        interval: 5,
+      },
+    });
+    pollYandexDeviceFlow.mockResolvedValue({ ok: true, data: { status: "pending" } });
+
+    await activatePlaylistsTab();
+    els.playlistsGrantBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.playlistsDeviceCode.hidden).toBe(false);
+    expect(els.playlistsDeviceCode.textContent).toMatch(/ABCD-1234/);
+    const link = els.playlistsDeviceCode.querySelector("a");
+    expect(link.getAttribute("href")).toBe("https://ya.ru/device");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toMatch(/noopener/);
+  });
+
+  it("copies the device code to the clipboard when the copy button is clicked", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    fetchYandexPlaylists.mockResolvedValue({ status: 502, data: null });
+    startYandexDeviceFlow.mockResolvedValue({
+      ok: true,
+      data: {
+        device_code: "dc-1",
+        user_code: "ABCD-1234",
+        verification_url: "https://ya.ru/device",
+        interval: 5,
+      },
+    });
+    pollYandexDeviceFlow.mockResolvedValue({ ok: true, data: { status: "pending" } });
+
+    await activatePlaylistsTab();
+    els.playlistsGrantBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    els.playlistsDeviceCode.querySelector("button").click();
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith("ABCD-1234");
+  });
+
+  it("hides the prompt and reloads playlists once the device flow reports 'connected'", async () => {
+    vi.useFakeTimers();
+    fetchYandexPlaylists.mockResolvedValueOnce({ status: 502, data: null }).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        playlists: [{ id: "likes", kind: "likes", title: "Liked tracks", track_count: 0 }],
+      },
+    });
+    startYandexDeviceFlow.mockResolvedValue({
+      ok: true,
+      data: {
+        device_code: "dc-1",
+        user_code: "ABCD-1234",
+        verification_url: "https://ya.ru/device",
+        interval: 1,
+      },
+    });
+    pollYandexDeviceFlow.mockResolvedValue({ ok: true, data: { status: "connected" } });
+
+    await activatePlaylistsTab();
+    els.playlistsGrantBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(els.playlistsGrantHint.hidden).toBe(true);
+    expect(fetchYandexPlaylists).toHaveBeenCalledTimes(2);
+    expect(els.playlistsGrid.hidden).toBe(false);
+
+    vi.useRealTimers();
   });
 });
 
@@ -123,7 +254,8 @@ describe("[SF-WEB-74] Picking a playlist card shows artist cards", () => {
   beforeEach(() => {
     fetchSettingsStatus.mockResolvedValue({ status: 200, data: { yandex: { connected: true } } });
     fetchYandexPlaylists.mockResolvedValue({
-      playlists: [{ id: "7", kind: "playlist", title: "Road Trip", track_count: 2 }],
+      status: 200,
+      data: { playlists: [{ id: "7", kind: "playlist", title: "Road Trip", track_count: 2 }] },
     });
   });
 

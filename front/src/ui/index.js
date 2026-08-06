@@ -9,6 +9,7 @@ export {
   saveHistory,
   pushHistory,
   renderChips,
+  setupChipsVisibility,
   updateShareableUrl,
   loadArtistFromUrl,
   copyShareableLink,
@@ -101,7 +102,7 @@ export {
 
 export { renderGraphA11yList } from "./graph-a11y-list.js";
 
-export { setTheme, setupThemeToggle } from "./theme.js";
+export { setTheme, initTheme } from "./theme.js";
 
 export {
   isSettingsPanelOpen,
@@ -110,3 +111,5 @@ export {
   refreshSettingsStatus,
   setupSettingsPanel,
 } from "./settings-panel.js";
+
+export { setupPlaylistsPanel } from "./playlists-panel.js";

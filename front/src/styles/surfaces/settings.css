@@ -1,18 +1,24 @@
-.settings-panel {
+.settings-overlay {
   display: none;
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--blur-scrim));
+  align-items: center;
+  justify-content: center;
+}
+.settings-overlay.show {
+  display: flex;
+}
+
+.settings-box {
+  display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  position: fixed;
-  left: 76px;
-  bottom: var(--space-4);
-  width: 340px;
-  max-width: calc(100vw - 96px);
+  width: min(520px, 92vw);
   max-height: min(80vh, 100%);
   overflow-y: auto;
-  z-index: var(--z-graph-overlay);
-}
-.settings-panel.show {
-  display: flex;
 }
 
 .settings-panel-header {
@@ -21,7 +27,7 @@
   justify-content: space-between;
 }
 .settings-title {
-  font-family: "Space Mono", monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--mist);
   letter-spacing: 0.12em;
@@ -41,9 +47,6 @@
   color: var(--paper);
 }
 
-/* [SF-WEB-75] Wraps the connect/preference cards so they can be hidden as
-   one unit while .settings-signed-out-hint is shown instead — same
-   flex/gap as .settings-panel used to give these cards directly. */
 .settings-cards {
   display: flex;
   flex-direction: column;
@@ -55,6 +58,11 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
+}
+
+.settings-cards[hidden],
+.settings-signed-out-hint[hidden] {
+  display: none;
 }
 
 .settings-card {
@@ -87,10 +95,57 @@
   font-size: var(--text-xs);
   color: var(--mist);
 }
-.settings-card-device-code {
+
+.settings-toggle-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-prefs-row {
+  display: flex;
+  gap: var(--space-3);
+}
+.settings-prefs-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-section-label {
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--signal);
-  background: rgba(var(--panel-rgb), 0.4);
+  color: var(--mist);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-advanced summary {
+  color: var(--mist);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: color var(--duration-base) var(--ease-standard);
+}
+.settings-advanced summary:hover,
+.settings-advanced summary:focus-visible {
+  color: var(--paper);
+}
+.settings-advanced summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
   border-radius: var(--r-sm);
-  padding: var(--space-2);
+}
+.settings-advanced input {
+  margin-top: var(--space-2);
+}
+
+.settings-card-status.is-connected {
+  color: var(--signal);
+  font-weight: 600;
 }

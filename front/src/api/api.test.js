@@ -360,7 +360,6 @@ describe("_doSearch — transient failures show a Retry toast", () => {
     const [msg, retry] = showRetryToast.mock.calls[0];
     expect(msg).toMatch(/couldn't reach genius/i);
 
-    // Clicking the toast's Retry button re-runs the original search. retry()
     retry();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).toHaveBeenCalledTimes(2);

@@ -82,5 +82,55 @@ TEST(ResolveArtistByName, ReturnsAmbiguousWithCappedCandidatesWhenBestScoreBelow
   EXPECT_EQ(ambiguous.candidates.size(), 6u);
 }
 
+// [SF-YM-08] Резолв имени из уже известного репозиторию, без внешнего
+// гейтвея (Genius/Yandex) — единственный поиск по имени, доступный
+// Yandex-only сессии без BYO Genius-токена.
+TEST(ResolveArtistByNameFromCache, ReturnsNulloptWhenRepoHasNoMatch) {
+  FakeArtistDataSource repo;
+  repo.AddArtist(ArtistRef{1, "Someone Else", "", ""});
+
+  const auto result = ResolveArtistByNameFromCache(repo, "Gorillaz");
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(ResolveArtistByNameFromCache, ReturnsTheSingleSubstringMatch) {
+  FakeArtistDataSource repo;
+  repo.AddArtist(ArtistRef{42, "Gorillaz", "img", "url"});
+
+  const auto result = ResolveArtistByNameFromCache(repo, "gorillaz");
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_TRUE(std::holds_alternative<ArtistRef>(*result));
+  const auto& ref = std::get<ArtistRef>(*result);
+  EXPECT_EQ(ref.id, 42);
+  EXPECT_EQ(ref.name, "Gorillaz");
+}
+
+TEST(ResolveArtistByNameFromCache, PrefersExactCaseInsensitiveMatchAmongMultipleSubstringHits) {
+  FakeArtistDataSource repo;
+  repo.AddArtist(ArtistRef{1, "Drake", "", ""});
+  repo.AddArtist(ArtistRef{2, "Drake (tribute)", "", ""});
+  repo.AddArtist(ArtistRef{3, "Lil Drake", "", ""});
+
+  const auto result = ResolveArtistByNameFromCache(repo, "drake");
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_TRUE(std::holds_alternative<ArtistRef>(*result));
+  EXPECT_EQ(std::get<ArtistRef>(*result).id, 1);
+}
+
+TEST(ResolveArtistByNameFromCache, ReturnsAmbiguousWhenMultipleSubstringHitsAndNoExactMatch) {
+  FakeArtistDataSource repo;
+  repo.AddArtist(ArtistRef{1, "Drake (tribute)", "", ""});
+  repo.AddArtist(ArtistRef{2, "Lil Drake", "", ""});
+
+  const auto result = ResolveArtistByNameFromCache(repo, "drake");
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_TRUE(std::holds_alternative<AmbiguousResult>(*result));
+  EXPECT_EQ(std::get<AmbiguousResult>(*result).candidates.size(), 2u);
+}
+
 }  // namespace
 }  // namespace six_feat::test

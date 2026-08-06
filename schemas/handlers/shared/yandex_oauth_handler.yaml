@@ -21,6 +21,21 @@ properties:
         description: >-
             OAuth callback URL. Must exactly match the Redirect URI registered
             for this client_id in the Yandex OAuth console.
+    scope:
+        type: string
+        description: >-
+            Пробел-разделённый список прав, запрашиваемых при логине. Должен
+            совпадать с правами, выданными приложению в кабинете Yandex OAuth:
+            запрос права, которого у приложения нет, отклоняется целиком
+            (invalid_scope), а не урезается молча.
+
+            Именно здесь включается «один вход»: login:info даёт identity для
+            сессии, music:api-public — доступ к API Яндекс Музыки, поэтому
+            токен из сессии годится и для плейлистов, и отдельный device flow
+            пользователю больше не нужен (см. auth::YandexTokenForSession).
+
+            Пусто — scope не передаётся, и Яндекс выдаёт права по умолчанию.
+        defaultDescription: "login:info music:api-public"
     oauth-base-url:
         type: string
         description: Yandex OAuth base URL (/authorize, /token)

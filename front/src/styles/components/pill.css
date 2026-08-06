@@ -1,15 +1,8 @@
-/* ============================================================
-   SF-WEB-40 — extracted verbatim from index.html's inline <style>.
-   ui-pill — SF-WEB-11 kit.
-   Rendering identical to pre-extraction; see src/styles/index.css
-   for the import order that preserves the original cascade.
-   ============================================================ */
-
 .ui-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  /* [SF-WEB-42] var(--font-sans) — named token, same stack. */
+
   font-family: var(--font-sans);
   font-size: var(--text-xs);
   color: var(--paper);

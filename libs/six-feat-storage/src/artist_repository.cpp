@@ -45,6 +45,10 @@ std::optional<ArtistRef> ArtistRepository::Lookup(std::int64_t artist_id) const 
   return store_.LoadArtistRef(artist_id);
 }
 
+std::vector<ArtistRef> ArtistRepository::SearchByName(const std::string& query, int limit) const {
+  return store_.SearchArtistsByName(query, limit);
+}
+
 std::vector<CollabEdge> ArtistRepository::Neighbours(std::int64_t artist_id,
                                                      const RoleMask& mask) const {
   return store_.LoadNeighbours(artist_id, mask);

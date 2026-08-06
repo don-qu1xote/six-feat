@@ -236,6 +236,16 @@ components_manager:
       method: POST
       task_processor: *main_tp
 
+    handler-settings-genius-link-start:
+      path: /api/v1/settings/genius/link/start
+      method: GET
+      task_processor: *main_tp
+
+    handler-internal-genius-link:
+      path: /internal/genius-link
+      method: POST
+      task_processor: *main_tp
+
     handler-settings-disconnect:
       path: /api/v1/settings/disconnect
       method: POST
@@ -243,6 +253,11 @@ components_manager:
 
     handler-settings-enrichment-provider:
       path: /api/v1/settings/enrichment-provider
+      method: PATCH
+      task_processor: *main_tp
+
+    handler-settings-enrichment-enabled:
+      path: /api/v1/settings/enrichment-enabled
       method: PATCH
       task_processor: *main_tp
 

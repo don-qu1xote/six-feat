@@ -6,6 +6,7 @@ from conftest import SERVICE_BASE, SERVICE_BASE_BADSECRET
 
 READYZ_URL = f"{SERVICE_BASE}/readyz"
 READYZ_URL_BADSECRET = f"{SERVICE_BASE_BADSECRET}/readyz"
+SETTINGS_STATUS_URL_BADSECRET = f"{SERVICE_BASE_BADSECRET}/api/v1/settings/providers"
 
 
 class TestAppSecretParityMatching:
@@ -28,3 +29,13 @@ class TestAppSecretParityMismatch:
         assert body["checks"]["app_secret_parity"]["ok"] is False
         assert body["status"] == "not_ready"
         assert resp.status_code == 503
+
+    def test_settings_status_reports_backend_misconfigured_not_a_plain_401(
+        self, service_proc_badsecret
+    ) -> None:
+
+        resp = requests.get(SETTINGS_STATUS_URL_BADSECRET)
+        body = resp.json()
+
+        assert resp.status_code == 503
+        assert body["error"] == "backend_misconfigured"

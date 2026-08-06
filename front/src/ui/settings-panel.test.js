@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("./docked-panel.js", () => ({
   registerDockedPanel: vi.fn((panel) => panel),
@@ -9,12 +9,11 @@ vi.mock("../api/settings-api.js", () => ({
   fetchSettingsStatus: vi.fn(),
   connectGeniusToken: vi.fn(),
   disconnectProvider: vi.fn(),
-  startYandexDeviceFlow: vi.fn(),
-  pollYandexDeviceFlow: vi.fn(),
-  setPreferredEnrichmentProvider: vi.fn(),
+  setEnrichmentEnabled: vi.fn(),
 }));
 
 import { els } from "../dom/dom.js";
+import { State } from "../state/state.js";
 import {
   setupSettingsPanel,
   openSettingsPanel,
@@ -26,9 +25,7 @@ import {
   fetchSettingsStatus,
   connectGeniusToken,
   disconnectProvider,
-  startYandexDeviceFlow,
-  pollYandexDeviceFlow,
-  setPreferredEnrichmentProvider,
+  setEnrichmentEnabled,
 } from "../api/settings-api.js";
 
 function renderSettingsMarkup() {
@@ -37,47 +34,34 @@ function renderSettingsMarkup() {
     <div id="settings-panel">
       <button id="settings-panel-close"></button>
 
+      <select id="settings-theme-select">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+      <select id="settings-lang-select">
+        <option value="en">English</option>
+        <option value="ru">Русский</option>
+      </select>
+
       <p id="settings-signed-out-hint" hidden>Sign in to manage settings.</p>
+      <p id="settings-misconfigured-hint" hidden>Settings can't verify your sign-in right now.</p>
 
       <div id="settings-cards">
       <div class="settings-card">
         <div class="settings-card-title">
-          Your Genius token <span class="settings-card-sub">(find more connections)</span>
+          Genius <span class="settings-card-sub">(find more connections)</span>
         </div>
-        <p class="settings-card-hint">
-          Optional — Yandex is the default source for graphs and background
-          enrichment. Connecting your own Genius token can still help find
-          extra connections Yandex doesn't have, and deepens your own
-          graph search.
-        </p>
-        <input id="settings-genius-input" type="password" />
-        <button id="settings-genius-connect-btn"></button>
+        <p class="settings-card-hint">Optional — finds extra connections beyond Yandex.</p>
+        <a id="settings-genius-link-btn">Sign in with Genius</a>
         <button id="settings-genius-disconnect-btn" hidden></button>
         <div id="settings-genius-status">Not connected</div>
+        <input id="settings-genius-input" type="password" />
+        <button id="settings-genius-connect-btn"></button>
       </div>
 
       <div class="settings-card">
-        <div class="settings-card-title">Background enrichment provider</div>
-        <select id="settings-enrichment-provider-select">
-          <option value="yandex">Yandex first</option>
-          <option value="genius">Genius first</option>
-        </select>
-      </div>
-
-      <div class="settings-card">
-        <div class="settings-card-title">
-          Connect your Yandex <span class="settings-card-sub">(import playlists)</span>
-        </div>
-        <p class="settings-card-hint">
-          Yandex is the default source for graphs and for background
-          enrichment of the shared collaboration database — not just your
-          own graph. Connecting your personal account here also lets you
-          suggest artists from your own playlists and likes.
-        </p>
-        <button id="settings-yandex-connect-btn"></button>
-        <button id="settings-yandex-disconnect-btn" hidden></button>
-        <div id="settings-yandex-device-code" hidden></div>
-        <div id="settings-yandex-status">Not connected</div>
+        <div class="settings-card-title">Background enrichment</div>
+        <input type="checkbox" id="settings-enrichment-toggle" checked />
       </div>
       </div>
     </div>
@@ -86,23 +70,22 @@ function renderSettingsMarkup() {
   els.btnSettingsOpen = document.getElementById("btn-settings-open");
   els.settingsPanel = document.getElementById("settings-panel");
   els.settingsPanelClose = document.getElementById("settings-panel-close");
+  els.settingsThemeSelect = document.getElementById("settings-theme-select");
+  els.settingsLangSelect = document.getElementById("settings-lang-select");
   els.settingsSignedOutHint = document.getElementById("settings-signed-out-hint");
+  els.settingsMisconfiguredHint = document.getElementById("settings-misconfigured-hint");
   els.settingsCards = document.getElementById("settings-cards");
   els.settingsGeniusInput = document.getElementById("settings-genius-input");
   els.settingsGeniusConnectBtn = document.getElementById("settings-genius-connect-btn");
   els.settingsGeniusDisconnectBtn = document.getElementById("settings-genius-disconnect-btn");
+  els.settingsGeniusLinkBtn = document.getElementById("settings-genius-link-btn");
   els.settingsGeniusStatus = document.getElementById("settings-genius-status");
-  els.settingsEnrichmentProviderSelect = document.getElementById(
-    "settings-enrichment-provider-select",
-  );
-  els.settingsYandexConnectBtn = document.getElementById("settings-yandex-connect-btn");
-  els.settingsYandexDisconnectBtn = document.getElementById("settings-yandex-disconnect-btn");
-  els.settingsYandexStatus = document.getElementById("settings-yandex-status");
-  els.settingsYandexDeviceCode = document.getElementById("settings-yandex-device-code");
+  els.settingsEnrichmentToggle = document.getElementById("settings-enrichment-toggle");
 }
 
 beforeEach(() => {
   renderSettingsMarkup();
+  State.lang = "en";
   fetchSettingsStatus.mockResolvedValue({
     status: 200,
     data: {
@@ -112,70 +95,83 @@ beforeEach(() => {
   });
 });
 
-describe("[SF-YM-02] Settings panel renders both cards with the right explanations", () => {
+describe("[SF-YM-02] Settings panel renders the Genius card with the right explanation", () => {
   it("renders the Genius card title mentioning 'find more connections'", () => {
     const title = document
       .getElementById("settings-genius-connect-btn")
       .closest(".settings-card")
       .querySelector(".settings-card-title").textContent;
-    expect(title).toMatch(/Your Genius token/);
+    expect(title).toMatch(/Genius/);
     expect(title).toMatch(/find more connections/i);
   });
 
-  it("renders the Yandex card title mentioning 'import playlists'", () => {
-    const title = document
-      .getElementById("settings-yandex-connect-btn")
-      .closest(".settings-card")
-      .querySelector(".settings-card-title").textContent;
-    expect(title).toMatch(/Connect your Yandex/);
-    expect(title).toMatch(/import playlists/i);
-  });
-
-  // [SF-WEB-75] These two used to be swapped: the Genius card claimed IT
-  // enriched the shared graph in the background, the Yandex card claimed
-  // it "never affects the default graph" — exactly backwards from
-  // SF-ARCH-02/ADR-0011 (Yandex is the default source and the default
-  // background-enrichment provider; Genius is the optional add-on).
-  it("the Genius card's hint frames it as optional/deepening, not the default background enrichment", () => {
+  it("the Genius card's hint frames it as optional, not the default background enrichment", () => {
     const hint = document
       .getElementById("settings-genius-connect-btn")
       .closest(".settings-card")
       .querySelector(".settings-card-hint").textContent;
     expect(hint).toMatch(/optional/i);
-    expect(hint).toMatch(/find\s+extra connections/i);
-    expect(hint).not.toMatch(/Genius token also lets us use it to enrich the shared/i);
-  });
-
-  it("the Yandex card's hint says it's the default source for background enrichment of the shared database", () => {
-    const hint = document
-      .getElementById("settings-yandex-connect-btn")
-      .closest(".settings-card")
-      .querySelector(".settings-card-hint").textContent;
-    expect(hint).toMatch(/default source/i);
-    expect(hint).toMatch(/background\s+enrichment/i);
-    expect(hint).toMatch(/shared collaboration database/i);
-    expect(hint).not.toMatch(/never affects the default graph/i);
-  });
-
-  it("the Genius and Yandex cards are separate elements, not one shared toggle", () => {
-    const geniusCard = document
-      .getElementById("settings-genius-connect-btn")
-      .closest(".settings-card");
-    const yandexCard = document
-      .getElementById("settings-yandex-connect-btn")
-      .closest(".settings-card");
-    expect(geniusCard).not.toBeNull();
-    expect(yandexCard).not.toBeNull();
-    expect(geniusCard).not.toBe(yandexCard);
+    expect(hint).toMatch(/finds?\s+extra connections/i);
   });
 });
 
-describe("[SF-YM-07] background enrichment provider toggle", () => {
+describe("[SF-WEB-77] Genius account-link button follows the backend's genius.link_enabled", () => {
   beforeEach(() => {
     setupSettingsPanel();
   });
 
-  it("defaults to yandex when the fetched status omits the preference", async () => {
+  it("stays hidden when the backend reports link_enabled: false", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      status: 200,
+      data: {
+        genius: { connected: false, link_enabled: false },
+        yandex: { connected: false },
+      },
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsGeniusLinkBtn.hidden).toBe(true);
+  });
+
+  it("shows once the backend reports link_enabled: true", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      status: 200,
+      data: {
+        genius: { connected: false, link_enabled: true },
+        yandex: { connected: false },
+      },
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsGeniusLinkBtn.hidden).toBe(false);
+  });
+
+  it("hides once already connected, even when link_enabled: true", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      status: 200,
+      data: {
+        genius: { connected: true, link_enabled: true },
+        yandex: { connected: false },
+      },
+    });
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsGeniusLinkBtn.hidden).toBe(true);
+  });
+});
+
+describe("[SF-WEB-81] background enrichment on/off toggle", () => {
+  beforeEach(() => {
+    setupSettingsPanel();
+  });
+
+  it("defaults to checked when the fetched status omits the flag", async () => {
     fetchSettingsStatus.mockResolvedValue({
       status: 200,
       data: {
@@ -187,86 +183,46 @@ describe("[SF-YM-07] background enrichment provider toggle", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(els.settingsEnrichmentProviderSelect.value).toBe("yandex");
+    expect(els.settingsEnrichmentToggle.checked).toBe(true);
   });
 
-  it("reflects a fetched genius preference on open", async () => {
-    fetchSettingsStatus.mockResolvedValue({
-      status: 200,
-      data: {
-        genius: { connected: true },
-        yandex: { connected: false },
-        preferred_enrichment_provider: "genius",
-      },
-    });
-    openSettingsPanel();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(els.settingsEnrichmentProviderSelect.value).toBe("genius");
-  });
-
-  it("persists the choice across a simulated reload (fetchSettingsStatus reflects the saved value)", async () => {
+  it("reflects a fetched enrichment_enabled: false on open", async () => {
     fetchSettingsStatus.mockResolvedValue({
       status: 200,
       data: {
         genius: { connected: false },
         yandex: { connected: false },
-        preferred_enrichment_provider: "yandex",
-      },
-    });
-    setPreferredEnrichmentProvider.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: { preferred_enrichment_provider: "genius" },
-    });
-
-    openSettingsPanel();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    els.settingsEnrichmentProviderSelect.value = "genius";
-    els.settingsEnrichmentProviderSelect.dispatchEvent(new Event("change"));
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(setPreferredEnrichmentProvider).toHaveBeenCalledWith("genius");
-
-    fetchSettingsStatus.mockResolvedValue({
-      status: 200,
-      data: {
-        genius: { connected: false },
-        yandex: { connected: false },
-        preferred_enrichment_provider: "genius",
+        enrichment_enabled: false,
       },
     });
     openSettingsPanel();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(els.settingsEnrichmentProviderSelect.value).toBe("genius");
+    expect(els.settingsEnrichmentToggle.checked).toBe(false);
   });
 
-  it("shows a toast confirming the choice on success", async () => {
-    setPreferredEnrichmentProvider.mockResolvedValue({ ok: true, status: 200, data: {} });
+  it("saves the new state when toggled", async () => {
+    setEnrichmentEnabled.mockResolvedValue({ ok: true, status: 200, data: {} });
 
-    els.settingsEnrichmentProviderSelect.value = "genius";
-    els.settingsEnrichmentProviderSelect.dispatchEvent(new Event("change"));
+    els.settingsEnrichmentToggle.checked = false;
+    els.settingsEnrichmentToggle.dispatchEvent(new Event("change"));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/genius/i));
+    expect(setEnrichmentEnabled).toHaveBeenCalledWith(false);
   });
 
-  it("shows an error toast and does not crash when saving fails", async () => {
-    setPreferredEnrichmentProvider.mockResolvedValue({ ok: false, status: 500, data: null });
+  it("reverts the toggle and shows an error toast when saving fails", async () => {
+    setEnrichmentEnabled.mockResolvedValue({ ok: false, status: 500, data: null });
 
-    els.settingsEnrichmentProviderSelect.value = "genius";
-    els.settingsEnrichmentProviderSelect.dispatchEvent(new Event("change"));
+    els.settingsEnrichmentToggle.checked = false;
+    els.settingsEnrichmentToggle.dispatchEvent(new Event("change"));
     await Promise.resolve();
     await Promise.resolve();
 
     expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/couldn't save/i));
+    expect(els.settingsEnrichmentToggle.checked).toBe(true);
   });
 });
 
@@ -348,112 +304,21 @@ describe("[SF-YM-02] connecting a Genius token", () => {
     expect(disconnectProvider).toHaveBeenCalledWith("genius");
     expect(els.settingsGeniusStatus.textContent).toBe("Not connected");
   });
-});
 
-describe("[SF-YM-02] connecting a personal Yandex account (device flow)", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    setupSettingsPanel();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("shows the user code/verification url after starting the flow", async () => {
-    startYandexDeviceFlow.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        device_code: "dc-1",
-        user_code: "AB12CD",
-        verification_url: "https://oauth.yandex.ru/device",
-        interval: 5,
-        expires_in: 600,
-      },
-    });
-    pollYandexDeviceFlow.mockResolvedValue({ ok: true, status: 200, data: { status: "pending" } });
-
-    els.settingsYandexConnectBtn.click();
-    await vi.runOnlyPendingTimersAsync();
-
-    expect(els.settingsYandexDeviceCode.hidden).toBe(false);
-    expect(els.settingsYandexDeviceCode.textContent).toMatch(/AB12CD/);
-  });
-
-  it("polls until status becomes connected, then updates the card", async () => {
-    startYandexDeviceFlow.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        device_code: "dc-2",
-        user_code: "XY99ZZ",
-        verification_url: "https://oauth.yandex.ru/device",
-        interval: 1,
-        expires_in: 600,
-      },
-    });
-    pollYandexDeviceFlow
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { status: "pending" } })
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { status: "connected" } });
-
-    openSettingsPanel();
-    els.settingsYandexConnectBtn.click();
-    await vi.runOnlyPendingTimersAsync();
+  it("disconnecting brings the sign-in-with-Genius CTA back", async () => {
+    connectGeniusToken.mockResolvedValue({ ok: true, status: 200, data: {} });
+    els.settingsGeniusInput.value = "sf-genius-token-123";
+    els.settingsGeniusConnectBtn.click();
     await Promise.resolve();
-    await vi.runOnlyPendingTimersAsync();
+    await Promise.resolve();
+    expect(els.settingsGeniusLinkBtn.hidden).toBe(true);
+
+    disconnectProvider.mockResolvedValue({ ok: true, status: 200, data: {} });
+    els.settingsGeniusDisconnectBtn.click();
+    await Promise.resolve();
     await Promise.resolve();
 
-    expect(pollYandexDeviceFlow).toHaveBeenCalledTimes(2);
-    expect(els.settingsYandexStatus.textContent).toBe("Connected");
-    expect(els.settingsYandexDisconnectBtn.hidden).toBe(false);
-  });
-
-  it("stops polling and shows a toast when the code is denied", async () => {
-    startYandexDeviceFlow.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        device_code: "dc-3",
-        user_code: "DENY01",
-        verification_url: "https://oauth.yandex.ru/device",
-        interval: 1,
-        expires_in: 600,
-      },
-    });
-    pollYandexDeviceFlow.mockResolvedValue({ ok: true, status: 200, data: { status: "denied" } });
-
-    openSettingsPanel();
-    els.settingsYandexConnectBtn.click();
-    await vi.runOnlyPendingTimersAsync();
-    await Promise.resolve();
-
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/cancelled/i));
-    expect(els.settingsYandexStatus.textContent).toBe("Not connected");
-  });
-
-  it("stops polling once the panel is closed", async () => {
-    startYandexDeviceFlow.mockResolvedValue({
-      ok: true,
-      status: 200,
-      data: {
-        device_code: "dc-4",
-        user_code: "CLOSE1",
-        verification_url: "https://oauth.yandex.ru/device",
-        interval: 1,
-        expires_in: 600,
-      },
-    });
-    pollYandexDeviceFlow.mockResolvedValue({ ok: true, status: 200, data: { status: "pending" } });
-
-    openSettingsPanel();
-    els.settingsYandexConnectBtn.click();
-    await vi.runOnlyPendingTimersAsync();
-    expect(pollYandexDeviceFlow).toHaveBeenCalledTimes(1);
-
-    closeSettingsPanel();
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(pollYandexDeviceFlow).toHaveBeenCalledTimes(1);
+    expect(els.settingsGeniusLinkBtn.hidden).toBe(false);
   });
 });
 
@@ -486,5 +351,98 @@ describe("[SF-WEB-75] anonymous visitor sees an explicit sign-in call to action"
 
     expect(els.settingsSignedOutHint.hidden).toBe(true);
     expect(els.settingsCards.hidden).toBe(false);
+  });
+});
+
+describe("[SF-WEB-77] backend-misconfigured (APP_SECRET mismatch) is distinguished from a real 401", () => {
+  beforeEach(() => {
+    setupSettingsPanel();
+  });
+
+  it("shows the misconfigured hint (not the sign-in hint) on a 503 backend_misconfigured", async () => {
+    fetchSettingsStatus.mockResolvedValue({
+      status: 503,
+      data: { error: "backend_misconfigured" },
+    });
+
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsMisconfiguredHint.hidden).toBe(false);
+    expect(els.settingsSignedOutHint.hidden).toBe(true);
+    expect(els.settingsCards.hidden).toBe(true);
+  });
+
+  it("still treats an ordinary 401 as a sign-in prompt, not a misconfiguration", async () => {
+    fetchSettingsStatus.mockResolvedValue({ status: 401, data: null });
+
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsSignedOutHint.hidden).toBe(false);
+    expect(els.settingsMisconfiguredHint.hidden).toBe(true);
+  });
+});
+
+describe("[SF-WEB-77] Appearance card replaces the old floating theme-toggle button", () => {
+  beforeEach(() => {
+    setupSettingsPanel();
+  });
+
+  it("reflects the current theme when the panel opens, even signed out", async () => {
+    State.theme = "light";
+    fetchSettingsStatus.mockResolvedValue({ status: 401, data: null });
+
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsThemeSelect.value).toBe("light");
+  });
+
+  it("applies the chosen theme to the document immediately on change", () => {
+    els.settingsThemeSelect.value = "light";
+    els.settingsThemeSelect.dispatchEvent(new Event("change"));
+
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(State.theme).toBe("light");
+  });
+
+  it("persists the choice so a reload sees it (localStorage), unlike the old system-only toggle", () => {
+    els.settingsThemeSelect.value = "light";
+    els.settingsThemeSelect.dispatchEvent(new Event("change"));
+
+    expect(localStorage.getItem("six-feat-theme")).toBe("light");
+  });
+});
+
+describe("[SF-WEB-77] Language card (i18n) in Settings", () => {
+  beforeEach(() => {
+    setupSettingsPanel();
+  });
+
+  it("reflects the current language when the panel opens, even signed out", async () => {
+    State.lang = "ru";
+    fetchSettingsStatus.mockResolvedValue({ status: 401, data: null });
+
+    openSettingsPanel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.settingsLangSelect.value).toBe("ru");
+  });
+
+  it("re-renders every [data-i18n] node and persists the choice on change", () => {
+    document.body.innerHTML += `<span id="probe" data-i18n="settings.title"></span>`;
+
+    els.settingsLangSelect.value = "ru";
+    els.settingsLangSelect.dispatchEvent(new Event("change"));
+
+    expect(document.getElementById("probe").textContent).toBe("Настройки");
+    expect(document.documentElement.getAttribute("lang")).toBe("ru");
+    expect(localStorage.getItem("six-feat-lang")).toBe("ru");
+    expect(State.lang).toBe("ru");
   });
 });

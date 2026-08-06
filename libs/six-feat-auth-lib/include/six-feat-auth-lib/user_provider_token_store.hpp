@@ -32,6 +32,10 @@ class UserProviderTokenStore final : public userver::components::ComponentBase {
 
   std::string GetPreferredEnrichmentProvider(std::int64_t user_id) const;
 
+  void SetEnrichmentEnabled(std::int64_t user_id, bool enabled) const;
+
+  bool GetEnrichmentEnabled(std::int64_t user_id) const;
+
  private:
   userver::storages::postgres::ClusterPtr cluster_;
 };

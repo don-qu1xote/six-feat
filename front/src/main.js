@@ -27,10 +27,12 @@ import {
   setupHelpOverlay,
   setupLoadMoreCollabs,
   renderChips,
+  setupChipsVisibility,
   exportGraphPng,
   exportGraphJson,
-  setupThemeToggle,
+  initTheme,
   setupSettingsPanel,
+  setupPlaylistsPanel,
   setupDockedPanels,
   restoreSurfaceFromUrl,
   setupBubbleSetsToggle,
@@ -41,6 +43,7 @@ import {
 } from "./ui/index.js";
 import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
+import { initI18n } from "./i18n/i18n.js";
 import { setupCanvasDecorator, startCanvasDecorator } from "./dom/canvas-decorator.js";
 import { setupConnectMode, setupGameLandingPanel } from "./game/connect.js";
 import { setupGameWindows } from "./game/game-windows.js";
@@ -55,7 +58,8 @@ export function init() {
     );
   }
 
-  setupThemeToggle();
+  initTheme();
+  initI18n();
 
   restoreSurfaceFromUrl();
 
@@ -67,6 +71,7 @@ export function init() {
   setupKeyboard();
   setupDockedPanels();
   setupSettingsPanel();
+  setupPlaylistsPanel();
   setupNodeSearch();
   setupPathPanel();
   setupHeroPathFinder();
@@ -96,6 +101,7 @@ export function init() {
         searchArtist(name, false, true);
       },
       heroGacFn,
+      { showHistory: false },
     );
   }
 
@@ -152,6 +158,12 @@ export function init() {
   checkAuth();
   initLogout();
   if (!isGameSurface(getCurrentSurface())) els.heroInput.focus();
+
+  // [SF-WEB-78] After the auto-focus above, not before — a listener
+  // attached first would treat that programmatic focus like a real one
+  // and pop the chips open on every landing, exactly the "shows by
+  // default" behavior this was meant to fix.
+  setupChipsVisibility();
 }
 
 window.addEventListener("DOMContentLoaded", init);

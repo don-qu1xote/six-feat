@@ -1,5 +1,6 @@
 import { els } from "../dom/dom.js";
 import { escapeHtml, initialOf } from "../state/helpers.js";
+import { t, tPlural } from "../i18n/i18n.js";
 import {
   chainNodes,
   hopCount,
@@ -27,9 +28,9 @@ export function setEndpointsExpanded(on) {
 function renderHead() {
   const s = slice();
   if (els.connectTitleStart)
-    els.connectTitleStart.textContent = s.game ? s.game.start : s.startName || "Start";
+    els.connectTitleStart.textContent = s.game ? s.game.start : s.startName || t("game.start");
   if (els.connectTitleGoal)
-    els.connectTitleGoal.textContent = s.game ? s.game.goal : s.goalName || "Goal";
+    els.connectTitleGoal.textContent = s.game ? s.game.goal : s.goalName || t("game.goal");
   if (els.connectHopsValue)
     els.connectHopsValue.textContent = s.game ? String(hopCount(s.game)) : "0";
 
@@ -169,8 +170,10 @@ function renderStage() {
     if (s.game && stuck.length) {
       els.connectStageEmpty.textContent =
         stuck.length === 1
-          ? `Couldn't find “${stuck[0]}” on Genius — pick the artist from the suggestions instead of typing the name.`
-          : `Couldn't find ${stuck.map((n) => `“${n}”`).join(" or ")} on Genius — pick both artists from the suggestions.`;
+          ? t("game.stage.notFoundOne", { name: stuck[0] })
+          : t("game.stage.notFoundBoth", {
+              names: stuck.map((n) => `“${n}”`).join(" or "),
+            });
     }
   }
   draw();
@@ -249,7 +252,7 @@ function renderLockin() {
   if (!els.connectLockin) return;
   const complete = s.game && isComplete(s.game) && !s.game.gaveUp;
   els.connectLockin.disabled = !complete || s.submitted;
-  els.connectLockin.textContent = s.submitted ? "Locked in" : "Lock in";
+  els.connectLockin.textContent = s.submitted ? t("game.lockIn.locked") : t("game.lockIn.default");
 }
 
 function renderFinish() {
@@ -282,7 +285,7 @@ function renderFinish() {
 
   if (s.game.gaveUp && !view) {
     setScore("—");
-    setLabel("You gave up — no score for this attempt.");
+    setLabel(t("game.finish.gaveUp"));
     hideDetail();
     return;
   }
@@ -296,15 +299,18 @@ function renderFinish() {
 
   if (!view) {
     setScore("…");
-    setLabel("Scoring…");
+    setLabel(t("game.lockIn.scoring"));
     hideDetail();
     return;
   }
 
   if (!view.revealed) {
     setScore("0");
-    const at = view.invalidHopIndex != null ? `hop ${view.invalidHopIndex + 1}` : "a hop";
-    setLabel(`Not a real chain — the check failed at ${at}.`);
+    const at =
+      view.invalidHopIndex != null
+        ? t("game.finish.hopAt", { n: view.invalidHopIndex + 1 })
+        : t("game.finish.aHop");
+    setLabel(t("game.finish.invalidChain", { at }));
     hideDetail();
     return;
   }
@@ -314,9 +320,16 @@ function renderFinish() {
   if (detailEl) {
     detailEl.hidden = false;
     const sign = view.eloDelta > 0 ? "+" : "";
-    detailEl.textContent =
-      `${view.score} / ${view.maxScore} · You: ${view.playerLen} hop${view.playerLen === 1 ? "" : "s"} · ` +
-      `Ideal: ${view.optimalLen} · Elo ${view.eloBefore} → ${view.eloAfter} (${sign}${view.eloDelta})`;
+    detailEl.textContent = t("game.finish.detail", {
+      score: view.score,
+      max: view.maxScore,
+      hopsText: tPlural("game.leaderboard.hopsCount", view.playerLen),
+      optimal: view.optimalLen,
+      before: view.eloBefore,
+      after: view.eloAfter,
+      sign,
+      delta: view.eloDelta,
+    });
   }
 }
 
@@ -338,7 +351,7 @@ function renderLeaderboard() {
         `<span class="cl-score">${e.score}</span></div>`,
     )
     .join("");
-  els.connectLeaderboard.innerHTML = `<h4 class="connect-leaderboard-title">Leaderboard</h4>${rows}`;
+  els.connectLeaderboard.innerHTML = `<h4 class="connect-leaderboard-title">${escapeHtml(t("game.leaderboardTitle"))}</h4>${rows}`;
 }
 
 let _tickHandle = null;

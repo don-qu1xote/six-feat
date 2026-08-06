@@ -8,6 +8,9 @@
 #include <openssl/sha.h>
 #include <six-feat-auth-lib/oauth_handler.hpp>
 #include <six-feat-auth-lib/session_crypto.hpp>
+#include <six-feat-auth-lib/user_identity.hpp>
+#include <six-feat-core/internal_auth.hpp>
+#include <six-feat-core/internal_http.hpp>
 #include <six-feat-core/request_id.hpp>
 #include <six-feat-core/security_headers.hpp>
 #include <stdexcept>
@@ -80,6 +83,13 @@ std::string EnvOrEmpty(const char* name) {
   const char* value = std::getenv(name);
   return (value && *value) ? value : "";
 }
+
+std::string EnvOr(const char* name, std::string_view fallback) {
+  const char* value = std::getenv(name);
+  return (value && *value) ? std::string(value) : std::string(fallback);
+}
+
+constexpr std::string_view kLinkStatePrefix = "link:";
 
 constexpr std::chrono::seconds kOAuthFlowCookieTtl{300};
 
@@ -251,7 +261,9 @@ CallbackHandler::CallbackHandler(const components::ComponentConfig& config,
                                  const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
       oauth_(context.FindComponent<OAuthConfig>()),
-      http_client_(context.FindComponent<components::HttpClient>().GetHttpClient()) {}
+      http_client_(context.FindComponent<components::HttpClient>().GetHttpClient()),
+      six_feat_base_url_(EnvOr("SIX_FEAT_BASE_URL", "http://six-feat:8080")),
+      internal_secret_(internal_api::SharedSecretFromEnv()) {}
 
 std::string CallbackHandler::HandleRequestThrow(const server::http::HttpRequest& request,
                                                 server::request::RequestContext&) const {
@@ -268,11 +280,13 @@ std::string CallbackHandler::HandleRequestThrow(const server::http::HttpRequest&
     response.SetStatus(HttpStatus::kBadRequest);
     return "Invalid state parameter (CSRF check failed)";
   }
+  const bool is_link = state_param.rfind(kLinkStatePrefix, 0) == 0;
+  const std::string_view redirect_base = is_link ? "/?genius_link=" : "/?auth=";
 
   const std::string& error = request.GetArg("error");
   if (!error.empty()) {
     response.SetStatus(HttpStatus::kFound);
-    response.SetHeader(std::string_view("Location"), "/?auth=denied");
+    response.SetHeader(std::string_view("Location"), std::string(redirect_base) + "denied");
     return "";
   }
 
@@ -298,7 +312,23 @@ std::string CallbackHandler::HandleRequestThrow(const server::http::HttpRequest&
       response.SetCookie(clear_verifier);
     }
     response.SetStatus(HttpStatus::kFound);
-    response.SetHeader(std::string_view("Location"), "/?auth=error");
+    response.SetHeader(std::string_view("Location"), std::string(redirect_base) + "error");
+    return "";
+  }
+
+  if (is_link) {
+    const std::string existing_cookie = request.GetCookie("six_feat_session");
+    const auto existing_session =
+        existing_cookie.empty() ? std::nullopt : Decrypt(existing_cookie, oauth_.SessionKey());
+    if (!existing_session) {
+      response.SetStatus(HttpStatus::kFound);
+      response.SetHeader(std::string_view("Location"), "/?genius_link=error");
+      return "";
+    }
+    const bool relayed = RelayGeniusLink(SessionUserId(*existing_session), access_token);
+    response.SetStatus(HttpStatus::kFound);
+    response.SetHeader(std::string_view("Location"),
+                       relayed ? "/?genius_link=connected" : "/?genius_link=error");
     return "";
   }
 
@@ -321,6 +351,25 @@ std::string CallbackHandler::HandleRequestThrow(const server::http::HttpRequest&
   response.SetStatus(HttpStatus::kFound);
   response.SetHeader(std::string_view("Location"), "/");
   return "";
+}
+
+bool CallbackHandler::RelayGeniusLink(std::int64_t user_id, const std::string& access_token) const {
+  formats::json::ValueBuilder body(formats::json::Type::kObject);
+  body["user_id"] = user_id;
+  body["token"] = access_token;
+
+  try {
+    const auto resp = internal_http::Post(http_client_,
+                                          six_feat_base_url_ + "/internal/genius-link",
+                                          internal_secret_,
+                                          formats::json::ToString(body.ExtractValue()),
+                                          std::chrono::seconds{10},
+                                          CurrentRequestId());
+    return resp.status_code >= 200 && resp.status_code < 300;
+  } catch (const std::exception& ex) {
+    LOG_ERROR() << "[OAuth] Genius link relay to six-feat failed: " << ex.what();
+    return false;
+  }
 }
 
 std::pair<std::string, std::string> CallbackHandler::ExchangeCode(

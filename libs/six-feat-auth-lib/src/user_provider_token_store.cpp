@@ -98,4 +98,21 @@ std::string UserProviderTokenStore::GetPreferredEnrichmentProvider(std::int64_t 
   return res.Front()[0].As<std::string>();
 }
 
+void UserProviderTokenStore::SetEnrichmentEnabled(std::int64_t user_id, bool enabled) const {
+  cluster_->Execute(ClusterHostType::kMaster,
+                    "INSERT INTO user_settings(user_id, enrichment_enabled) "
+                    "VALUES ($1, $2) "
+                    "ON CONFLICT (user_id) DO UPDATE SET enrichment_enabled = $2",
+                    user_id,
+                    enabled);
+}
+
+bool UserProviderTokenStore::GetEnrichmentEnabled(std::int64_t user_id) const {
+  auto res = cluster_->Execute(ClusterHostType::kMaster,
+                               "SELECT enrichment_enabled FROM user_settings WHERE user_id = $1",
+                               user_id);
+  if (res.IsEmpty()) return true;
+  return res.Front()[0].As<bool>();
+}
+
 }  // namespace six_feat::auth
