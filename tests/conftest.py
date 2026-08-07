@@ -566,6 +566,7 @@ components_manager:
     yandex-oauth-config:
       client-id: test-yandex-client-id
       redirect-uri: http://127.0.0.1:{auth_port}/auth/yandex/callback
+      scope: "login:info music:api-public"
       oauth-base-url: http://127.0.0.1:{mock_port}
       login-base-url: http://127.0.0.1:{mock_port}
 

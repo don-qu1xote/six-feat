@@ -113,6 +113,9 @@ class YandexOAuthConfig final : public userver::components::ComponentBase {
   const std::string& RedirectUri() const {
     return redirect_uri_;
   }
+  const std::string& Scope() const {
+    return scope_;
+  }
   const std::string& OAuthBaseUrl() const {
     return oauth_base_url_;
   }
@@ -127,6 +130,7 @@ class YandexOAuthConfig final : public userver::components::ComponentBase {
   std::string client_id_;
   std::string client_secret_;
   std::string redirect_uri_;
+  std::string scope_;
   std::string oauth_base_url_;
   std::string login_base_url_;
   bool enabled_{false};

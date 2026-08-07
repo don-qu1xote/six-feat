@@ -59,6 +59,8 @@ class YandexDeviceAuthClient final : public userver::components::ComponentBase {
   const std::string device_code_url_;
   const std::string token_url_;
   const std::string client_id_;
+  const std::string client_secret_;
+  const std::string scope_;
   const int backoff_max_attempts_;
   const std::chrono::milliseconds backoff_base_ms_;
   const std::chrono::milliseconds backoff_cap_ms_;

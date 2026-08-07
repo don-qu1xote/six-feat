@@ -131,6 +131,8 @@ export const en = {
     "Signing in with Yandex doesn't include playlist access — grant it once to import from your playlists and likes.",
   "playlists.grantAccessBtn": "Grant playlist access",
   "playlists.grantUnreachableToast": "Couldn't reach Yandex — please try again.",
+  "playlists.grantRejectedToast":
+    "Yandex rejected the stored access — revoke it at id.yandex.ru/security, then grant access again.",
   "playlists.grantInstructions": "Open Yandex and enter this code to finish granting access:",
   "playlists.grantOpenYandex": "Open Yandex",
   "playlists.grantCopyCode": "Copy code",
@@ -429,6 +431,8 @@ export const ru = {
     "Входа через Яндекс недостаточно для доступа к плейлистам — выдайте доступ один раз, чтобы добавлять артистов из плейлистов и понравившихся треков.",
   "playlists.grantAccessBtn": "Выдать доступ к плейлистам",
   "playlists.grantUnreachableToast": "Не получилось связаться с Яндексом — попробуйте ещё раз.",
+  "playlists.grantRejectedToast":
+    "Яндекс отклонил сохранённый доступ — отзовите его на id.yandex.ru/security и выдайте заново.",
   "playlists.grantInstructions":
     "Откройте Яндекс и введите этот код, чтобы завершить выдачу доступа:",
   "playlists.grantOpenYandex": "Открыть Яндекс",

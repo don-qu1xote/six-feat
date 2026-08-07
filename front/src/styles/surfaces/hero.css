@@ -162,7 +162,11 @@
   display: flex;
   position: relative;
 
-  width: min(440px, 92vw);
+  /* [SF-WEB-92] 440px оставлял «Плейлисты» лишь 60px при строгих 25% на
+     вкладку (см. .hero-mode-tab) — не хватало 26px против реальных 86px
+     текста. 560px даёт каждой вкладке достаточно места под самую длинную
+     подпись целиком, без обрезки. */
+  width: min(560px, 92vw);
   margin: 0 auto;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -172,7 +176,13 @@
 .hero-mode-tab {
   position: relative;
   z-index: 1;
-  flex: 1;
+  /* [SF-WEB-92] Ровно четверть каждая — flex:1 давал выбранной вкладке
+     (её подпись расширяется до max-width:110px ниже) стать шире 25% для
+     длинных подписей (RU «Плейлисты»), сжимая соседей неравномерно — из-за
+     этого заливка .hero-mode-thumb (фиксированные 25%/шаг) переставала
+     совпадать с реальными границами вкладок. */
+  flex: 0 0 25%;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -209,6 +219,8 @@
   max-width: 0;
   margin-left: 0;
   overflow: hidden;
+  /* [SF-WEB-92] Запасной вариант на узких экранах (92vw ниже 560px) — троеточие вместо обрезки слова без предупреждения. */
+  text-overflow: ellipsis;
   opacity: 0;
   white-space: nowrap;
   transition:

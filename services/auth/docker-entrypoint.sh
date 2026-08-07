@@ -25,12 +25,14 @@ YANDEX_OAUTH_CLIENT_ID="${YANDEX_OAUTH_CLIENT_ID:-}"
 YANDEX_OAUTH_REDIRECT_URI="${YANDEX_OAUTH_REDIRECT_URI:-http://localhost:8083/auth/yandex/callback}"
 YANDEX_OAUTH_BASE_URL="${YANDEX_OAUTH_BASE_URL:-https://oauth.yandex.ru}"
 YANDEX_LOGIN_BASE_URL="${YANDEX_LOGIN_BASE_URL:-https://login.yandex.ru}"
+YANDEX_OAUTH_SCOPE="${YANDEX_OAUTH_SCOPE:-login:info music:api-public}"
 
 cat > /tmp/config_vars.yaml <<EOF
 genius_client_id: ${GENIUS_CLIENT_ID}
 genius_redirect_uri: ${GENIUS_REDIRECT_URI}
 yandex_oauth_client_id: '${YANDEX_OAUTH_CLIENT_ID}'
 yandex_oauth_redirect_uri: ${YANDEX_OAUTH_REDIRECT_URI}
+yandex_oauth_scope: '${YANDEX_OAUTH_SCOPE}'
 yandex_oauth_base_url: ${YANDEX_OAUTH_BASE_URL}
 yandex_login_base_url: ${YANDEX_LOGIN_BASE_URL}
 cookie_secure: ${COOKIE_SECURE}

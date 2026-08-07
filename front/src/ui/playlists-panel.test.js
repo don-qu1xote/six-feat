@@ -164,6 +164,25 @@ describe("[SF-WEB-74] Playlist cards render with covers", () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
+  it("[SF-WEB-95] shows a distinct rejected-token toast (not the generic hint alone) on 403", async () => {
+    fetchYandexPlaylists.mockResolvedValue({
+      status: 403,
+      data: {
+        detail:
+          "Yandex rejected the stored token — revoke access at id.yandex.ru/security and grant it again",
+      },
+    });
+
+    await activatePlaylistsTab();
+
+    expect(els.playlistsGrantHint.hidden).toBe(false);
+    expect(els.playlistsGrid.hidden).toBe(true);
+    expect(showToast).toHaveBeenCalledWith(
+      "Yandex rejected the stored access — revoke it at id.yandex.ru/security, then grant access again.",
+      8000,
+    );
+  });
+
   it("starts the device flow and shows the code when 'Grant playlist access' is clicked", async () => {
     fetchYandexPlaylists.mockResolvedValue({ status: 502, data: null });
     startYandexDeviceFlow.mockResolvedValue({

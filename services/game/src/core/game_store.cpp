@@ -558,9 +558,14 @@ bool GameStore::SetChallengeIdeal(std::int64_t challenge_id,
 }
 
 std::vector<std::int64_t> GameStore::RandomArtistIdsWithCredits(int limit) const {
+  // [SF-GAME-12] Postgres требует, чтобы выражения в ORDER BY при SELECT
+  // DISTINCT входили в список выборки — random() туда не входит, поэтому
+  // прежний запрос падал каждый раз с ошибкой 42P10. Оборачиваем DISTINCT
+  // в подзапрос и сортируем уже готовый список уникальных id.
   auto res =
       impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
-                              "SELECT DISTINCT artist_id FROM credits ORDER BY random() LIMIT $1",
+                              "SELECT artist_id FROM (SELECT DISTINCT artist_id FROM credits) sub "
+                              "ORDER BY random() LIMIT $1",
                               limit);
   std::vector<std::int64_t> out;
   out.reserve(res.Size());

@@ -77,6 +77,13 @@ class TestYandexLoginRedirect:
         assert "response_type=code" in location
         assert "client_id=test-yandex-client-id" in location
 
+    def test_scope_is_explicit_so_the_login_token_also_covers_playlists(
+        self, auth_anon_client: requests.Session
+    ):
+        resp = auth_anon_client.get(YANDEX_LOGIN_URL, allow_redirects=False)
+        location = resp.headers["Location"]
+        assert "scope=login%3Ainfo%20music%3Aapi-public" in location
+
     def test_sets_state_cookie(self, auth_anon_client: requests.Session):
         resp = auth_anon_client.get(YANDEX_LOGIN_URL, allow_redirects=False)
         assert "six_feat_oauth_state" in resp.cookies

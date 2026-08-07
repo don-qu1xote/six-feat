@@ -25,10 +25,12 @@
 #include <unordered_map>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
+#include <userver/engine/sleep.hpp>
 #include <userver/formats/json/serialize.hpp>
 #include <userver/formats/json/value_builder.hpp>
 #include <userver/http/content_type.hpp>
 #include <userver/logging/log.hpp>
+#include <userver/storages/postgres/exceptions.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
 #include <variant>
 
@@ -41,6 +43,15 @@ using namespace userver;
 namespace {
 
 constexpr std::int64_t kFarFutureSeconds = 10LL * 365 * 24 * 3600;
+
+// [SF-WEB-94] Токен от device-flow одноразовый — после успешного обмена
+// device_code уже погашен на стороне Яндекса, повторно его не получить.
+// Поэтому кратковременный сбой Postgres (например, ConnectionTimeoutError)
+// на записи этого токена не должен ронять хендлер как необработанный 500 —
+// пробуем ещё пару раз, как в PersistentStore::ExecuteReadQueryWithRetry.
+constexpr int kTokenStoreMaxAttempts = 3;
+constexpr std::chrono::milliseconds kTokenStoreBackoffBase{100};
+constexpr std::chrono::milliseconds kTokenStoreBackoffCap{1000};
 
 std::int64_t NowUnix() {
   return static_cast<std::int64_t>(std::chrono::duration_cast<std::chrono::seconds>(
@@ -418,8 +429,34 @@ std::string SettingsYandexDevicePollHandler::HandleRequestThrow(
       const std::int64_t expires_at =
           NowUnix() +
           (result.expires_in_seconds > 0 ? result.expires_in_seconds : kFarFutureSeconds);
-      user_provider_tokens_.Connect(
-          auth::SessionUserId(*session), "yandex", result.access_token, expires_at);
+
+      bool stored = false;
+      for (int attempt = 1; attempt <= kTokenStoreMaxAttempts; ++attempt) {
+        try {
+          user_provider_tokens_.Connect(
+              auth::SessionUserId(*session), "yandex", result.access_token, expires_at);
+          stored = true;
+          break;
+        } catch (const storages::postgres::Error& ex) {
+          if (attempt >= kTokenStoreMaxAttempts) {
+            LOG_ERROR() << "[SettingsYandexDevicePoll] request_id=" << CurrentRequestId()
+                        << " failed to store Yandex token after " << attempt
+                        << " attempts, giving up: " << ex.what();
+            break;
+          }
+          LOG_WARNING() << "[SettingsYandexDevicePoll] request_id=" << CurrentRequestId()
+                        << " storing Yandex token failed (" << ex.what() << "), retrying — attempt "
+                        << attempt << "/" << kTokenStoreMaxAttempts;
+          engine::SleepFor(
+              ExponentialBackoff(attempt, kTokenStoreBackoffBase, kTokenStoreBackoffCap));
+        }
+      }
+      if (!stored) {
+        response.SetStatus(server::http::HttpStatus::kServiceUnavailable);
+        return BuildProblemJson(request,
+                                server::http::HttpStatus::kServiceUnavailable,
+                                "could not save Yandex connection, please try again");
+      }
       b["status"] = std::string{"connected"};
       break;
     }
@@ -477,7 +514,19 @@ std::string SettingsYandexPlaylistsHandler::HandleRequestThrow(
     if (user_id) {
       playlists = yandex_client_.FetchPlaylists(yandex_token, *user_id);
     }
-  } catch (const GeniusHttpError&) {
+  } catch (const GeniusHttpError& e) {
+    // [SF-WEB-95] 401/403 значит, что грант уже есть, но сам Яндекс отверг
+    // именно этот токен — повторное нажатие "выдать доступ" тут бессмысленно,
+    // Яндекс вернёт тот же самый кэшированный токен без нужного scope.
+    // Отдаём отдельный код, чтобы фронт не путал это со случаем "гранта ещё
+    // не было" (kNotFound выше) и с настоящим сетевым сбоем (kBadGateway).
+    if (e.status_code == 401 || e.status_code == 403) {
+      response.SetStatus(server::http::HttpStatus::kForbidden);
+      return BuildProblemJson(request,
+                              server::http::HttpStatus::kForbidden,
+                              "Yandex rejected the stored token — revoke access at "
+                              "id.yandex.ru/security and grant it again");
+    }
     response.SetStatus(server::http::HttpStatus::kBadGateway);
     return BuildProblemJson(
         request, server::http::HttpStatus::kBadGateway, "could not reach Yandex");

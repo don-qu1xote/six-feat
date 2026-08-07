@@ -502,6 +502,7 @@ YandexOAuthConfig::YandexOAuthConfig(const components::ComponentConfig& config,
       client_id_(config["client-id"].As<std::string>("")),
       client_secret_(EnvOrEmpty("YANDEX_OAUTH_CLIENT_SECRET")),
       redirect_uri_(config["redirect-uri"].As<std::string>("")),
+      scope_(config["scope"].As<std::string>("")),
       oauth_base_url_(config["oauth-base-url"].As<std::string>("https://oauth.yandex.ru")),
       login_base_url_(config["login-base-url"].As<std::string>("https://login.yandex.ru")),
       enabled_(!client_id_.empty() && !client_secret_.empty() && !redirect_uri_.empty()) {
@@ -555,13 +556,14 @@ std::string YandexLoginHandler::HandleRequestThrow(const server::http::HttpReque
   state_cookie.SetPath("/");
   response.SetCookie(state_cookie);
 
-  const std::string redirect = yandex_.OAuthBaseUrl() +
-                               "/authorize"
-                               "?response_type=code"
-                               "&client_id=" +
-                               UrlEncode(yandex_.ClientId()) +
-                               "&redirect_uri=" + UrlEncode(yandex_.RedirectUri()) +
-                               "&state=" + state;
+  std::string redirect = yandex_.OAuthBaseUrl() +
+                         "/authorize"
+                         "?response_type=code"
+                         "&client_id=" +
+                         UrlEncode(yandex_.ClientId()) +
+                         "&redirect_uri=" + UrlEncode(yandex_.RedirectUri()) + "&state=" + state;
+  // [SF-WEB-91] Явный scope — то, что позволяет одному входу через Яндекс закрыть и плейлисты.
+  if (!yandex_.Scope().empty()) redirect += "&scope=" + UrlEncode(yandex_.Scope());
 
   LOG_DEBUG() << "[YandexOAuth] redirecting to: " << redirect;
 

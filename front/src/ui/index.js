@@ -9,6 +9,7 @@ export {
   saveHistory,
   pushHistory,
   renderChips,
+  showChipsIfHistory,
   setupChipsVisibility,
   updateShareableUrl,
   loadArtistFromUrl,

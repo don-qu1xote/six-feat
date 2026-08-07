@@ -1,5 +1,5 @@
 type: object
-description: OAuth Device Authorization Grant client for a personal Yandex Music account (prep work for SF-YM-04, not yet used by the product)
+description: OAuth Device Authorization Grant client for a personal Yandex Music account — the settings/playlists fallback grant for sessions whose own login token lacks music:api-public (see YANDEX_OAUTH_SCOPE).
 additionalProperties: false
 properties:
     device-code-url:
@@ -14,6 +14,14 @@ properties:
         type: string
         description: OAuth client-id registered on oauth.yandex.ru (not a secret)
         defaultDescription: ''
+    scope:
+        type: string
+        description: >-
+            Пробел-разделённый список прав для device-flow — как и у
+            yandex-oauth-config.scope, должен совпадать с тем, что реально
+            выдано этому client-id в кабинете, иначе весь запрос отклоняется
+            (invalid_scope). Пусто — Яндекс выдаёт права по умолчанию.
+        defaultDescription: "music:api-public"
     backoff-max-attempts:
         type: integer
         description: Maximum retry attempts for transient failures

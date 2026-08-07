@@ -6,6 +6,7 @@ import {
   parseGraphState,
   loadArtistFromUrl,
   setupChipsVisibility,
+  showChipsIfHistory,
 } from "./history.js";
 
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
@@ -189,5 +190,28 @@ describe("setupChipsVisibility — chips stay hidden until the search field is f
     els.heroInput.value = "";
     els.heroInput.dispatchEvent(new Event("input"));
     expect(els.chips.hidden).toBe(false);
+  });
+});
+
+describe("showChipsIfHistory (SF-WEB-93)", () => {
+  beforeEach(() => {
+    els.chipsLabel = document.createElement("div");
+    els.chipsLabel.hidden = true;
+    els.chips = document.createElement("div");
+    els.chips.hidden = true;
+    document.body.append(els.chipsLabel, els.chips);
+  });
+
+  it("reveals the chips immediately when there's real search history", () => {
+    State.history = ["Kendrick Lamar"];
+    showChipsIfHistory();
+    expect(els.chipsLabel.hidden).toBe(false);
+    expect(els.chips.hidden).toBe(false);
+  });
+
+  it("leaves the chips hidden for a first-time visitor with no history", () => {
+    State.history = [];
+    showChipsIfHistory();
+    expect(els.chips.hidden).toBe(true);
   });
 });

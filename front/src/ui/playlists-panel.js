@@ -39,6 +39,19 @@ function _hideGrantHint() {
 
 async function _loadPlaylists() {
   const { status, data } = await fetchYandexPlaylists();
+  if (status === 403) {
+    // [SF-WEB-95] Доступ уже выдан, но сам Яндекс отверг сохранённый токен —
+    // повторное нажатие "выдать доступ" вернёт тот же кэшированный токен без
+    // нужного scope, так что показываем отдельное сообщение вместо обычной
+    // подсказки "доступ ещё не выдан".
+    if (els.playlistsGrantHint) els.playlistsGrantHint.hidden = false;
+    if (els.playlistsGrid) {
+      els.playlistsGrid.hidden = true;
+      els.playlistsGrid.innerHTML = "";
+    }
+    showToast(t("playlists.grantRejectedToast"), 8000);
+    return;
+  }
   if (status === 404 || status === 502) {
     if (els.playlistsGrantHint) els.playlistsGrantHint.hidden = false;
     if (els.playlistsGrid) {

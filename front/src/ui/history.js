@@ -74,6 +74,12 @@ function hideChips() {
   if (els.chips) els.chips.hidden = true;
 }
 
+// [SF-WEB-93] Реальные недавние запросы показываем сразу при загрузке —
+// скрытие-до-фокуса ниже остаётся для дефолтных примеров первого визита.
+export function showChipsIfHistory() {
+  if (State.history.length > 0) showChips();
+}
+
 export function setupChipsVisibility() {
   if (!els.heroInput) return;
   els.heroInput.addEventListener("focus", showChips);

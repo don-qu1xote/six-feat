@@ -60,6 +60,7 @@ components_manager:
       device-code-url: https://oauth.yandex.ru/device/code
       token-url: https://oauth.yandex.ru/token
       client-id: $yandex_device_client_id
+      scope: $yandex_device_scope
       backoff-max-attempts: 4
       backoff-base-ms: 200
       backoff-cap-ms: 10000

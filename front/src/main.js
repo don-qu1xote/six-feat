@@ -27,6 +27,7 @@ import {
   setupHelpOverlay,
   setupLoadMoreCollabs,
   renderChips,
+  showChipsIfHistory,
   setupChipsVisibility,
   exportGraphPng,
   exportGraphJson,
@@ -67,6 +68,7 @@ export function init() {
 
   loadHistory();
   renderChips();
+  showChipsIfHistory();
   setupFilterToggles();
   setupKeyboard();
   setupDockedPanels();

@@ -57,6 +57,7 @@ components_manager:
     yandex-oauth-config:
       client-id: $yandex_oauth_client_id
       redirect-uri: $yandex_oauth_redirect_uri
+      scope: $yandex_oauth_scope
       oauth-base-url: $yandex_oauth_base_url
       login-base-url: $yandex_login_base_url
 

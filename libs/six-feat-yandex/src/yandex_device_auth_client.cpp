@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <chrono>
+#include <cstdlib>
 #include <six-feat-core/request_id.hpp>
 #include <six-feat-yandex/yandex_device_auth_client.hpp>
 #include <stdexcept>
@@ -42,6 +43,11 @@ double RequirePositive(std::string_view param, double value) {
   return value;
 }
 
+std::string EnvOrEmpty(const char* name) {
+  const char* value = std::getenv(name);
+  return value ? std::string(value) : std::string();
+}
+
 std::string UrlEncode(std::string_view value) {
   static constexpr const char* kHex = "0123456789ABCDEF";
   std::string out;
@@ -68,6 +74,8 @@ YandexDeviceAuthClient::YandexDeviceAuthClient(const components::ComponentConfig
           config["device-code-url"].As<std::string>("https://oauth.yandex.ru/device/code")),
       token_url_(config["token-url"].As<std::string>("https://oauth.yandex.ru/token")),
       client_id_(config["client-id"].As<std::string>("")),
+      client_secret_(EnvOrEmpty("YANDEX_DEVICE_CLIENT_SECRET")),
+      scope_(config["scope"].As<std::string>("")),
       backoff_max_attempts_(
           RequirePositive("backoff-max-attempts", config["backoff-max-attempts"].As<int>(4))),
       backoff_base_ms_(std::chrono::milliseconds{
@@ -159,7 +167,8 @@ std::string YandexDeviceAuthClient::PostForm(const std::string& url,
 }
 
 YandexDeviceCode YandexDeviceAuthClient::RequestDeviceCode() const {
-  const std::string body = "client_id=" + UrlEncode(client_id_);
+  std::string body = "client_id=" + UrlEncode(client_id_);
+  if (!scope_.empty()) body += "&scope=" + UrlEncode(scope_);
   const auto json = formats::json::FromString(PostForm(device_code_url_, body));
 
   YandexDeviceCode out;
@@ -176,8 +185,10 @@ YandexDeviceCode YandexDeviceAuthClient::RequestDeviceCode() const {
 }
 
 YandexTokenPollResult YandexDeviceAuthClient::PollForToken(const std::string& device_code) const {
+  // [SF-WEB-91] Проверено вживую: /token требует client_secret (в отличие от /device/code).
   const std::string body = "grant_type=device_code&code=" + UrlEncode(device_code) +
-                           "&client_id=" + UrlEncode(client_id_);
+                           "&client_id=" + UrlEncode(client_id_) +
+                           "&client_secret=" + UrlEncode(client_secret_);
   const auto json = formats::json::FromString(PostForm(token_url_, body));
 
   YandexTokenPollResult out;
