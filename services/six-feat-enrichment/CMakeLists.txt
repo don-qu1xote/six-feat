@@ -28,7 +28,6 @@ target_link_libraries(six_feat_enrichment_service
         six_feat_core
         six_feat_storage
         six_feat_genius
-        six_feat_yandex
         six_feat_sources
         six_feat_enrichment
         six_feat_http

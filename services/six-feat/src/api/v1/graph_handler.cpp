@@ -211,10 +211,10 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
   }
 
   // [SF-YM-08] Сначала — сид из уже известного репозиторию, без единого
-  // похода во внешний гейтвей. Это то, что доступно Yandex-only сессии без
-  // BYO Genius-токена: резолвить СОВСЕМ новое имя без Genius сегодня не во
-  // что (см. artist_resolver.hpp), но артист, уже известный кому-то
-  // раньше (чужой Genius-поиск, фоновое обогащение), находится локально.
+  // похода во внешний гейтвей: артист, уже известный кому-то раньше (чужой
+  // Genius-поиск, фоновое обогащение), находится локально без токена.
+  // Резолв СОВСЕМ нового имени/id по-прежнему требует Genius-токен (см.
+  // ниже) — честный 422, а не тихий провал.
   ArtistRef seed;
   bool have_seed = false;
   if (!id_arg.empty()) {
@@ -250,14 +250,16 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));
     if (!seed_fully_cached) {
       const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
-      // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
       user_token = auth::GeniusTokenForSession(*session, connected);
-      // [SF-YM-08] Пустой Genius-токен больше не 422: после SF-ARCH-04/05
-      // дефолтный граф и резолв сида работают на одном сервисном Яндексе
-      // без всякого участия Genius. Genius остаётся опциональным плюсом
-      // (больше связей/ролей — см. graph_deepen_handler.cpp, где 422
-      // остаётся, это его законное поведение).
     }
+  }
+
+  // [SF-YM-08] Резолв уже закэшированного сида не требует Genius-токена
+  // (see выше) — но резолв СОВСЕМ нового id/имени требует, честный 422, не
+  // тихий провал/пустой граф.
+  if (!have_seed && user_token.empty()) {
+    response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+    return ErrorGraph("no_genius_token");
   }
 
   if (!have_seed) {
@@ -424,8 +426,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
 
   {
     for (const auto& song : data.songs) {
-      const auto song_source =
-          IsYandexSongId(song.id) ? EdgeSource::kYandexFeature : EdgeSource::kGeniusCredit;
+      const auto song_source = EdgeSource::kGeniusCredit;
 
       std::vector<std::int64_t> collabs_in_song;
       collabs_in_song.reserve(song.credits.size());
@@ -490,7 +491,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
     nb["is_seed"] = true;
 
-    nb["deepen_available"] = !IsYandexArtistId(seed_id);
+    nb["deepen_available"] = true;
     nodes_b.PushBack(std::move(nb));
   }
 
@@ -503,7 +504,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
       nb["betweenness"] = raw;
       nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
       nb["is_seed"] = false;
-      nb["deepen_available"] = !IsYandexArtistId(gid);
+      nb["deepen_available"] = true;
       nodes_b.PushBack(std::move(nb));
     }
     {

@@ -39,10 +39,6 @@ macro(six_feat_init_service)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-genius"
                      "${CMAKE_BINARY_DIR}/six-feat-genius")
   endif()
-  if(NOT TARGET six_feat_yandex)
-    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-yandex"
-                     "${CMAKE_BINARY_DIR}/six-feat-yandex")
-  endif()
   # Источники графа (провайдеры + цепочка) — общая библиотека: фоновое
   # обогащение использует тот же набор провайдеров, что и foreground-граф.
   if(NOT TARGET six_feat_sources)

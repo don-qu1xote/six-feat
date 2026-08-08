@@ -482,9 +482,7 @@ std::string MeHandler::HandleRequestThrow(const server::http::HttpRequest& reque
     if (session) {
       formats::json::ValueBuilder b(formats::json::Type::kObject);
       b["authenticated"] = true;
-      const bool is_yandex = session->Provider() == kProviderYandex;
-      b["name"] =
-          session->name.empty() ? (is_yandex ? "Yandex User" : "Genius User") : session->name;
+      b["name"] = session->name.empty() ? "Genius User" : session->name;
       b["provider"] = std::string{session->Provider()};
       return formats::json::ToString(b.ExtractValue());
     }

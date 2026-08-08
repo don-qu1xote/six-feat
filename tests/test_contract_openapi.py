@@ -11,8 +11,7 @@ pytestmark = pytest.mark.openapi_endpoint
 
 _SIX_FEAT_NATIVE_PATHS = (
     r"^/api/v1/(graph(/path|/deepen)?|search|status|artist|api-keys(/revoke)?"
-    r"|settings/providers|settings/genius-token|settings/disconnect"
-    r"|settings/yandex/(playlists|import))$"
+    r"|settings/providers|settings/genius-token|settings/disconnect)$"
 )
 
 

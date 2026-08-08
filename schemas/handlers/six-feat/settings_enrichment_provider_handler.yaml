@@ -1,6 +1,0 @@
-type: object
-description: >-
-    Enrichment provider preference switch handler configuration (SF-YM-07).
-    Session-authenticated only.
-additionalProperties: false
-properties: {}

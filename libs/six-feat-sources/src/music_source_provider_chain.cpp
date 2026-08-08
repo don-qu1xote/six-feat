@@ -2,7 +2,6 @@
 
 #include <six-feat-sources/genius_music_source_provider.hpp>
 #include <six-feat-sources/music_source_provider_chain.hpp>
-#include <six-feat-sources/yandex_music_source_provider.hpp>
 #include <stdexcept>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
@@ -17,12 +16,11 @@ namespace {
 
 MusicSourceProvider& ResolveProviderByName(const std::string& name,
                                            const components::ComponentContext& context) {
-  if (name == "yandex") return context.FindComponent<YandexMusicSourceProvider>();
   if (name == "genius-fallback" || name == "genius") {
     return context.FindComponent<GeniusMusicSourceProvider>();
   }
   throw std::runtime_error("music-source-provider-chain: unknown provider name '" + name +
-                           "' (expected 'yandex' or 'genius-fallback')");
+                           "' (expected 'genius-fallback')");
 }
 
 }  // namespace
@@ -30,8 +28,8 @@ MusicSourceProvider& ResolveProviderByName(const std::string& name,
 MusicSourceProviderChain::MusicSourceProviderChain(const components::ComponentConfig& config,
                                                    const components::ComponentContext& context)
     : ComponentBase(config, context) {
-  const auto names = config["providers"].As<std::vector<std::string>>(
-      std::vector<std::string>{"yandex", "genius-fallback"});
+  const auto names =
+      config["providers"].As<std::vector<std::string>>(std::vector<std::string>{"genius-fallback"});
   if (names.empty()) {
     throw std::runtime_error("music-source-provider-chain: 'providers' must not be empty");
   }

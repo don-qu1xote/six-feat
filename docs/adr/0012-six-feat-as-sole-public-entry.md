@@ -8,18 +8,17 @@
 
 ## Контекст
 
-К Release 0.8 в системе шесть userver-сервисов
-(`six-feat`, `six-feat-auth`, `six-feat-enrichment`,
-`six-feat-genius-gateway`, `six-feat-yandex-gateway`, `six-feat-game`) и
-один `nginx` перед тремя из них (`six-feat`, `six-feat-auth`,
-`six-feat-game` — см. `docs/architecture/c4-container.md`). Топология
-шире, чем один сервис — естественный вопрос: не пора ли перед ней
-поставить отдельный API Gateway/BFF-сервис, который агрегирует вызовы к
-`genius-gateway`/`yandex-gateway`/`enrichment`/`auth` и отдаёт фронтенду
-единый, скрывающий внутреннюю топологию контракт?
+В системе пять userver-сервисов (`six-feat`, `six-feat-auth`,
+`six-feat-enrichment`, `six-feat-genius-gateway`, `six-feat-game`) и один
+`nginx` перед тремя из них (`six-feat`, `six-feat-auth`, `six-feat-game`
+— см. `docs/architecture/c4-container.md`). Топология шире, чем один
+сервис — естественный вопрос: не пора ли перед ней поставить отдельный
+API Gateway/BFF-сервис, который агрегирует вызовы к
+`genius-gateway`/`enrichment`/`auth` и отдаёт фронтенду единый,
+скрывающий внутреннюю топологию контракт?
 
 Сегодня эту роль частично играет `nginx` (единый публичный порт,
-path-based роутинг на три из шести сервисов), но `nginx` — конфигурация,
+path-based роутинг на три из пяти сервисов), но `nginx` — конфигурация,
 не код: он не агрегирует ответы нескольких сервисов в один, не хранит
 состояние, не принимает решений — чистый reverse proxy.
 
@@ -35,11 +34,10 @@ path-based роутинг на три из шести сервисов), но `n
 1. **`six-feat` уже оркестрирует то, что нужно оркестрировать в его
    собственном домене**: `CollabService` внутри `six-feat` сам решает,
    когда идти в `ArtistRepository` (Postgres), когда — в
-   `GeniusGatewayClient`/`MusicSourceProviderChain`
-   (`genius-gateway`/`yandex-gateway`), когда поставить фоновую задачу в
-   `EnrichmentClient` (`enrichment`). Отдельный BFF перед `six-feat` был
-   бы вторым слоем той же самой оркестрации — сетевой хоп без новой
-   бизнес-логики.
+   `GeniusGatewayClient`/`MusicSourceProviderChain` (`genius-gateway`),
+   когда поставить фоновую задачу в `EnrichmentClient` (`enrichment`).
+   Отдельный BFF перед `six-feat` был бы вторым слоем той же самой
+   оркестрации — сетевой хоп без новой бизнес-логики.
 2. **`six-feat-auth` и `six-feat-game` — намеренно отдельные публичные
    поверхности**, не спрятанные за `six-feat` — см.
    [ADR-0004](./0004-auth-service-local-session-verification.md) (сессия
@@ -57,12 +55,11 @@ path-based роутинг на три из шести сервисов), но `n
    должен знать, какой из трёх контейнеров реально ответит. Это не BFF по
    определению: BFF агрегирует/трансформирует данные под конкретный
    фронтенд, `nginx` здесь — нет.
-4. **`six-feat-genius-gateway` и `six-feat-yandex-gateway` намеренно НЕ
-   публичны** (см. `docs/architecture/c4-container.md`) — они уже
-   выполняют роль внутреннего шлюза для конкретного домена (rate-limit +
-   CircuitBreaker к одному внешнему API), а не общего API Gateway для
-   всей системы; это разные ответственности, которые не стоит сливать в
-   один сервис.
+4. **`six-feat-genius-gateway` намеренно НЕ публичен** (см.
+   `docs/architecture/c4-container.md`) — он уже выполняет роль
+   внутреннего шлюза для конкретного домена (rate-limit + CircuitBreaker
+   к одному внешнему API), а не общего API Gateway для всей системы; это
+   разные ответственности, которые не стоит сливать в один сервис.
 
 ## Последствия
 

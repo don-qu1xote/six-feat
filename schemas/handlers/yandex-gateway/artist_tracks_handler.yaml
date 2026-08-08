@@ -1,4 +1,0 @@
-type: object
-description: Internal Yandex Music artist-tracks lookup endpoint (service-token mode)
-additionalProperties: false
-properties: {}

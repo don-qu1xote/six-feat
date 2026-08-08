@@ -24,7 +24,7 @@ class IArtistDataSource {
   virtual std::optional<ArtistRef> Lookup(std::int64_t artist_id) const = 0;
 
   // [SF-YM-08] Локальный поиск по имени среди уже резолвленных артистов —
-  // без похода во внешний гейтвей (Genius/Yandex).
+  // без похода во внешний гейтвей (Genius).
   virtual std::vector<ArtistRef> SearchByName(const std::string& query, int limit) const = 0;
 
   virtual std::vector<CollabEdge> Neighbours(std::int64_t artist_id,

@@ -1,35 +1,24 @@
 from __future__ import annotations
 
 import sys
-import uuid
 from pathlib import Path
 
 import pytest
 import requests
-from conftest import SERVICE_BASE, TEST_APP_SECRET, GeniusMock, YandexMock, _build_song_detail
+from conftest import SERVICE_BASE, TEST_APP_SECRET, GeniusMock, _build_song_detail
 
 sys.path.insert(0, str(Path(__file__).parent))
 import session_crypto  # noqa: E402
 
 PATH_URL = f"{SERVICE_BASE}/api/v1/graph/path"
 
-# [SF-ARCH-04] Mirrors NamespacedYandexArtistId.
-_YANDEX_ARTIST_ID_OFFSET = 1 << 62
 
-
-def _namespaced_yandex_artist_id(yandex_id: int) -> int:
-    return _YANDEX_ARTIST_ID_OFFSET | yandex_id
-
-
-def _yandex_session() -> requests.Session:
+def _no_token_session() -> requests.Session:
+    """A logged-in session (Genius is the sole provider) with no usable
+    Genius token — path search always needs one, so this must 422."""
     sess = requests.Session()
     sess.headers["Accept"] = "application/json"
-    cookie = session_crypto.make_cookie(
-        TEST_APP_SECRET,
-        access_token="yandex-session-token-not-valid-for-genius",
-        provider="yandex",
-        provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
-    )
+    cookie = session_crypto.make_cookie(TEST_APP_SECRET, access_token="")
     sess.cookies.update({"six_feat_session": cookie})
     return sess
 
@@ -516,44 +505,15 @@ class TestPathETag:
         assert resp.headers.get("ETag")
 
 
-class TestPathYandexSessionWorksWithoutGenius:
-    """[SF-YM-08] A Yandex-only session used to get an honest 422 on any
-    path query — the path search's BFS expansion secretly needed Genius to
-    resolve names (see ADR pre-SF-ARCH-04). After SF-ARCH-04/05 both
-    endpoints (seed resolution and BFS expansion via CollabService.FetchFg)
-    run on Yandex's own service token, so this is a normal 200 now."""
+class TestPathRequiresGeniusToken:
+    """[SF-YM-08] Path search always resolves two endpoints from scratch
+    (no cache-first shortcut like graph_handler.cpp's) — a session with no
+    usable Genius token gets an honest 422, not a confusing upstream error
+    or an empty result."""
 
-    def test_no_connected_byo_token_still_finds_a_path_via_yandex(
-        self,
-        service_proc,
-        genius_mock: GeniusMock,
-        yandex_mock: YandexMock,
-        unique_artist_id: int,
-    ):
-        from_name = f"YandexPathFrom{unique_artist_id}"
-        to_name = f"YandexPathTo{unique_artist_id}"
-        from_yandex_id = unique_artist_id + 800000
-        to_yandex_id = unique_artist_id + 900000
-        shared_track_id = unique_artist_id + 1000000
+    def test_no_token_gets_422_no_genius_token(self, service_proc):
+        sess = _no_token_session()
+        resp = sess.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"})
 
-        yandex_mock.search_artist(from_name, [{"id": from_yandex_id, "name": from_name}])
-        yandex_mock.search_artist(to_name, [{"id": to_yandex_id, "name": to_name}])
-        yandex_mock.artist_tracks(from_yandex_id, [shared_track_id])
-        yandex_mock.artist_tracks(to_yandex_id, [shared_track_id])
-        yandex_mock.track_artists(
-            shared_track_id,
-            [
-                {"id": from_yandex_id, "name": from_name},
-                {"id": to_yandex_id, "name": to_name},
-            ],
-        )
-
-        sess = _yandex_session()
-        resp = sess.get(PATH_URL, params={"from": from_name, "to": to_name})
-        assert resp.status_code == 200, resp.text
-        data = resp.json()
-        assert data["hops"] == 1
-        assert data["path"] == [
-            _namespaced_yandex_artist_id(from_yandex_id),
-            _namespaced_yandex_artist_id(to_yandex_id),
-        ]
+        assert resp.status_code == 422, resp.text
+        assert resp.json().get("error") == "no_genius_token"

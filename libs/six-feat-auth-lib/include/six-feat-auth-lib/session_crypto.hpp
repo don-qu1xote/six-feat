@@ -9,7 +9,6 @@
 namespace six_feat::auth {
 
 inline constexpr std::string_view kProviderGenius = "genius";
-inline constexpr std::string_view kProviderYandex = "yandex";
 
 std::string Encrypt(std::string_view access_token,
                     std::int64_t expires_at_unix,

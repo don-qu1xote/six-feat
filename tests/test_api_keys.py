@@ -88,15 +88,13 @@ class TestIssue:
         )
         assert resp.status_code == 200
 
-    def test_yandex_session_with_no_display_name_can_still_issue_with_a_connected_byo_token(self):
+    def test_session_with_no_display_name_can_still_issue_with_a_connected_byo_token(self):
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
         cookie = session_crypto.make_cookie(
             TEST_APP_SECRET,
-            access_token="yandex-session-token",
+            access_token="",
             name="",
-            provider="yandex",
-            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
         )
         sess.cookies.update({"six_feat_session": cookie})
 
@@ -108,15 +106,13 @@ class TestIssue:
         assert issue_resp.status_code == 201, issue_resp.text
         assert issue_resp.json()["key"].startswith("sf_live_")
 
-    def test_yandex_session_with_no_display_name_and_no_byo_token_is_422_not_500(self):
+    def test_session_with_no_display_name_and_no_byo_token_is_422_not_500(self):
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
         cookie = session_crypto.make_cookie(
             TEST_APP_SECRET,
-            access_token="yandex-session-token",
+            access_token="",
             name="",
-            provider="yandex",
-            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
         )
         sess.cookies.update({"six_feat_session": cookie})
 

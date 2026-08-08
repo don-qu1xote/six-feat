@@ -168,7 +168,6 @@ services:
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
 
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
-      YANDEX_GATEWAY_BASE_URL: ${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}}
 
       AUTH_BASE_URL: ${AUTH_BASE_URL:-http://six-feat-auth:${SIX_FEAT_AUTH_PORT:-8083}}
     depends_on:
@@ -178,9 +177,6 @@ services:
         condition: service_started
 
       six-feat-genius-gateway:
-        condition: service_started
-
-      six-feat-yandex-gateway:
         condition: service_started
 
       six-feat-auth:
@@ -228,15 +224,11 @@ services:
       ENV_PROFILE: ${ENV_PROFILE:-dev}
 
       GENIUS_GATEWAY_BASE_URL: ${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}}
-      YANDEX_GATEWAY_BASE_URL: ${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}}
     depends_on:
       postgres:
         condition: service_healthy
 
       six-feat-genius-gateway:
-        condition: service_started
-
-      six-feat-yandex-gateway:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_ENRICHMENT_PORT:-8081}/healthz"]
@@ -351,44 +343,6 @@ services:
       ENV_PROFILE: ${ENV_PROFILE:-dev}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_GENIUS_GATEWAY_PORT:-8082}/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 120s
-    restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - "no-new-privileges:true"
-    <<: [*hardening, *logging]
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 256M
-
-  six-feat-yandex-gateway:
-    platform: linux/amd64
-    pull_policy: build
-    build:
-      context: .
-      dockerfile: services/yandex-gateway/Dockerfile
-      args:
-        USERVER_IMAGE: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0
-    image: six-feat-yandex-gateway:latest
-    container_name: six-feat-yandex-gateway
-    volumes:
-      - ./config/profiles:/app/config/profiles:ro
-    environment:
-      YANDEX_SERVICE_TOKEN: "${YANDEX_SERVICE_TOKEN:?Set YANDEX_SERVICE_TOKEN — single Yandex Music OAuth token, NOT per-user}"
-      ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
-      LOGGING_LEVEL: ${LOGGING_LEVEL:-}
-      ENV_PROFILE: ${ENV_PROFILE:-dev}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SIX_FEAT_YANDEX_GATEWAY_PORT:-8090}/healthz"]
       interval: 15s
       timeout: 5s
       retries: 3

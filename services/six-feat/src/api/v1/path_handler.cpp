@@ -191,8 +191,11 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
     enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));
     const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
     user_token = auth::GeniusTokenForSession(*session, connected);
-    // [SF-YM-08] Пустой Genius-токен больше не 422 — путь ищется на одном
-    // Яндексе (SF-ARCH-04/05), Genius остаётся опциональным плюсом.
+    if (user_token.empty()) {
+      resp.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+      return ErrorJson("no_genius_token",
+                       "Connect a Genius token in Settings to search for collaboration paths.");
+    }
   }
 
   const std::string& from_param = request.GetArg("from");

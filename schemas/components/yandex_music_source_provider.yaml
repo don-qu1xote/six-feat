@@ -1,4 +1,0 @@
-type: object
-description: Default/mandatory MusicSourceProvider — Yandex track co-appearance edges, namespaced artist ids (SF-ARCH-04), no Genius cross-resolution
-additionalProperties: false
-properties: {}

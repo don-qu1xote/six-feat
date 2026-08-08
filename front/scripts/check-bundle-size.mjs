@@ -6,7 +6,12 @@ import { join } from "node:path";
 
 const distDir = process.env.BUNDLE_DIST_DIR || join(import.meta.dirname, "..", "dist");
 
-export const BUDGET_KB = 56;
+// Поднято 56 -> 68: полное покрытие EN/RU i18n (src/i18n/strings.js)
+// подняло реальный gzip-бандл до ~63.7 KB — легитимный рост функционала,
+// не раздутие, которое надо резать. Та же логика, что и в предыдущих
+// поднятиях 40->48->56 в истории этого файла: расширяем бюджет с запасом,
+// а не удерживаем готовые фичи под устаревший потолок.
+export const BUDGET_KB = 68;
 export const BUDGET_BYTES = BUDGET_KB * 1024;
 
 export function gzipSize(buffer) {

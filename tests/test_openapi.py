@@ -68,7 +68,7 @@ class TestOpenApiDocument:
         schema = data["components"]["schemas"][schema_name]
         assert "source" in schema["required"]
         source_prop = schema["properties"]["source"]
-        assert set(source_prop["enum"]) == {"yandex_feature", "genius_credit"}
+        assert set(source_prop["enum"]) == {"genius_credit"}
 
     @pytest.mark.parametrize(
         ("path", "node_schema", "edge_schema"),

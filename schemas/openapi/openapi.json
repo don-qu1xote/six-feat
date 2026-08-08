@@ -316,7 +316,7 @@
           },
           "deepen_available": {
             "type": "boolean",
-            "description": "[SF-YM-09] Whether \"find more connections\" (Genius-only) can work for this node — false for a namespaced Yandex artist with no linked Genius id yet (see docs/adr/0013-two-provider-artist-identity.md)."
+            "description": "[SF-YM-09] Whether \"find more connections\" (Genius-only) can work for this node. Always true — Genius is the sole graph source, so every resolved node is already Genius-identified."
           }
         },
         "additionalProperties": false
@@ -364,10 +364,9 @@
           "source": {
             "type": "string",
             "enum": [
-              "yandex_feature",
               "genius_credit"
             ],
-            "description": "[SF-ARCH-02] Which upstream produced this edge — \"yandex_feature\" for Yandex co-appearance (role always \"feature\", the only granularity co-appearance-on-a-track can give), \"genius_credit\" for a Genius-tagged credit role (primary/producer/writer/featured). Derived from dominant_role, not a persisted per-edge tag — see docs/adr/0011-music-source-provider-abstraction.md."
+            "description": "Which upstream produced this edge — \"genius_credit\" for a Genius-tagged credit role (primary/producer/writer/featured). Derived from dominant_role, not a persisted per-edge tag."
           },
           "collaborations": {
             "type": "array",
@@ -467,10 +466,9 @@
           "source": {
             "type": "string",
             "enum": [
-              "yandex_feature",
               "genius_credit"
             ],
-            "description": "[SF-ARCH-02] Which upstream produced this edge — see GraphEdge.source."
+            "description": "Which upstream produced this edge — see GraphEdge.source."
           },
           "songs": {
             "type": "array",
@@ -780,7 +778,7 @@
     "/api/v1/graph/deepen": {
       "get": {
         "summary": "\"Find more connections via Genius\" for one artist (SF-YM-03)",
-        "description": "On-demand deepen action for a single artist already shown in the graph (the default graph runs on Yandex features, SF-YM-01/SF-YM-02). Calls GeniusMusicSourceProvider.GetCollaborationEdges directly for the given artist id and returns any producer/writer/featured/primary edges Genius tags that co-appearance-on-a-track (Yandex) physically cannot give. Response shape mirrors GET /api/v1/graph's nodes/edges so the client can merge it into the already-rendered graph, combining sources on a same-pair edge instead of drawing a visually distinct second one.",
+        "description": "On-demand deepen action for a single artist already shown in the graph (SF-YM-01/SF-YM-02). Calls GeniusMusicSourceProvider.GetCollaborationEdges directly for the given artist id, using a BYO token if connected (higher rate-limit budget than the shared session token) to find producer/writer/featured/primary edges the default foreground fetch didn't have budget to reach. Response shape mirrors GET /api/v1/graph's nodes/edges so the client can merge it into the already-rendered graph, combining sources on a same-pair edge instead of drawing a visually distinct second one.",
         "parameters": [
           {
             "name": "id",
@@ -1397,7 +1395,7 @@
     "/api/v1/settings/genius-token": {
       "post": {
         "summary": "Connect a personal Genius token to deepen the graph (SF-YM-02)",
-        "description": "BYO Genius OAuth token, pasted to unlock producer/writer/featured roles the default Yandex-backed graph doesn't have. Connecting it IS the consent to use it for background enrichment of the shared database — there is no separate toggle. Session-authenticated; upserts (re-connecting replaces the previous token, never a second row).",
+        "description": "BYO Genius OAuth token, pasted to get a higher rate-limit budget than the shared session/service token for deepen and background enrichment. Connecting it IS the consent to use it for background enrichment of the shared database — there is no separate toggle. Session-authenticated; upserts (re-connecting replaces the previous token, never a second row).",
         "security": [
           {
             "cookieAuth": []

@@ -73,19 +73,10 @@ components_manager:
     fg-fanout-limiter:
       max-concurrent: 6
 
-    # Тот же состав провайдеров, что в services/six-feat/static_config.yaml:
-    # иначе кэш воркера расходился бы по источнику с пользовательским графом.
-    yandex-gateway-client:
-      yandex-gateway-base-url: $yandex_gateway_base_url
-      timeout-ms: 5000
-      tracks-limit: 20
-
-    yandex-music-source-provider: {}
-
     genius-music-source-provider: {}
 
     music-source-provider-chain:
-      providers: [yandex, genius-fallback]
+      providers: [genius-fallback]
 
     enrichment-worker:
       queue-capacity: 1024

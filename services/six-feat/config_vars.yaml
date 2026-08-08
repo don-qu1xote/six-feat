@@ -8,5 +8,3 @@ db_connection_string: postgresql://CHANGEME_user:CHANGEME_password@localhost:543
 enrichment_base_url: http://localhost:8081
 
 auth_base_url: http://localhost:8083
-
-yandex_gateway_base_url: http://localhost:8090

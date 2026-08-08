@@ -94,7 +94,7 @@ std::string UserProviderTokenStore::GetPreferredEnrichmentProvider(std::int64_t 
                                "SELECT preferred_enrichment_provider FROM user_settings "
                                "WHERE user_id = $1",
                                user_id);
-  if (res.IsEmpty()) return "yandex";
+  if (res.IsEmpty()) return "genius";
   return res.Front()[0].As<std::string>();
 }
 

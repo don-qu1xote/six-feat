@@ -81,7 +81,6 @@ C4-диаграммы контекста/контейнеров и sequence-ди
 | **six-feat-genius-gateway** (`services/genius-gateway/`) | 8082 | Весь исходящий трафик к Genius API — CircuitBreaker + FG/BG rate-limiting централизованы здесь (IDEA-45/46) | нет |
 | **six-feat-auth** (`services/auth/`) | 8083 | Весь OAuth 2.0 Authorization Code Flow: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` (IDEA-53) | нет |
 | **six-feat-game** (`services/game/`) | 8084 | Игровой режим «собери цепочку»: `/api/v1/game/{profile,challenge,challenges,validate,submit,leaderboard,season,link,admin}`. Сессия читается **локально** (как в six-feat), анти-чит ходит в six-feat через internal-mesh `/internal/neighbours` (ADR-0007) | да (тот же кластер, свой реестр миграций `postgresql/migrations/game/`) |
-| **six-feat-yandex-gateway** (`services/yandex-gateway/`) | 8090 | Весь исходящий трафик к Яндекс.Музыке — сервисный токен (mode 1, обязательный дефолт) + персональный device-flow OAuth (mode 2, задел под SF-YM-04). CircuitBreaker + FG/BG rate-limiting, как у genius-gateway (SF-YM-01) | нет |
 
 ### Раскладка исходников сервиса
 
@@ -211,10 +210,9 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./adr/0004-auth-service-loca
 
 ### Contract-тесты публичного API v1 против OpenAPI (SF-API-18)
 
-`tests/test_contract_openapi.py` — отдельный слой от `test_contract_gateway.py`/
-`test_contract_yandex_gateway.py` (SF-TST-01, внутренний контракт six-feat↔
-gateway): здесь источник правды — сам документ `/api/v1/openapi.json`
-(SF-API-05), а не другой C++-сервис.
+`tests/test_contract_openapi.py` — отдельный слой от `test_contract_gateway.py`
+(SF-TST-01, внутренний контракт six-feat↔gateway): здесь источник правды —
+сам документ `/api/v1/openapi.json` (SF-API-05), а не другой C++-сервис.
 
 - **Инструмент** — [schemathesis](https://schemathesis.readthedocs.io/)
   (property-based, на базе Hypothesis; уже используемый pytest/pytest-timeout
@@ -246,24 +244,24 @@ gateway): здесь источник правды — сам документ `
   `kFgPathDeadline`), но ни один из них не был объявлен в схеме для
   `/api/v1/graph/path` — добавлено.
 
-### Настройки: свой Genius-токен + личный Яндекс-аккаунт (SF-YM-02)
+### Настройки: свой Genius-токен (SF-YM-02)
 
-Две отдельные, опциональные персонализации поверх уже обязательного
-Яндекс-графа (SF-YM-01/SF-ARCH-02) — дефолтный граф работает на сервисном
-Яндекс-токене и не требует ничего из этого экрана.
+Опциональная персонализация поверх дефолтного графа: сессионный
+Genius-токен пользователя (полученный при входе) уже обслуживает и резолв
+артистов, и построение дефолтного графа — этот экран нужен только тем, кто
+хочет подключить *другой* Genius-токен (например, с другими правами/квотой)
+для углубления или фонового обогащения. Ранее здесь же жил импорт
+плейлиста через вставку текстового экспорта из Яндекс.Музыки (SF-YM-04-file)
+— он удалён целиком вместе со всей интеграцией с Яндекс.Музыкой (не
+интеграция с живым API, а ручная перекладка текста, без продуктового
+смысла отдельно от Genius-BYO-токена).
 
 - **Свой Genius-токен** (`POST /api/v1/settings/genius-token {token}`) —
-  BYO-токен для углубления графа (producer/writer/featured роли, которых
-  Яндекс не даёт). Подключение = согласие на использование для фонового
-  обогащения ОБЩЕЙ базы, без отдельного тумблера — одна прямая строка
-  текста рядом с полем ввода на фронте (`index.html`, карточка Genius),
-  до вставки токена.
-- **Импорт плейлиста** (`POST /api/v1/settings/yandex/import {text}`) —
-  ~~личный OAuth device flow~~ **удалено (SF-YM-04-file)**: Яндекс отвергает
-  токены сторонних OAuth-клиентов на приватных методах независимо от scope
-  (проверено вживую). Пользователь вставляет текстовый экспорт плейлиста
-  сам — никакого OAuth для этого не требуется. Согласие не нужно — просто
-  feature-connect, не влияет на дефолтный граф.
+  BYO-токен для углубления графа и фонового обогащения с иным лимитом
+  запросов, чем у сессионного/сервисного токена. Подключение = согласие на
+  использование для фонового обогащения ОБЩЕЙ базы, без отдельного
+  тумблера — одна прямая строка текста рядом с полем ввода на фронте
+  (`index.html`, карточка Genius), до вставки токена.
 - **Хранение** — таблица `user_provider_tokens` (`user_id, provider,
   encrypted_token, ts`, `kMigrationV6`, six-feat-storage) через новый
   `UserProviderTokenStore` (six-feat-auth-lib) — переиспользует тот же
@@ -279,15 +277,10 @@ gateway): здесь источник правды — сам документ `
   меняется. Никакого отдельного шага "активации" нет: то же самое чтение,
   что видит `GET /api/v1/settings/providers`, видит и хэндлер на
   следующий же запрос.
-- **Изоляция личного Яндекс-токена** — `PRIMARY KEY (user_id, provider)`
-  означает, что подключение никогда не пишется под чужим `user_id`, и
-  этот токен нигде не читается кодом дефолтного графа
-  (`YandexMusicSourceProvider`/`YandexGatewayClient`'s service-token путь) —
-  раздельно даже архитектурно, не только по данным.
 - **Фронт** — `front/src/ui/settings-panel.js` + `front/src/api/settings-api.js`:
   докнутая панель (`ui/docked-panel.js`, тот же механизм, что и
-  `.path-panel`/`.compare-panel`) с двумя независимыми карточками
-  (`.settings-card`), триггер — новая кнопка в rail (`#btn-settings-open`).
+  `.path-panel`/`.compare-panel`) с одной карточкой (`.settings-card`),
+  триггер — новая кнопка в rail (`#btn-settings-open`).
 
 ---
 
@@ -617,112 +610,20 @@ python3 scripts/uptime-check.py \
 - Сброс счётчика при успешной проверке;
 - Сохранение состояния между запусками.
 
----
+## Яндекс.Музыка — удалена (архивная сводка)
 
-## Яндекс.Музыка — сервисный токен и device flow (SF-YM-01)
-
-Яндекс.Музыка не имеет официального публичного API — только
-реверс-инженеренные библиотеки (риск: может измениться/сломаться без
-предупреждения). Эта хрупкость изолирована ровно так же, как уже изолирован
-Genius: отдельным сервисом, `services/yandex-gateway/`
-(`six-feat-yandex-gateway` в `docker-compose.yml`, порт 8090/8091-monitor).
-CircuitBreaker + FG/BG rate-limiting — тот же `resilience.hpp`, что и у
-Genius (`ResiliencePipeline`, `LaneConfig`).
-
-**Два независимых режима доступа — не путайте их:**
-
-| | Режим 1 — сервисный токен | Режим 2 — device flow |
-|---|---|---|
-| Токен | Один на весь деплой (`YANDEX_SERVICE_TOKEN`) | Персональный, per-user |
-| Кто его получает | Владелец деплоя, вручную | Каждый пользователь, через свой Яндекс-аккаунт |
-| Обязателен? | **Да** — дефолтный источник рёбер графа | Нет — задел под SF-YM-04 |
-| Эндпоинты | `/internal/yandex/track-artists`, `/internal/yandex/search-artist` | `/internal/yandex/device/{start,poll}`, `/internal/yandex/{playlists,liked-tracks}` |
-| Кто вызывает | `YandexMusicSourceProvider` (SF-ARCH-02) | Ничего пока — код есть, продукт не подключён |
-
-### Режим 1 — сервисный токен (обязательный дефолт)
-
-`YANDEX_SERVICE_TOKEN` — один OAuth-токен Яндекс.Музыки на весь SixFeat,
-той же природы, что сегодняшний app-токен Genius в genius-gateway: секрет
-деплоя, **не per-user**, никогда не передаётся клиентом в запросе и никогда
-не попадает в `static_config.yaml`/`config_vars.yaml` — читается напрямую
-из процессного окружения (`YandexMusicGateway`'s `ServiceTokenFromEnv()`,
-тот же приём, что `internal_api::SharedSecretFromEnv()`).
-
-```bash
-POST /internal/yandex/track-artists
-X-Internal-Secret: <ENRICHMENT_INTERNAL_SECRET>
-{"track_id": 12345, "lane": "foreground"}
-→ {"found": true, "artists": [{"id":1,"name":"Artist","image":"..."}]}
-
-POST /internal/yandex/search-artist
-X-Internal-Secret: <ENRICHMENT_INTERNAL_SECRET>
-{"query": "Artist Name"}
-→ {"candidates": [{"id":1,"name":"Artist Name","image":"...","score":1.0}]}
-```
-
-Это то, что реально дёргает `YandexMusicSourceProvider` (SF-ARCH-02) для
-построения дефолтного графа. Именно поэтому mode 1 — блокер для SF-ARCH-02;
-mode 2 — нет.
-
-### Режим 2 — персональный OAuth Device Flow (задел, не блокер)
-
-Отдельный от Genius OAuth токен-обмен для персонального Яндекс-аккаунта —
-device/TV-style код + polling (`oauth.yandex.ru/device/code`,
-`oauth.yandex.ru/token`), а не browser-redirect flow, которым владеет
-six-feat-auth. Код обмена (`YandexDeviceAuthClient`) есть и уже проверяется
-тестами, но **продуктом пока не используется** — используется только
-позже, в SF-YM-04 (импорт личных плейлистов/лайков — персонализация, не
-дефолтный граф).
-
-```bash
-POST /internal/yandex/device/start
-X-Internal-Secret: <ENRICHMENT_INTERNAL_SECRET>
-{}
-→ {"device_code":"...", "user_code":"AB12-CD34",
-   "verification_url":"https://oauth.yandex.ru/device", "interval":5, "expires_in":600}
-
-POST /internal/yandex/device/poll
-X-Internal-Secret: <ENRICHMENT_INTERNAL_SECRET>
-{"device_code": "..."}
-→ {"status": "pending"}                                    # пользователь ещё не подтвердил
-→ {"status": "success", "access_token": "...", ...}         # подтвердил
-→ {"status": "denied"} / {"status": "expired"}              # отказал / код истёк
-```
-
-`playlists`/`liked-tracks` берут уже полученный персональный токен из тела
-запроса (`token`, `user_id`) — сам компонент (`YandexMusicGateway`) не
-хранит персональные токены, только пробрасывает их в исходящий HTTP-запрос
-к Яндекс.Музыке тем же CircuitBreaker/lane, что и сервисный токен.
-
-**Дополнение (SF-YM-04-file): режим 2 удалён.** Проверено вживую: даже
-корректно настроенное, верно зарегистрированное device-flow приложение
-получает от `api.music.yandex.net` `401`/`403` на `account/status` и
-приватных методах — Яндекс не признаёт токены сторонних OAuth-клиентов для
-этих эндпоинтов независимо от scope. `YandexDeviceAuthClient`,
-`/internal/yandex/device/{start,poll}`, `/internal/yandex/{playlists,
-liked-tracks,playlist-tracks,account}` и весь связанный код удалены.
-Импорт плейлистов (SF-YM-04) теперь работает через текстовый экспорт,
-который пользователь сам вставляет в UI — см. `POST
-/api/v1/settings/yandex/import {text}` и `front/src/ui/playlists-panel.js`.
-
-### Явный fallback / graceful degradation
-
-Если Яндекс недоступен (5xx, сеть, CB открыт) — gateway отдаёт **честную
-ошибку** (`{"error": "yandex_unavailable"}` и т.п. с соответствующим HTTP
-статусом), а не тихо проглатывает сбой. Настоящий fallback на
-`GeniusMusicSourceProvider` при недоступности Яндекса — забота
-`YandexMusicSourceProvider` (SF-ARCH-02), не этого сервиса: здесь только
-изоляция и честный сигнал наверх.
-
-**Read-only на этом шаге**: сервис только читает у Яндекс.Музыки (никаких
-записей/лайков/добавлений в плейлисты).
-
-**Тестирование**: `tests/test_contract_yandex_gateway.py` (мок upstream,
-реальный скомпилированный бинарник `six_feat_yandex_gateway`) проверяет:
-сервисный токен возвращает track-artists/search-artist на мок-данные;
-device-flow обменивает device_code на реальный токен (pending/success/
-denied); недоступность апстрима отдаёт явную ошибку и **не роняет
-процесс** (следующий запрос к тому же процессу проходит штатно).
+Интеграция с Яндекс.Музыкой как источником рёбер графа коллабораций
+(отдельный сервис `six-feat-yandex-gateway`, сервисный токен,
+`YandexMusicSourceProvider`, вход через Яндекс, импорт плейлистов) была
+реализована в Release 0.8–1.2 и затем **полностью удалена** — Genius
+снова единственный источник данных и единственный способ входа.
+Подробности решения и последствий отката — в addendum к
+[ADR-0011](./adr/0011-music-source-provider-abstraction.md) (абстракция
+`MusicSourceProvider` сохранена) и в статусе (архивном) самого
+[ADR-0013](./adr/0013-two-provider-artist-identity.md) (namespaced id +
+`artist_alias`, тоже удалены). Раздел с оперативными деталями сервиса
+(эндпоинты, переменные окружения, тесты) убран отсюда как описывающий
+код, которого больше нет в дереве.
 
 ---
 

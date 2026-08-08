@@ -44,15 +44,10 @@ flowchart TB
 *«external system»*
 api.genius.com — артисты, треки, кредиты (роли), OAuth Authorization Code`"]
 
-    yandex["`**Яндекс.Музыка**
-*«external system»*
-Неофициальный, реверс-инженеренный API — co-appearance артистов на треке (роль всегда «feature»); дефолтный источник рёбер графа с Release 0.8 (SF-YM-01/SF-ARCH-02)`"]
-
     user -->|"Ищет/строит граф, смотрит путь<br/>HTTPS"| sixfeat
     user -->|"Играет ежедневный челлендж<br/>HTTPS"| game
     game -->|"Анти-чит: реальные соседи узла<br/>internal-mesh HTTP, X-Internal-Secret"| sixfeat
     sixfeat -->|"Артисты/треки/кредиты; OAuth-обмен кода на токен<br/>HTTPS"| genius
-    sixfeat -->|"Co-appearance артистов на треке, сервисный токен<br/>HTTPS (реверс-инж.)"| yandex
 
     classDef person fill:#B98AFF,stroke:#8a5ee0,color:#07120F,stroke-width:2px
     classDef system fill:#1B2236,stroke:#5EE6C5,color:#EDEFF4,stroke-width:2px
@@ -60,14 +55,14 @@ api.genius.com — артисты, треки, кредиты (роли), OAuth 
 
     class user person
     class sixfeat,game system
-    class genius,yandex ext
+    class genius ext
 ```
 
 ## Ключевые решения, отражённые здесь
 
 - **Единственный канонический ключ артиста — реальный Genius id**, у обеих
-  систем (SixFeat platform и GAME) и у обоих внешних источников рёбер
-  (Genius, Яндекс.Музыка) — ни у кого нет своего второго id-пространства.
+  систем (SixFeat platform и GAME) и у единственного внешнего источника
+  рёбер (Genius) — ни у кого нет своего второго id-пространства.
   См. [ADR-0009](../adr/0009-canonical-artist-identity-in-game.md) и
   [ADR-0011](../adr/0011-music-source-provider-abstraction.md).
 - **GAME — отдельная System**, а не контейнер внутри SixFeat platform: у
@@ -76,8 +71,8 @@ api.genius.com — артисты, треки, кредиты (роли), OAuth 
   и своя причина существования (ADR-0007), но она структурно зависит от
   SixFeat platform для анти-чита — тот же паттерн, что "другая система в
   ландшафте", а не подсистема.
-- **Яндекс.Музыка теперь foundational, а не "когда-нибудь"**: с Release 0.8
-  (SF-YM-01, SF-ARCH-02) это дефолтный, обязательный источник рёбер
-  дефолтного графа — не опциональное дополнение. Genius остаётся
-  источником сидов/резолва артистов, углубления по ролям (producer/writer/
-  featured) и fallback при недоступности Яндекса.
+- **Genius — единственный источник графа.** Интеграция с Яндекс.Музыкой
+  (сервис-гейтвей, отдельный провайдер рёбер, вход через Яндекс) была
+  полностью удалена — см. [ADR-0011](../adr/0011-music-source-provider-abstraction.md)
+  и [ADR-0013](../adr/0013-two-provider-artist-identity.md) (архивный,
+  описывал устройство разворота, которого больше нет).

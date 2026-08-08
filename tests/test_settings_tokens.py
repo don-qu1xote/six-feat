@@ -11,7 +11,6 @@ from conftest import AUTH_SERVICE_BASE, DB_CONN_PARAMS, SERVICE_BASE, TEST_APP_S
 SETTINGS_STATUS_URL = f"{SERVICE_BASE}/api/v1/settings/providers"
 SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
 SETTINGS_DISCONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/disconnect"
-SETTINGS_ENRICHMENT_PROVIDER_URL = f"{SERVICE_BASE}/api/v1/settings/enrichment-provider"
 SETTINGS_ENRICHMENT_ENABLED_URL = f"{SERVICE_BASE}/api/v1/settings/enrichment-enabled"
 SETTINGS_GENIUS_LINK_START_URL = f"{SERVICE_BASE}/api/v1/settings/genius/link/start"
 AUTH_CALLBACK_URL = f"{AUTH_SERVICE_BASE}/auth/callback"
@@ -116,10 +115,6 @@ class TestSettingsRequireSession:
         resp = anon_client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": "whatever"})
         assert resp.status_code == 401
 
-    def test_enrichment_provider_patch_requires_session(self, anon_client: requests.Session):
-        resp = anon_client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
-        assert resp.status_code == 401
-
 
 class TestGeniusAccountLinkFlow:
     def test_link_start_requires_session(self, anon_client: requests.Session):
@@ -199,61 +194,6 @@ class TestGeniusAccountLinkFlow:
         )
         assert resp.status_code == 302
         assert resp.headers.get("Location") == "/?genius_link=error"
-
-
-class TestPreferredEnrichmentProvider:
-    def test_default_is_yandex_without_ever_setting_it(self, client: requests.Session):
-        resp = client.get(SETTINGS_STATUS_URL)
-        assert resp.status_code == 200
-        assert resp.json()["preferred_enrichment_provider"] == "yandex"
-
-    def test_patch_to_genius_then_status_reflects_it(self, client: requests.Session):
-        patch_resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
-        assert patch_resp.status_code == 200, patch_resp.text
-        assert patch_resp.json()["preferred_enrichment_provider"] == "genius"
-
-        status_resp = client.get(SETTINGS_STATUS_URL)
-        assert status_resp.json()["preferred_enrichment_provider"] == "genius"
-
-    def test_patch_back_to_yandex_overwrites_a_previous_genius_choice(
-        self, client: requests.Session
-    ):
-        client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
-        patch_resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "yandex"})
-        assert patch_resp.status_code == 200
-        assert patch_resp.json()["preferred_enrichment_provider"] == "yandex"
-
-        status_resp = client.get(SETTINGS_STATUS_URL)
-        assert status_resp.json()["preferred_enrichment_provider"] == "yandex"
-
-    def test_patch_rejects_an_unknown_provider_value(self, client: requests.Session):
-        resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "spotify"})
-        assert resp.status_code == 400
-
-        status_resp = client.get(SETTINGS_STATUS_URL)
-        assert status_resp.json()["preferred_enrichment_provider"] == "yandex"
-
-    def test_patch_rejects_a_missing_provider_field(self, client: requests.Session):
-        resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={})
-        assert resp.status_code == 400
-
-    def test_preference_is_per_user_not_global(self, client: requests.Session):
-        other = _session_for(f"Other Settings User {uuid.uuid4().hex}")
-
-        patch_resp = client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
-        assert patch_resp.status_code == 200
-
-        assert client.get(SETTINGS_STATUS_URL).json()["preferred_enrichment_provider"] == "genius"
-        assert other.get(SETTINGS_STATUS_URL).json()["preferred_enrichment_provider"] == "yandex"
-
-    def test_setting_preference_does_not_affect_provider_connection_status(
-        self, client: requests.Session
-    ):
-        before = client.get(SETTINGS_STATUS_URL).json()
-        client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
-        after = client.get(SETTINGS_STATUS_URL).json()
-
-        assert after["genius"]["connected"] == before["genius"]["connected"]
 
 
 class TestEnrichmentEnabledToggle:

@@ -62,9 +62,7 @@ export async function checkAuth() {
   if (data.authenticated) {
     if (hint) hint.style.display = "none";
     if (user) user.style.display = "flex";
-    if (name)
-      name.textContent =
-        data.name || t(data.provider === "yandex" ? "auth.yandexUser" : "auth.geniusUser");
+    if (name) name.textContent = data.name || t("auth.geniusUser");
     if (badge) badge.style.display = "inline-flex";
   } else {
     if (hint) hint.style.display = "flex";

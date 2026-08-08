@@ -145,6 +145,18 @@ const std::vector<const char*> kMigrationV10 = {
         ON artist_alias(canonical_artist_id))SQL",
 };
 
+// Яндекс удалён целиком (больше не источник графа и не провайдер, с
+// которым нужна канонизация) — artist_alias (V10) только связывала
+// provider-space id с каноническим artists.id между двумя провайдерами,
+// а preferred_enrichment_provider (V8) только выбирала между ними.
+// Оба теперь мёртвый груз, раз Genius — единственный провайдер.
+const std::vector<const char*> kMigrationV11 = {
+    "DROP TABLE IF EXISTS artist_alias",
+    R"SQL(UPDATE user_settings SET preferred_enrichment_provider = 'genius'
+        WHERE preferred_enrichment_provider != 'genius')SQL",
+    "ALTER TABLE user_settings ALTER COLUMN preferred_enrichment_provider SET DEFAULT 'genius'",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
@@ -156,9 +168,10 @@ const std::vector<Migration> kMigrations = {
     {8, kMigrationV8},
     {9, kMigrationV9},
     {10, kMigrationV10},
+    {11, kMigrationV11},
 };
 
-constexpr int kTargetSchemaVersion = 10;
+constexpr int kTargetSchemaVersion = 11;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,
@@ -357,15 +370,10 @@ struct PersistentStore::Impl {
           "       a.id, a.name, a.image_url, a.url "
           "FROM songs s "
           "JOIN credits c ON c.song_id = s.id "
-          "LEFT JOIN artist_alias alias "
-          "       ON alias.provider = 'yandex' "
-          "      AND (c.artist_id & $2::bigint) != 0 "
-          "      AND alias.provider_artist_id = (c.artist_id & ~$2::bigint) "
-          "JOIN artists a ON a.id = COALESCE(alias.canonical_artist_id, c.artist_id) "
+          "JOIN artists a ON a.id = c.artist_id "
           "WHERE s.id IN (SELECT DISTINCT song_id FROM credits WHERE artist_id = $1) "
           "ORDER BY s.id",
-          artist_id,
-          kYandexArtistIdOffset);
+          artist_id);
 
       std::vector<SongRecord> songs;
       for (const auto& row : res) {
@@ -397,27 +405,19 @@ struct PersistentStore::Impl {
     if (roles.empty()) return {};
 
     return ExecuteReadQueryWithRetry([&] {
-      auto res = cluster->Execute(
-          read_host_type,
-          kReadQueryCommandControl,
-          "SELECT COALESCE(alias.canonical_artist_id, c2.artist_id) AS neighbour_id, "
-          "       COUNT(DISTINCT LOWER(TRIM(s1.title))) AS w, "
-          "       bool_and((c1.song_id & $3::bigint) != 0) AS all_yandex "
-          "FROM credits c1 "
-          "JOIN songs s1 ON s1.id = c1.song_id "
-          "JOIN credits c2 ON c2.song_id = c1.song_id "
-          "              AND c2.artist_id != c1.artist_id "
-          "              AND c2.role = ANY($2::smallint[]) "
-          "LEFT JOIN artist_alias alias "
-          "       ON alias.provider = 'yandex' "
-          "      AND (c2.artist_id & $4::bigint) != 0 "
-          "      AND alias.provider_artist_id = (c2.artist_id & ~$4::bigint) "
-          "WHERE c1.artist_id = $1 "
-          "GROUP BY COALESCE(alias.canonical_artist_id, c2.artist_id)",
-          artist_id,
-          roles,
-          kYandexSongIdOffset,
-          kYandexArtistIdOffset);
+      auto res = cluster->Execute(read_host_type,
+                                  kReadQueryCommandControl,
+                                  "SELECT c2.artist_id AS neighbour_id, "
+                                  "       COUNT(DISTINCT LOWER(TRIM(s1.title))) AS w "
+                                  "FROM credits c1 "
+                                  "JOIN songs s1 ON s1.id = c1.song_id "
+                                  "JOIN credits c2 ON c2.song_id = c1.song_id "
+                                  "              AND c2.artist_id != c1.artist_id "
+                                  "              AND c2.role = ANY($2::smallint[]) "
+                                  "WHERE c1.artist_id = $1 "
+                                  "GROUP BY c2.artist_id",
+                                  artist_id,
+                                  roles);
 
       std::vector<CollabEdge> out;
       out.reserve(res.Size());
@@ -425,9 +425,7 @@ struct PersistentStore::Impl {
         CollabEdge e{};
         e.neighbour = row["neighbour_id"].As<std::int64_t>();
         e.weight = static_cast<int>(row["w"].As<std::int64_t>());
-        e.source = row["all_yandex"].As<std::optional<bool>>().value_or(false)
-                       ? EdgeSource::kYandexFeature
-                       : EdgeSource::kGeniusCredit;
+        e.source = EdgeSource::kGeniusCredit;
         out.push_back(e);
       }
       return out;

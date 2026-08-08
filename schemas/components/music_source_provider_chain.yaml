@@ -1,11 +1,11 @@
 type: object
-description: Ordered, configurable MusicSourceProvider composition with automatic fallback — never a single hardcoded active provider
+description: Configurable MusicSourceProvider composition — currently a single Genius provider, kept as a component list rather than a hardcoded reference
 additionalProperties: false
 properties:
     providers:
         type: array
         description: Ordered provider names, tried in sequence until one succeeds
-        defaultDescription: '[yandex, genius-fallback]'
+        defaultDescription: '[genius-fallback]'
         items:
             type: string
-            description: Provider component name (yandex or genius-fallback)
+            description: Provider component name (genius-fallback)

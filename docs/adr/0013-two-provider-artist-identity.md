@@ -2,10 +2,19 @@
 
 ## Статус
 
-Принято (Release 1.2, SF-ARCH-04/05/06). Опирается на
-[ADR-0009](./0009-canonical-artist-identity-in-game.md) (каноническая
-идентичность в игре) и [ADR-0011](./0011-music-source-provider-abstraction.md)
-(абстракция MusicSourceProvider) — расширяет оба, не отменяет ни один.
+**Архивный / Superseded.** Принято (Release 1.2, SF-ARCH-04/05/06), но вся
+интеграция с Яндекс.Музыкой как источником графа — `YandexMusicSourceProvider`,
+`six-feat-yandex-gateway`, namespaced Yandex artist/song id
+(`kYandexArtistIdOffset`/`kYandexSongIdOffset`), таблица `artist_alias` и
+Yandex-only ветка резолва без Genius-токена — была полностью удалена.
+Genius снова единственный провайдер и единственное id-пространство, как
+до этого ADR. Документ сохранён как исторический контекст решения и его
+последствий, ниже описано состояние на момент принятия, а не текущее.
+Опирался на [ADR-0009](./0009-canonical-artist-identity-in-game.md)
+(каноническая идентичность в игре) и
+[ADR-0011](./0011-music-source-provider-abstraction.md) (абстракция
+MusicSourceProvider), которая сама сохранена — см. addendum об удалении
+Яндекса в конце того ADR.
 
 ## Контекст
 

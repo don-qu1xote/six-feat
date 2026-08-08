@@ -92,9 +92,7 @@ class TestSourcedInvocationStillWorks:
         )
         assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
         assert "ALIVE=yes" in result.stdout
-        assert "SERVICES=[six-feat enrichment auth game genius-gateway yandex-gateway]" in (
-            result.stdout
-        )
+        assert "SERVICES=[six-feat enrichment auth game genius-gateway]" in (result.stdout)
 
 
 def test_script_is_syntactically_valid_bash():

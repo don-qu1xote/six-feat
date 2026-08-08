@@ -7,7 +7,7 @@
 namespace six_feat {
 namespace {
 
-constexpr const char* kYandexEdgeRole = "featured";
+constexpr const char* kFeaturedEdgeRole = "featured";
 
 std::int16_t RoleToIntMirror(const std::string& role) {
   if (role == "primary") return 1;
@@ -32,37 +32,37 @@ std::string IntToRoleMirror(std::int16_t r) {
   }
 }
 
-TEST(YandexEdgeRole, PassesDefaultRoleMask) {
-  EXPECT_TRUE(RoleAllowed(kYandexEdgeRole, RoleMask{}));
+TEST(FeaturedEdgeRole, PassesDefaultRoleMask) {
+  EXPECT_TRUE(RoleAllowed(kFeaturedEdgeRole, RoleMask{}));
 }
 
-TEST(YandexEdgeRole, PassesExplicitFeaturedFilter) {
+TEST(FeaturedEdgeRole, PassesExplicitFeaturedFilter) {
   const RoleMask only_featured = ParseRoleMask("featured");
-  EXPECT_TRUE(RoleAllowed(kYandexEdgeRole, only_featured));
+  EXPECT_TRUE(RoleAllowed(kFeaturedEdgeRole, only_featured));
 }
 
-TEST(YandexEdgeRole, IsExcludedWhenFeaturedFilteredOut) {
+TEST(FeaturedEdgeRole, IsExcludedWhenFeaturedFilteredOut) {
   const RoleMask without_featured = ParseRoleMask("producer,writer,primary");
-  EXPECT_FALSE(RoleAllowed(kYandexEdgeRole, without_featured));
+  EXPECT_FALSE(RoleAllowed(kFeaturedEdgeRole, without_featured));
 }
 
-TEST(YandexEdgeRole, HasNonDefaultRank) {
-  EXPECT_GT(RoleRank(kYandexEdgeRole), 0);
-  EXPECT_EQ(RoleRank(kYandexEdgeRole), RoleRank("featured"));
+TEST(FeaturedEdgeRole, HasNonDefaultRank) {
+  EXPECT_GT(RoleRank(kFeaturedEdgeRole), 0);
+  EXPECT_EQ(RoleRank(kFeaturedEdgeRole), RoleRank("featured"));
 }
 
-TEST(YandexEdgeRole, HasDedicatedEdgeStyle) {
-  EXPECT_NE(EdgeStyleForRole(kYandexEdgeRole), "dotted");
-  EXPECT_EQ(EdgeStyleForRole(kYandexEdgeRole), "solid");
+TEST(FeaturedEdgeRole, HasDedicatedEdgeStyle) {
+  EXPECT_NE(EdgeStyleForRole(kFeaturedEdgeRole), "dotted");
+  EXPECT_EQ(EdgeStyleForRole(kFeaturedEdgeRole), "solid");
 }
 
-TEST(YandexEdgeRole, SurvivesPersistRoundTrip) {
-  const std::int16_t stored = RoleToIntMirror(kYandexEdgeRole);
+TEST(FeaturedEdgeRole, SurvivesPersistRoundTrip) {
+  const std::int16_t stored = RoleToIntMirror(kFeaturedEdgeRole);
   EXPECT_NE(stored, 0) << "роль записалась бы в БД как 0 и потерялась";
-  EXPECT_EQ(IntToRoleMirror(stored), kYandexEdgeRole);
+  EXPECT_EQ(IntToRoleMirror(stored), kFeaturedEdgeRole);
 }
 
-TEST(YandexEdgeRole, SingularFormIsNotSilentlyAccepted) {
+TEST(FeaturedEdgeRole, SingularFormIsNotSilentlyAccepted) {
   EXPECT_FALSE(RoleAllowed("feature", RoleMask{}));
   EXPECT_EQ(RoleRank("feature"), 0);
   EXPECT_EQ(EdgeStyleForRole("feature"), "dotted");

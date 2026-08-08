@@ -55,20 +55,6 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
-    "services/yandex-gateway/static_config.yaml": {
-        "server.listener": MAIN_TP,
-        "server.listener-monitor": MONITOR_TP,
-        "handler-internal-yandex-track-artists": MAIN_TP,
-        "handler-internal-yandex-search-artist": MAIN_TP,
-        "handler-internal-yandex-artist-tracks": MAIN_TP,
-        "handler-internal-yandex-device-start": MAIN_TP,
-        "handler-internal-yandex-device-poll": MAIN_TP,
-        "handler-internal-yandex-playlists": MAIN_TP,
-        "handler-internal-yandex-liked-tracks": MAIN_TP,
-        "handler-healthz": MAIN_TP,
-        "handler-readyz": MAIN_TP,
-        "handler-server-monitor": MONITOR_TP,
-    },
     "services/auth/static_config.yaml": {
         "server.listener": MAIN_TP,
         "server.listener-monitor": MONITOR_TP,
@@ -101,7 +87,6 @@ HARDENED_SERVICES = (
     "six-feat",
     "six-feat-enrichment",
     "six-feat-genius-gateway",
-    "six-feat-yandex-gateway",
     "six-feat-auth",
     "six-feat-game",
 )

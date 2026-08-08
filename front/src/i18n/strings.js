@@ -44,7 +44,6 @@ export const en = {
 
   "auth.signInWith": "Sign in with",
   "auth.signOut": "Sign out",
-  "auth.yandexUser": "Yandex User",
   "auth.geniusUser": "Genius User",
   "auth.signInCancelled": "Sign-in was cancelled.",
   "auth.signInFailed": "Sign-in failed — please try again.",
@@ -317,7 +316,6 @@ export const ru = {
 
   "auth.signInWith": "Войти через",
   "auth.signOut": "Выйти",
-  "auth.yandexUser": "Пользователь Яндекса",
   "auth.geniusUser": "Пользователь Genius",
   "auth.signInCancelled": "Вход отменён.",
   "auth.signInFailed": "Не получилось войти — попробуйте ещё раз.",

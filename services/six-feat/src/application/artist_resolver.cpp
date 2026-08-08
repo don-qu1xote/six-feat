@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-core/lane.hpp>
 
 namespace six_feat {
@@ -26,7 +25,6 @@ std::optional<ArtistRef> ResolveArtistById(IArtistDataSource& repo,
                                            const std::string& user_token) {
   if (auto ref = repo.Lookup(id)) return ref;
 
-  if (IsYandexArtistId(id)) return std::nullopt;
   return gateway.FetchArtistById(id, Lane::kForeground, user_token);
 }
 
@@ -68,7 +66,7 @@ std::optional<std::variant<ArtistRef, AmbiguousResult>> ResolveArtistByNameFromC
   ar.query = query;
   ar.candidates.reserve(matches.size());
   for (const auto& m : matches) {
-    // score=1.0: это не оценка релевантности Genius/Yandex, а "уже
+    // score=1.0: это не оценка релевантности Genius, а "уже
     // резолвлено и лежит у нас" — единственное, что здесь есть.
     ar.candidates.push_back(Candidate{m.id, m.name, m.image, m.url, 1.0});
   }

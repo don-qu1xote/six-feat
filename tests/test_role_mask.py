@@ -179,7 +179,7 @@ class TestRoleAllowed:
         assert role_allowed("composer", mask) is False
         assert role_allowed("", mask) is False
 
-    def test_yandex_feature_typo_is_not_a_recognised_role(self):
+    def test_feature_typo_is_not_a_recognised_role(self):
         mask = RoleMask(True, True, True, True)
         assert role_allowed("feature", mask) is False
 
@@ -200,7 +200,7 @@ class TestRoleRank:
         assert role_rank("unknown") == 0
         assert role_rank("") == 0
 
-    def test_yandex_feature_typo_ranks_as_unknown(self):
+    def test_feature_typo_ranks_as_unknown(self):
         assert role_rank("feature") == 0
 
 

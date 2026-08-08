@@ -20,7 +20,6 @@ load_env_profile
 ENRICHMENT_BASE_URL="${ENRICHMENT_BASE_URL:-http://six-feat-enrichment:8081}"
 GENIUS_GATEWAY_BASE_URL="${GENIUS_GATEWAY_BASE_URL:-http://six-feat-genius-gateway:8082}"
 AUTH_BASE_URL="${AUTH_BASE_URL:-http://six-feat-auth:8083}"
-YANDEX_GATEWAY_BASE_URL="${YANDEX_GATEWAY_BASE_URL:-http://six-feat-yandex-gateway:8090}"
 
 : "${DB_NAME:?DB_NAME env var is required — Postgres database name}"
 : "${DB_USER:?DB_USER env var is required — Postgres user}"
@@ -76,7 +75,6 @@ db_connection_string: "${DB_CONNECTION_STRING}"
 enrichment_base_url: ${ENRICHMENT_BASE_URL}
 genius_gateway_base_url: ${GENIUS_GATEWAY_BASE_URL}
 auth_base_url: ${AUTH_BASE_URL}
-yandex_gateway_base_url: ${YANDEX_GATEWAY_BASE_URL}
 EOF
 
 exec /app/six_feat \

@@ -157,9 +157,9 @@ function syncObjectActionBar(node) {
     };
   }
   if (els.objActionDeepen) {
-    // [SF-YM-09] "Find more connections" is Genius-only by nature (roles
-    // Yandex never gives) — an honest disabled state up front beats a click
-    // that's guaranteed to 422.
+    // Бэкенд теперь всегда присылает deepen_available: true (Genius —
+    // единственный источник графа), но проверка оставлена как защита
+    // от будущих регрессий в контракте API.
     const deepenAvailable = node.deepenAvailable !== false;
     els.objActionDeepen.disabled = !deepenAvailable;
     els.objActionDeepen.title = deepenAvailable

@@ -88,7 +88,6 @@ beforeEach(() => {
     status: 200,
     data: {
       genius: { connected: false },
-      yandex: { connected: false },
     },
   });
 });
@@ -122,7 +121,6 @@ describe("[SF-WEB-81] background enrichment on/off toggle", () => {
       status: 200,
       data: {
         genius: { connected: false },
-        yandex: { connected: false },
       },
     });
     openSettingsPanel();
@@ -137,7 +135,6 @@ describe("[SF-WEB-81] background enrichment on/off toggle", () => {
       status: 200,
       data: {
         genius: { connected: false },
-        yandex: { connected: false },
         enrichment_enabled: false,
       },
     });
@@ -194,7 +191,6 @@ describe("[SF-YM-02] opening the panel refreshes connection status", () => {
       status: 200,
       data: {
         genius: { connected: true },
-        yandex: { connected: false },
       },
     });
     openSettingsPanel();
@@ -272,7 +268,7 @@ describe("[SF-WEB-75] anonymous visitor sees an explicit sign-in call to action"
   it("hides the sign-in hint and shows the cards once a real status comes back", async () => {
     fetchSettingsStatus.mockResolvedValue({
       status: 200,
-      data: { genius: { connected: false }, yandex: { connected: false } },
+      data: { genius: { connected: false } },
     });
 
     openSettingsPanel();

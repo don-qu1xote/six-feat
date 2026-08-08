@@ -1,8 +1,8 @@
 type: object
 description: >-
-    Genius-backed MusicSourceProvider — on-demand deepen + automatic fallback
-    when Yandex is unavailable. Fan-out concurrency is not configured here: it
-    is shared service-wide via the fg-fanout-limiter component, because
-    collab-service fans out into the same gateway lane.
+    Genius-backed MusicSourceProvider — the sole music source. Fan-out
+    concurrency is not configured here: it is shared service-wide via the
+    fg-fanout-limiter component, because collab-service fans out into the
+    same gateway lane.
 additionalProperties: false
 properties: {}

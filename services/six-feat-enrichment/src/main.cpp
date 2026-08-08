@@ -5,10 +5,8 @@
 #include <six-feat-http/health_handler.hpp>
 #include <six-feat-sources/genius_music_source_provider.hpp>
 #include <six-feat-sources/music_source_provider_chain.hpp>
-#include <six-feat-sources/yandex_music_source_provider.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <six-feat-storage/persistent_store.hpp>
-#include <six-feat-yandex/yandex_gateway_client.hpp>
 #include <userver/clients/dns/component.hpp>
 #include <userver/clients/http/component_list.hpp>
 #include <userver/components/minimal_server_component_list.hpp>
@@ -32,8 +30,6 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::PersistentStore>()
                                   .Append<six_feat::GeniusGatewayClient>()
                                   .Append<six_feat::FgFanoutLimiter>()
-                                  .Append<six_feat::YandexGatewayClient>()
-                                  .Append<six_feat::YandexMusicSourceProvider>()
                                   .Append<six_feat::GeniusMusicSourceProvider>()
                                   .Append<six_feat::MusicSourceProviderChain>()
                                   .Append<six_feat::ArtistRepository>()

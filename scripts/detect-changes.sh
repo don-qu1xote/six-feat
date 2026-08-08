@@ -15,8 +15,8 @@ DOCKER="false"
 
 if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
   echo "=== workflow_dispatch: treating everything as affected ==="
-  SERVICES="six-feat enrichment auth game genius-gateway yandex-gateway"
-  TESTS="unit integration six-feat auth genius-gateway yandex-gateway enrichment bg-resilience health"
+  SERVICES="six-feat enrichment auth game genius-gateway"
+  TESTS="unit integration six-feat auth genius-gateway enrichment bg-resilience health"
   LINT="clang-tidy eslint format yaml promtool"
   FRONTEND="true"
   DOCKER="true"
@@ -26,11 +26,11 @@ else
 CHANGED_FILES=$(git diff --name-only "$BASE_REF" 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null || echo "")
 
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
-  SERVICES="six-feat enrichment auth game genius-gateway yandex-gateway"
+  SERVICES="six-feat enrichment auth game genius-gateway"
 fi
 
 if echo "$CHANGED_FILES" | grep -qE "^services/six-feat/(src|tests/unit)/"; then
-  SERVICES="$SERVICES six-feat yandex-gateway"
+  SERVICES="$SERVICES six-feat"
 fi
 
 if echo "$CHANGED_FILES" | grep -q "^services/six-feat-enrichment/"; then
@@ -49,17 +49,13 @@ if echo "$CHANGED_FILES" | grep -q "^services/genius-gateway/"; then
   SERVICES="$SERVICES genius-gateway"
 fi
 
-if echo "$CHANGED_FILES" | grep -q "^services/yandex-gateway/"; then
-  SERVICES="$SERVICES yandex-gateway"
-fi
-
 # Дедупликация
 SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
 # tests/ — общий каталог: файл может относиться к любой из интеграционных job,
 # поштучно не сопоставляем — безопаснее прогнать все наборы
 if echo "$CHANGED_FILES" | grep -q "^tests/"; then
-  TESTS="unit integration six-feat auth genius-gateway yandex-gateway enrichment bg-resilience health"
+  TESTS="unit integration six-feat auth genius-gateway enrichment bg-resilience health"
 fi
 
 if echo "$CHANGED_FILES" | grep -q "^services/six-feat/tests/unit/"; then
@@ -77,10 +73,6 @@ fi
 
 if echo "$SERVICES" | grep -q "genius-gateway"; then
   TESTS="$TESTS genius-gateway"
-fi
-
-if echo "$SERVICES" | grep -q "yandex-gateway"; then
-  TESTS="$TESTS yandex-gateway"
 fi
 
 if echo "$SERVICES" | grep -q "enrichment"; then
@@ -129,16 +121,16 @@ fi
 
 # libs — общий код: затронуто всё
 if echo "$CHANGED_FILES" | grep -q "^libs/"; then
-  TESTS="unit integration six-feat auth genius-gateway yandex-gateway enrichment bg-resilience health"
+  TESTS="unit integration six-feat auth genius-gateway enrichment bg-resilience health"
   LINT="clang-tidy eslint format yaml promtool"
   FRONTEND="true"
 fi
 
 if echo "$TESTS" | grep -qE "six-feat|health|bg-resilience"; then
-  SERVICES="$SERVICES six-feat enrichment genius-gateway yandex-gateway auth"
+  SERVICES="$SERVICES six-feat enrichment genius-gateway auth"
 fi
 if echo "$TESTS" | grep -q "auth"; then
-  SERVICES="$SERVICES six-feat yandex-gateway auth genius-gateway"
+  SERVICES="$SERVICES six-feat auth genius-gateway"
 fi
 if echo "$TESTS" | grep -q "genius-gateway"; then
   SERVICES="$SERVICES genius-gateway six-feat auth"

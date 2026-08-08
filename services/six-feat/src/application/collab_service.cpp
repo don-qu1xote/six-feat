@@ -53,7 +53,6 @@ CollabService::CollabService(const components::ComponentConfig& config,
     : ComponentBase(config, context),
       repo_(context.FindComponent<ArtistRepository>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
-      yandex_(context.FindComponent<YandexGatewayClient>()),
       chain_(context.FindComponent<MusicSourceProviderChain>()),
       enrichment_(context.FindComponent<EnrichmentClient>()),
       fg_fanout_(context.FindComponent<FgFanoutLimiter>()),
@@ -73,19 +72,6 @@ std::optional<ArtistRef> CollabService::ResolveById(std::int64_t id,
 
 std::variant<ArtistRef, AmbiguousResult> CollabService::ResolveByName(
     const std::string& query, const std::string& user_token) const {
-  if (user_token.empty()) {
-    const auto candidates = yandex_.SearchArtist(query);
-    if (candidates.empty()) {
-      AmbiguousResult ar;
-      ar.query = query;
-      return ar;
-    }
-    const auto& best = candidates.front();
-    return ArtistRef{NamespacedYandexArtistId(best.yandex_id),
-                     best.name,
-                     best.image,
-                     "https://music.yandex.ru/artist/" + std::to_string(best.yandex_id)};
-  }
   return ResolveArtistByName(gateway_, query, user_token);
 }
 
@@ -102,7 +88,6 @@ std::optional<std::variant<ArtistRef, AmbiguousResult>> CollabService::ResolveBy
   return ResolveArtistByNameFromCache(repo_, query);
 }
 
-// Дефолтный граф идёт через цепочку источников (Яндекс, Genius — fallback).
 ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
                                    const std::string& user_token,
                                    std::optional<int> limit_override) const {
@@ -519,22 +504,14 @@ RadialGraphResult CollabService::BuildRadialGraphWithSource(const ArtistRef& see
   result.data =
       BuildRadialGraph(seed, user_token, limit_override, preferred_provider, enrichment_enabled);
 
-  std::unordered_map<std::int64_t, bool> all_yandex;
   for (const auto& song : result.data.songs) {
-    const bool from_yandex = IsYandexSongId(song.id);
     for (const auto& credit : song.credits) {
       const std::int64_t other = credit.artist.id;
       if (!other || other == seed.id) continue;
-      auto [it, inserted] = all_yandex.try_emplace(other, from_yandex);
-      if (!inserted) it->second = it->second && from_yandex;
+      const std::int64_t lo = std::min(seed.id, other);
+      const std::int64_t hi = std::max(seed.id, other);
+      result.edge_sources[lo][hi] = EdgeSource::kGeniusCredit;
     }
-  }
-
-  for (const auto& [other, yandex_only] : all_yandex) {
-    const std::int64_t lo = std::min(seed.id, other);
-    const std::int64_t hi = std::max(seed.id, other);
-    result.edge_sources[lo][hi] =
-        yandex_only ? EdgeSource::kYandexFeature : EdgeSource::kGeniusCredit;
   }
 
   return result;

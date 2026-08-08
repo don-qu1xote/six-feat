@@ -404,35 +404,6 @@ jobs:
           path: /install/bin/six_feat_genius_gateway
           retention-days: 1
 
-  build-yandex-gateway:
-    name: "Build — yandex-gateway"
-    runs-on: ubuntu-22.04
-    needs: detect-changes
-    if: contains(needs.detect-changes.outputs.services, 'yandex-gateway')
-    container:
-      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
-      options: --user root
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - uses: ./.github/actions/setup
-        with:
-          apt-packages: libssl-dev
-
-      - name: Build & install
-        run: |
-          cmake -S services/yandex-gateway -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/install
-          cmake --build build -j"$(nproc)"
-          cmake --install build
-
-      - name: Upload binary
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: yandex-gateway-binary
-          path: /install/bin/six_feat_yandex_gateway
-          retention-days: 1
-
   build-auth:
     name: "Build — auth"
     runs-on: ubuntu-22.04
@@ -494,7 +465,7 @@ jobs:
   test-six-feat:
     name: "Test — six-feat"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-yandex-gateway, build-auth]
+    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-auth]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -544,7 +515,6 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
-          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -568,8 +538,6 @@ jobs:
             tests/test_contract_openapi.py \
             tests/test_settings_tokens.py \
             tests/test_graph_deepen.py \
-            tests/test_yandex_import.py \
-            tests/test_music_source_provider.py \
             -v --tb=short \
             --timeout=60
 
@@ -616,7 +584,7 @@ jobs:
   test-auth:
     name: "Test — auth"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-yandex-gateway, build-auth, build-genius-gateway]
+    needs: [detect-changes, build-six-feat, build-auth, build-genius-gateway]
     if: |
       always() &&
       needs.build-auth.result == 'success' &&
@@ -666,7 +634,6 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
-          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -735,47 +702,10 @@ jobs:
             -v --tb=short \
             --timeout=60
 
-  test-yandex-gateway:
-    name: "Test — yandex-gateway"
-    runs-on: ubuntu-22.04
-    needs: [detect-changes, build-yandex-gateway]
-    if: |
-      always() &&
-      needs.build-yandex-gateway.result == 'success' &&
-      contains(needs.detect-changes.outputs.tests, 'yandex-gateway')
-    container:
-      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
-      options: --user root
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-      - uses: ./.github/actions/setup
-        with:
-          apt-packages: libssl-dev python3 python3-pip python3-venv curl
-          python-testenv: "true"
-
-      - name: Download binaries
-        uses: actions/download-artifact@v4
-        with:
-          path: /install/bin
-          pattern: "*-binary"
-          merge-multiple: true
-
-      - name: Make binaries executable
-        run: chmod +x /install/bin/*
-
-      - name: Run yandex-gateway tests
-        env:
-          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
-        run: |
-          /opt/testenv/bin/pytest \
-            tests/test_contract_yandex_gateway.py \
-            -v --tb=short \
-            --timeout=60
-
   test-health:
     name: "Test — health checks"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-yandex-gateway, build-auth]
+    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-auth]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -825,7 +755,6 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
-          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -836,7 +765,7 @@ jobs:
   test-bg-resilience:
     name: "Test — BG resilience"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-yandex-gateway, build-auth]
+    needs: [detect-changes, build-six-feat, build-enrichment, build-genius-gateway, build-auth]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -886,7 +815,6 @@ jobs:
           SIX_FEAT_BINARY: /install/bin/six_feat
           SIX_FEAT_ENRICHMENT_BINARY: /install/bin/six_feat_enrichment
           SIX_FEAT_GENIUS_GATEWAY_BINARY: /install/bin/six_feat_genius_gateway
-          SIX_FEAT_YANDEX_GATEWAY_BINARY: /install/bin/six_feat_yandex_gateway
           SIX_FEAT_AUTH_BINARY: /install/bin/six_feat_auth
         run: |
           /opt/testenv/bin/pytest \
@@ -983,8 +911,6 @@ jobs:
             dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
-          - name: six-feat-yandex-gateway
-            dockerfile: services/yandex-gateway/Dockerfile
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
@@ -1020,7 +946,7 @@ jobs:
   e2e-smoke:
     name: "E2E smoke (Playwright)"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-genius-gateway, build-yandex-gateway]
+    needs: [detect-changes, build-six-feat, build-genius-gateway]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -1082,7 +1008,6 @@ jobs:
         run: |
           SIX_FEAT_BINARY=/install/bin/six_feat \
           SIX_FEAT_GENIUS_GATEWAY_BINARY=/install/bin/six_feat_genius_gateway \
-          SIX_FEAT_YANDEX_GATEWAY_BINARY=/install/bin/six_feat_yandex_gateway \
           /opt/testenv/bin/python3 scripts/e2e_env.py up &
           echo $! > /tmp/e2e_env.pid
           for i in $(seq 1 60); do
@@ -1112,7 +1037,7 @@ jobs:
   load-test:
     name: "Load test (k6)"
     runs-on: ubuntu-22.04
-    needs: [detect-changes, build-six-feat, build-genius-gateway, build-yandex-gateway]
+    needs: [detect-changes, build-six-feat, build-genius-gateway]
     if: |
       always() &&
       needs.build-six-feat.result == 'success' &&
@@ -1178,7 +1103,6 @@ jobs:
         run: |
           SIX_FEAT_BINARY=/install/bin/six_feat \
           SIX_FEAT_GENIUS_GATEWAY_BINARY=/install/bin/six_feat_genius_gateway \
-          SIX_FEAT_YANDEX_GATEWAY_BINARY=/install/bin/six_feat_yandex_gateway \
           /opt/testenv/bin/python3 scripts/e2e_env.py up &
           echo $! > /tmp/e2e_env.pid
           for i in $(seq 1 60); do
@@ -1237,7 +1161,6 @@ jobs:
       - explain-hot-queries
       - test-auth
       - test-genius-gateway
-      - test-yandex-gateway
       - test-health
       - test-bg-resilience
       - docker-build-scan
@@ -1255,8 +1178,6 @@ jobs:
             dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
-          - name: six-feat-yandex-gateway
-            dockerfile: services/yandex-gateway/Dockerfile
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
@@ -1303,7 +1224,6 @@ jobs:
       - explain-hot-queries
       - test-auth
       - test-genius-gateway
-      - test-yandex-gateway
       - test-health
       - test-bg-resilience
       - docker-build-scan
@@ -1325,8 +1245,6 @@ jobs:
             dockerfile: services/six-feat-enrichment/Dockerfile
           - name: six-feat-genius-gateway
             dockerfile: services/genius-gateway/Dockerfile
-          - name: six-feat-yandex-gateway
-            dockerfile: services/yandex-gateway/Dockerfile
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:

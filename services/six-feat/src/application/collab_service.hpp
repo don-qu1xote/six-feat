@@ -7,7 +7,6 @@
 #include <six-feat-domain/domain_types.hpp>
 #include <six-feat-genius/i_external_artist_lookup.hpp>
 #include <six-feat-storage/i_artist_data_source.hpp>
-#include <six-feat-yandex/yandex_gateway_client.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -121,7 +120,6 @@ class CollabService final : public userver::components::ComponentBase {
 
   IArtistDataSource& repo_;
   IExternalArtistLookup& gateway_;
-  YandexGatewayClient& yandex_;
   MusicSourceProviderChain& chain_;
   EnrichmentClient& enrichment_;
   FgFanoutLimiter& fg_fanout_;

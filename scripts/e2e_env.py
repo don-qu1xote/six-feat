@@ -27,7 +27,6 @@ ENRICHMENT_PORT = int(os.environ.get("E2E_ENRICHMENT_PORT", "18182"))
 GATEWAY_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
 GATEWAY_MONITOR_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_MONITOR_PORT", "18186"))
 AUTH_PORT = int(os.environ.get("E2E_AUTH_PORT", "18184"))
-YANDEX_GATEWAY_PORT = int(os.environ.get("E2E_YANDEX_GATEWAY_PORT", "18187"))
 
 APP_SECRET = "e" * 64
 GENIUS_CLIENT_SECRET = "e2e-genius-client-secret"
@@ -118,17 +117,10 @@ components_manager:
       timeout-ms: 2000
       check-interval-ms: 30000
 
-    yandex-gateway-client:
-      yandex-gateway-base-url: http://127.0.0.1:{yandex_gateway_port}
-      timeout-ms: 5000
-      tracks-limit: 10
-
-    yandex-music-source-provider: {{}}
-
     genius-music-source-provider: {{}}
 
     music-source-provider-chain:
-      providers: [yandex, genius-fallback]
+      providers: [genius-fallback]
 
     enrichment-client:
       enrichment-base-url: http://127.0.0.1:{enrichment_port}
@@ -257,16 +249,6 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
-    handler-settings-yandex-import:
-      path: /api/v1/settings/yandex/import
-      method: POST
-      task_processor: main-task-processor
-
-    handler-settings-enrichment-provider:
-      path: /api/v1/settings/enrichment-provider
-      method: PATCH
-      task_processor: main-task-processor
-
     handler-internal-music-source-edges:
       path: /internal/music-source/collaboration-edges
       method: POST
@@ -379,14 +361,6 @@ def cmd_up() -> None:
             f"(cmake --build build) or set SIX_FEAT_GENIUS_GATEWAY_BINARY."
         )
 
-    if not it_conftest.YANDEX_GATEWAY_BINARY.exists():
-        mock_srv.shutdown()
-        sys.exit(
-            f"[e2e_env] yandex-gateway service binary not found at "
-            f"{it_conftest.YANDEX_GATEWAY_BINARY}. Build it first "
-            f"(cmake --build build) or set SIX_FEAT_YANDEX_GATEWAY_BINARY."
-        )
-
     tmp_dir = Path(tempfile.mkdtemp(prefix="six_feat_e2e_"))
 
     gateway_cfg_path = tmp_dir / "genius_gateway_static_config.yaml"
@@ -415,43 +389,6 @@ def cmd_up() -> None:
             f"[e2e_env] genius-gateway service did not start within timeout.\nstderr:\n{stderr}"
         )
 
-    yandex_gateway_monitor_port = MONITOR_PORT + 100
-    yandex_gateway_cfg_path = tmp_dir / "yandex_gateway_static_config.yaml"
-    yandex_gateway_cfg_path.write_text(
-        it_conftest._YANDEX_GATEWAY_TEST_CONFIG_TEMPLATE.format(
-            gateway_port=YANDEX_GATEWAY_PORT,
-            gateway_monitor_port=yandex_gateway_monitor_port,
-            mock_port=MOCK_PORT,
-            backoff_max_attempts=1,
-            cb_failure_threshold=100,
-            device_client_id="e2e-yandex-device-client-id",
-        )
-    )
-
-    yandex_gateway_proc = subprocess.Popen(
-        [str(it_conftest.YANDEX_GATEWAY_BINARY), "--config", str(yandex_gateway_cfg_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env={
-            **os.environ,
-            "ENRICHMENT_INTERNAL_SECRET": ENRICHMENT_INTERNAL_SECRET,
-            "YANDEX_SERVICE_TOKEN": "e2e-yandex-service-token",
-        },
-    )
-
-    if not it_conftest._wait_for_port(YANDEX_GATEWAY_PORT):
-        yandex_gateway_proc.terminate()
-        stderr = (
-            yandex_gateway_proc.stderr.read().decode(errors="replace")
-            if yandex_gateway_proc.stderr
-            else ""
-        )
-        gateway_proc.terminate()
-        mock_srv.shutdown()
-        sys.exit(
-            f"[e2e_env] yandex-gateway service did not start within timeout.\nstderr:\n{stderr}"
-        )
-
     cfg_path = tmp_dir / "static_config.yaml"
     cfg_path.write_text(
         _STATIC_CONFIG_TEMPLATE.format(
@@ -459,7 +396,6 @@ def cmd_up() -> None:
             monitor_port=MONITOR_PORT,
             mock_port=MOCK_PORT,
             gateway_port=GATEWAY_PORT,
-            yandex_gateway_port=YANDEX_GATEWAY_PORT,
             enrichment_port=ENRICHMENT_PORT,
             auth_port=AUTH_PORT,
             db_connection_string=it_conftest.DB_CONNECTION_STRING,
@@ -488,7 +424,6 @@ def cmd_up() -> None:
     if not it_conftest._wait_for_port(SERVICE_PORT):
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace") if proc.stderr else ""
-        yandex_gateway_proc.terminate()
         gateway_proc.terminate()
         mock_srv.shutdown()
         sys.exit(f"[e2e_env] service did not start within timeout.\nstderr:\n{stderr}")
@@ -533,11 +468,6 @@ def cmd_up() -> None:
             proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             proc.kill()
-        yandex_gateway_proc.send_signal(signal.SIGTERM)
-        try:
-            yandex_gateway_proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            yandex_gateway_proc.kill()
         gateway_proc.send_signal(signal.SIGTERM)
         try:
             gateway_proc.wait(timeout=10)

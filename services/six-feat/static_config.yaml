@@ -76,17 +76,10 @@ components_manager:
       songs-limit-bg: 80
       match-threshold: 0.75
 
-    yandex-gateway-client:
-      yandex-gateway-base-url: $yandex_gateway_base_url
-      timeout-ms: 5000
-      tracks-limit: 20
-
-    yandex-music-source-provider: {}
-
     genius-music-source-provider: {}
 
     music-source-provider-chain:
-      providers: [yandex, genius-fallback]
+      providers: [genius-fallback]
 
     oauth-config:
       client-id: $genius_client_id
@@ -248,11 +241,6 @@ components_manager:
     handler-settings-disconnect:
       path: /api/v1/settings/disconnect
       method: POST
-      task_processor: *main_tp
-
-    handler-settings-enrichment-provider:
-      path: /api/v1/settings/enrichment-provider
-      method: PATCH
       task_processor: *main_tp
 
     handler-settings-enrichment-enabled:

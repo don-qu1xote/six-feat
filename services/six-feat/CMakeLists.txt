@@ -12,7 +12,6 @@ six_feat_embed_schema(handlers/six-feat/settings_genius_connect_handler     kSet
 six_feat_embed_schema(handlers/six-feat/genius_link_handler             kGeniusLinkHandlerSchema             GENIUS_LINK_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_genius_link_start_handler  kSettingsGeniusLinkStartHandlerSchema  SETTINGS_GENIUS_LINK_START_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_disconnect_handler        kSettingsDisconnectHandlerSchema         SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(handlers/six-feat/settings_enrichment_provider_handler kSettingsEnrichmentProviderHandlerSchema SETTINGS_ENRICHMENT_PROVIDER_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_enrichment_enabled_handler kSettingsEnrichmentEnabledHandlerSchema SETTINGS_ENRICHMENT_ENABLED_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_deepen_handler kGraphDeepenHandlerSchema GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER)
@@ -39,7 +38,6 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${GENIUS_LINK_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_GENIUS_LINK_START_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER}
-    ${SETTINGS_ENRICHMENT_PROVIDER_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_ENRICHMENT_ENABLED_HANDLER_SCHEMA_HEADER}
     ${GRAPH_HANDLER_SCHEMA_HEADER}
     ${GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER}
@@ -98,7 +96,6 @@ target_link_libraries(six_feat
         six_feat_core
         six_feat_storage
         six_feat_genius
-        six_feat_yandex
         six_feat_sources
         six_feat_enrichment
         six_feat_auth_lib

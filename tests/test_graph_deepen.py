@@ -170,18 +170,13 @@ class TestGraphDeepenAvailability:
             deepen_client.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
 
 
-class TestGraphDeepenYandexSessionRequiresGeniusToken:
-    def test_yandex_session_with_no_connected_byo_token_is_honest_422_not_a_502(
+class TestGraphDeepenNoTokenSessionRequiresGeniusToken:
+    def test_session_with_no_connected_byo_token_is_honest_422_not_a_502(
         self, service_proc, genius_mock: GeniusMock
     ):
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
-        cookie = session_crypto.make_cookie(
-            TEST_APP_SECRET,
-            access_token="yandex-session-token-not-valid-for-genius",
-            provider="yandex",
-            provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
-        )
+        cookie = session_crypto.make_cookie(TEST_APP_SECRET, access_token="")
         sess.cookies.update({"six_feat_session": cookie})
 
         resp = sess.get(DEEPEN_URL, params={"id": "1"})

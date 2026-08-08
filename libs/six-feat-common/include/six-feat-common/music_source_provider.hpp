@@ -11,40 +11,16 @@
 
 namespace six_feat {
 
-enum class EdgeSource : std::uint8_t { kYandexFeature, kGeniusCredit };
+enum class EdgeSource : std::uint8_t { kGeniusCredit };
 
 const char* ToString(EdgeSource source);
-
-enum class DiscoverySource : std::uint8_t { kYandexTrack, kGeniusCredit, kYandexPlaylist };
-
-const char* ToString(DiscoverySource source);
 
 struct ProviderEdge {
   std::int64_t from{0};
   std::int64_t to{0};
-  EdgeSource source{EdgeSource::kYandexFeature};
+  EdgeSource source{EdgeSource::kGeniusCredit};
   std::string role;
 };
-
-inline constexpr std::int64_t kYandexSongIdOffset = std::int64_t{1} << 62;
-
-inline std::int64_t NamespacedYandexSongId(std::int64_t yandex_track_id) {
-  return kYandexSongIdOffset | yandex_track_id;
-}
-
-inline bool IsYandexSongId(std::int64_t song_id) {
-  return (song_id & kYandexSongIdOffset) != 0;
-}
-
-inline constexpr std::int64_t kYandexArtistIdOffset = std::int64_t{1} << 62;
-
-inline std::int64_t NamespacedYandexArtistId(std::int64_t yandex_artist_id) {
-  return kYandexArtistIdOffset | yandex_artist_id;
-}
-
-inline bool IsYandexArtistId(std::int64_t artist_id) {
-  return (artist_id & kYandexArtistIdOffset) != 0;
-}
 
 class MusicSourceProvider {
  public:

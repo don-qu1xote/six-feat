@@ -16,7 +16,6 @@ from conftest import (
     ENRICHMENT_BINARY,
     GENIUS_GATEWAY_BINARY,
     TEST_ENRICHMENT_INTERNAL_SECRET,
-    YANDEX_GATEWAY_PORT,
     _ENRICHMENT_TEST_CONFIG_TEMPLATE,
     _GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE,
     _MockState,
@@ -98,14 +97,12 @@ def _write_config(
     genius_gateway_port: int,
     drain_timeout_ms: int,
     queue_capacity: int = 8,
-    yandex_gateway_port: int = YANDEX_GATEWAY_PORT,
 ) -> None:
     cfg_path.write_text(
         _ENRICHMENT_TEST_CONFIG_TEMPLATE.format(
             enrichment_port=port,
             enrichment_monitor_port=monitor_port,
             genius_gateway_port=genius_gateway_port,
-            yandex_gateway_port=yandex_gateway_port,
             db_connection_string=DB_CONNECTION_STRING,
             queue_capacity=queue_capacity,
             drain_timeout_ms=drain_timeout_ms,
