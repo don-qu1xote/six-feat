@@ -1,8 +1,4 @@
 type: object
-description: Default/mandatory MusicSourceProvider — Yandex track co-appearance edges, cross-resolved to real Genius ids
+description: Default/mandatory MusicSourceProvider — Yandex track co-appearance edges, namespaced artist ids (SF-ARCH-04), no Genius cross-resolution
 additionalProperties: false
-properties:
-    match-threshold:
-        type: number
-        description: Minimum Genius fuzzy-match score to accept a Yandex-discovered co-artist name as a resolved real Genius id
-        defaultDescription: '0.75'
+properties: {}

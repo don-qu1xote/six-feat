@@ -1,3 +1,1 @@
-yandex_device_client_id: CHANGEME_set_YANDEX_DEVICE_CLIENT_ID
-yandex_device_scope: 'music:api-public'
 logging_level: info

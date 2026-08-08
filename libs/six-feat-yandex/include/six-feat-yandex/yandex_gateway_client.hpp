@@ -15,22 +15,6 @@
 
 namespace six_feat {
 
-struct YandexDeviceFlowStart {
-  std::string device_code;
-  std::string user_code;
-  std::string verification_url;
-  int interval_seconds{5};
-  int expires_in_seconds{600};
-};
-
-enum class YandexDeviceFlowStatus : std::uint8_t { kSuccess, kPending, kDenied, kExpired };
-
-struct YandexDeviceFlowPollResult {
-  YandexDeviceFlowStatus status{YandexDeviceFlowStatus::kPending};
-  std::string access_token;
-  int expires_in_seconds{0};
-};
-
 struct YandexArtistRef {
   std::int64_t yandex_id{0};
   std::string name;
@@ -41,14 +25,6 @@ struct YandexTrackDetail {
   std::int64_t yandex_id{0};
   std::string title;
   std::vector<YandexArtistRef> artists;
-};
-
-struct YandexPlaylistSummary {
-  std::int64_t yandex_id{0};
-  std::string title;
-  int track_count{0};
-
-  std::string cover_url;
 };
 
 class YandexGatewayClient final : public userver::components::ComponentBase {
@@ -71,22 +47,6 @@ class YandexGatewayClient final : public userver::components::ComponentBase {
   int TracksLimit() const {
     return tracks_limit_;
   }
-
-  YandexDeviceFlowStart StartDeviceFlow() const;
-
-  YandexDeviceFlowPollResult PollDeviceFlow(const std::string& device_code) const;
-
-  std::optional<std::string> FetchAccountUserId(const std::string& personal_token) const;
-
-  std::vector<YandexPlaylistSummary> FetchPlaylists(const std::string& personal_token,
-                                                    const std::string& user_id) const;
-
-  std::vector<std::int64_t> FetchLikedTracks(const std::string& personal_token,
-                                             const std::string& user_id) const;
-
-  std::vector<std::int64_t> FetchPlaylistTracks(const std::string& personal_token,
-                                                const std::string& user_id,
-                                                std::int64_t playlist_id) const;
 
  private:
   userver::formats::json::Value PostInternal(const std::string& path,

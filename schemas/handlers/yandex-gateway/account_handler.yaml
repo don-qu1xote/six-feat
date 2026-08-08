@@ -1,4 +1,0 @@
-type: object
-description: Внутренний эндпоинт резолва Yandex Music account/uid (SF-YM-04)
-additionalProperties: false
-properties: {}

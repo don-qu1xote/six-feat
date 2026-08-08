@@ -36,6 +36,16 @@ inline bool IsYandexSongId(std::int64_t song_id) {
   return (song_id & kYandexSongIdOffset) != 0;
 }
 
+inline constexpr std::int64_t kYandexArtistIdOffset = std::int64_t{1} << 62;
+
+inline std::int64_t NamespacedYandexArtistId(std::int64_t yandex_artist_id) {
+  return kYandexArtistIdOffset | yandex_artist_id;
+}
+
+inline bool IsYandexArtistId(std::int64_t artist_id) {
+  return (artist_id & kYandexArtistIdOffset) != 0;
+}
+
 class MusicSourceProvider {
  public:
   virtual ~MusicSourceProvider() = default;

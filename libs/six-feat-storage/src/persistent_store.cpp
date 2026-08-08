@@ -134,6 +134,17 @@ const std::vector<const char*> kMigrationV9 = {
         ADD COLUMN IF NOT EXISTS enrichment_enabled BOOLEAN NOT NULL DEFAULT true)SQL",
 };
 
+const std::vector<const char*> kMigrationV10 = {
+    R"SQL(CREATE TABLE IF NOT EXISTS artist_alias (
+        provider             TEXT   NOT NULL,
+        provider_artist_id   BIGINT NOT NULL,
+        canonical_artist_id  BIGINT NOT NULL REFERENCES artists(id),
+        PRIMARY KEY (provider, provider_artist_id)
+    ))SQL",
+    R"SQL(CREATE INDEX IF NOT EXISTS artist_alias_canonical_idx
+        ON artist_alias(canonical_artist_id))SQL",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
@@ -144,9 +155,10 @@ const std::vector<Migration> kMigrations = {
     {7, kMigrationV7},
     {8, kMigrationV8},
     {9, kMigrationV9},
+    {10, kMigrationV10},
 };
 
-constexpr int kTargetSchemaVersion = 9;
+constexpr int kTargetSchemaVersion = 10;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,
@@ -341,13 +353,19 @@ struct PersistentStore::Impl {
       auto res = cluster->Execute(
           read_host_type,
           kReadQueryCommandControl,
-          "SELECT s.id, s.title, c.role, a.id, a.name, a.image_url, a.url "
+          "SELECT s.id, s.title, c.role, "
+          "       a.id, a.name, a.image_url, a.url "
           "FROM songs s "
           "JOIN credits c ON c.song_id = s.id "
-          "JOIN artists a ON a.id = c.artist_id "
+          "LEFT JOIN artist_alias alias "
+          "       ON alias.provider = 'yandex' "
+          "      AND (c.artist_id & $2::bigint) != 0 "
+          "      AND alias.provider_artist_id = (c.artist_id & ~$2::bigint) "
+          "JOIN artists a ON a.id = COALESCE(alias.canonical_artist_id, c.artist_id) "
           "WHERE s.id IN (SELECT DISTINCT song_id FROM credits WHERE artist_id = $1) "
           "ORDER BY s.id",
-          artist_id);
+          artist_id,
+          kYandexArtistIdOffset);
 
       std::vector<SongRecord> songs;
       for (const auto& row : res) {
@@ -379,25 +397,33 @@ struct PersistentStore::Impl {
     if (roles.empty()) return {};
 
     return ExecuteReadQueryWithRetry([&] {
-      auto res = cluster->Execute(read_host_type,
-                                  kReadQueryCommandControl,
-                                  "SELECT c2.artist_id, COUNT(DISTINCT c1.song_id) AS w, "
-                                  "       bool_and((c1.song_id & $3::bigint) != 0) AS all_yandex "
-                                  "FROM credits c1 "
-                                  "JOIN credits c2 ON c2.song_id = c1.song_id "
-                                  "              AND c2.artist_id != c1.artist_id "
-                                  "              AND c2.role = ANY($2::smallint[]) "
-                                  "WHERE c1.artist_id = $1 "
-                                  "GROUP BY c2.artist_id",
-                                  artist_id,
-                                  roles,
-                                  kYandexSongIdOffset);
+      auto res = cluster->Execute(
+          read_host_type,
+          kReadQueryCommandControl,
+          "SELECT COALESCE(alias.canonical_artist_id, c2.artist_id) AS neighbour_id, "
+          "       COUNT(DISTINCT LOWER(TRIM(s1.title))) AS w, "
+          "       bool_and((c1.song_id & $3::bigint) != 0) AS all_yandex "
+          "FROM credits c1 "
+          "JOIN songs s1 ON s1.id = c1.song_id "
+          "JOIN credits c2 ON c2.song_id = c1.song_id "
+          "              AND c2.artist_id != c1.artist_id "
+          "              AND c2.role = ANY($2::smallint[]) "
+          "LEFT JOIN artist_alias alias "
+          "       ON alias.provider = 'yandex' "
+          "      AND (c2.artist_id & $4::bigint) != 0 "
+          "      AND alias.provider_artist_id = (c2.artist_id & ~$4::bigint) "
+          "WHERE c1.artist_id = $1 "
+          "GROUP BY COALESCE(alias.canonical_artist_id, c2.artist_id)",
+          artist_id,
+          roles,
+          kYandexSongIdOffset,
+          kYandexArtistIdOffset);
 
       std::vector<CollabEdge> out;
       out.reserve(res.Size());
       for (const auto& row : res) {
         CollabEdge e{};
-        e.neighbour = row["artist_id"].As<std::int64_t>();
+        e.neighbour = row["neighbour_id"].As<std::int64_t>();
         e.weight = static_cast<int>(row["w"].As<std::int64_t>());
         e.source = row["all_yandex"].As<std::optional<bool>>().value_or(false)
                        ? EdgeSource::kYandexFeature

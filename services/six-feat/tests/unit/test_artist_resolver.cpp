@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <six-feat-common/music_source_provider.hpp>
 
 #include "application/artist_resolver.hpp"
 #include "fakes/fake_artist_data_source.hpp"
@@ -37,6 +38,32 @@ TEST(ResolveArtistById, ReturnsNulloptWhenNeitherRepoNorGatewayKnowsIt) {
   const auto result = ResolveArtistById(repo, gateway, 7, "token");
 
   EXPECT_FALSE(result.has_value());
+}
+
+// [SF-ARCH-04] A Yandex-namespaced id that misses the repo must NOT fall
+// through to Genius — Genius can never recognise it, so that call would be
+// wasted at best and a wrong-provider error at worst.
+TEST(ResolveArtistById, SkipsGatewayEntirelyForUncachedYandexNamespacedId) {
+  FakeArtistDataSource repo;
+  FakeExternalArtistLookup gateway;
+  const auto yandex_id = NamespacedYandexArtistId(555);
+  gateway.SetArtistById(yandex_id, ArtistRef{yandex_id, "Should never be returned", "", ""});
+
+  const auto result = ResolveArtistById(repo, gateway, yandex_id, "token");
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(ResolveArtistById, StillUsesRepoHitForYandexNamespacedId) {
+  FakeArtistDataSource repo;
+  FakeExternalArtistLookup gateway;
+  const auto yandex_id = NamespacedYandexArtistId(555);
+  repo.AddArtist(ArtistRef{yandex_id, "Cached Yandex Artist", "", ""});
+
+  const auto result = ResolveArtistById(repo, gateway, yandex_id, "token");
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ(result->name, "Cached Yandex Artist");
 }
 
 TEST(ResolveArtistByName, ReturnsBestCandidateAboveThreshold) {

@@ -3,7 +3,6 @@ export const en = {
   "hero.mode.explore": "Explore",
   "hero.mode.connect": "Connect",
   "hero.mode.game": "Game",
-  "hero.mode.playlists": "Playlists",
   "hero.mode.ariaLabel": "Search mode",
   "hero.search.ariaLabel": "Artist name",
   "hero.search.placeholder": 'Try "Kendrick Lamar", "Gorillaz", "Rosalía"…',
@@ -59,7 +58,7 @@ export const en = {
   "settings.toggleAriaLabel": "Settings",
   "settings.close": "Close",
   "settings.signedOutHint": "Sign in to manage settings.",
-  "settings.signInWithYandex": "Sign in with Yandex",
+  "settings.signInWithGenius": "Sign in with Genius",
   "settings.misconfiguredHint":
     "Settings can't verify your sign-in right now — this looks like a server configuration issue, not something signing in again will fix. Please try again later or let the site operator know.",
   "settings.appearance.title": "Appearance",
@@ -70,8 +69,8 @@ export const en = {
   "settings.language.ru": "Русский",
   "settings.genius.title": "Genius",
   "settings.genius.sub": "(find more connections)",
-  "settings.genius.hint": "Optional — finds extra connections beyond Yandex.",
-  "settings.genius.signIn": "Sign in with Genius",
+  "settings.genius.hint":
+    "Optional — you're already signed in with Genius; connect a different token here only if you want deepen to use one with different scopes/quota.",
   "settings.genius.pasteInstead": "or paste a token manually",
   "settings.genius.placeholder": "Paste your Genius token…",
   "settings.genius.connect": "Connect",
@@ -124,30 +123,6 @@ export const en = {
   "candidate.titleQuery": 'A few "{query}"s exist — which one?',
   "candidate.subtitle": "Click one to load its graph",
   "candidate.scoreMatch": '{score}% match for "{query}"',
-
-  "playlists.connectHint": "Sign in with Yandex to import artists from your playlists and likes.",
-  "playlists.loadError": "Couldn't load your Yandex playlists — please try again.",
-  "playlists.grantAccessHint":
-    "Signing in with Yandex doesn't include playlist access — grant it once to import from your playlists and likes.",
-  "playlists.grantAccessBtn": "Grant playlist access",
-  "playlists.grantUnreachableToast": "Couldn't reach Yandex — please try again.",
-  "playlists.grantRejectedToast":
-    "Yandex rejected the stored access — revoke it at id.yandex.ru/security, then grant access again.",
-  "playlists.grantInstructions": "Open Yandex and enter this code to finish granting access:",
-  "playlists.grantOpenYandex": "Open Yandex",
-  "playlists.grantCopyCode": "Copy code",
-  "playlists.grantCodeCopiedToast": "Code copied.",
-  "playlists.grantConnectedToast": "Playlist access granted.",
-  "playlists.grantDeniedToast": "Yandex sign-in was cancelled.",
-  "playlists.grantExpiredToast": "That code expired — try granting access again.",
-  "playlists.likedTracks": "Liked tracks",
-  "playlists.untitled": "Untitled playlist",
-  "playlists.trackCount.one": "{n} track",
-  "playlists.trackCount.few": "{n} tracks",
-  "playlists.trackCount.many": "{n} tracks",
-  "playlists.notFoundOnGenius": "Not found on Genius",
-  "playlists.truncatedHint": "Showing the first {scanned} of {total} tracks.",
-  "playlists.importError": "Couldn't import that source — please try again.",
 
   "toast.copyFallback": "Copy: {link}",
 
@@ -255,7 +230,7 @@ export const en = {
   "game.profile.noBadgesYet": "No badges yet — play a round.",
   "game.profile.recentAttempts": "Recent attempts",
   "game.profile.noAttemptsYet": "No attempts yet.",
-  "game.profile.signedOutHint": "Sign in with your Yandex to track your Elo, rank and badges.",
+  "game.profile.signedOutHint": "Sign in with Genius to track your Elo, rank and badges.",
   "game.profile.signIn": "Sign in",
 
   "game.admin.title": "Admin",
@@ -278,7 +253,7 @@ export const en = {
   "game.season.progressAriaLabel": "Season progress",
   "game.season.topOfSeason": "Top of the season",
   "game.season.fullLeaderboardLink": "Full leaderboard →",
-  "game.season.achievementsSignedOutHint": "Sign in with your Yandex to start earning badges.",
+  "game.season.achievementsSignedOutHint": "Sign in with Genius to start earning badges.",
 
   "help.title": "Keyboard shortcuts",
   "help.row.search": "Search loaded nodes",
@@ -301,7 +276,6 @@ export const ru = {
   "hero.mode.explore": "Искать",
   "hero.mode.connect": "Связать",
   "hero.mode.game": "Игра",
-  "hero.mode.playlists": "Плейлисты",
   "hero.mode.ariaLabel": "Режим поиска",
   "hero.search.ariaLabel": "Имя артиста",
   "hero.search.placeholder": "Например, «Kendrick Lamar», «Gorillaz», «Rosalía»…",
@@ -357,7 +331,7 @@ export const ru = {
   "settings.toggleAriaLabel": "Настройки",
   "settings.close": "Закрыть",
   "settings.signedOutHint": "Войдите, чтобы управлять настройками.",
-  "settings.signInWithYandex": "Войти через Яндекс",
+  "settings.signInWithGenius": "Войти через Genius",
   "settings.misconfiguredHint":
     "Настройки сейчас не могут подтвердить вход — похоже на проблему конфигурации сервера, а не то, что исправится повторным входом. Попробуйте позже или сообщите администратору сайта.",
   "settings.appearance.title": "Оформление",
@@ -368,8 +342,8 @@ export const ru = {
   "settings.language.ru": "Русский",
   "settings.genius.title": "Genius",
   "settings.genius.sub": "(больше связей)",
-  "settings.genius.hint": "Необязательно — находит связи, которых нет в Яндексе.",
-  "settings.genius.signIn": "Войти через Genius",
+  "settings.genius.hint":
+    "Необязательно — вы уже вошли через Genius; подключайте другой токен только если хотите, чтобы углубление использовало его (другие права/лимиты).",
   "settings.genius.pasteInstead": "или вставьте токен вручную",
   "settings.genius.placeholder": "Вставьте токен Genius…",
   "settings.genius.connect": "Подключить",
@@ -423,32 +397,6 @@ export const ru = {
   "candidate.titleQuery": "Нашлось несколько вариантов для «{query}» — какой из них?",
   "candidate.subtitle": "Нажмите на артиста, чтобы построить его граф",
   "candidate.scoreMatch": "{score}% совпадение с «{query}»",
-
-  "playlists.connectHint":
-    "Войдите через Яндекс, чтобы добавлять артистов из своих плейлистов и понравившихся треков.",
-  "playlists.loadError": "Не получилось загрузить плейлисты Яндекса — попробуйте ещё раз.",
-  "playlists.grantAccessHint":
-    "Входа через Яндекс недостаточно для доступа к плейлистам — выдайте доступ один раз, чтобы добавлять артистов из плейлистов и понравившихся треков.",
-  "playlists.grantAccessBtn": "Выдать доступ к плейлистам",
-  "playlists.grantUnreachableToast": "Не получилось связаться с Яндексом — попробуйте ещё раз.",
-  "playlists.grantRejectedToast":
-    "Яндекс отклонил сохранённый доступ — отзовите его на id.yandex.ru/security и выдайте заново.",
-  "playlists.grantInstructions":
-    "Откройте Яндекс и введите этот код, чтобы завершить выдачу доступа:",
-  "playlists.grantOpenYandex": "Открыть Яндекс",
-  "playlists.grantCopyCode": "Скопировать код",
-  "playlists.grantCodeCopiedToast": "Код скопирован.",
-  "playlists.grantConnectedToast": "Доступ к плейлистам выдан.",
-  "playlists.grantDeniedToast": "Вход через Яндекс отменён.",
-  "playlists.grantExpiredToast": "Код истёк — попробуйте выдать доступ ещё раз.",
-  "playlists.likedTracks": "Понравившиеся треки",
-  "playlists.untitled": "Плейлист без названия",
-  "playlists.trackCount.one": "{n} трек",
-  "playlists.trackCount.few": "{n} трека",
-  "playlists.trackCount.many": "{n} треков",
-  "playlists.notFoundOnGenius": "Не найден на Genius",
-  "playlists.truncatedHint": "Показаны первые {scanned} из {total} треков.",
-  "playlists.importError": "Не получилось импортировать источник — попробуйте ещё раз.",
 
   "toast.copyFallback": "Скопируйте: {link}",
 
@@ -557,7 +505,7 @@ export const ru = {
   "game.profile.recentAttempts": "Последние попытки",
   "game.profile.noAttemptsYet": "Пока нет попыток.",
   "game.profile.signedOutHint":
-    "Войдите через Яндекс, чтобы отслеживать рейтинг Эло, место и награды.",
+    "Войдите через Genius, чтобы отслеживать рейтинг Эло, место и награды.",
   "game.profile.signIn": "Войти",
 
   "game.admin.title": "Админ",
@@ -580,7 +528,7 @@ export const ru = {
   "game.season.progressAriaLabel": "Прогресс сезона",
   "game.season.topOfSeason": "Лидеры сезона",
   "game.season.fullLeaderboardLink": "Вся таблица лидеров →",
-  "game.season.achievementsSignedOutHint": "Войдите через Яндекс, чтобы начать получать награды.",
+  "game.season.achievementsSignedOutHint": "Войдите через Genius, чтобы начать получать награды.",
 
   "help.title": "Горячие клавиши",
   "help.row.search": "Поиск среди загруженных узлов",

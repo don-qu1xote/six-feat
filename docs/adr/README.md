@@ -27,6 +27,7 @@ ROADMAP.md; если нужен ответ на вопрос "почему та�
 | [0010](./0010-library-split-and-unified-build.md) | Разделение libs/six-feat-common на независимые STATIC-библиотеки | Принято |
 | [0011](./0011-music-source-provider-abstraction.md) | MusicSourceProvider: Яндекс дефолт/обязателен, Genius — углубление и fallback | Принято |
 | [0012](./0012-six-feat-as-sole-public-entry.md) | six-feat остаётся основным публичным сервисом данных — без отдельного BFF | Принято |
+| [0013](./0013-two-provider-artist-identity.md) | Namespaced Yandex artist id + artist_alias: Yandex-only граф без Genius | Принято |
 
 ## Формат
 

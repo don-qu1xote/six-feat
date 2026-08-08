@@ -1,7 +1,0 @@
-type: object
-description: >-
-    Импорт артистов из одного плейлиста Яндекса или лайков пользователя,
-    разрешённых в реальные Genius id (SF-YM-04). Требует сессию и
-    подключённый личный Яндекс-токен (SF-YM-02).
-additionalProperties: false
-properties: {}

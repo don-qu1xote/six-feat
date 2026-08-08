@@ -179,6 +179,10 @@ export function buildNodeState(n, seedId, existingIds, _graph) {
     geniusUrl: n.url || null,
     genres: [],
     isSeed: isSeed,
+    // [SF-YM-09] Absent on older cached responses — default to available
+    // rather than hiding the affordance for data the backend hasn't
+    // annotated yet.
+    deepenAvailable: n.deepen_available ?? true,
     _isNew: existingIds ? !existingIds.has(n.id) : true,
     _backendWeight: n.weight || null,
     _dimBorder: dimBorder,

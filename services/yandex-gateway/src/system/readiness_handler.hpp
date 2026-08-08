@@ -1,6 +1,5 @@
 #pragma once
 
-#include <six-feat-yandex/yandex_device_auth_client.hpp>
 #include <six-feat-yandex/yandex_music_gateway.hpp>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
@@ -23,7 +22,6 @@ class ReadinessHandler final : public userver::server::handlers::HttpHandlerBase
 
  private:
   YandexMusicGateway& gateway_;
-  YandexDeviceAuthClient& device_client_;
 };
 
 }  // namespace six_feat::yandex_gateway

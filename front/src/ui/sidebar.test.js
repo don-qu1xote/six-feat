@@ -162,6 +162,22 @@ describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
     expect(deepenArtistConnections).toHaveBeenCalledWith(1);
   });
 
+  it("[SF-YM-09] disables the deepen button for a node with no Genius link, without calling it", () => {
+    State.graphNodes = [mockNode({ deepenAvailable: false })];
+    showArtistSidebar(1);
+    expect(els.objActionDeepen.disabled).toBe(true);
+    expect(els.objActionDeepen.onclick).toBeNull();
+    expect(deepenArtistConnections).not.toHaveBeenCalled();
+  });
+
+  it("[SF-YM-09] keeps the deepen button enabled for a node with a Genius link", () => {
+    State.graphNodes = [mockNode({ deepenAvailable: true })];
+    showArtistSidebar(1);
+    expect(els.objActionDeepen.disabled).toBe(false);
+    els.objActionDeepen.onclick();
+    expect(deepenArtistConnections).toHaveBeenCalledWith(1);
+  });
+
   it("wires Focus to center the camera on the node", () => {
     State.network = { focus: vi.fn() };
     State.graphNodes = [mockNode()];

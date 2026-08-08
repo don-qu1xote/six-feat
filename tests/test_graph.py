@@ -15,8 +15,25 @@ GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
 
 _REQUIRED_FIELDS = {"type", "nodes", "edges"}
-_REQUIRED_NODE_FIELDS = {"id", "name", "weight", "betweenness", "betweenness_normalised", "is_seed"}
+_REQUIRED_NODE_FIELDS = {
+    "id",
+    "name",
+    "weight",
+    "betweenness",
+    "betweenness_normalised",
+    "is_seed",
+    "deepen_available",
+}
 _REQUIRED_EDGE_FIELDS = {"from", "to", "weight", "dominant_role", "source"}
+
+# [SF-ARCH-04] Mirrors NamespacedYandexArtistId/kYandexArtistIdOffset in
+# libs/six-feat-common/include/six-feat-common/music_source_provider.hpp —
+# a Yandex co-artist is no longer cross-resolved to a Genius id, it IS this id.
+_YANDEX_ARTIST_ID_OFFSET = 1 << 62
+
+
+def _namespaced_yandex_artist_id(yandex_id: int) -> int:
+    return _YANDEX_ARTIST_ID_OFFSET | yandex_id
 
 
 def _seed_artist(artist_id: int, name: str) -> dict:
@@ -208,6 +225,11 @@ class TestGraphByName:
 
 
 class TestGraphDefaultSourceIsYandex:
+    """[SF-ARCH-04] Co-artists coming from Yandex are no longer cross-resolved
+    to Genius ids — they ARE real graph nodes under their own namespaced id
+    (NamespacedYandexArtistId), found even though no genius_mock.resolve/
+    artist call exists for them at all."""
+
     def test_by_id_default_graph_uses_yandex_source(
         self,
         client: requests.Session,
@@ -218,7 +240,6 @@ class TestGraphDefaultSourceIsYandex:
         seed_name = "Seed Yandex Default"
         yandex_seed_id = 71001
         track_id = 81001
-        co1_genius_id, co2_genius_id = 61002, 61003
         co1_yandex_id, co2_yandex_id = 71002, 71003
 
         genius_mock.artist(seed_id, {"id": seed_id, "name": seed_name})
@@ -233,14 +254,6 @@ class TestGraphDefaultSourceIsYandex:
                 {"id": co2_yandex_id, "name": "Co-Artist Two"},
             ],
         )
-        genius_mock.resolve(
-            "Co-Artist One", [{"id": co1_genius_id, "name": "Co-Artist One", "score": 0.95}]
-        )
-        genius_mock.resolve(
-            "Co-Artist Two", [{"id": co2_genius_id, "name": "Co-Artist Two", "score": 0.95}]
-        )
-        genius_mock.artist(co1_genius_id, {"id": co1_genius_id, "name": "Co-Artist One"})
-        genius_mock.artist(co2_genius_id, {"id": co2_genius_id, "name": "Co-Artist Two"})
 
         resp = client.get(GRAPH_URL, params={"id": str(seed_id)})
         assert resp.status_code == 200
@@ -254,7 +267,64 @@ class TestGraphDefaultSourceIsYandex:
             assert edge["source"] == "yandex_feature"
             assert edge["dominant_role"] == "featured"
             assert edge["weight"] == 1
-        assert {edge["to"] for edge in edges} == {co1_genius_id, co2_genius_id}
+        assert {edge["to"] for edge in edges} == {
+            _namespaced_yandex_artist_id(co1_yandex_id),
+            _namespaced_yandex_artist_id(co2_yandex_id),
+        }
+
+        by_id = {node["id"]: node for node in data["nodes"]}
+        co1_node = by_id[_namespaced_yandex_artist_id(co1_yandex_id)]
+        assert co1_node["name"] == "Co-Artist One"
+
+
+class TestGraphDeepenAvailablePerNode:
+    """[SF-YM-09] "Find more connections" is Genius-only by nature. Every
+    node now carries an honest deepen_available flag instead of the client
+    finding out only after a doomed click: false for a namespaced Yandex
+    artist with no known Genius link, true for a real Genius id (seed or
+    co-artist alike)."""
+
+    def test_genius_seed_is_deepen_available(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
+        genius_mock.songs(1, [101])
+        genius_mock.song_detail(
+            101,
+            _build_song_detail(101, "God's Plan", 1, "Drake", collaborators=[_collab(2, "Future")]),
+        )
+
+        data = client.get(GRAPH_URL, params={"artist": "Drake"}).json()
+        by_id = {node["id"]: node for node in data["nodes"]}
+        assert by_id[1]["deepen_available"] is True
+        assert by_id[2]["deepen_available"] is True
+
+    def test_unaliased_yandex_co_artist_is_not_deepen_available(
+        self,
+        client: requests.Session,
+        genius_mock: GeniusMock,
+        yandex_mock: YandexMock,
+    ):
+        seed_id = 62001
+        seed_name = "Deepen Flag Seed"
+        yandex_seed_id = 72001
+        track_id = 82001
+        co_yandex_id = 72002
+
+        genius_mock.artist(seed_id, {"id": seed_id, "name": seed_name})
+        yandex_mock.search_artist(seed_name, [{"id": yandex_seed_id, "name": seed_name}])
+        yandex_mock.artist_tracks(yandex_seed_id, [track_id])
+        yandex_mock.track_artists(
+            track_id,
+            [
+                {"id": yandex_seed_id, "name": seed_name},
+                {"id": co_yandex_id, "name": "Unaliased Co-Artist"},
+            ],
+        )
+
+        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+        by_id = {node["id"]: node for node in data["nodes"]}
+        assert by_id[_namespaced_yandex_artist_id(co_yandex_id)]["deepen_available"] is False
 
 
 class TestGraphById:
@@ -807,14 +877,43 @@ def _yandex_session(*, name: str = "") -> requests.Session:
     return sess
 
 
-class TestGraphYandexSessionRequiresGeniusToken:
-    def test_no_connected_byo_token_is_honest_422_not_a_502(
-        self, service_proc, genius_mock: GeniusMock
+class TestGraphYandexSessionWorksWithoutGenius:
+    """[SF-YM-08] A Yandex-only session used to get an honest 422 for any
+    artist the cache had never seen — that was the correct call while the
+    default graph secretly needed Genius to resolve co-artist names
+    (see ADR pre-SF-ARCH-04). After SF-ARCH-04/05, the default graph and
+    seed resolution both run on Yandex's own service token, so a brand new
+    name is a normal 200, not an error."""
+
+    def test_no_connected_byo_token_still_resolves_a_real_graph_via_yandex(
+        self,
+        service_proc,
+        genius_mock: GeniusMock,
+        yandex_mock: YandexMock,
+        unique_artist_id: int,
     ):
+        seed_name = f"YandexOnlySeed{unique_artist_id}"
+        yandex_seed_id = unique_artist_id + 500000
+        track_id = unique_artist_id + 600000
+        co_yandex_id = unique_artist_id + 700000
+
+        yandex_mock.search_artist(seed_name, [{"id": yandex_seed_id, "name": seed_name}])
+        yandex_mock.artist_tracks(yandex_seed_id, [track_id])
+        yandex_mock.track_artists(
+            track_id,
+            [
+                {"id": yandex_seed_id, "name": seed_name},
+                {"id": co_yandex_id, "name": "Some Co-Artist"},
+            ],
+        )
+
         sess = _yandex_session()
-        resp = sess.get(GRAPH_URL, params={"artist": "Anyone"})
-        assert resp.status_code == 422
-        assert resp.json().get("error") == "no_genius_token"
+        resp = sess.get(GRAPH_URL, params={"artist": seed_name})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["seed_id"] == _namespaced_yandex_artist_id(yandex_seed_id)
+        assert data["edges"]
+        assert data["edges"][0]["source"] == "yandex_feature"
 
     def test_connected_byo_token_resolves_a_real_graph(
         self, service_proc, genius_mock: GeniusMock, unique_artist_id: int
@@ -837,10 +936,11 @@ class TestGraphYandexSessionRequiresGeniusToken:
 class TestGraphYandexSessionServesAlreadyCachedArtistWithoutGeniusToken:
     """[SF-YM-08] Артист, уже полностью подтянутый (Depth::Foreground) кем-то
     с Genius-токеном ранее, доступен Yandex-only сессии без BYO-токена —
-    и по id, и по имени, без единого нового похода в Genius/Yandex. Только
-    СОВСЕМ новое имя/id, которых ещё ни у кого не было, честно требует
-    токен (см. test_no_connected_byo_token_is_honest_422_not_a_502 выше —
-    он не должен был перестать проходить)."""
+    и по id, и по имени, без единого нового похода в Genius/Yandex. После
+    SF-ARCH-04 совсем новое имя/id тоже доступно (резолвится через Яндекс,
+    см. TestGraphYandexSessionWorksWithoutGenius) — этот класс проверяет
+    отдельно важный частный случай: кэш находится даже без единого похода
+    в yandex_mock/genius_mock на САМ запрос."""
 
     def _seed_via_genius(
         self, client: requests.Session, genius_mock: GeniusMock, artist_id: int, name: str

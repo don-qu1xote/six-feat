@@ -112,5 +112,3 @@ export {
   refreshSettingsStatus,
   setupSettingsPanel,
 } from "./settings-panel.js";
-
-export { setupPlaylistsPanel } from "./playlists-panel.js";

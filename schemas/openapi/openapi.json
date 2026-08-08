@@ -282,7 +282,8 @@
           "weight",
           "betweenness",
           "betweenness_normalised",
-          "is_seed"
+          "is_seed",
+          "deepen_available"
         ],
         "properties": {
           "id": {
@@ -312,6 +313,10 @@
           },
           "is_seed": {
             "type": "boolean"
+          },
+          "deepen_available": {
+            "type": "boolean",
+            "description": "[SF-YM-09] Whether \"find more connections\" (Genius-only) can work for this node — false for a namespaced Yandex artist with no linked Genius id yet (see docs/adr/0013-two-provider-artist-identity.md)."
           }
         },
         "additionalProperties": false
@@ -1370,14 +1375,6 @@
                           "type": "boolean"
                         }
                       }
-                    },
-                    "yandex": {
-                      "type": "object",
-                      "properties": {
-                        "connected": {
-                          "type": "boolean"
-                        }
-                      }
                     }
                   }
                 }
@@ -1469,7 +1466,8 @@
     },
     "/api/v1/settings/disconnect": {
       "post": {
-        "summary": "Disconnect one of the caller's own connected providers (SF-YM-02)",
+        "summary": "Disconnect the caller's own connected Genius token (SF-YM-02)",
+        "description": "Only Genius has a personal token to disconnect — there is no personal Yandex token anymore (SF-YM-04-file).",
         "security": [
           {
             "cookieAuth": []
@@ -1483,8 +1481,7 @@
             "schema": {
               "type": "string",
               "enum": [
-                "genius",
-                "yandex"
+                "genius"
               ]
             }
           }
@@ -1510,7 +1507,7 @@
             }
           },
           "400": {
-            "description": "?provider= missing or not 'genius'/'yandex'",
+            "description": "?provider= missing or not 'genius'",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1531,370 +1528,6 @@
           },
           "404": {
             "description": "Nothing was connected for this provider",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/yandex/device/start": {
-      "post": {
-        "summary": "Start the personal Yandex OAuth device flow (SF-YM-02)",
-        "description": "Returns a user_code + verification_url for the browser to show, and a device_code the browser polls next (POST .../yandex/device/poll). Only ever used for personal playlist/likes import (SF-YM-04) — never wired into the default, service-token-backed graph (SF-YM-01).",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Device flow started",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "device_code": {
-                      "type": "string"
-                    },
-                    "user_code": {
-                      "type": "string"
-                    },
-                    "verification_url": {
-                      "type": "string"
-                    },
-                    "interval": {
-                      "type": "integer"
-                    },
-                    "expires_in": {
-                      "type": "integer"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid session",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Could not reach Yandex",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/yandex/device/poll": {
-      "post": {
-        "summary": "Poll the personal Yandex OAuth device flow (SF-YM-02)",
-        "description": "On status=success, connects the resulting personal token under the caller's own user id (UserProviderTokenStore).",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "device_code"
-                ],
-                "properties": {
-                  "device_code": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Poll result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "connected",
-                        "pending",
-                        "denied",
-                        "expired"
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing device_code",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid session",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Could not reach Yandex",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/yandex/playlists": {
-      "get": {
-        "summary": "List the caller's own Yandex playlists + a synthetic \"likes\" entry (SF-YM-04)",
-        "description": "Personal-import seed-suggestion source — never wired into the default graph, which stays on the service-level Yandex token (SF-YM-01) regardless of whether this is connected. Requires a connected personal Yandex account (SF-YM-02); metadata only, no track/artist fan-out (see GET .../import for that).",
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Playlists (plus the synthetic \"likes\" entry) listed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "const": "yandex_playlists"
-                    },
-                    "playlists": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "likes",
-                              "playlist"
-                            ]
-                          },
-                          "title": {
-                            "type": "string"
-                          },
-                          "track_count": {
-                            "type": "integer"
-                          },
-                          "cover_url": {
-                            "type": "string",
-                            "description": "Omitted when Yandex has no cover for this playlist (SF-WEB-74)"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid session",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No personal Yandex account connected",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Could not reach Yandex, or the connected token is no longer valid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/settings/yandex/import": {
-      "get": {
-        "summary": "Import artists from one Yandex playlist or liked tracks, resolved to real Genius ids (SF-YM-04)",
-        "description": "Reads the given playlist's (or the likes collection's) tracks through the caller's connected personal Yandex token, collects the distinct Yandex-space artists credited on them, and resolves each by name through the same fuzzy-search path used for a typed-in seed (ADR-0009). An unresolvable name is reported honestly (resolved=false, no id field) rather than dropped or given a placeholder id — one bad name never fails the whole import.",
-        "parameters": [
-          {
-            "name": "playlist",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "'likes' for the liked-tracks collection, or a numeric playlist id from GET .../playlists"
-          }
-        ],
-        "security": [
-          {
-            "cookieAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Import completed (possibly with zero resolved artists — an honest result, not an error)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "const": "yandex_import"
-                    },
-                    "source": {
-                      "type": "string",
-                      "enum": [
-                        "likes",
-                        "playlist"
-                      ]
-                    },
-                    "playlist_id": {
-                      "type": "string"
-                    },
-                    "artists": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "yandex_name": {
-                            "type": "string"
-                          },
-                          "resolved": {
-                            "type": "boolean"
-                          },
-                          "id": {
-                            "type": "integer",
-                            "format": "int64"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "image": {
-                            "type": "string"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    },
-                    "resolved_count": {
-                      "type": "integer"
-                    },
-                    "total_count": {
-                      "type": "integer"
-                    },
-                    "truncated": {
-                      "type": "boolean",
-                      "description": "true when the source had more than the scanned tracks (SF-WEB-74)"
-                    },
-                    "total_track_count": {
-                      "type": "integer",
-                      "format": "int64",
-                      "description": "Track count of the source before truncation"
-                    },
-                    "scanned_track_count": {
-                      "type": "integer",
-                      "format": "int64",
-                      "description": "Track count actually scanned (== total_track_count unless truncated)"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Missing/invalid 'playlist' parameter",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid session",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No personal Yandex account connected",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemJson"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Could not reach Yandex, or the connected token is no longer valid",
             "content": {
               "application/problem+json": {
                 "schema": {

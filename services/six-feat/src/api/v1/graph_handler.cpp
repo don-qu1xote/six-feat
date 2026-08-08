@@ -10,6 +10,7 @@
 #include "schemas/handlers/six-feat/graph_handler_schema.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <six-feat-auth-lib/user_identity.hpp>
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-core/http_cache.hpp>
@@ -87,6 +88,23 @@ std::string RateLimitKey(const server::http::HttpRequest& request, const auth::O
 }
 
 constexpr std::size_t kExpectedCollaboratorsPerSong = 3;
+
+std::string NormalizedTitle(const std::string& title) {
+  std::string out;
+  out.reserve(title.size());
+  bool last_was_space = true;
+  for (unsigned char c : title) {
+    if (std::isspace(c)) {
+      if (!last_was_space) out.push_back(' ');
+      last_was_space = true;
+    } else {
+      out.push_back(static_cast<char>(std::tolower(c)));
+      last_was_space = false;
+    }
+  }
+  while (!out.empty() && out.back() == ' ') out.pop_back();
+  return out;
+}
 
 std::string BuildGraphETag(std::int64_t seed_id,
                            const FetchState& fs,
@@ -234,13 +252,11 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
       const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
       // Не value_or(session->access_token): у Яндекс-сессии это яндексовый токен.
       user_token = auth::GeniusTokenForSession(*session, connected);
-      if (user_token.empty()) {
-        // Без BYO-токена нового не резолвить и не дообогатить — честный 422
-        // вместо обречённого 502. Мы здесь только потому, что seed_fully_cached
-        // уже false (см. выше) — уже известного сида это не касается.
-        response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
-        return ErrorGraph("no_genius_token");
-      }
+      // [SF-YM-08] Пустой Genius-токен больше не 422: после SF-ARCH-04/05
+      // дефолтный граф и резолв сида работают на одном сервисном Яндексе
+      // без всякого участия Genius. Genius остаётся опциональным плюсом
+      // (больше связей/ролей — см. graph_deepen_handler.cpp, где 422
+      // остаётся, это его законное поведение).
     }
   }
 
@@ -319,13 +335,12 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     std::string dominant_role{"featured"};
     std::string name, image, url;
     struct Collab {
-      std::int64_t song_id{0};
       std::string song;
       std::vector<std::string> roles;
       std::int64_t popularity{0};
     };
     std::vector<Collab> collabs;
-    std::unordered_set<std::int64_t> seen_songs;
+    std::unordered_set<std::string> seen_titles;
   };
 
   std::unordered_map<std::int64_t, EdgeAgg> edges;
@@ -342,7 +357,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
       auto& tc = track[credit.artist.id];
       if (tc.song.empty()) {
         tc.song = song.title;
-        tc.song_id = song.id;
         tc.popularity = song.popularity;
         auto& agg = edges[credit.artist.id];
         if (agg.name.empty()) {
@@ -358,7 +372,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     }
     for (auto& [gid, tc] : track) {
       auto& agg = edges[gid];
-      const bool is_new_song = agg.seen_songs.insert(tc.song_id).second;
+      const bool is_new_song = agg.seen_titles.insert(NormalizedTitle(tc.song)).second;
       if (is_new_song) {
         ++agg.weight;
       }
@@ -475,6 +489,8 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     nb["betweenness"] = raw;
     nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
     nb["is_seed"] = true;
+
+    nb["deepen_available"] = !IsYandexArtistId(seed_id);
     nodes_b.PushBack(std::move(nb));
   }
 
@@ -487,6 +503,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
       nb["betweenness"] = raw;
       nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
       nb["is_seed"] = false;
+      nb["deepen_available"] = !IsYandexArtistId(gid);
       nodes_b.PushBack(std::move(nb));
     }
     {

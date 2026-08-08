@@ -75,11 +75,22 @@ std::string UrlEncode(std::string_view value) {
   return out;
 }
 
+constexpr std::string_view kYandexAvatarSize = "200x200";
+
+std::string ResolveYandexCoverUri(std::string uri) {
+  if (uri.empty()) return uri;
+  static constexpr std::string_view kSizePlaceholder = "%%";
+  const auto pos = uri.rfind(kSizePlaceholder);
+  if (pos == std::string::npos) return uri;
+  uri.replace(pos, kSizePlaceholder.size(), kYandexAvatarSize);
+  return uri;
+}
+
 ArtistRef ParseYandexArtist(const formats::json::Value& obj) {
   ArtistRef ref;
   ref.id = obj["id"].As<std::int64_t>(0);
   ref.name = obj["name"].As<std::string>("");
-  ref.image = obj["cover"]["uri"].As<std::string>("");
+  ref.image = ResolveYandexCoverUri(obj["cover"]["uri"].As<std::string>(""));
   return ref;
 }
 
@@ -257,80 +268,6 @@ std::vector<Candidate> YandexMusicGateway::SearchArtist(const std::string& query
     }
   }
   return out;
-}
-
-std::vector<YandexPlaylistRef> YandexMusicGateway::FetchPlaylists(const std::string& personal_token,
-                                                                  const std::string& user_id,
-                                                                  Lane lane) const {
-  const std::string url = yandex_base_url_ + "/users/" + user_id + "/playlists/list";
-  const auto json = formats::json::FromString(YandexGetWithToken(url, lane, personal_token));
-  const auto& result = json["result"];
-
-  std::vector<YandexPlaylistRef> out;
-  if (result.IsArray()) {
-    out.reserve(result.GetSize());
-    for (const auto& p : result) {
-      YandexPlaylistRef ref;
-      ref.id = p["id"].As<std::int64_t>(0);
-      ref.title = p["title"].As<std::string>("");
-      ref.track_count = p["track_count"].As<int>(0);
-      ref.cover_url = p["cover"]["uri"].As<std::string>("");
-      out.push_back(std::move(ref));
-    }
-  }
-  return out;
-}
-
-std::vector<std::int64_t> YandexMusicGateway::FetchLikedTracks(const std::string& personal_token,
-                                                               const std::string& user_id,
-                                                               Lane lane) const {
-  const std::string url = yandex_base_url_ + "/users/" + user_id + "/likes/tracks";
-  const auto json = formats::json::FromString(YandexGetWithToken(url, lane, personal_token));
-  const auto& tracks = json["result"]["tracks"];
-
-  std::vector<std::int64_t> out;
-  if (tracks.IsArray()) {
-    out.reserve(tracks.GetSize());
-    for (const auto& t : tracks) {
-      const auto tid = t.As<std::int64_t>(0);
-      if (tid) out.push_back(tid);
-    }
-  }
-  return out;
-}
-
-std::vector<std::int64_t> YandexMusicGateway::FetchPlaylistTracks(const std::string& personal_token,
-                                                                  const std::string& user_id,
-                                                                  std::int64_t playlist_id,
-                                                                  Lane lane) const {
-  const std::string url =
-      yandex_base_url_ + "/users/" + user_id + "/playlists/" + std::to_string(playlist_id);
-  const auto json = formats::json::FromString(YandexGetWithToken(url, lane, personal_token));
-  const auto& tracks = json["result"]["tracks"];
-
-  std::vector<std::int64_t> out;
-  if (tracks.IsArray()) {
-    out.reserve(tracks.GetSize());
-    for (const auto& t : tracks) {
-      const auto tid = t.As<std::int64_t>(0);
-      if (tid) out.push_back(tid);
-    }
-  }
-  return out;
-}
-
-std::optional<std::string> YandexMusicGateway::FetchAccountUserId(const std::string& personal_token,
-                                                                  Lane lane) const {
-  const std::string url = yandex_base_url_ + "/account/status";
-  const auto body = YandexGetWithToken(url, lane, personal_token);
-  const auto json = formats::json::FromString(body);
-  const auto uid = json["result"]["account"]["uid"].As<std::int64_t>(0);
-  if (!uid) {
-    LOG_WARNING() << "[YMGW] request_id=" << CurrentRequestId()
-                  << " account/status returned no uid, raw body: " << body;
-    return std::nullopt;
-  }
-  return std::to_string(uid);
 }
 
 std::vector<std::int64_t> YandexMusicGateway::FetchArtistTracks(std::int64_t artist_id,

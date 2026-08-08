@@ -58,11 +58,4 @@ inline std::string GeniusTokenForSession(const SessionData& session,
   return "";
 }
 
-inline std::string YandexTokenForSession(const SessionData& session,
-                                         const std::optional<std::string>& connected_yandex) {
-  if (connected_yandex && !connected_yandex->empty()) return *connected_yandex;
-  if (session.Provider() == kProviderYandex) return session.access_token;
-  return "";
-}
-
 }  // namespace six_feat::auth

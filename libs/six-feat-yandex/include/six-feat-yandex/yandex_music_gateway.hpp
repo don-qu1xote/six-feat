@@ -16,13 +16,6 @@
 
 namespace six_feat {
 
-struct YandexPlaylistRef {
-  std::int64_t id{0};
-  std::string title;
-  int track_count{0};
-  std::string cover_url;
-};
-
 struct YandexTrack {
   std::int64_t id{0};
   std::string title;
@@ -47,21 +40,6 @@ class YandexMusicGateway final : public userver::components::ComponentBase {
   std::vector<Candidate> SearchArtist(const std::string& query, Lane lane) const;
 
   std::vector<std::int64_t> FetchArtistTracks(std::int64_t artist_id, int limit, Lane lane) const;
-
-  std::vector<YandexPlaylistRef> FetchPlaylists(const std::string& personal_token,
-                                                const std::string& user_id,
-                                                Lane lane) const;
-
-  std::vector<std::int64_t> FetchLikedTracks(const std::string& personal_token,
-                                             const std::string& user_id,
-                                             Lane lane) const;
-
-  std::vector<std::int64_t> FetchPlaylistTracks(const std::string& personal_token,
-                                                const std::string& user_id,
-                                                std::int64_t playlist_id,
-                                                Lane lane) const;
-
-  std::optional<std::string> FetchAccountUserId(const std::string& personal_token, Lane lane) const;
 
   CircuitBreaker::State CbState() const {
     return pipeline_.CbState();

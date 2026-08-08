@@ -14,10 +14,6 @@ six_feat_embed_schema(handlers/six-feat/settings_genius_link_start_handler  kSet
 six_feat_embed_schema(handlers/six-feat/settings_disconnect_handler        kSettingsDisconnectHandlerSchema         SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_enrichment_provider_handler kSettingsEnrichmentProviderHandlerSchema SETTINGS_ENRICHMENT_PROVIDER_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/settings_enrichment_enabled_handler kSettingsEnrichmentEnabledHandlerSchema SETTINGS_ENRICHMENT_ENABLED_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(handlers/six-feat/settings_yandex_device_start_handler kSettingsYandexDeviceStartHandlerSchema SETTINGS_YANDEX_DEVICE_START_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(handlers/six-feat/settings_yandex_device_poll_handler  kSettingsYandexDevicePollHandlerSchema  SETTINGS_YANDEX_DEVICE_POLL_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(handlers/six-feat/settings_yandex_playlists_handler   kSettingsYandexPlaylistsHandlerSchema    SETTINGS_YANDEX_PLAYLISTS_HANDLER_SCHEMA_HEADER)
-six_feat_embed_schema(handlers/six-feat/settings_yandex_import_handler      kSettingsYandexImportHandlerSchema       SETTINGS_YANDEX_IMPORT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_deepen_handler kGraphDeepenHandlerSchema GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
@@ -45,10 +41,6 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_ENRICHMENT_PROVIDER_HANDLER_SCHEMA_HEADER}
     ${SETTINGS_ENRICHMENT_ENABLED_HANDLER_SCHEMA_HEADER}
-    ${SETTINGS_YANDEX_DEVICE_START_HANDLER_SCHEMA_HEADER}
-    ${SETTINGS_YANDEX_DEVICE_POLL_HANDLER_SCHEMA_HEADER}
-    ${SETTINGS_YANDEX_PLAYLISTS_HANDLER_SCHEMA_HEADER}
-    ${SETTINGS_YANDEX_IMPORT_HANDLER_SCHEMA_HEADER}
     ${GRAPH_HANDLER_SCHEMA_HEADER}
     ${GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER}
     ${PATH_HANDLER_SCHEMA_HEADER}

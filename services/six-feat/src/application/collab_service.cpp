@@ -53,6 +53,7 @@ CollabService::CollabService(const components::ComponentConfig& config,
     : ComponentBase(config, context),
       repo_(context.FindComponent<ArtistRepository>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
+      yandex_(context.FindComponent<YandexGatewayClient>()),
       chain_(context.FindComponent<MusicSourceProviderChain>()),
       enrichment_(context.FindComponent<EnrichmentClient>()),
       fg_fanout_(context.FindComponent<FgFanoutLimiter>()),
@@ -72,6 +73,19 @@ std::optional<ArtistRef> CollabService::ResolveById(std::int64_t id,
 
 std::variant<ArtistRef, AmbiguousResult> CollabService::ResolveByName(
     const std::string& query, const std::string& user_token) const {
+  if (user_token.empty()) {
+    const auto candidates = yandex_.SearchArtist(query);
+    if (candidates.empty()) {
+      AmbiguousResult ar;
+      ar.query = query;
+      return ar;
+    }
+    const auto& best = candidates.front();
+    return ArtistRef{NamespacedYandexArtistId(best.yandex_id),
+                     best.name,
+                     best.image,
+                     "https://music.yandex.ru/artist/" + std::to_string(best.yandex_id)};
+  }
   return ResolveArtistByName(gateway_, query, user_token);
 }
 
@@ -126,9 +140,8 @@ ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
       }
     }
   }
-  // [SF-YM-08] Без токена дообогатить всё равно нечем (см. graph_handler.cpp
-  // seed_fully_cached) — не тратим внутренний запрос к enrichment впустую.
-  if (!user_token.empty() && enrichment_enabled) {
+
+  if (enrichment_enabled) {
     enrichment_.EnqueueIfNeeded(seed, user_token, preferred_provider);
   }
   return std::move(result.data);

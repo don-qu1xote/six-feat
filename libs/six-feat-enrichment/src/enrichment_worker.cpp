@@ -137,12 +137,6 @@ bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref,
                                        const std::string& preferred_provider) {
   if (repo_.GetFetchDepth(ref.id) >= Depth::kFull) return false;
 
-  if (user_token.empty()) {
-    LOG_WARNING() << "[EnrichmentWorker] refusing to enqueue artist " << ref.id
-                  << " — no user token available";
-    return false;
-  }
-
   {
     std::unique_lock lock(pending_mu_);
     if (pending_.count(ref.id)) {

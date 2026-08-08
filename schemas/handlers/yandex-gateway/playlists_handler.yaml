@@ -1,4 +1,0 @@
-type: object
-description: Internal Yandex Music personal playlists endpoint (personal-token mode, prep for SF-YM-04)
-additionalProperties: false
-properties: {}

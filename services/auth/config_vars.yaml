@@ -1,11 +1,5 @@
 
 genius_client_id: CHANGEME_set_GENIUS_CLIENT_ID
 genius_redirect_uri: http://localhost:8083/auth/callback
-# Яндекс-вход опционален: пустые значения → компонент деградирует (503).
-yandex_oauth_client_id: ''
-yandex_oauth_redirect_uri: http://localhost:8083/auth/yandex/callback
-yandex_oauth_scope: 'login:info music:api-public'
-yandex_oauth_base_url: https://oauth.yandex.ru
-yandex_login_base_url: https://login.yandex.ru
 cookie_secure: false
 logging_level: info

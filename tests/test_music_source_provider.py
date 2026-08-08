@@ -12,6 +12,14 @@ from conftest import (
 
 INTERNAL_SECRET_HEADER = "X-Internal-Secret"
 
+# [SF-ARCH-04] Mirrors NamespacedYandexArtistId — a Yandex co-artist is no
+# longer cross-resolved to a Genius id, it IS this id.
+_YANDEX_ARTIST_ID_OFFSET = 1 << 62
+
+
+def _namespaced_yandex_artist_id(yandex_id: int) -> int:
+    return _YANDEX_ARTIST_ID_OFFSET | yandex_id
+
 
 def _post(
     path: str,
@@ -30,6 +38,10 @@ def _edges(resp: requests.Response) -> list:
 
 
 class TestYandexDefaultProvider:
+    """[SF-ARCH-04] Co-artists are namespaced Yandex ids now, never
+    cross-resolved against Genius — no genius_mock.resolve call backs any
+    of these co-artists, and they still show up."""
+
     def test_track_with_three_plus_artists_yields_feature_edges(
         self, service_proc, yandex_mock, genius_mock
     ):
@@ -43,8 +55,6 @@ class TestYandexDefaultProvider:
                 {"id": 5003, "name": "Co Artist B"},
             ],
         )
-        genius_mock.resolve("Co Artist A", [{"id": 9002, "name": "Co Artist A", "score": 0.95}])
-        genius_mock.resolve("Co Artist B", [{"id": 9003, "name": "Co Artist B", "score": 0.95}])
 
         resp = _post(
             "/internal/music-source/collaboration-edges",
@@ -58,7 +68,10 @@ class TestYandexDefaultProvider:
             assert e["from"] == 9001
             assert e["source"] == "yandex_feature"
             assert e["role"] == "featured"
-        assert {e["to"] for e in edges} == {9002, 9003}
+        assert {e["to"] for e in edges} == {
+            _namespaced_yandex_artist_id(5002),
+            _namespaced_yandex_artist_id(5003),
+        }
 
     def test_seed_not_found_on_yandex_is_empty_not_an_error(
         self, service_proc, yandex_mock, genius_mock
@@ -174,8 +187,19 @@ class TestGeniusFallback:
         assert healthz.status_code == 200
 
 
-class TestHonestNotFound:
-    def test_unresolvable_co_artist_edge_is_omitted(self, service_proc, yandex_mock, genius_mock):
+class TestNoCoArtistIsEverDropped:
+    """[SF-ARCH-04] Before namespaced Yandex artist ids, a co-artist Genius
+    didn't recognise (or matched with low confidence) was silently dropped
+    from the graph — a real loss given Yandex's CIS-scene catalogue is
+    broader than Genius's. There is no resolution step to fail anymore, so
+    both of those old scenarios now produce a real edge instead of nothing.
+    (Formerly TestHonestNotFound.test_unresolvable_co_artist_edge_is_omitted
+    and test_low_confidence_match_is_also_omitted — same fixtures, inverted
+    assertion.)"""
+
+    def test_artist_genius_would_never_have_matched_still_yields_an_edge(
+        self, service_proc, yandex_mock, genius_mock
+    ):
         yandex_mock.search_artist("Ghost Seed", [{"id": 5201, "name": "Ghost Seed"}])
         yandex_mock.artist_tracks(5201, [7201])
         yandex_mock.track_artists(
@@ -194,10 +218,13 @@ class TestHonestNotFound:
 
         assert resp.status_code == 200
         edges = _edges(resp)
-        assert edges == []
-        assert all(e["to"] != 0 for e in edges)
+        assert len(edges) == 1
+        assert edges[0]["to"] == _namespaced_yandex_artist_id(5202)
+        assert edges[0]["source"] == "yandex_feature"
 
-    def test_low_confidence_match_is_also_omitted(self, service_proc, yandex_mock, genius_mock):
+    def test_low_confidence_genius_match_still_yields_an_edge(
+        self, service_proc, yandex_mock, genius_mock
+    ):
         yandex_mock.search_artist("Fuzzy Seed", [{"id": 5301, "name": "Fuzzy Seed"}])
         yandex_mock.artist_tracks(5301, [7301])
         yandex_mock.track_artists(
@@ -218,4 +245,6 @@ class TestHonestNotFound:
         )
 
         assert resp.status_code == 200
-        assert _edges(resp) == []
+        edges = _edges(resp)
+        assert len(edges) == 1
+        assert edges[0]["to"] == _namespaced_yandex_artist_id(5302)

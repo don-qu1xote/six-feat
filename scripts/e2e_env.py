@@ -123,8 +123,7 @@ components_manager:
       timeout-ms: 5000
       tracks-limit: 10
 
-    yandex-music-source-provider:
-      match-threshold: 0.75
+    yandex-music-source-provider: {{}}
 
     genius-music-source-provider: {{}}
 
@@ -258,24 +257,9 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
-    handler-settings-yandex-device-start:
-      path: /api/v1/settings/yandex/device/start
-      method: POST
-      task_processor: main-task-processor
-
-    handler-settings-yandex-device-poll:
-      path: /api/v1/settings/yandex/device/poll
-      method: POST
-      task_processor: main-task-processor
-
-    handler-settings-yandex-playlists:
-      path: /api/v1/settings/yandex/playlists
-      method: GET
-      task_processor: main-task-processor
-
     handler-settings-yandex-import:
       path: /api/v1/settings/yandex/import
-      method: GET
+      method: POST
       task_processor: main-task-processor
 
     handler-settings-enrichment-provider:

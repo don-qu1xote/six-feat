@@ -80,8 +80,7 @@ components_manager:
       timeout-ms: 5000
       tracks-limit: 20
 
-    yandex-music-source-provider:
-      match-threshold: 0.75
+    yandex-music-source-provider: {}
 
     genius-music-source-provider: {}
 

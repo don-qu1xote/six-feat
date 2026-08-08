@@ -28,6 +28,8 @@ yaml_config::Schema GeniusMusicSourceProvider::GetStaticConfigSchema() {
 
 std::vector<ProviderEdge> GeniusMusicSourceProvider::GetCollaborationEdges(
     const ArtistRef& seed, const std::string& user_token) const {
+  if (user_token.empty()) return {};
+
   const auto song_ids =
       genius_.FetchSongList(seed.id, genius_.SongsLimitFg(), Lane::kForeground, user_token);
 
@@ -55,6 +57,8 @@ ArtistSongs GeniusMusicSourceProvider::GetArtistSongs(const ArtistRef& seed,
                                                       int songs_limit,
                                                       Lane lane,
                                                       const std::string& user_token) const {
+  if (user_token.empty()) return ArtistSongs{seed, {}};
+
   const int limit = songs_limit > 0 ? songs_limit : genius_.SongsLimitFg();
   const auto song_ids = genius_.FetchSongList(seed.id, limit, lane, user_token);
 

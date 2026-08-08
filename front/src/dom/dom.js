@@ -45,11 +45,9 @@ export const els = {
   heroModeTabExplore: $("hero-mode-tab-explore"),
   heroModeTabConnect: $("hero-mode-tab-connect"),
   heroModeTabGame: $("hero-mode-tab-game"),
-  heroModeTabPlaylists: $("hero-mode-tab-playlists"),
   heroModePanelExplore: $("hero-mode-panel-explore"),
   heroModePanelConnect: $("hero-mode-panel-connect"),
   heroModePanelGame: $("hero-mode-panel-game"),
-  heroModePanelPlaylists: $("hero-mode-panel-playlists"),
 
   heroPathFromInput: $("hero-path-from-input"),
   heroPathToInput: $("hero-path-to-input"),
@@ -258,16 +256,6 @@ export const els = {
   settingsGeniusInput: $("settings-genius-input"),
   settingsGeniusConnectBtn: $("settings-genius-connect-btn"),
   settingsGeniusDisconnectBtn: $("settings-genius-disconnect-btn"),
-  settingsGeniusLinkBtn: $("settings-genius-link-btn"),
   settingsGeniusStatus: $("settings-genius-status"),
   settingsEnrichmentToggle: $("settings-enrichment-toggle"),
-
-  playlistsConnectHint: $("playlists-connect-hint"),
-  playlistsGrantHint: $("playlists-grant-hint"),
-  playlistsGrantBtn: $("playlists-grant-btn"),
-  playlistsDeviceCode: $("playlists-device-code"),
-  playlistsGrid: $("playlists-grid"),
-  playlistsArtistSection: $("playlists-artist-section"),
-  playlistsTruncatedHint: $("playlists-truncated-hint"),
-  playlistsArtistGrid: $("playlists-artist-grid"),
 };

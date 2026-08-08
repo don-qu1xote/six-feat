@@ -70,6 +70,21 @@ class TestTrackArtistsContract:
         assert resp.status_code == 200
         assert resp.json()["found"] is True
 
+    def test_cover_uri_size_placeholder_is_substituted(self, yandex_gateway_proc, yandex_mock):
+        """[SF-API-19] The real Yandex Music API hands back cover.uri ending in
+        a literal "%%" size placeholder — used as-is it 404s against
+        avatars.yandex.net, so the gateway must substitute a concrete size."""
+        templated_uri = "https://avatars.yandex.net/get-music-content/123/%%"
+        yandex_mock.track_artists(
+            104,
+            [{"id": 5, "name": "Templated Cover", "image": templated_uri}],
+        )
+        resp = _post("/internal/yandex/track-artists", {"track_id": 104})
+        assert resp.status_code == 200
+        image = resp.json()["artists"][0]["image"]
+        assert "%%" not in image
+        assert image == "https://avatars.yandex.net/get-music-content/123/200x200"
+
     def test_wrong_secret_is_unauthorized(self, yandex_gateway_proc):
         resp = _post(
             "/internal/yandex/track-artists", {"track_id": 1}, secret="not-the-real-secret"
@@ -142,130 +157,6 @@ class TestArtistTracksContract:
         resp = _post("/internal/yandex/artist-tracks", {"artist_id": 503})
         assert resp.status_code in (502, 503, 504)
         assert "error" in resp.json()
-
-
-class TestDeviceFlowContract:
-    def test_device_start_returns_device_and_user_code(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.device_code(
-            {
-                "device_code": "dc-123",
-                "user_code": "AB12-CD34",
-                "verification_url": "https://oauth.yandex.ru/device",
-                "interval": 5,
-                "expires_in": 600,
-            }
-        )
-
-        resp = _post("/internal/yandex/device/start", {})
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["device_code"] == "dc-123"
-        assert body["user_code"] == "AB12-CD34"
-        assert body["verification_url"] == "https://oauth.yandex.ru/device"
-        assert body["interval"] == 5
-        assert body["expires_in"] == 600
-
-    def test_device_start_wrong_secret_is_unauthorized(self, yandex_gateway_proc):
-        resp = _post("/internal/yandex/device/start", {}, secret="not-the-real-secret")
-        assert resp.status_code == 401
-
-    def test_poll_pending_before_user_confirms(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.token_pending("dc-pending")
-        resp = _post("/internal/yandex/device/poll", {"device_code": "dc-pending"})
-        assert resp.status_code == 200
-        assert resp.json() == {"status": "pending"}
-
-    def test_poll_success_exchanges_device_code_for_token(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.token_success(
-            "dc-ready", "personal-access-tok-1", refresh_token="refresh-tok-1"
-        )
-
-        resp = _post("/internal/yandex/device/poll", {"device_code": "dc-ready"})
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["status"] == "success"
-        assert body["access_token"] == "personal-access-tok-1"
-        assert body["refresh_token"] == "refresh-tok-1"
-        assert body["expires_in"] == 3600
-
-    def test_poll_denied(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.token_denied("dc-denied")
-        resp = _post("/internal/yandex/device/poll", {"device_code": "dc-denied"})
-        assert resp.status_code == 200
-        assert resp.json() == {"status": "denied"}
-
-    def test_poll_missing_device_code_is_bad_request(self, yandex_gateway_proc):
-        resp = _post("/internal/yandex/device/poll", {})
-        assert resp.status_code == 400
-
-    def test_poll_wrong_secret_is_unauthorized(self, yandex_gateway_proc):
-        resp = _post(
-            "/internal/yandex/device/poll",
-            {"device_code": "dc-1"},
-            secret="not-the-real-secret",
-        )
-        assert resp.status_code == 401
-
-
-class TestPlaylistsAndLikedTracksContract:
-    def test_playlists_returns_mock_data(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.playlists(
-            "12345",
-            [{"id": 1, "title": "My Playlist", "track_count": 10}],
-        )
-        resp = _post(
-            "/internal/yandex/playlists",
-            {"token": "personal-tok", "user_id": "12345"},
-        )
-        assert resp.status_code == 200
-        assert resp.json() == {"playlists": [{"id": 1, "title": "My Playlist", "track_count": 10}]}
-
-    def test_playlists_missing_fields_is_bad_request(self, yandex_gateway_proc):
-        resp = _post("/internal/yandex/playlists", {"token": "x"})
-        assert resp.status_code == 400
-
-    def test_liked_tracks_returns_mock_data(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.liked_tracks("12345", [111, 222, 333])
-        resp = _post(
-            "/internal/yandex/liked-tracks",
-            {"token": "personal-tok", "user_id": "12345"},
-        )
-        assert resp.status_code == 200
-        assert resp.json() == {"track_ids": [111, 222, 333]}
-
-    def test_liked_tracks_missing_fields_is_bad_request(self, yandex_gateway_proc):
-        resp = _post("/internal/yandex/liked-tracks", {"user_id": "12345"})
-        assert resp.status_code == 400
-
-    def test_playlist_tracks_returns_mock_data(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.playlist_tracks("12345", 7, [111, 222])
-        resp = _post(
-            "/internal/yandex/playlist-tracks",
-            {"token": "personal-tok", "user_id": "12345", "playlist_id": 7},
-        )
-        assert resp.status_code == 200
-        assert resp.json() == {"track_ids": [111, 222]}
-
-    def test_playlist_tracks_missing_fields_is_bad_request(self, yandex_gateway_proc):
-        resp = _post("/internal/yandex/playlist-tracks", {"token": "x", "user_id": "12345"})
-        assert resp.status_code == 400
-
-    def test_account_returns_mock_uid(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.account("98765")
-        resp = _post("/internal/yandex/account", {"token": "personal-tok"})
-        assert resp.status_code == 200
-        assert resp.json() == {"found": True, "user_id": "98765"}
-
-    def test_account_missing_token_is_bad_request(self, yandex_gateway_proc):
-        resp = _post("/internal/yandex/account", {})
-        assert resp.status_code == 400
-
-    def test_account_upstream_error_is_propagated(self, yandex_gateway_proc, yandex_mock):
-        yandex_mock.account_error(503)
-        resp = _post("/internal/yandex/account", {"token": "personal-tok"})
-        assert resp.status_code == 503
 
 
 class TestUpstreamUnavailable:

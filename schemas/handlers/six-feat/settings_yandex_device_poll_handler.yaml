@@ -1,4 +1,0 @@
-type: object
-description: Yandex personal-account device-flow poll handler configuration (SF-YM-02). Session-authenticated only.
-additionalProperties: false
-properties: {}

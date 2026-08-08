@@ -98,7 +98,7 @@ describe("[SF-WEB-31 follow-up] landing drops explanatory prose for a logo mark"
   it("trims the auth hint down to the sign-in action, dropping the trailing explanatory clause", () => {
     expect(html).not.toContain("account to start exploring");
     expect(html).toContain(">Sign in with<");
-    expect(html).toContain('href="/auth/yandex/login"');
+    expect(html).toContain('href="/auth/login"');
   });
 });
 

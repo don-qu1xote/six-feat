@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-core/lane.hpp>
 
 namespace six_feat {
@@ -24,6 +25,8 @@ std::optional<ArtistRef> ResolveArtistById(IArtistDataSource& repo,
                                            std::int64_t id,
                                            const std::string& user_token) {
   if (auto ref = repo.Lookup(id)) return ref;
+
+  if (IsYandexArtistId(id)) return std::nullopt;
   return gateway.FetchArtistById(id, Lane::kForeground, user_token);
 }
 

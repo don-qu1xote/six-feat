@@ -162,10 +162,6 @@
   display: flex;
   position: relative;
 
-  /* [SF-WEB-92] 440px оставлял «Плейлисты» лишь 60px при строгих 25% на
-     вкладку (см. .hero-mode-tab) — не хватало 26px против реальных 86px
-     текста. 560px даёт каждой вкладке достаточно места под самую длинную
-     подпись целиком, без обрезки. */
   width: min(560px, 92vw);
   margin: 0 auto;
   border: 1px solid var(--line);
@@ -176,12 +172,12 @@
 .hero-mode-tab {
   position: relative;
   z-index: 1;
-  /* [SF-WEB-92] Ровно четверть каждая — flex:1 давал выбранной вкладке
-     (её подпись расширяется до max-width:110px ниже) стать шире 25% для
-     длинных подписей (RU «Плейлисты»), сжимая соседей неравномерно — из-за
-     этого заливка .hero-mode-thumb (фиксированные 25%/шаг) переставала
-     совпадать с реальными границами вкладок. */
-  flex: 0 0 25%;
+  /* [SF-WEB-92] Ровно треть каждая — flex:1 давал выбранной вкладке
+     (её подпись расширяется до max-width:110px ниже) стать шире трети для
+     длинных подписей, сжимая соседей неравномерно — из-за этого заливка
+     .hero-mode-thumb (фиксированные 33.3334%/шаг) переставала совпадать с
+     реальными границами вкладок. */
+  flex: 0 0 33.3334%;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -219,8 +215,15 @@
   max-width: 0;
   margin-left: 0;
   overflow: hidden;
-  /* [SF-WEB-92] Запасной вариант на узких экранах (92vw ниже 560px) — троеточие вместо обрезки слова без предупреждения. */
-  text-overflow: ellipsis;
+  /* [visual bug fix] ellipsis здесь конфликтовал с самой анимацией
+     max-width: пока подпись растёт от 0 до 110px, содержимое почти всегда
+     шире бокса, так что браузер всё время рисовал «G..»/«Gam…» вместо
+     плавного проявления текста — читалось как «кривая» кнопка на
+     переключении вкладки. Троеточие остаётся нужным ТОЛЬКО как статичный
+     запасной вариант на узких экранах (92vw ниже 560px, см. медиа-запрос
+     ниже) — там подпись может не влезать даже в состоянии покоя. Во время
+     самой transition — clip: обрезка без точек не мигает. */
+  text-overflow: clip;
   opacity: 0;
   white-space: nowrap;
   transition:
@@ -245,7 +248,7 @@
   top: 3px;
   left: 3px;
   bottom: 3px;
-  width: calc(25% - 1.5px);
+  width: calc(33.3334% - 1.5px);
   border-radius: 999px;
   background: linear-gradient(100deg, var(--signal), var(--pulse));
 
@@ -257,9 +260,6 @@
 }
 .hero-mode-switch[data-mode="game"] .hero-mode-thumb {
   transform: translateX(200%);
-}
-.hero-mode-switch[data-mode="playlists"] .hero-mode-thumb {
-  transform: translateX(300%);
 }
 
 .hero-mode-stage {
@@ -325,8 +325,7 @@
    до содержимого: ряд кнопок выходил шире полей, к которым он относится. */
 
 .hero-connect-panel,
-.hero-game-panel,
-.hero-playlists-panel {
+.hero-game-panel {
   width: 100%;
   text-align: left;
   align-items: stretch;
@@ -455,6 +454,14 @@
   }
   .hero-connect-actions .hero-connect-run {
     flex: 1 1 100%;
+  }
+
+  /* [SF-WEB-92] Запасной вариант на узких экранах (92vw ниже 560px) —
+     троеточие вместо обрезки слова без предупреждения. Только здесь, в
+     состоянии покоя — см. .hero-mode-tab span выше про конфликт с
+     transition. */
+  .hero-mode-tab span {
+    text-overflow: ellipsis;
   }
 }
 

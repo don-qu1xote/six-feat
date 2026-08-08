@@ -28,9 +28,11 @@ using namespace userver;
 
 namespace {
 
-constexpr std::array<std::string_view, 2> kDefaultAllowedImageHosts = {
+constexpr std::array<std::string_view, 3> kDefaultAllowedImageHosts = {
     "images.genius.com",
     "assets.genius.com",
+
+    "avatars.yandex.net",
 };
 
 std::string ToLower(std::string s) {

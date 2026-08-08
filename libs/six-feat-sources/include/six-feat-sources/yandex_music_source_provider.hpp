@@ -1,8 +1,6 @@
 #pragma once
 
-#include <optional>
 #include <six-feat-common/music_source_provider.hpp>
-#include <six-feat-genius/i_external_artist_lookup.hpp>
 #include <six-feat-yandex/yandex_gateway_client.hpp>
 #include <string>
 #include <string_view>
@@ -36,13 +34,7 @@ class YandexMusicSourceProvider final : public userver::components::ComponentBas
                              const std::string& user_token) const override;
 
  private:
-  std::optional<ArtistRef> ResolveToGeniusArtist(const std::string& yandex_name,
-                                                 std::int64_t seed_id,
-                                                 const std::string& user_token) const;
-
   YandexGatewayClient& yandex_;
-  IExternalArtistLookup& genius_lookup_;
-  const double match_threshold_;
 };
 
 }  // namespace six_feat

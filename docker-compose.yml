@@ -313,11 +313,6 @@ services:
       # oauth_handler.cpp's RelayGeniusLink().
       SIX_FEAT_BASE_URL: ${SIX_FEAT_BASE_URL:-http://six-feat:8080}
 
-      # Пустой client-id отключает Яндекс-вход без ошибки
-      YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
-      YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
-      YANDEX_OAUTH_REDIRECT_URI: ${YANDEX_OAUTH_REDIRECT_URI:-http://localhost:8080/auth/yandex/callback}
-      YANDEX_OAUTH_SCOPE: ${YANDEX_OAUTH_SCOPE:-login:info music:api-public}
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       ENV_PROFILE: ${ENV_PROFILE:-dev}
@@ -389,8 +384,6 @@ services:
       - ./config/profiles:/app/config/profiles:ro
     environment:
       YANDEX_SERVICE_TOKEN: "${YANDEX_SERVICE_TOKEN:?Set YANDEX_SERVICE_TOKEN — single Yandex Music OAuth token, NOT per-user}"
-      YANDEX_DEVICE_CLIENT_ID: ${YANDEX_DEVICE_CLIENT_ID:-}
-      YANDEX_DEVICE_CLIENT_SECRET: ${YANDEX_DEVICE_CLIENT_SECRET:-}
       ENRICHMENT_INTERNAL_SECRET: "${ENRICHMENT_INTERNAL_SECRET:?Set ENRICHMENT_INTERNAL_SECRET — generate with: openssl rand -hex 32}"
       LOGGING_LEVEL: ${LOGGING_LEVEL:-}
       ENV_PROFILE: ${ENV_PROFILE:-dev}

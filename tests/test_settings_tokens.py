@@ -6,20 +6,11 @@ import psycopg2
 import requests
 
 import session_crypto
-from conftest import (
-    AUTH_SERVICE_BASE,
-    DB_CONN_PARAMS,
-    SERVICE_BASE,
-    TEST_APP_SECRET,
-    GeniusMock,
-    YandexMock,
-)
+from conftest import AUTH_SERVICE_BASE, DB_CONN_PARAMS, SERVICE_BASE, TEST_APP_SECRET, GeniusMock
 
 SETTINGS_STATUS_URL = f"{SERVICE_BASE}/api/v1/settings/providers"
 SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
 SETTINGS_DISCONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/disconnect"
-SETTINGS_YANDEX_DEVICE_START_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/start"
-SETTINGS_YANDEX_DEVICE_POLL_URL = f"{SERVICE_BASE}/api/v1/settings/yandex/device/poll"
 SETTINGS_ENRICHMENT_PROVIDER_URL = f"{SERVICE_BASE}/api/v1/settings/enrichment-provider"
 SETTINGS_ENRICHMENT_ENABLED_URL = f"{SERVICE_BASE}/api/v1/settings/enrichment-enabled"
 SETTINGS_GENIUS_LINK_START_URL = f"{SERVICE_BASE}/api/v1/settings/genius/link/start"
@@ -50,34 +41,10 @@ def _fetch_encrypted_token(user_id: int, provider: str):
         conn.close()
 
 
-def _all_connected_user_ids(provider: str):
-    conn = psycopg2.connect(**DB_CONN_PARAMS)
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT user_id FROM user_provider_tokens WHERE provider = %s", (provider,))
-            return {row[0] for row in cur.fetchall()}
-    finally:
-        conn.close()
-
-
 def _session_for(name: str) -> requests.Session:
     sess = requests.Session()
     sess.headers["Accept"] = "application/json"
     cookie = session_crypto.make_cookie(TEST_APP_SECRET, access_token=f"tok-{name}", name=name)
-    sess.cookies.update({"six_feat_session": cookie})
-    return sess
-
-
-def _yandex_login_session(name: str) -> requests.Session:
-    sess = requests.Session()
-    sess.headers["Accept"] = "application/json"
-    cookie = session_crypto.make_cookie(
-        TEST_APP_SECRET,
-        access_token=f"yandex-tok-{name}",
-        name=name,
-        provider="yandex",
-        provider_user_id=f"yandex-uid-{uuid.uuid4().hex}",
-    )
     sess.cookies.update({"six_feat_session": cookie})
     return sess
 
@@ -96,58 +63,6 @@ class TestBothProviderTokensEncryptAndDecryptCorrectly:
         decrypted = session_crypto.decrypt(encrypted, key)
         assert decrypted is not None
         assert decrypted.access_token == raw_token
-
-    def test_yandex_token_round_trips_via_device_flow(
-        self, client: requests.Session, yandex_mock: YandexMock
-    ):
-        device_code = f"dc-{uuid.uuid4().hex}"
-        raw_access_token = f"yandex-personal-{uuid.uuid4().hex}"
-        yandex_mock.device_code(
-            {
-                "device_code": device_code,
-                "user_code": "AB12CD",
-                "verification_url": "https://oauth.yandex.ru/device",
-                "interval": 1,
-                "expires_in": 600,
-            }
-        )
-
-        start_resp = client.post(SETTINGS_YANDEX_DEVICE_START_URL)
-        assert start_resp.status_code == 200, start_resp.text
-        assert start_resp.json()["device_code"] == device_code
-
-        yandex_mock.token_success(device_code, raw_access_token)
-        poll_resp = client.post(SETTINGS_YANDEX_DEVICE_POLL_URL, json={"device_code": device_code})
-        assert poll_resp.status_code == 200, poll_resp.text
-        assert poll_resp.json()["status"] == "connected"
-
-        encrypted = _fetch_encrypted_token(_stable_user_id("Test User"), "yandex")
-        assert encrypted is not None
-
-        key = session_crypto.key_from_secret(TEST_APP_SECRET)
-        decrypted = session_crypto.decrypt(encrypted, key)
-        assert decrypted is not None
-        assert decrypted.access_token == raw_access_token
-
-    def test_yandex_poll_pending_does_not_connect_anything(
-        self, client: requests.Session, yandex_mock: YandexMock
-    ):
-        device_code = f"dc-{uuid.uuid4().hex}"
-        yandex_mock.device_code(
-            {
-                "device_code": device_code,
-                "user_code": "PEND01",
-                "verification_url": "https://oauth.yandex.ru/device",
-                "interval": 1,
-                "expires_in": 600,
-            }
-        )
-        client.post(SETTINGS_YANDEX_DEVICE_START_URL)
-
-        yandex_mock.token_pending(device_code)
-        poll_resp = client.post(SETTINGS_YANDEX_DEVICE_POLL_URL, json={"device_code": device_code})
-        assert poll_resp.status_code == 200
-        assert poll_resp.json()["status"] == "pending"
 
 
 class TestGeniusTokenAvailableImmediatelyNoExtraFlag:
@@ -192,68 +107,6 @@ class TestGeniusTokenAvailableImmediatelyNoExtraFlag:
         assert second.status_code == 404
 
 
-class TestYandexPersonalTokenIsolation:
-    def test_connected_token_never_appears_under_a_different_user(
-        self, client: requests.Session, yandex_mock: YandexMock
-    ):
-        other_name = f"Other User {uuid.uuid4().hex}"
-        other = _session_for(other_name)
-
-        device_code = f"dc-{uuid.uuid4().hex}"
-        yandex_mock.device_code(
-            {
-                "device_code": device_code,
-                "user_code": "ISO001",
-                "verification_url": "https://oauth.yandex.ru/device",
-                "interval": 1,
-                "expires_in": 600,
-            }
-        )
-        client.post(SETTINGS_YANDEX_DEVICE_START_URL)
-        yandex_mock.token_success(device_code, f"yandex-personal-{uuid.uuid4().hex}")
-        poll_resp = client.post(SETTINGS_YANDEX_DEVICE_POLL_URL, json={"device_code": device_code})
-        assert poll_resp.json()["status"] == "connected"
-
-        connected_ids = _all_connected_user_ids("yandex")
-        assert _stable_user_id("Test User") in connected_ids
-        assert _stable_user_id(other_name) not in connected_ids
-
-        other_status = other.get(SETTINGS_STATUS_URL)
-        assert other_status.status_code == 200
-        assert other_status.json()["yandex"]["connected"] is False
-
-    def test_default_graph_unaffected_for_a_user_who_never_connected_yandex(
-        self,
-        client: requests.Session,
-        genius_mock: GeniusMock,
-        yandex_mock: YandexMock,
-        unique_artist_id: int,
-    ):
-
-        device_code = f"dc-{uuid.uuid4().hex}"
-        yandex_mock.device_code(
-            {
-                "device_code": device_code,
-                "user_code": "ISO002",
-                "verification_url": "https://oauth.yandex.ru/device",
-                "interval": 1,
-                "expires_in": 600,
-            }
-        )
-        client.post(SETTINGS_YANDEX_DEVICE_START_URL)
-        yandex_mock.token_success(device_code, f"yandex-personal-{uuid.uuid4().hex}")
-        client.post(SETTINGS_YANDEX_DEVICE_POLL_URL, json={"device_code": device_code})
-
-        other = _session_for(f"Bystander {uuid.uuid4().hex}")
-        name = f"BystanderArtist{unique_artist_id}"
-        genius_mock.resolve(name, [{"id": unique_artist_id, "name": name, "score": 0.99}])
-        genius_mock.songs(unique_artist_id, [])
-
-        resp = other.get(GRAPH_URL, params={"artist": name})
-        assert resp.status_code == 200
-        assert resp.json()["type"] == "graph"
-
-
 class TestSettingsRequireSession:
     def test_status_requires_session(self, anon_client: requests.Session):
         resp = anon_client.get(SETTINGS_STATUS_URL)
@@ -263,21 +116,12 @@ class TestSettingsRequireSession:
         resp = anon_client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": "whatever"})
         assert resp.status_code == 401
 
-    def test_yandex_device_start_requires_session(self, anon_client: requests.Session):
-        resp = anon_client.post(SETTINGS_YANDEX_DEVICE_START_URL)
-        assert resp.status_code == 401
-
     def test_enrichment_provider_patch_requires_session(self, anon_client: requests.Session):
         resp = anon_client.patch(SETTINGS_ENRICHMENT_PROVIDER_URL, json={"provider": "genius"})
         assert resp.status_code == 401
 
 
 class TestGeniusAccountLinkFlow:
-    def test_status_reports_link_enabled(self, client: requests.Session):
-        resp = client.get(SETTINGS_STATUS_URL)
-        assert resp.status_code == 200
-        assert resp.json()["genius"]["link_enabled"] is True
-
     def test_link_start_requires_session(self, anon_client: requests.Session):
         resp = anon_client.get(SETTINGS_GENIUS_LINK_START_URL, allow_redirects=False)
         assert resp.status_code == 302
@@ -410,7 +254,6 @@ class TestPreferredEnrichmentProvider:
         after = client.get(SETTINGS_STATUS_URL).json()
 
         assert after["genius"]["connected"] == before["genius"]["connected"]
-        assert after["yandex"]["connected"] == before["yandex"]["connected"]
 
 
 class TestEnrichmentEnabledToggle:
@@ -460,26 +303,3 @@ class TestEnrichmentEnabledToggle:
     def test_anonymous_is_unauthorized(self, anon_client: requests.Session):
         resp = anon_client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={"enabled": False})
         assert resp.status_code == 401
-
-
-class TestYandexConnectedReflectsSessionProvider:
-    """[SF-WEB-81] Signing in with Yandex already carries a usable Yandex
-    token (see YandexTokenForSession) — "connected" no longer requires the
-    separate device-flow connect step for a session that is itself a Yandex
-    login."""
-
-    def test_yandex_login_session_reports_connected_without_ever_running_device_flow(self):
-        sess = _yandex_login_session(f"Yandex Login {uuid.uuid4().hex}")
-        resp = sess.get(SETTINGS_STATUS_URL)
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["yandex"]["connected"] is True
-
-    def test_genius_login_session_without_device_flow_reports_not_connected(
-        self, client: requests.Session
-    ):
-
-        client.post(SETTINGS_DISCONNECT_URL, params={"provider": "yandex"})
-
-        resp = client.get(SETTINGS_STATUS_URL)
-        assert resp.status_code == 200
-        assert resp.json()["yandex"]["connected"] is False

@@ -17,9 +17,7 @@ using namespace userver;
 
 ReadinessHandler::ReadinessHandler(const components::ComponentConfig& config,
                                    const components::ComponentContext& context)
-    : HttpHandlerBase(config, context),
-      gateway_(context.FindComponent<YandexMusicGateway>()),
-      device_client_(context.FindComponent<YandexDeviceAuthClient>()) {}
+    : HttpHandlerBase(config, context), gateway_(context.FindComponent<YandexMusicGateway>()) {}
 
 std::string ReadinessHandler::HandleRequestThrow(const server::http::HttpRequest& request,
                                                  server::request::RequestContext&) const {
@@ -27,15 +25,11 @@ std::string ReadinessHandler::HandleRequestThrow(const server::http::HttpRequest
   ApplySecurityHeaders(request);
 
   const auto music_cb = gateway_.CbState();
-  const auto device_cb = device_client_.CbState();
 
   const std::vector<ReadinessCheck> checks{
       {"circuit_breaker_music",
        music_cb == CircuitBreaker::State::kClosed,
        CircuitBreaker::ToString(music_cb)},
-      {"circuit_breaker_device_auth",
-       device_cb == CircuitBreaker::State::kClosed,
-       CircuitBreaker::ToString(device_cb)},
   };
 
   return BuildReadinessBody(request, checks);

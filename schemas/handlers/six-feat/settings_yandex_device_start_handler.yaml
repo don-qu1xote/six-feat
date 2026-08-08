@@ -1,4 +1,0 @@
-type: object
-description: Yandex personal-account device-flow start handler configuration (SF-YM-02). Session-authenticated only.
-additionalProperties: false
-properties: {}

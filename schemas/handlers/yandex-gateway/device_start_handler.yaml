@@ -1,4 +1,0 @@
-type: object
-description: Internal Yandex OAuth device-flow start endpoint (requests a device/user code pair)
-additionalProperties: false
-properties: {}

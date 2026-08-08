@@ -51,8 +51,7 @@ function renderSettingsMarkup() {
         <div class="settings-card-title">
           Genius <span class="settings-card-sub">(find more connections)</span>
         </div>
-        <p class="settings-card-hint">Optional — finds extra connections beyond Yandex.</p>
-        <a id="settings-genius-link-btn">Sign in with Genius</a>
+        <p class="settings-card-hint">Optional — you're already signed in with Genius; connect a different token here only if you want deepen to use one with different scopes/quota.</p>
         <button id="settings-genius-disconnect-btn" hidden></button>
         <div id="settings-genius-status">Not connected</div>
         <input id="settings-genius-input" type="password" />
@@ -78,7 +77,6 @@ function renderSettingsMarkup() {
   els.settingsGeniusInput = document.getElementById("settings-genius-input");
   els.settingsGeniusConnectBtn = document.getElementById("settings-genius-connect-btn");
   els.settingsGeniusDisconnectBtn = document.getElementById("settings-genius-disconnect-btn");
-  els.settingsGeniusLinkBtn = document.getElementById("settings-genius-link-btn");
   els.settingsGeniusStatus = document.getElementById("settings-genius-status");
   els.settingsEnrichmentToggle = document.getElementById("settings-enrichment-toggle");
 }
@@ -105,64 +103,12 @@ describe("[SF-YM-02] Settings panel renders the Genius card with the right expla
     expect(title).toMatch(/find more connections/i);
   });
 
-  it("the Genius card's hint frames it as optional, not the default background enrichment", () => {
+  it("the Genius card's hint frames the manual-token field as optional, not required", () => {
     const hint = document
       .getElementById("settings-genius-connect-btn")
       .closest(".settings-card")
       .querySelector(".settings-card-hint").textContent;
     expect(hint).toMatch(/optional/i);
-    expect(hint).toMatch(/finds?\s+extra connections/i);
-  });
-});
-
-describe("[SF-WEB-77] Genius account-link button follows the backend's genius.link_enabled", () => {
-  beforeEach(() => {
-    setupSettingsPanel();
-  });
-
-  it("stays hidden when the backend reports link_enabled: false", async () => {
-    fetchSettingsStatus.mockResolvedValue({
-      status: 200,
-      data: {
-        genius: { connected: false, link_enabled: false },
-        yandex: { connected: false },
-      },
-    });
-    openSettingsPanel();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(els.settingsGeniusLinkBtn.hidden).toBe(true);
-  });
-
-  it("shows once the backend reports link_enabled: true", async () => {
-    fetchSettingsStatus.mockResolvedValue({
-      status: 200,
-      data: {
-        genius: { connected: false, link_enabled: true },
-        yandex: { connected: false },
-      },
-    });
-    openSettingsPanel();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(els.settingsGeniusLinkBtn.hidden).toBe(false);
-  });
-
-  it("hides once already connected, even when link_enabled: true", async () => {
-    fetchSettingsStatus.mockResolvedValue({
-      status: 200,
-      data: {
-        genius: { connected: true, link_enabled: true },
-        yandex: { connected: false },
-      },
-    });
-    openSettingsPanel();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(els.settingsGeniusLinkBtn.hidden).toBe(true);
   });
 });
 
@@ -303,22 +249,6 @@ describe("[SF-YM-02] connecting a Genius token", () => {
 
     expect(disconnectProvider).toHaveBeenCalledWith("genius");
     expect(els.settingsGeniusStatus.textContent).toBe("Not connected");
-  });
-
-  it("disconnecting brings the sign-in-with-Genius CTA back", async () => {
-    connectGeniusToken.mockResolvedValue({ ok: true, status: 200, data: {} });
-    els.settingsGeniusInput.value = "sf-genius-token-123";
-    els.settingsGeniusConnectBtn.click();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(els.settingsGeniusLinkBtn.hidden).toBe(true);
-
-    disconnectProvider.mockResolvedValue({ ok: true, status: 200, data: {} });
-    els.settingsGeniusDisconnectBtn.click();
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(els.settingsGeniusLinkBtn.hidden).toBe(false);
   });
 });
 

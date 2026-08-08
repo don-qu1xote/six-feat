@@ -157,7 +157,15 @@ function syncObjectActionBar(node) {
     };
   }
   if (els.objActionDeepen) {
-    els.objActionDeepen.onclick = () => deepenArtistConnections(node.id);
+    // [SF-YM-09] "Find more connections" is Genius-only by nature (roles
+    // Yandex never gives) — an honest disabled state up front beats a click
+    // that's guaranteed to 422.
+    const deepenAvailable = node.deepenAvailable !== false;
+    els.objActionDeepen.disabled = !deepenAvailable;
+    els.objActionDeepen.title = deepenAvailable
+      ? "Find more connections via Genius"
+      : "This artist has no known Genius match yet — connect Genius in Settings to find more connections";
+    els.objActionDeepen.onclick = deepenAvailable ? () => deepenArtistConnections(node.id) : null;
   }
   if (els.objActionFocus) {
     els.objActionFocus.onclick = () => {

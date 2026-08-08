@@ -28,7 +28,7 @@ export function openSettingsPanel() {
   refreshSettingsStatus();
 }
 
-function _setGeniusConnected(connected, linkEnabled) {
+function _setGeniusConnected(connected) {
   if (els.settingsGeniusStatus) {
     els.settingsGeniusStatus.textContent = t(
       connected ? "settings.genius.connected" : "settings.genius.notConnected",
@@ -36,7 +36,6 @@ function _setGeniusConnected(connected, linkEnabled) {
     els.settingsGeniusStatus.classList.toggle("is-connected", connected);
   }
   if (els.settingsGeniusDisconnectBtn) els.settingsGeniusDisconnectBtn.hidden = !connected;
-  if (els.settingsGeniusLinkBtn) els.settingsGeniusLinkBtn.hidden = connected || !linkEnabled;
   if (els.settingsGeniusConnectBtn) {
     els.settingsGeniusConnectBtn.textContent = t(
       connected ? "settings.genius.replace" : "settings.genius.connect",
@@ -57,7 +56,7 @@ export async function refreshSettingsStatus() {
   if (els.settingsCards) els.settingsCards.hidden = signedOut || misconfigured;
   if (signedOut || misconfigured || !data) return;
 
-  _setGeniusConnected(!!data.genius?.connected, !!data.genius?.link_enabled);
+  _setGeniusConnected(!!data.genius?.connected);
   if (els.settingsEnrichmentToggle) {
     els.settingsEnrichmentToggle.checked = data.enrichment_enabled !== false;
   }

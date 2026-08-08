@@ -67,7 +67,6 @@ YANDEX_GATEWAY_BINARY = Path(
 YANDEX_MOCK_PORT = int(os.environ.get("YANDEX_MOCK_PORT", "18106"))
 YANDEX_MOCK_BASE = f"http://localhost:{YANDEX_MOCK_PORT}"
 TEST_YANDEX_SERVICE_TOKEN = "test-yandex-service-token"
-TEST_YANDEX_DEVICE_CLIENT_ID = "test-yandex-device-client-id"
 
 AUTH_PORT = int(os.environ.get("SIX_FEAT_AUTH_PORT", "18084"))
 AUTH_MONITOR_PORT = int(os.environ.get("SIX_FEAT_AUTH_MONITOR_PORT", "18087"))
@@ -297,8 +296,7 @@ components_manager:
       timeout-ms: 5000
       tracks-limit: 20
 
-    yandex-music-source-provider:
-      match-threshold: 0.75
+    yandex-music-source-provider: {{}}
 
     genius-music-source-provider: {{}}
 
@@ -443,26 +441,6 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
-    handler-settings-yandex-device-start:
-      path: /api/v1/settings/yandex/device/start
-      method: POST
-      task_processor: main-task-processor
-
-    handler-settings-yandex-device-poll:
-      path: /api/v1/settings/yandex/device/poll
-      method: POST
-      task_processor: main-task-processor
-
-    handler-settings-yandex-playlists:
-      path: /api/v1/settings/yandex/playlists
-      method: GET
-      task_processor: main-task-processor
-
-    handler-settings-yandex-import:
-      path: /api/v1/settings/yandex/import
-      method: GET
-      task_processor: main-task-processor
-
     handler-settings-enrichment-provider:
       path: /api/v1/settings/enrichment-provider
       method: PATCH
@@ -563,13 +541,6 @@ components_manager:
       session-ttl-days: 90
       cookie-secure: false
 
-    yandex-oauth-config:
-      client-id: test-yandex-client-id
-      redirect-uri: http://127.0.0.1:{auth_port}/auth/yandex/callback
-      scope: "login:info music:api-public"
-      oauth-base-url: http://127.0.0.1:{mock_port}
-      login-base-url: http://127.0.0.1:{mock_port}
-
     handler-auth-login:
       path: /auth/login
       method: GET
@@ -577,16 +548,6 @@ components_manager:
 
     handler-auth-callback:
       path: /auth/callback
-      method: GET
-      task_processor: main-task-processor
-
-    handler-auth-yandex-login:
-      path: /auth/yandex/login
-      method: GET
-      task_processor: main-task-processor
-
-    handler-auth-yandex-callback:
-      path: /auth/yandex/callback
       method: GET
       task_processor: main-task-processor
 
@@ -768,22 +729,6 @@ components_manager:
       cb-failure-threshold: {cb_failure_threshold}
       cb-open-seconds: 1
 
-    yandex-device-auth-client:
-      device-code-url: http://127.0.0.1:{mock_port}/device/code
-      token-url: http://127.0.0.1:{mock_port}/token
-      client-id: {device_client_id}
-      backoff-max-attempts: {backoff_max_attempts}
-      backoff-base-ms: 10
-      backoff-cap-ms: 100
-      lane-fg-tokens-per-sec: 100.0
-      lane-fg-burst: 100
-      lane-fg-max-concurrent: 10
-      lane-bg-tokens-per-sec: 100.0
-      lane-bg-burst: 100
-      lane-bg-max-concurrent: 10
-      cb-failure-threshold: {cb_failure_threshold}
-      cb-open-seconds: 1
-
     handler-internal-yandex-track-artists:
       path: /internal/yandex/track-artists
       method: POST
@@ -796,36 +741,6 @@ components_manager:
 
     handler-internal-yandex-artist-tracks:
       path: /internal/yandex/artist-tracks
-      method: POST
-      task_processor: main-task-processor
-
-    handler-internal-yandex-device-start:
-      path: /internal/yandex/device/start
-      method: POST
-      task_processor: main-task-processor
-
-    handler-internal-yandex-device-poll:
-      path: /internal/yandex/device/poll
-      method: POST
-      task_processor: main-task-processor
-
-    handler-internal-yandex-playlists:
-      path: /internal/yandex/playlists
-      method: POST
-      task_processor: main-task-processor
-
-    handler-internal-yandex-liked-tracks:
-      path: /internal/yandex/liked-tracks
-      method: POST
-      task_processor: main-task-processor
-
-    handler-internal-yandex-playlist-tracks:
-      path: /internal/yandex/playlist-tracks
-      method: POST
-      task_processor: main-task-processor
-
-    handler-internal-yandex-account:
-      path: /internal/yandex/account
       method: POST
       task_processor: main-task-processor
 
@@ -847,7 +762,6 @@ components_manager:
 
 TEST_APP_SECRET = "f" * 64
 TEST_GENIUS_CLIENT_SECRET = "test-genius-client-secret"
-TEST_YANDEX_OAUTH_CLIENT_SECRET = "test-yandex-client-secret"
 
 
 def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
@@ -992,7 +906,6 @@ def yandex_gateway_proc(
             mock_port=YANDEX_MOCK_PORT,
             backoff_max_attempts=1,
             cb_failure_threshold=100,
-            device_client_id=TEST_YANDEX_DEVICE_CLIENT_ID,
         )
     )
 
@@ -1108,7 +1021,6 @@ def auth_service_proc(
             **os.environ,
             "APP_SECRET": TEST_APP_SECRET,
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
-            "YANDEX_OAUTH_CLIENT_SECRET": TEST_YANDEX_OAUTH_CLIENT_SECRET,
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
             "SIX_FEAT_BASE_URL": SERVICE_BASE,
         },
@@ -1449,8 +1361,7 @@ components_manager:
       timeout-ms: 5000
       tracks-limit: 20
 
-    yandex-music-source-provider:
-      match-threshold: 0.75
+    yandex-music-source-provider: {{}}
 
     genius-music-source-provider: {{}}
 
@@ -1557,7 +1468,6 @@ def yandex_gateway_proc_bg(
             mock_port=YANDEX_MOCK_PORT_BG,
             backoff_max_attempts=1,
             cb_failure_threshold=100,
-            device_client_id=TEST_YANDEX_DEVICE_CLIENT_ID,
         )
     )
 
@@ -1923,7 +1833,8 @@ def clean_db_state(request: pytest.FixtureRequest) -> None:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE TABLE artists, songs, credits, fetch_state RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE artists, songs, credits, fetch_state, artist_alias "
+                "RESTART IDENTITY CASCADE"
             )
     finally:
         conn.close()
@@ -2145,89 +2056,6 @@ class YandexMock:
             return status, {"error": "upstream error"}
 
         self._state.register("/search", _handler)
-        return self
-
-    def device_code(self, response: Dict[str, Any]) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return 200, response
-
-        self._state.register("/device/code", _handler)
-        return self
-
-    def token_pending(self, device_code: str) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            code = (params.get("code") or [""])[0]
-            if code != device_code:
-                return 400, {"error": "expired_token"}
-            return 400, {"error": "authorization_pending"}
-
-        self._state.register("/token", _handler)
-        return self
-
-    def token_success(
-        self, device_code: str, access_token: str, refresh_token: str = "refresh-1"
-    ) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            code = (params.get("code") or [""])[0]
-            if code != device_code:
-                return 400, {"error": "expired_token"}
-            return 200, {
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "expires_in": 3600,
-                "token_type": "bearer",
-            }
-
-        self._state.register("/token", _handler)
-        return self
-
-    def token_denied(self, device_code: str) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return 400, {"error": "access_denied"}
-
-        self._state.register("/token", _handler)
-        return self
-
-    def playlists(self, user_id: str, playlists: List[Dict[str, Any]]) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return 200, {"result": playlists}
-
-        self._state.register(f"/users/{user_id}/playlists/list", _handler)
-        return self
-
-    def liked_tracks(self, user_id: str, track_ids: List[int]) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return 200, {"result": {"tracks": track_ids}}
-
-        self._state.register(f"/users/{user_id}/likes/tracks", _handler)
-        return self
-
-    def liked_tracks_error(self, user_id: str, status: int = 502) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return status, {"error": "upstream error"}
-
-        self._state.register(f"/users/{user_id}/likes/tracks", _handler)
-        return self
-
-    def playlist_tracks(self, user_id: str, playlist_id: int, track_ids: List[int]) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return 200, {"result": {"tracks": track_ids}}
-
-        self._state.register(f"/users/{user_id}/playlists/{playlist_id}", _handler)
-        return self
-
-    def account(self, uid: str) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return 200, {"result": {"account": {"uid": int(uid)}}}
-
-        self._state.register("/account/status", _handler)
-        return self
-
-    def account_error(self, status: int = 401) -> "YandexMock":
-        def _handler(path: str, params: Dict) -> tuple:
-            return status, {"error": "upstream error"}
-
-        self._state.register("/account/status", _handler)
         return self
 
 

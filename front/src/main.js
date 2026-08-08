@@ -33,7 +33,6 @@ import {
   exportGraphJson,
   initTheme,
   setupSettingsPanel,
-  setupPlaylistsPanel,
   setupDockedPanels,
   restoreSurfaceFromUrl,
   setupBubbleSetsToggle,
@@ -73,7 +72,6 @@ export function init() {
   setupKeyboard();
   setupDockedPanels();
   setupSettingsPanel();
-  setupPlaylistsPanel();
   setupNodeSearch();
   setupPathPanel();
   setupHeroPathFinder();
