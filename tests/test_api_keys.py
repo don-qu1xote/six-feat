@@ -88,7 +88,9 @@ class TestIssue:
         )
         assert resp.status_code == 200
 
-    def test_session_with_no_display_name_can_still_issue_with_a_connected_byo_token(self):
+    def test_session_with_no_display_name_can_still_issue_with_a_connected_byo_token(
+        self, anon_client: requests.Session
+    ):
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
         cookie = session_crypto.make_cookie(
@@ -106,7 +108,9 @@ class TestIssue:
         assert issue_resp.status_code == 201, issue_resp.text
         assert issue_resp.json()["key"].startswith("sf_live_")
 
-    def test_session_with_no_display_name_and_no_byo_token_is_422_not_500(self):
+    def test_session_with_no_display_name_and_no_byo_token_is_422_not_500(
+        self, anon_client: requests.Session
+    ):
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
         cookie = session_crypto.make_cookie(

@@ -178,6 +178,9 @@ jobs:
       - name: Check comments (build-necessary + Russian only)
         run: python3 scripts/check_comments.py libs services tests scripts front
 
+      - name: Check for empty source files (misapplied patch residue)
+        run: python3 scripts/check-empty-sources.py
+
   lint-yaml:
     name: "Lint — YAML anchors"
     runs-on: ubuntu-22.04
@@ -235,6 +238,7 @@ jobs:
             tests/test_genius_http_mock.py \
             tests/test_migrations.py \
             tests/test_game_migrations.py \
+            tests/test_component_config_parity.py \
             -v --tb=short
 
   unit-tests-cpp:

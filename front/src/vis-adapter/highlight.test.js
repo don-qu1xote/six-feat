@@ -14,6 +14,8 @@ import {
   highlightEdgePair,
   highlightPath,
   recolorInPlace,
+  markCompareEndpoint,
+  clearCompareEndpoints,
 } from "./highlight.js";
 
 function mockDataSet() {
@@ -749,5 +751,128 @@ describe("[SF-WEB-56 follow-up] suppressed (canvas-drawn) edges stay invisible t
     const normal = State.edgesDS.update.mock.calls.flatMap((c) => c[0]).find((u) => u.id === "2_3");
     expect(suppressed.color.opacity).toBe(0);
     expect(normal.color.opacity).toBe(0.4);
+  });
+});
+
+describe("highlightPath — expanded-tree tier", () => {
+  function graph() {
+    State.graphNodes = [
+      { id: 1, isSeed: true },
+      { id: 2, isSeed: false, _dimBorder: "#111111" },
+      { id: 3, isSeed: false, _dimBorder: "#222222" },
+      { id: 4, isSeed: false, _dimBorder: "#333333" },
+    ];
+    State.graphEdges = [
+      { id: "1_2", from: 1, to: 2, dominantRole: "featured", weight: 1 },
+      { id: "3_4", from: 3, to: 4, dominantRole: "producer", weight: 1 },
+    ];
+    invalidateColorCache();
+    State.nodesDS = { update: vi.fn(), getIds: () => [1, 2, 3, 4] };
+    State.edgesDS = { update: vi.fn(), getIds: () => ["1_2", "3_4"] };
+  }
+
+  it("keeps an expanded but off-path node brighter than an untouched one", () => {
+    graph();
+    State.expandedNodes = new Set([3]);
+
+    highlightPath([1, 2]);
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls[0];
+    const expanded = nodeUpdates.find((u) => u.id === 3);
+    const untouched = nodeUpdates.find((u) => u.id === 4);
+
+    expect(expanded.opacity).toBe(PATH_HIGHLIGHT_LEVELS.expandedOffPath.opacity);
+    expect(untouched.opacity).toBe(PATH_HIGHLIGHT_LEVELS.neverTouched.opacity);
+    expect(expanded.opacity).toBeGreaterThan(untouched.opacity);
+  });
+
+  it("keeps an edge inside the expanded tree brighter than an untouched one", () => {
+    graph();
+    State.expandedNodes = new Set([3, 4]);
+
+    highlightPath([1, 2]);
+
+    const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
+    expect(edgeUpdates.find((u) => u.id === "3_4").color.opacity).toBe(
+      PATH_HIGHLIGHT_LEVELS.expandedOffPath.edgeOpacity,
+    );
+  });
+
+  it("needs both ends expanded before an edge counts as part of the tree", () => {
+    graph();
+    State.expandedNodes = new Set([3]);
+
+    highlightPath([1, 2]);
+
+    const [edgeUpdates] = State.edgesDS.update.mock.calls[0];
+    expect(edgeUpdates.find((u) => u.id === "3_4").color.opacity).toBe(
+      PATH_HIGHLIGHT_LEVELS.neverTouched.edgeOpacity,
+    );
+  });
+
+  it("treats nothing as expanded when the set is empty", () => {
+    graph();
+    State.expandedNodes = new Set();
+
+    highlightPath([1, 2]);
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls[0];
+    expect(nodeUpdates.find((u) => u.id === 3).opacity).toBe(
+      PATH_HIGHLIGHT_LEVELS.neverTouched.opacity,
+    );
+  });
+
+  it("marks the seed on the path with a thicker border than a plain node", () => {
+    graph();
+    highlightPath([1, 2], { dim: false });
+
+    const [nodeUpdates] = State.nodesDS.update.mock.calls[0];
+    expect(nodeUpdates.find((u) => u.id === 4).borderWidth).toBe(2);
+  });
+
+  it("does nothing without datasets or without a path", () => {
+    graph();
+    expect(() => highlightPath(null)).not.toThrow();
+
+    State.nodesDS = null;
+    expect(() => highlightPath([1, 2])).not.toThrow();
+  });
+});
+
+describe("compare endpoints", () => {
+  beforeEach(() => {
+    State.nodesDS = { update: vi.fn(), getIds: () => [1, 2] };
+    State.edgesDS = { update: vi.fn(), getIds: () => ["1_2"] };
+    buildDefaultColorCache();
+  });
+
+  it("marks the two endpoints distinctly", () => {
+    markCompareEndpoint(1, "first");
+    markCompareEndpoint(2, "second");
+
+    const first = State.nodesDS.update.mock.calls.at(-2)[0];
+    const second = State.nodesDS.update.mock.calls.at(-1)[0];
+    expect(first.id).toBe(1);
+    expect(second.id).toBe(2);
+    expect(first.color.border).not.toBe(second.color.border);
+  });
+
+  it("restores both endpoints when the comparison is cleared", () => {
+    markCompareEndpoint(1, "first");
+    markCompareEndpoint(2, "second");
+    State.nodesDS.update.mockClear();
+
+    clearCompareEndpoints();
+
+    expect(State.nodesDS.update).toHaveBeenCalled();
+  });
+
+  it("clearing with nothing marked is a no-op, not an error", () => {
+    State.nodesDS.update.mockClear();
+    expect(() => clearCompareEndpoints()).not.toThrow();
+  });
+
+  it("ignores a node that is not in the graph", () => {
+    expect(() => markCompareEndpoint(999, "first")).not.toThrow();
   });
 });

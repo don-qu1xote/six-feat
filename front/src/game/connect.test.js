@@ -43,6 +43,8 @@ import {
   parseGameShareState,
   shareCurrentChallenge,
   setupGameLandingPanel,
+  startChallengeByRefs,
+  startFromSetup,
 } from "./connect.js";
 import { checkLink } from "./game-api.js";
 import { showToast } from "../ui/toast.js";
@@ -1127,5 +1129,234 @@ describe("[design: challenge setup on the landing page] setupGameLandingPanel", 
       await flush();
       expect(els.heroGameRivals.hidden).toBe(true);
     });
+  });
+});
+
+describe("setup form wiring", () => {
+  const key = (el, k) => el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
+
+  it("keeps the start button disabled until both endpoints are filled", () => {
+    expect(els.connectStartBtn.disabled).toBe(true);
+
+    els.connectStartInput.value = "Drake";
+    els.connectStartInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(els.connectStartBtn.disabled).toBe(true);
+
+    els.connectGoalInput.value = "Adele";
+    els.connectGoalInput.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(els.connectStartBtn.disabled).toBe(false);
+  });
+
+  it("enables the button as soon as both endpoints are picked from the list", () => {
+    pickStart("Drake", 100);
+    expect(els.connectStartBtn.disabled).toBe(true);
+
+    pickGoal("Adele", 900);
+    expect(els.connectStartBtn.disabled).toBe(false);
+  });
+
+  it("writes the picked name back into the field", () => {
+    pickStart("Drake", 100);
+    expect(els.connectStartInput.value).toBe("Drake");
+
+    pickGoal("Adele", 900);
+    expect(els.connectGoalInput.value).toBe("Adele");
+  });
+
+  it("Enter in the setup fields starts the round rather than editing an endpoint", () => {
+    els.connectStartInput.value = "Drake";
+    els.connectGoalInput.value = "Adele";
+
+    key(els.connectStartInput, "Enter");
+
+    expect(els.connectSurface).toBeTruthy();
+  });
+
+  it("Enter on an empty field does nothing", () => {
+    els.connectStartInput.value = "   ";
+    expect(() => key(els.connectStartInput, "Enter")).not.toThrow();
+  });
+
+  it("Enter in the add-hop field commits what was typed", () => {
+    startPair();
+    els.connectAddInput.value = "Future";
+
+    key(els.connectAddInput, "Enter");
+
+    expect(els.connectAddInput).toBeTruthy();
+  });
+});
+
+describe("board controls", () => {
+  it("zooms in, out and fits from the toolbar", async () => {
+    const { zoomBoard, fitBoard } = await import("./game-board.js");
+    startPair();
+
+    els.connectZoomIn.click();
+    expect(zoomBoard).toHaveBeenCalledWith(1.25);
+
+    els.connectZoomOut.click();
+    expect(zoomBoard).toHaveBeenCalledWith(0.8);
+
+    els.connectFit.click();
+    expect(fitBoard).toHaveBeenCalled();
+  });
+});
+
+describe("chain list and browse chips", () => {
+  it("ignores a click that misses a row", () => {
+    startPair();
+    expect(() =>
+      els.connectLineList.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    ).not.toThrow();
+  });
+
+  it("ignores a browse click that misses a chip", () => {
+    startPair();
+    expect(() =>
+      els.connectBrowseChips.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    ).not.toThrow();
+  });
+});
+
+describe("setupGameLandingPanel", () => {
+  it("refuses to start without both names", () => {
+    els.heroGameFromInput.value = "Drake";
+    els.heroGameToInput.value = "";
+
+    els.btnHeroStartChallenge.click();
+
+    expect(showToast).toHaveBeenCalled();
+    expect(navigateToSurface).not.toHaveBeenCalled();
+  });
+
+  it("navigates to the game once both names are given", () => {
+    els.heroGameFromInput.value = "Drake";
+    els.heroGameToInput.value = "Adele";
+
+    els.btnHeroStartChallenge.click();
+
+    expect(navigateToSurface).toHaveBeenCalled();
+  });
+});
+
+describe("round actions — guards when no round is running", () => {
+  it("undo, reset, give up, lock in and share all no-op in setup", () => {
+    expect(() => {
+      undoLast();
+      resetGame();
+      giveUpGame();
+      lockIn();
+      shareCurrentChallenge();
+    }).not.toThrow();
+  });
+});
+
+describe("startChallengeByRefs", () => {
+  it("ignores a call missing either endpoint", () => {
+    startChallengeByRefs(null, { name: "Adele" });
+    startChallengeByRefs({ name: "Drake" }, null);
+    startChallengeByRefs({}, { name: "Adele" });
+
+    expect(navigateToSurface).not.toHaveBeenCalled();
+  });
+
+  it("starts the round and navigates to the board", () => {
+    startChallengeByRefs(
+      { name: "Drake", id: 100, image: "http://img/d.jpg" },
+      { name: "Adele", id: 900, image: "http://img/a.jpg" },
+    );
+
+    expect(navigateToSurface).toHaveBeenCalled();
+    expect(_currentChain()).toBeTruthy();
+  });
+
+  it("works with bare names, without ids or photos", () => {
+    startChallengeByRefs({ name: "Drake" }, { name: "Adele" });
+    expect(navigateToSurface).toHaveBeenCalled();
+  });
+
+  it("records a rival banner when one is given", () => {
+    startChallengeByRefs(
+      { name: "Drake" },
+      { name: "Adele" },
+      {
+        display_name: "Bob",
+        score: 900,
+      },
+    );
+
+    expect(navigateToSurface).toHaveBeenCalled();
+  });
+});
+
+describe("shareCurrentChallenge", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("copies a link that carries both endpoints", async () => {
+    startPair();
+    const writeText = vi.fn().mockResolvedValue();
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    shareCurrentChallenge();
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("#/game"));
+  });
+
+  it("shows the link instead when there is no clipboard", () => {
+    startPair();
+    vi.stubGlobal("navigator", {});
+
+    shareCurrentChallenge();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("#/game"), 6000);
+  });
+
+  it("falls back to showing the link when the copy is refused", async () => {
+    startPair();
+    vi.stubGlobal("navigator", {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+    });
+
+    shareCurrentChallenge();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("#/game"), 6000);
+  });
+});
+
+describe("startFromSetup", () => {
+  it("keeps the button disabled while one endpoint is missing", () => {
+    els.connectStartInput.value = "Drake";
+    els.connectStartInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(els.connectStartBtn.disabled).toBe(true);
+  });
+
+  it("asks for both endpoints if the action is reached anyway", () => {
+    els.connectStartInput.value = "Drake";
+    els.connectGoalInput.value = "";
+
+    startFromSetup();
+
+    expect(showToast).toHaveBeenCalled();
+    expect(_currentChain()).toBeFalsy();
+  });
+});
+
+describe("expandEndpoints", () => {
+  it("puts the current endpoints back into the editable fields", () => {
+    startPair(["Drake", 100], ["Adele", 900]);
+    els.connectStartInput.value = "";
+    els.connectGoalInput.value = "";
+
+    els.connectEndpointsSummary.click();
+
+    expect(els.connectStartInput.value).toBe("Drake");
+    expect(els.connectGoalInput.value).toBe("Adele");
   });
 });

@@ -370,11 +370,6 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
-    handler-settings-enrichment-provider:
-      path: /api/v1/settings/enrichment-provider
-      method: PATCH
-      task_processor: main-task-processor
-
     handler-settings-enrichment-enabled:
       path: /api/v1/settings/enrichment-enabled
       method: PATCH

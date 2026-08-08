@@ -82,6 +82,9 @@ export function initLogout() {
         method: "POST",
         headers: { "X-CSRF-Token": getCookie("six_feat_csrf") || "" },
       });
+    } catch (_) {
+      // Уходим на главную в любом случае — но без catch упавший запрос
+      // всплывал бы необработанным отказом промиса в консоли.
     } finally {
       window.location.href = "/";
     }

@@ -21,6 +21,7 @@ vi.mock("./game-api.js", () => ({
   fetchSeasonLeaderboard: vi.fn(async () => null),
   fetchAdminStatus: vi.fn(async () => false),
   publishDaily: vi.fn(async () => null),
+  updateDisplayName: vi.fn(async () => null),
 }));
 
 import { State } from "../state/state.js";
@@ -38,6 +39,7 @@ import {
   fetchSeasonLeaderboard,
   fetchAdminStatus,
   publishDaily,
+  updateDisplayName,
 } from "./game-api.js";
 import { setupGameWindows } from "./game-windows.js";
 
@@ -65,6 +67,7 @@ function fixture() {
         <span id="pf-elo"></span><span id="pf-games"></span><span id="pf-badges"></span>
         <div id="pf-badge-list"></div><p id="pf-badges-empty" hidden></p>
         <ol id="pf-history"></ol><p id="pf-history-empty" hidden></p>
+        <button id="pf-edit-name"></button><button id="pf-share"></button>
       </div>
       <section id="admin-panel" hidden>
         <input id="admin-from-input" /><div id="admin-from-ac"></div>
@@ -113,6 +116,8 @@ function bind() {
     pfBadgesEmpty: "pf-badges-empty",
     pfHistory: "pf-history",
     pfHistoryEmpty: "pf-history-empty",
+    pfEditName: "pf-edit-name",
+    pfShare: "pf-share",
     gameChallengesSurface: "game-challenges-surface",
     chTabAll: "ch-tab-all",
     chTabDaily: "ch-tab-daily",
@@ -547,5 +552,285 @@ describe("[SF-GAME-37] empty vs unavailable", () => {
     onSurfaceChange.mock.calls[0][0]("game/challenges");
     await flush();
     expect(els.chEmpty.textContent).toMatch(/No challenges published yet/i);
+  });
+});
+
+describe("profile rendering", () => {
+  const PROFILE = {
+    user_id: 42,
+    display_name: "Alice",
+    rank: 3,
+    elo: 1240,
+    games: 17,
+    achievements: [{ code: "first_blood", title: "First blood", descr: "Won a round" }],
+  };
+
+  it("shows the signed-out card when nobody is signed in", async () => {
+    fetchProfile.mockResolvedValue(null);
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.profileSignedOut.hidden).toBe(false);
+    expect(els.profileCard.hidden).toBe(true);
+  });
+
+  it("fills the card for a signed-in player", async () => {
+    fetchProfile.mockResolvedValue(PROFILE);
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.profileCard.hidden).toBe(false);
+    expect(els.pfName.textContent).toBe("Alice");
+    expect(els.pfElo.textContent).toBe("1240");
+    expect(els.pfGames.textContent).toBe("17");
+    expect(els.pfRank.textContent).toContain("3");
+    expect(els.pfBadges.textContent).toBe("1");
+  });
+
+  it("shows an initial when the player has no avatar, and the image when they do", async () => {
+    fetchProfile.mockResolvedValue(PROFILE);
+    applySurface("game/profile");
+    await flush();
+    expect(els.pfAvatar.textContent).toBe("A");
+
+    fetchProfile.mockResolvedValue({ ...PROFILE, avatar_url: "http://img/a.jpg" });
+    applySurface("game/profile");
+    await flush();
+    expect(els.pfAvatar.querySelector("img").getAttribute("src")).toBe("http://img/a.jpg");
+  });
+
+  it("marks an unranked player as such", async () => {
+    fetchProfile.mockResolvedValue({ ...PROFILE, rank: null });
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfRank.textContent.toLowerCase()).toContain("unranked");
+  });
+
+  it("falls back to a dash for missing numbers", async () => {
+    fetchProfile.mockResolvedValue({ user_id: 1, display_name: null });
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfName.textContent).toBe("—");
+    expect(els.pfElo.textContent).toBe("—");
+    expect(els.pfGames.textContent).toBe("—");
+  });
+
+  it("renders one badge tile per achievement", async () => {
+    fetchProfile.mockResolvedValue(PROFILE);
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfBadgeList.querySelectorAll(".pf-badge")).toHaveLength(1);
+    expect(els.pfBadgesEmpty.hidden).toBe(true);
+    expect(els.pfBadgeList.textContent).toContain("First blood");
+  });
+
+  it("shows the badges empty state when there are none", async () => {
+    fetchProfile.mockResolvedValue({ ...PROFILE, achievements: [] });
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfBadgeList.innerHTML).toBe("");
+    expect(els.pfBadgesEmpty.hidden).toBe(false);
+  });
+
+  it("treats a malformed achievements payload as none", async () => {
+    fetchProfile.mockResolvedValue({ ...PROFILE, achievements: "nope" });
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfBadges.textContent).toBe("0");
+  });
+
+  it("picks a themed icon per achievement code", async () => {
+    fetchProfile.mockResolvedValue({
+      ...PROFILE,
+      achievements: [
+        { code: "first_blood" },
+        { code: "champion" },
+        { code: "daily_streak" },
+        { code: "elo_master" },
+        { code: "blitz" },
+        { code: "something_else" },
+      ],
+    });
+    applySurface("game/profile");
+    await flush();
+
+    const icons = [...els.pfBadgeList.querySelectorAll("use")].map((u) => u.getAttribute("href"));
+    expect(icons).toEqual([
+      "#icon-star",
+      "#icon-trophy",
+      "#icon-flame",
+      "#icon-bolt",
+      "#icon-target",
+      "#icon-medal",
+    ]);
+  });
+
+  it("lists past attempts, marking invalid ones", async () => {
+    fetchProfile.mockResolvedValue(PROFILE);
+    fetchPublicProfile.mockResolvedValue({
+      history: [
+        { valid: true, score: 900, hops: 3, ts: 1700000000 },
+        { valid: false, score: 0, hops: 0, ts: 1700000001 },
+      ],
+    });
+    applySurface("game/profile");
+    await flush();
+
+    const rows = els.pfHistory.querySelectorAll(".pf-attempt");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].classList.contains("pf-attempt--ok")).toBe(true);
+    expect(rows[1].classList.contains("pf-attempt--bad")).toBe(true);
+    expect(rows[1].querySelector(".pf-attempt-score").textContent).toBe("—");
+    expect(els.pfHistoryEmpty.hidden).toBe(true);
+  });
+
+  it("shows the history empty state when there is none", async () => {
+    fetchProfile.mockResolvedValue(PROFILE);
+    fetchPublicProfile.mockResolvedValue({ history: [] });
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfHistory.innerHTML).toBe("");
+    expect(els.pfHistoryEmpty.hidden).toBe(false);
+  });
+
+  it("survives the public profile being unavailable", async () => {
+    fetchProfile.mockResolvedValue(PROFILE);
+    fetchPublicProfile.mockResolvedValue(null);
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfHistoryEmpty.hidden).toBe(false);
+  });
+
+  it("leaves the date blank rather than printing garbage for a missing timestamp", async () => {
+    fetchProfile.mockResolvedValue(PROFILE);
+    fetchPublicProfile.mockResolvedValue({ history: [{ valid: true, score: 1, hops: 1 }] });
+    applySurface("game/profile");
+    await flush();
+
+    expect(els.pfHistory.querySelector(".pf-attempt-date").textContent).toBe("");
+  });
+});
+
+describe("profile actions", () => {
+  const PROFILE = { user_id: 42, display_name: "Alice", elo: 1, games: 1, achievements: [] };
+
+  async function signedIn() {
+    fetchProfile.mockResolvedValue(PROFILE);
+    applySurface("game/profile");
+    await flush();
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renames the player and confirms it", async () => {
+    await signedIn();
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "Bob"),
+    );
+    updateDisplayName.mockResolvedValue({ ...PROFILE, display_name: "Bob" });
+
+    els.pfEditName.click();
+    await flush();
+
+    expect(updateDisplayName).toHaveBeenCalledWith("Bob");
+    expect(els.pfName.textContent).toBe("Bob");
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), 2200, true);
+  });
+
+  it("does nothing when the rename is cancelled or unchanged", async () => {
+    await signedIn();
+
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => null),
+    );
+    els.pfEditName.click();
+    await flush();
+
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "Alice"),
+    );
+    els.pfEditName.click();
+    await flush();
+
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "   "),
+    );
+    els.pfEditName.click();
+    await flush();
+
+    expect(updateDisplayName).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed rename without changing the shown name", async () => {
+    await signedIn();
+    vi.stubGlobal(
+      "prompt",
+      vi.fn(() => "Bob"),
+    );
+    updateDisplayName.mockResolvedValue(null);
+
+    els.pfEditName.click();
+    await flush();
+
+    expect(els.pfName.textContent).toBe("Alice");
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), 4200);
+  });
+
+  it("copies a link to the signed-in player's profile", async () => {
+    await signedIn();
+    const writeText = vi.fn().mockResolvedValue();
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    els.pfShare.click();
+    await flush();
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("user=42"));
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), 2000, true);
+  });
+
+  it("falls back to showing the link when the clipboard rejects", async () => {
+    await signedIn();
+    vi.stubGlobal("navigator", {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+    });
+
+    els.pfShare.click();
+    await flush();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("user=42"), 6000);
+  });
+
+  it("falls back when there is no clipboard API at all", async () => {
+    await signedIn();
+    vi.stubGlobal("navigator", {});
+
+    els.pfShare.click();
+    await flush();
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("user=42"), 6000);
+  });
+
+  it("asks an anonymous visitor to sign in before sharing", async () => {
+    fetchProfile.mockResolvedValue(null);
+    applySurface("game/profile");
+    await flush();
+
+    els.pfShare.click();
+    await flush();
+
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), 3000);
   });
 });

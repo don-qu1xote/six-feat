@@ -6,6 +6,9 @@ import {
   mergeNetwork,
   pokeFastRenderMode,
   resetFastRenderMode,
+  scheduleFreeze,
+  updateEdgeRenderMode,
+  _fitToExpandedCluster,
 } from "./physics.js";
 import { LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
 import { placeExpandedNodes } from "./layout.js";
@@ -589,5 +592,121 @@ describe("pokeFastRenderMode / resetFastRenderMode", () => {
       ([batch]) => Array.isArray(batch) && batch.every((u) => u.shape === "dot"),
     );
     expect(dotCalls.length).toBe(1);
+  });
+});
+
+describe("scheduleFreeze", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    State.physicsTimer = null;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("turns physics off once the settle window elapses", () => {
+    State.network = { setOptions: vi.fn() };
+
+    scheduleFreeze(500);
+    expect(State.network.setOptions).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+
+    expect(State.network.setOptions).toHaveBeenCalledWith({ physics: { enabled: false } });
+    expect(State.physicsTimer).toBeNull();
+  });
+
+  it("restarts the window when called again, rather than freezing early", () => {
+    State.network = { setOptions: vi.fn() };
+
+    scheduleFreeze(500);
+    vi.advanceTimersByTime(400);
+    scheduleFreeze(500);
+    vi.advanceTimersByTime(400);
+
+    expect(State.network.setOptions).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(100);
+    expect(State.network.setOptions).toHaveBeenCalled();
+  });
+
+  it("does not blow up when the graph was torn down before it fired", () => {
+    State.network = { setOptions: vi.fn() };
+    scheduleFreeze(100);
+    State.network = null;
+
+    expect(() => vi.advanceTimersByTime(100)).not.toThrow();
+  });
+});
+
+describe("updateEdgeRenderMode", () => {
+  it("keeps edges smooth", () => {
+    State.network = { setOptions: vi.fn() };
+
+    updateEdgeRenderMode();
+
+    expect(State.network.setOptions).toHaveBeenCalledWith({
+      edges: { smooth: expect.objectContaining({ enabled: true }) },
+    });
+  });
+
+  it("does nothing without a rendered network", () => {
+    State.network = null;
+    expect(() => updateEdgeRenderMode()).not.toThrow();
+  });
+});
+
+describe("_fitToExpandedCluster", () => {
+  beforeEach(() => {
+    State.expandedNodes = new Set();
+  });
+
+  it("frames the most recently expanded node and its neighbours", () => {
+    State.expandedNodes = new Set([1, 2]);
+    State.network = { getConnectedNodes: vi.fn(() => [3, 4]), fit: vi.fn() };
+
+    _fitToExpandedCluster();
+
+    expect(State.network.getConnectedNodes).toHaveBeenCalledWith(2);
+    expect(State.network.fit).toHaveBeenCalledWith(expect.objectContaining({ nodes: [2, 3, 4] }));
+  });
+
+  it("caps how many nodes it tries to frame", () => {
+    State.expandedNodes = new Set([1]);
+    State.network = {
+      getConnectedNodes: vi.fn(() => Array.from({ length: 100 }, (_, i) => i + 10)),
+      fit: vi.fn(),
+    };
+
+    _fitToExpandedCluster();
+
+    expect(State.network.fit.mock.calls[0][0].nodes).toHaveLength(40);
+  });
+
+  it("does nothing when nothing has been expanded", () => {
+    State.network = { getConnectedNodes: vi.fn(), fit: vi.fn() };
+
+    _fitToExpandedCluster();
+
+    expect(State.network.fit).not.toHaveBeenCalled();
+  });
+
+  it("does nothing without a rendered network", () => {
+    State.expandedNodes = new Set([1]);
+    State.network = null;
+
+    expect(() => _fitToExpandedCluster()).not.toThrow();
+  });
+
+  it("swallows a camera error rather than breaking the expansion", () => {
+    State.expandedNodes = new Set([1]);
+    State.network = {
+      getConnectedNodes: () => [2],
+      fit: () => {
+        throw new Error("nope");
+      },
+    };
+
+    expect(() => _fitToExpandedCluster()).not.toThrow();
   });
 });

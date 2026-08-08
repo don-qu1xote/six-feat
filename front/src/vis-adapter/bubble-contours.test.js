@@ -463,3 +463,49 @@ describe("drawContours — manual toggle (SF-WEB-61)", () => {
     expect(ctx.calls.filter((c) => c[0] === "fill").length).toBeGreaterThan(0);
   });
 });
+
+describe("toneMutedNeon — colour space round trip", () => {
+  const isHex = (v) => /^#[0-9a-f]{6}$/.test(v);
+
+  it("returns a well-formed hex colour", () => {
+    expect(isHex(toneMutedNeon("#5ee6c5"))).toBe(true);
+  });
+
+  it("lifts a dark, dull colour into the neon band", () => {
+    const toned = toneMutedNeon("#101820");
+    expect(isHex(toned)).toBe(true);
+    expect(toned).not.toBe("#101820");
+  });
+
+  it("pulls an over-bright colour back down", () => {
+    const toned = toneMutedNeon("#ffffff");
+    expect(isHex(toned)).toBe(true);
+    expect(toned).not.toBe("#ffffff");
+  });
+
+  it("handles pure black and pure white without producing NaN", () => {
+    for (const hex of ["#000000", "#ffffff"]) {
+      expect(isHex(toneMutedNeon(hex))).toBe(true);
+    }
+  });
+
+  it("handles each primary, exercising every hue branch", () => {
+    for (const hex of ["#ff0000", "#00ff00", "#0000ff"]) {
+      expect(isHex(toneMutedNeon(hex))).toBe(true);
+    }
+  });
+
+  it("handles a blue-dominant colour where green is below blue", () => {
+    expect(isHex(toneMutedNeon("#3300ff"))).toBe(true);
+  });
+
+  it("is stable — toning an already-toned colour changes nothing more", () => {
+    const once = toneMutedNeon("#5ee6c5");
+    expect(toneMutedNeon(once)).toBe(once);
+  });
+
+  it("keeps a grey achromatic rather than inventing a hue", () => {
+    const toned = toneMutedNeon("#808080");
+    expect(isHex(toned)).toBe(true);
+  });
+});

@@ -29,6 +29,7 @@ import {
   replaceGraph,
   computeNodeDominantRoles,
   cacheNodeCollaborations,
+  refreshNodeDimBorders,
 } from "./graph.js";
 
 beforeEach(() => {
@@ -530,5 +531,172 @@ describe("cacheNodeCollaborations", () => {
     expect(node._topTracks).toEqual([]);
     expect(node._rolesSet).toEqual(new Set());
     expect(node._totalCollabs).toBe(0);
+  });
+});
+
+describe("computeNodeDominantRoles", () => {
+  beforeEach(() => {
+    State.graphNodes = [
+      { id: 1, name: "Seed", isSeed: true },
+      { id: 2, name: "Beta", isSeed: false },
+      { id: 3, name: "Gamma", isSeed: false },
+    ];
+  });
+
+  it("gives the seed a fixed role rather than deriving one", () => {
+    State.graphEdges = [{ from: 1, to: 2, dominantRole: "producer", weight: 9 }];
+
+    computeNodeDominantRoles();
+
+    expect(State.graphNodes[0]._dominantRole).toBe("featured");
+  });
+
+  it("picks the role carrying the most weight for a non-seed node", () => {
+    State.graphEdges = [
+      { from: 2, to: 1, dominantRole: "producer", weight: 5 },
+      { from: 2, to: 3, dominantRole: "writer", weight: 2 },
+    ];
+
+    computeNodeDominantRoles();
+
+    expect(State.graphNodes[1]._dominantRole).toBe("producer");
+  });
+
+  it("counts an edge from both of its ends", () => {
+    State.graphEdges = [{ from: 2, to: 3, dominantRole: "writer", weight: 4 }];
+
+    computeNodeDominantRoles();
+
+    expect(State.graphNodes[1]._dominantRole).toBe("writer");
+    expect(State.graphNodes[2]._dominantRole).toBe("writer");
+  });
+
+  it("treats a roleless edge as primary and a weightless one as weight 1", () => {
+    State.graphEdges = [{ from: 2, to: 3 }];
+
+    computeNodeDominantRoles();
+
+    expect(State.graphNodes[1]._dominantRole).toBe("primary");
+  });
+
+  it("defaults an isolated node to primary", () => {
+    State.graphEdges = [];
+
+    computeNodeDominantRoles();
+
+    expect(State.graphNodes[1]._dominantRole).toBe("primary");
+  });
+
+  it("ignores edges pointing at nodes outside the graph", () => {
+    State.graphEdges = [{ from: 2, to: 999, dominantRole: "writer", weight: 3 }];
+
+    expect(() => computeNodeDominantRoles()).not.toThrow();
+    expect(State.graphNodes[1]._dominantRole).toBe("writer");
+  });
+});
+
+describe("cacheNodeCollaborations", () => {
+  beforeEach(() => {
+    State.graphNodes = [
+      { id: 1, name: "Alpha" },
+      { id: 2, name: "Beta" },
+    ];
+  });
+
+  it("collects the tracks on every incident edge", () => {
+    State.graphEdges = [
+      {
+        from: 1,
+        to: 2,
+        weight: 2,
+        collaborations: [
+          { song: "A", roles: ["featured"] },
+          { song: "B", roles: ["writer"] },
+        ],
+      },
+    ];
+
+    cacheNodeCollaborations();
+
+    expect(State.graphNodes[0]._topTracks.map((t) => t.song).sort()).toEqual(["A", "B"]);
+    expect([...State.graphNodes[0]._rolesSet].sort()).toEqual(["featured", "writer"]);
+  });
+
+  it("keeps at most five tracks per node", () => {
+    State.graphEdges = [
+      {
+        from: 1,
+        to: 2,
+        weight: 9,
+        collaborations: Array.from({ length: 9 }, (_, i) => ({ song: `S${i}`, roles: [] })),
+      },
+    ];
+
+    cacheNodeCollaborations();
+
+    expect(State.graphNodes[0]._topTracks).toHaveLength(5);
+  });
+
+  it("prefers the backend's collaboration count over the raw weight", () => {
+    State.graphEdges = [{ from: 1, to: 2, weight: 2, collaboration_count: 7 }];
+
+    cacheNodeCollaborations();
+
+    expect(State.graphNodes[0]._totalCollabs).toBe(7);
+  });
+
+  it("falls back to the weight, then to one, when no count is given", () => {
+    State.graphEdges = [
+      { from: 1, to: 2, weight: 3 },
+      { from: 2, to: 1 },
+    ];
+
+    cacheNodeCollaborations();
+
+    expect(State.graphNodes[0]._totalCollabs).toBe(4);
+  });
+
+  it("leaves an isolated node with empty caches, not undefined ones", () => {
+    State.graphEdges = [];
+
+    cacheNodeCollaborations();
+
+    expect(State.graphNodes[0]._topTracks).toEqual([]);
+    expect(State.graphNodes[0]._rolesSet.size).toBe(0);
+    expect(State.graphNodes[0]._totalCollabs).toBe(0);
+  });
+
+  it("tolerates an edge with no collaborations array", () => {
+    State.graphEdges = [{ from: 1, to: 2, weight: 1 }];
+
+    expect(() => cacheNodeCollaborations()).not.toThrow();
+    expect(State.graphNodes[0]._topTracks).toEqual([]);
+  });
+});
+
+describe("refreshNodeDimBorders", () => {
+  it("accents the seed with the signal colour", () => {
+    State.graphNodes = [{ id: 1, isSeed: true, _dominantRole: "producer" }];
+
+    refreshNodeDimBorders();
+
+    expect(State.graphNodes[0]._accent).toBe(COLOR.signal);
+    expect(State.graphNodes[0]._dimBorder).toContain("rgba(94,230,197");
+  });
+
+  it("accents other nodes by their dominant role, with a translucent border", () => {
+    State.graphNodes = [{ id: 2, isSeed: false, _dominantRole: "producer" }];
+
+    refreshNodeDimBorders();
+
+    expect(State.graphNodes[0]._accent).toBeTruthy();
+    expect(State.graphNodes[0]._dimBorder).toBe(`${State.graphNodes[0]._accent}40`);
+  });
+
+  it("falls back to the primary style when a node has no role yet", () => {
+    State.graphNodes = [{ id: 2, isSeed: false }];
+
+    expect(() => refreshNodeDimBorders()).not.toThrow();
+    expect(State.graphNodes[0]._accent).toBeTruthy();
   });
 });

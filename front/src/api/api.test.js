@@ -25,7 +25,7 @@ vi.mock("../vis-adapter/index.js", () => ({
 import { State } from "../state/state.js";
 import { replaceGraph, mergeGraph, mergeDeepenResult } from "../graph.js";
 import { showCandidatePicker, showToast, showRetryToast, updateScanStatus } from "../ui/index.js";
-import { _doSearch, showMoreCollaborations, deepenArtistConnections } from "./api.js";
+import { _doSearch, showMoreCollaborations, deepenArtistConnections, searchArtist } from "./api.js";
 
 function jsonResponse(body, init = {}) {
   const headers = init.headers ?? { get: () => null };
@@ -505,5 +505,172 @@ describe("[SF-YM-03] deepenArtistConnections", () => {
     await deepenArtistConnections(1);
 
     expect(State.deepenInFlight).toBe(false);
+  });
+});
+
+describe("pollEnrichment — reconnect and teardown", () => {
+  async function startPolling() {
+    const graph = {
+      seed: "Radiohead",
+      seedId: 1,
+      nodes: [{ id: 1, name: "Radiohead" }],
+      edges: [],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(graph)));
+    await _doSearch("Radiohead", false, false);
+    return FakeEventSource.instances[0];
+  }
+
+  it("reconnects with a growing backoff after a dropped stream", async () => {
+    vi.useFakeTimers();
+    const es = await startPolling();
+
+    es.onerror();
+    expect(es.closed).toBe(true);
+    expect(FakeEventSource.instances).toHaveLength(1);
+
+    vi.advanceTimersByTime(1000);
+    expect(FakeEventSource.instances).toHaveLength(2);
+
+    FakeEventSource.instances[1].onerror();
+    vi.advanceTimersByTime(1000);
+    expect(FakeEventSource.instances).toHaveLength(2);
+
+    vi.advanceTimersByTime(1000);
+    expect(FakeEventSource.instances).toHaveLength(3);
+    vi.useRealTimers();
+  });
+
+  it("gives up after repeated failures instead of reconnecting forever", async () => {
+    vi.useFakeTimers();
+    await startPolling();
+
+    for (let i = 0; i < 12; i++) {
+      const es = FakeEventSource.instances.at(-1);
+      es.onerror();
+      vi.advanceTimersByTime(10000);
+    }
+
+    expect(State._enrichmentPoller).toBeNull();
+    const before = FakeEventSource.instances.length;
+    vi.advanceTimersByTime(60000);
+    expect(FakeEventSource.instances).toHaveLength(before);
+    vi.useRealTimers();
+  });
+
+  it("resets the backoff once a message arrives again", async () => {
+    vi.useFakeTimers();
+    const es = await startPolling();
+
+    es.onerror();
+    vi.advanceTimersByTime(1000);
+    FakeEventSource.instances[1].onmessage({ data: JSON.stringify({ depth: 1, enriching: true }) });
+
+    FakeEventSource.instances[1].onerror();
+    vi.advanceTimersByTime(1000);
+
+    expect(FakeEventSource.instances).toHaveLength(3);
+    vi.useRealTimers();
+  });
+
+  it("ignores an error once the stream was closed on purpose", async () => {
+    vi.useFakeTimers();
+    const es = await startPolling();
+    State._enrichmentPoller.close();
+
+    es.onerror();
+    vi.advanceTimersByTime(10000);
+
+    expect(FakeEventSource.instances).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it("shrugs off a malformed status frame", async () => {
+    const es = await startPolling();
+    expect(() => es.onmessage({ data: "not json" })).not.toThrow();
+  });
+
+  it("refreshes the graph and drops the cache when the deep scan completes", async () => {
+    document.body.innerHTML = `<input id="hero-input" value="Radiohead" />`;
+    const es = await startPolling();
+    State._graphCache.set(1, {});
+
+    es.onmessage({ data: JSON.stringify({ depth: 2, enriching: false }) });
+
+    expect(State._graphCache.has(1)).toBe(false);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("Deep scan complete"), 3000);
+    expect(State._enrichmentPoller).toBeNull();
+    document.body.innerHTML = "";
+  });
+
+  it("does not try to re-search when there is no seed name on the page", async () => {
+    document.body.innerHTML = "";
+    const es = await startPolling();
+    const before = vi.mocked(fetch).mock.calls.length;
+
+    es.onmessage({ data: JSON.stringify({ depth: 2, enriching: false }) });
+
+    expect(vi.mocked(fetch).mock.calls.length).toBe(before);
+  });
+});
+
+describe("searchArtist — queueing and debouncing", () => {
+  beforeEach(() => {
+    State.inFlight = false;
+    State.pendingExpand = null;
+    State._abortController = null;
+  });
+
+  it("ignores an empty or whitespace-only query", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    searchArtist("");
+    searchArtist("   ");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("queues an expansion requested while a search is already running", () => {
+    State.inFlight = true;
+
+    searchArtist("Drake", true, true);
+
+    expect(State.pendingExpand).toEqual({ name: "Drake" });
+  });
+
+  it("aborts the running search when a fresh, non-expansion one is requested", () => {
+    const abort = vi.fn();
+    State.inFlight = true;
+    State._abortController = { abort };
+
+    searchArtist("Drake", false, true);
+
+    expect(abort).toHaveBeenCalled();
+    expect(State.pendingExpand).toEqual({ name: "Drake" });
+  });
+
+  it("runs immediately when asked to, without waiting for the debounce", () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ seedId: 1, nodes: [], edges: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    searchArtist("Drake", false, true);
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("debounces an ordinary keystroke-driven search", () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ seedId: 1, nodes: [], edges: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    searchArtist("Dra");
+    searchArtist("Drak");
+    searchArtist("Drake");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

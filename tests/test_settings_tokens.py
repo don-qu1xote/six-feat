@@ -181,7 +181,9 @@ class TestGeniusAccountLinkFlow:
         assert resp.status_code == 302
         assert resp.headers.get("Location") == "/?genius_link=denied"
 
-    def test_link_without_a_session_redirects_with_error(self, genius_mock: GeniusMock):
+    def test_link_without_a_session_redirects_with_error(
+        self, auth_anon_client: requests.Session, genius_mock: GeniusMock
+    ):
         genius_mock.token_exchange("some-token")
         state = "link:" + uuid.uuid4().hex
 

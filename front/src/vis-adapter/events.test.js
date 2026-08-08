@@ -27,7 +27,7 @@ vi.mock("./highlight.js", () => ({
   clearSelectedEdge: vi.fn(),
 }));
 
-vi.mock("./physics.js", () => ({ nudgePhysics: vi.fn() }));
+vi.mock("./physics.js", () => ({ nudgePhysics: vi.fn(), pokeFastRenderMode: vi.fn() }));
 
 const domRefs = vi.hoisted(() => ({ moveHandler: null, leaveHandler: null }));
 vi.mock("../dom/dom.js", () => ({
@@ -340,5 +340,216 @@ describe("_flushHoverEdgeFrame — zoom-based hover suppression (SF-WEB-74)", ()
     wireAndMove();
 
     expect(highlightEdgePair).toHaveBeenCalledWith(edgeId);
+  });
+});
+
+describe("click routing — seed switch, node select, edge select", () => {
+  let net;
+
+  beforeEach(() => {
+    net = makeNet();
+    State.network = net;
+    State.graphNodes = [
+      { id: 1, name: "Alpha", isSeed: true },
+      { id: 2, name: "Beta", isSeed: false },
+    ];
+    setGameMode(false);
+    attachNetworkEvents({ 1: "Alpha", 2: "Beta" });
+  });
+
+  it("selects a node after the double-click grace period", () => {
+    net._handlers.click({ nodes: [2], edges: [] });
+    expect(showArtistSidebar).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(260);
+
+    expect(showArtistSidebar).toHaveBeenCalledWith(2);
+    expect(State.focusedNodeId).toBe(2);
+  });
+
+  it("re-seeds the graph on ctrl/cmd-click of a non-seed node", async () => {
+    const { searchArtist } = await import("../api/api.js");
+
+    net._handlers.click({ nodes: [2], edges: [], event: { ctrlKey: true } });
+    vi.advanceTimersByTime(300);
+
+    expect(searchArtist).toHaveBeenCalledWith("Beta", false, true);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("Beta"), 1800, true);
+    expect(showArtistSidebar).not.toHaveBeenCalled();
+  });
+
+  it("ignores ctrl-click on the seed, which is already the seed", async () => {
+    const { searchArtist } = await import("../api/api.js");
+
+    net._handlers.click({ nodes: [1], edges: [], event: { metaKey: true } });
+    vi.advanceTimersByTime(300);
+
+    expect(searchArtist).not.toHaveBeenCalled();
+  });
+
+  it("clears the focus when clicking empty canvas", () => {
+    State.focusedNodeId = 2;
+
+    net._handlers.click({ nodes: [], edges: [] });
+
+    expect(State.focusedNodeId).toBeNull();
+    expect(hideArtistSidebar).toHaveBeenCalled();
+  });
+
+  it("opens the edge sidebar when an edge is clicked", () => {
+    net._handlers.click({ nodes: [], edges: ["1_2"] });
+
+    expect(showEdgeSidebar).toHaveBeenCalledWith("1_2", { 1: "Alpha", 2: "Beta" });
+  });
+
+  it("routes clicks to the game handler while a round is on", () => {
+    setGameMode(true);
+    State.game.clickRouter = vi.fn();
+
+    net._handlers.click({ nodes: [2], edges: [] });
+    vi.advanceTimersByTime(300);
+
+    expect(showArtistSidebar).not.toHaveBeenCalled();
+    setGameMode(false);
+  });
+});
+
+describe("doubleClick", () => {
+  let net;
+
+  beforeEach(() => {
+    net = makeNet();
+    State.network = net;
+    State.graphNodes = [{ id: 2, name: "Beta" }];
+    attachNetworkEvents({});
+  });
+
+  it("expands the artist and cancels the pending single-click selection", async () => {
+    const { searchArtist } = await import("../api/api.js");
+
+    net._handlers.click({ nodes: [2], edges: [] });
+    net._handlers.doubleClick({ nodes: [2] });
+    vi.advanceTimersByTime(300);
+
+    expect(searchArtist).toHaveBeenCalledWith("Beta", true, true);
+    expect(State._clickedNodeId).toBe(2);
+    expect(showArtistSidebar).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on empty canvas", async () => {
+    const { searchArtist } = await import("../api/api.js");
+    net._handlers.doubleClick({ nodes: [] });
+    expect(searchArtist).not.toHaveBeenCalled();
+  });
+
+  it("ignores a node that is not in the graph", async () => {
+    const { searchArtist } = await import("../api/api.js");
+    net._handlers.doubleClick({ nodes: [999] });
+    expect(searchArtist).not.toHaveBeenCalled();
+  });
+
+  it("leaves compare mode instead of expanding", async () => {
+    const { searchArtist } = await import("../api/api.js");
+    compareModeActive = true;
+
+    net._handlers.doubleClick({ nodes: [2] });
+
+    expect(exitCompareMode).toHaveBeenCalled();
+    expect(searchArtist).not.toHaveBeenCalled();
+  });
+});
+
+describe("hover highlighting", () => {
+  let net;
+
+  beforeEach(() => {
+    net = makeNet();
+    State.network = net;
+    State._isDragging = false;
+    setGameMode(false);
+    attachNetworkEvents({});
+  });
+
+  it("highlights the neighbourhood on hover and clears it on blur", () => {
+    net._handlers.hoverNode({ node: 1 });
+    expect(highlightNeighborhood).toHaveBeenCalledWith(1);
+    expect(els.network.style.cursor).toBe("pointer");
+
+    net._handlers.blurNode({ node: 1 });
+    expect(clearHoverHighlight).toHaveBeenCalledWith(1);
+    expect(els.network.style.cursor).toBe("default");
+  });
+
+  it("leaves an explicit selection alone while hovering", () => {
+    State.focusedNodeId = 5;
+
+    net._handlers.hoverNode({ node: 1 });
+    net._handlers.blurNode({ node: 1 });
+
+    expect(highlightNeighborhood).not.toHaveBeenCalled();
+    expect(clearHoverHighlight).not.toHaveBeenCalled();
+  });
+
+  it("does not fight the drag in progress", () => {
+    State._isDragging = true;
+
+    net._handlers.hoverNode({ node: 1 });
+
+    expect(highlightNeighborhood).not.toHaveBeenCalled();
+  });
+
+  it("skips hover highlighting entirely in game mode", () => {
+    setGameMode(true);
+
+    net._handlers.hoverNode({ node: 1 });
+    net._handlers.blurNode({ node: 1 });
+
+    expect(highlightNeighborhood).not.toHaveBeenCalled();
+    expect(clearHoverHighlight).not.toHaveBeenCalled();
+    setGameMode(false);
+  });
+});
+
+describe("dragging", () => {
+  let net;
+
+  beforeEach(() => {
+    net = makeNet();
+    State.network = { ...net, setOptions: vi.fn() };
+    State.network.on = net.on;
+    State._isDragging = false;
+    attachNetworkEvents({});
+  });
+
+  it("freezes physics while a node is dragged", () => {
+    net._handlers.dragStart({ nodes: [1] });
+
+    expect(State._isDragging).toBe(true);
+    expect(State.network.setOptions).toHaveBeenCalledWith({ physics: { enabled: false } });
+  });
+
+  it("treats a canvas pan as no drag at all", () => {
+    net._handlers.dragStart({ nodes: [] });
+    expect(State._isDragging).toBe(false);
+  });
+
+  it("nudges physics once a dragged node is dropped", async () => {
+    const { nudgePhysics } = await import("./physics.js");
+    net._handlers.dragStart({ nodes: [1] });
+
+    net._handlers.dragEnd({ nodes: [1] });
+
+    expect(State._isDragging).toBe(false);
+    expect(nudgePhysics).toHaveBeenCalled();
+  });
+
+  it("ignores a dragEnd that never began", async () => {
+    const { nudgePhysics } = await import("./physics.js");
+    net._handlers.dragEnd({ nodes: [1] });
+    expect(nudgePhysics).not.toHaveBeenCalled();
+  });
+
+  it("keeps the fast render mode awake while dragging", () => {
+    expect(() => net._handlers.dragging()).not.toThrow();
   });
 });

@@ -244,9 +244,24 @@ components_manager:
       method: POST
       task_processor: main-task-processor
 
+    handler-settings-genius-link-start:
+      path: /api/v1/settings/genius/link/start
+      method: GET
+      task_processor: main-task-processor
+
+    handler-internal-genius-link:
+      path: /internal/genius-link
+      method: POST
+      task_processor: main-task-processor
+
     handler-settings-disconnect:
       path: /api/v1/settings/disconnect
       method: POST
+      task_processor: main-task-processor
+
+    handler-settings-enrichment-enabled:
+      path: /api/v1/settings/enrichment-enabled
+      method: PATCH
       task_processor: main-task-processor
 
     handler-internal-music-source-edges:
