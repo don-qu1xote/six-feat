@@ -1,6 +1,6 @@
 #pragma once
 
-#include <six-feat-sources/music_source_provider_chain.hpp>
+#include <six-feat-sources/genius_music_source_provider.hpp>
 #include <string>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
@@ -22,7 +22,7 @@ class MusicSourceEdgesHandler final : public userver::server::handlers::HttpHand
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
  private:
-  MusicSourceProviderChain& chain_;
+  GeniusMusicSourceProvider& source_;
   const std::string shared_secret_;
 };
 

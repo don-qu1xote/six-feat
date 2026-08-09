@@ -75,9 +75,6 @@ components_manager:
 
     genius-music-source-provider: {}
 
-    music-source-provider-chain:
-      providers: [genius-fallback]
-
     enrichment-worker:
       queue-capacity: 1024
       drain-timeout-ms: 5000

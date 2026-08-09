@@ -5,7 +5,7 @@
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-enrichment/enrichment_queue.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
-#include <six-feat-sources/music_source_provider_chain.hpp>
+#include <six-feat-sources/genius_music_source_provider.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <string>
 #include <string_view>
@@ -35,9 +35,7 @@ class EnrichmentWorker final : public userver::components::ComponentBase {
 
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
-  bool EnqueueIfNeeded(const ArtistRef& ref,
-                       const std::string& user_token,
-                       const std::string& preferred_provider = "");
+  bool EnqueueIfNeeded(const ArtistRef& ref, const std::string& user_token);
 
   bool IsPending(std::int64_t id) const;
 
@@ -49,7 +47,7 @@ class EnrichmentWorker final : public userver::components::ComponentBase {
 
   ArtistRepository& repo_;
   GeniusGatewayClient& gateway_;
-  MusicSourceProviderChain& source_;
+  GeniusMusicSourceProvider& source_;
   const std::size_t capacity_;
   EnrichmentQueue queue_;
   userver::engine::TaskProcessor& bg_tp_;

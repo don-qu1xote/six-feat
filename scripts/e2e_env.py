@@ -119,9 +119,6 @@ components_manager:
 
     genius-music-source-provider: {{}}
 
-    music-source-provider-chain:
-      providers: [genius-fallback]
-
     enrichment-client:
       enrichment-base-url: http://127.0.0.1:{enrichment_port}
       timeout-ms: 2000

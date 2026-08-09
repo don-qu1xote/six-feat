@@ -157,6 +157,16 @@ const std::vector<const char*> kMigrationV11 = {
     "ALTER TABLE user_settings ALTER COLUMN preferred_enrichment_provider SET DEFAULT 'genius'",
 };
 
+// [SF-ARCH-07] V11 оставил колонку с единственным допустимым значением
+// 'genius': выбирать было уже не из чего, но состояние в БД осталось —
+// его читали на каждом запросе графа и пути и тащили через внутренний
+// вызов в фоновое обогащение. Цепочка провайдеров схлопнута, читать
+// колонку больше некому, и хранить одно и то же слово на пользователя
+// незачем.
+const std::vector<const char*> kMigrationV12 = {
+    "ALTER TABLE user_settings DROP COLUMN IF EXISTS preferred_enrichment_provider",
+};
+
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
     {2, kMigrationV2},
@@ -169,9 +179,10 @@ const std::vector<Migration> kMigrations = {
     {9, kMigrationV9},
     {10, kMigrationV10},
     {11, kMigrationV11},
+    {12, kMigrationV12},
 };
 
-constexpr int kTargetSchemaVersion = 11;
+constexpr int kTargetSchemaVersion = 12;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,

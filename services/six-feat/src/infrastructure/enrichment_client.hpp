@@ -32,9 +32,7 @@ class EnrichmentClient final : public userver::components::ComponentBase {
 
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
-  bool EnqueueIfNeeded(const ArtistRef& ref,
-                       const std::string& user_token,
-                       const std::string& preferred_provider = "") const;
+  bool EnqueueIfNeeded(const ArtistRef& ref, const std::string& user_token) const;
 
   bool IsEnriching(std::int64_t artist_id) const;
 
@@ -45,7 +43,6 @@ class EnrichmentClient final : public userver::components::ComponentBase {
     std::string image;
     std::string url;
     std::string user_token;
-    std::string preferred_provider;
     std::chrono::steady_clock::time_point created_at;
   };
 
@@ -62,12 +59,9 @@ class EnrichmentClient final : public userver::components::ComponentBase {
                           const std::string& name,
                           const std::string& image,
                           const std::string& url,
-                          const std::string& user_token,
-                          const std::string& preferred_provider) const;
+                          const std::string& user_token) const;
 
-  void EnqueueRetry(const ArtistRef& ref,
-                    const std::string& user_token,
-                    const std::string& preferred_provider) const;
+  void EnqueueRetry(const ArtistRef& ref, const std::string& user_token) const;
 
   void FlushLoop();
 

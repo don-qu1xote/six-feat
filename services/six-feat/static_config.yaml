@@ -78,9 +78,6 @@ components_manager:
 
     genius-music-source-provider: {}
 
-    music-source-provider-chain:
-      providers: [genius-fallback]
-
     oauth-config:
       client-id: $genius_client_id
       redirect-uri: $genius_redirect_uri

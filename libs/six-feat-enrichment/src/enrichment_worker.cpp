@@ -42,7 +42,7 @@ EnrichmentWorker::EnrichmentWorker(const components::ComponentConfig& config,
     : ComponentBase(config, context),
       repo_(context.FindComponent<ArtistRepository>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
-      source_(context.FindComponent<MusicSourceProviderChain>()),
+      source_(context.FindComponent<GeniusMusicSourceProvider>()),
       capacity_(static_cast<std::size_t>(
           RequireNonNegative("queue-capacity", config["queue-capacity"].As<int>(1024)))),
       queue_(capacity_),
@@ -132,9 +132,7 @@ yaml_config::Schema EnrichmentWorker::GetStaticConfigSchema() {
   return yaml_config::MergeSchemas<components::ComponentBase>(kEnrichmentWorkerComponentSchema);
 }
 
-bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref,
-                                       const std::string& user_token,
-                                       const std::string& preferred_provider) {
+bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref, const std::string& user_token) {
   if (repo_.GetFetchDepth(ref.id) >= Depth::kFull) return false;
 
   {
@@ -153,7 +151,6 @@ bool EnrichmentWorker::EnqueueIfNeeded(const ArtistRef& ref,
   job.image = ref.image;
   job.url = ref.url;
   job.user_token = user_token;
-  job.preferred_provider = preferred_provider;
 
   if (!queue_.TryPush(std::move(job))) {
     std::unique_lock lock(pending_mu_);
@@ -202,8 +199,7 @@ void EnrichmentWorker::WorkerLoop() {
       const int limit = gateway_.SongsLimitBg();
       engine::current_task::CancellationPoint();
 
-      auto full = source_.GetArtistSongs(
-          ref, limit, Lane::kBackground, job.user_token, job.preferred_provider);
+      auto full = source_.GetArtistSongs(ref, limit, Lane::kBackground, job.user_token);
       full.seed = ref;
 
       if (!full.songs.empty()) {

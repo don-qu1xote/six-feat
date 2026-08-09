@@ -229,9 +229,6 @@ components_manager:
 
     genius-music-source-provider: {{}}
 
-    music-source-provider-chain:
-      providers: [genius-fallback]
-
     artist-repository: {{}}
 
     app-secret-parity-checker:
@@ -1073,9 +1070,6 @@ components_manager:
       max-concurrent: 6
 
     genius-music-source-provider: {{}}
-
-    music-source-provider-chain:
-      providers: [genius-fallback]
 
     enrichment-worker:
       queue-capacity: {queue_capacity}

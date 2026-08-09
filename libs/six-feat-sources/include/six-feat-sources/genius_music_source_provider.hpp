@@ -12,8 +12,11 @@
 
 namespace six_feat {
 
-class GeniusMusicSourceProvider final : public userver::components::ComponentBase,
-                                        public MusicSourceProvider {
+// [SF-ARCH-07] Единственный источник рёбер графа. Раньше — одна из двух
+// реализаций порта MusicSourceProvider, внутри цепочки звалась
+// "genius-fallback". Порт и цепочка схлопнуты вместе со вторым провайдером,
+// так что это обычный компонент, к которому обращаются напрямую.
+class GeniusMusicSourceProvider final : public userver::components::ComponentBase {
  public:
   static constexpr std::string_view kName = "genius-music-source-provider";
 
@@ -22,17 +25,13 @@ class GeniusMusicSourceProvider final : public userver::components::ComponentBas
 
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
-  std::string_view Name() const override {
-    return "genius-fallback";
-  }
-
   std::vector<ProviderEdge> GetCollaborationEdges(const ArtistRef& seed,
-                                                  const std::string& user_token) const override;
+                                                  const std::string& user_token) const;
 
   ArtistSongs GetArtistSongs(const ArtistRef& seed,
                              int songs_limit,
                              Lane lane,
-                             const std::string& user_token) const override;
+                             const std::string& user_token) const;
 
  private:
   IExternalArtistLookup& genius_;

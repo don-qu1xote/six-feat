@@ -46,7 +46,7 @@ flowchart TB
 
         sixfeat["`**six-feat**
 *«C++ / userver»*
-Порт 8080. /api/v1/graph, /path, /search, /status(/stream), /, /healthz, /readyz. Локально проверяет сессионную cookie (ADR-0004). Оркестрирует ArtistRepository + MusicSourceProviderChain.`"]
+Порт 8080. /api/v1/graph, /path, /search, /status(/stream), /, /healthz, /readyz. Локально проверяет сессионную cookie (ADR-0004). Оркестрирует ArtistRepository + GeniusMusicSourceProvider.`"]
 
         auth["`**six-feat-auth**
 *«C++ / userver»*

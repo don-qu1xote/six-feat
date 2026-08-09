@@ -35,7 +35,7 @@ bool SecretMatches(const server::http::HttpRequest& request, const std::string& 
 MusicSourceEdgesHandler::MusicSourceEdgesHandler(const components::ComponentConfig& config,
                                                  const components::ComponentContext& context)
     : HttpHandlerBase(config, context),
-      chain_(context.FindComponent<MusicSourceProviderChain>()),
+      source_(context.FindComponent<GeniusMusicSourceProvider>()),
       shared_secret_(internal_api::SharedSecretFromEnv()) {}
 
 std::string MusicSourceEdgesHandler::HandleRequestThrow(const server::http::HttpRequest& request,
@@ -72,7 +72,7 @@ std::string MusicSourceEdgesHandler::HandleRequestThrow(const server::http::Http
   seed.name = seed_name;
 
   try {
-    const auto edges = chain_.GetCollaborationEdges(seed, user_token);
+    const auto edges = source_.GetCollaborationEdges(seed, user_token);
     formats::json::ValueBuilder b(formats::json::Type::kObject);
     formats::json::ValueBuilder arr(formats::json::Type::kArray);
     for (const auto& edge : edges) {

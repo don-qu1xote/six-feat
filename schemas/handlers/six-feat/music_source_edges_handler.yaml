@@ -1,4 +1,4 @@
 type: object
-description: Internal-mesh test/observability endpoint for MusicSourceProviderChain (SF-ARCH-02)
+description: Internal-mesh test/observability endpoint for GeniusMusicSourceProvider (SF-ARCH-02, SF-ARCH-07)
 additionalProperties: false
 properties: {}

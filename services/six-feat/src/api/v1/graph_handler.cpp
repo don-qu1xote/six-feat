@@ -172,7 +172,6 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
   response.SetHeader(std::string{"X-RateLimit-Remaining"},
                      std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
-  std::string preferred_provider;
   bool enrichment_enabled = true;
 
   // Валидная сессия обязательна ВСЕГДА (ТЗ-6), и проверяется она ДО разбора
@@ -185,8 +184,6 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     if (!session) {
       return ErrorGraph("not_authenticated");
     }
-    preferred_provider =
-        user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
     enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));
   }
 
@@ -302,8 +299,8 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
 
   RadialGraphResult radial_result;
   try {
-    radial_result = service_.BuildRadialGraphWithSource(
-        seed, user_token, limit_override, preferred_provider, enrichment_enabled);
+    radial_result =
+        service_.BuildRadialGraphWithSource(seed, user_token, limit_override, enrichment_enabled);
   } catch (const GeniusHttpError& e) {
     return GeniusErrorGraph(e, response);
   } catch (...) {

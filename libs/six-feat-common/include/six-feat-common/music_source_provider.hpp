@@ -1,8 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <exception>
-#include <functional>
 #include <six-feat-core/lane.hpp>
 #include <six-feat-domain/domain_types.hpp>
 #include <string>
@@ -11,6 +9,17 @@
 
 namespace six_feat {
 
+// [SF-ARCH-07] Здесь были порт MusicSourceProvider и хелперы цепочки под него
+// (ADR-0011: Яндекс — ширина графа, Genius — глубина и fallback). Второго
+// провайдера больше нет, порт с единственной реализацией схлопнут: и граф, и
+// фоновое обогащение ходят прямо в GeniusMusicSourceProvider. Осталась только
+// лексика самого ребра — она описывает данные, а не источник.
+// Заголовок при этом остаётся словарём области: lane.hpp и domain_types.hpp
+// подключены здесь потому, что ими пользуются все, кто работает с рёбрами и
+// песнями провайдера, — не убирать «как неиспользуемые».
+// EdgeSource пережил откат намеренно: он подписывает, ОТКУДА пришло ребро, и
+// переживает запись в Postgres (ADR-0011, «Идентичность трека»). Значение
+// сейчас одно — это метаданные ребра, а не оставленная точка расширения.
 enum class EdgeSource : std::uint8_t { kGeniusCredit };
 
 const char* ToString(EdgeSource source);
@@ -21,38 +30,5 @@ struct ProviderEdge {
   EdgeSource source{EdgeSource::kGeniusCredit};
   std::string role;
 };
-
-class MusicSourceProvider {
- public:
-  virtual ~MusicSourceProvider() = default;
-
-  virtual std::string_view Name() const = 0;
-
-  virtual std::vector<ProviderEdge> GetCollaborationEdges(const ArtistRef& seed,
-                                                          const std::string& user_token) const = 0;
-
-  virtual ArtistSongs GetArtistSongs(const ArtistRef& seed,
-                                     int songs_limit,
-                                     Lane lane,
-                                     const std::string& user_token) const = 0;
-};
-
-using ProviderFailureLogger =
-    std::function<void(std::string_view provider_name, const std::exception& ex)>;
-
-std::vector<MusicSourceProvider*> ReorderProvidersPreferring(
-    const std::vector<MusicSourceProvider*>& providers, const std::string& preferred_provider);
-
-std::vector<ProviderEdge> TryProvidersInOrder(const std::vector<MusicSourceProvider*>& providers,
-                                              const ArtistRef& seed,
-                                              const std::string& user_token,
-                                              const ProviderFailureLogger& on_failure = {});
-
-ArtistSongs TrySongsProvidersInOrder(const std::vector<MusicSourceProvider*>& providers,
-                                     const ArtistRef& seed,
-                                     int songs_limit,
-                                     Lane lane,
-                                     const std::string& user_token,
-                                     const ProviderFailureLogger& on_failure = {});
 
 }  // namespace six_feat

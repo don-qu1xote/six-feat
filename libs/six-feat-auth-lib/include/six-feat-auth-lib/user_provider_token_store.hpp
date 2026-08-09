@@ -28,10 +28,6 @@ class UserProviderTokenStore final : public userver::components::ComponentBase {
 
   bool Disconnect(std::int64_t user_id, const std::string& provider) const;
 
-  void SetPreferredEnrichmentProvider(std::int64_t user_id, const std::string& provider) const;
-
-  std::string GetPreferredEnrichmentProvider(std::int64_t user_id) const;
-
   void SetEnrichmentEnabled(std::int64_t user_id, bool enabled) const;
 
   bool GetEnrichmentEnabled(std::int64_t user_id) const;

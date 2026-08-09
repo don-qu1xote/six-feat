@@ -4,7 +4,7 @@
 
 **Статус: план (SF-YM-03, Release 1.0), не реализовано.** Публичного
 эндпоинта для этого потока в коде на момент SF-DOC-04 нет — сегодня
-`MusicSourceProviderChain::GetCollaborationEdges` вызывается только с
+`GeniusMusicSourceProvider::GetCollaborationEdges` вызывается только с
 internal-mesh observability-эндпоинта (см. примечание в
 [build-default-graph.md](./build-default-graph.md)). Диаграмма фиксирует
 целевую архитектуру потока, как описано в `docs/ROADMAP.md` (SF-YM-02,

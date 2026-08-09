@@ -58,7 +58,6 @@ struct EnrichmentJob {
   std::string image;
   std::string url;
   std::string user_token;
-  std::string preferred_provider;
 };
 
 }  // namespace six_feat

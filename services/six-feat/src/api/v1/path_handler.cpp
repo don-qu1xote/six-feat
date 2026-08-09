@@ -178,7 +178,6 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
   resp.SetHeader(std::string{"X-RateLimit-Remaining"},
                  std::to_string(rate_limit_.RemainingWithTier(limit_key, rl_max, rl_window)));
 
-  std::string preferred_provider;
   bool enrichment_enabled = true;
 
   if (user_token.empty()) {
@@ -188,8 +187,6 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
       // Вход снова только через Genius — формулировка как у /search.
       return ErrorJson("not_authenticated", "Login with Genius to search for collaboration paths.");
     }
-    preferred_provider =
-        user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
     enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));
     const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
     user_token = auth::GeniusTokenForSession(*session, connected);
@@ -258,8 +255,7 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
 
   PathFindResult result;
   try {
-    result = service_.FindPath(
-        from_ref, to_ref, mask, deadline, user_token, preferred_provider, enrichment_enabled);
+    result = service_.FindPath(from_ref, to_ref, mask, deadline, user_token, enrichment_enabled);
   } catch (const GeniusHttpError& e) {
     return GeniusErrorJson(e, resp);
   } catch (const std::exception& ex) {

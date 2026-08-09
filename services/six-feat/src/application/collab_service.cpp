@@ -7,7 +7,7 @@
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-domain/role_mask.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
-#include <six-feat-sources/music_source_provider_chain.hpp>
+#include <six-feat-sources/genius_music_source_provider.hpp>
 #include <six-feat-storage/analytics.hpp>
 #include <six-feat-storage/artist_repository.hpp>
 #include <stdexcept>
@@ -53,7 +53,7 @@ CollabService::CollabService(const components::ComponentConfig& config,
     : ComponentBase(config, context),
       repo_(context.FindComponent<ArtistRepository>()),
       gateway_(context.FindComponent<GeniusGatewayClient>()),
-      chain_(context.FindComponent<MusicSourceProviderChain>()),
+      source_(context.FindComponent<GeniusMusicSourceProvider>()),
       enrichment_(context.FindComponent<EnrichmentClient>()),
       fg_fanout_(context.FindComponent<FgFanoutLimiter>()),
       path_max_expand_rounds_(RequireNonNegative("path-max-expand-rounds",
@@ -93,7 +93,7 @@ ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
                                    std::optional<int> limit_override) const {
   const int limit = limit_override.value_or(gateway_.SongsLimitFg());
 
-  auto out = chain_.GetArtistSongs(ref, limit, Lane::kForeground, user_token);
+  auto out = source_.GetArtistSongs(ref, limit, Lane::kForeground, user_token);
   out.seed = ref;
 
   repo_.WriteThrough(out, Depth::kForeground);
@@ -103,7 +103,6 @@ ArtistSongs CollabService::FetchFg(const ArtistRef& ref,
 ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
                                             const std::string& user_token,
                                             std::optional<int> limit_override,
-                                            const std::string& preferred_provider,
                                             bool enrichment_enabled) const {
   auto result = repo_.GetArtistSongs(seed, Depth::kForeground);
 
@@ -127,7 +126,7 @@ ArtistSongs CollabService::BuildRadialGraph(const ArtistRef& seed,
   }
 
   if (enrichment_enabled) {
-    enrichment_.EnqueueIfNeeded(seed, user_token, preferred_provider);
+    enrichment_.EnqueueIfNeeded(seed, user_token);
   }
   return std::move(result.data);
 }
@@ -288,7 +287,6 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
                                        const RoleMask& mask,
                                        engine::Deadline deadline,
                                        const std::string& user_token,
-                                       const std::string& preferred_provider,
                                        bool enrichment_enabled) const {
   {
     auto direct = CheckDirectPath(from, to, mask, user_token);
@@ -359,7 +357,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
             ArtistRef fref;
             fref.id = nid;
             if (const auto it = node_info.find(nid); it != node_info.end()) fref = it->second;
-            enrichment_.EnqueueIfNeeded(fref, user_token, preferred_provider);
+            enrichment_.EnqueueIfNeeded(fref, user_token);
           }
         }
       }
@@ -485,7 +483,7 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
         LOG_WARNING() << "[Service] expand task " << et.ref.id << ": " << ex.what();
       }
       known_ids.insert(et.ref.id);
-      if (enrichment_enabled) enrichment_.EnqueueIfNeeded(et.ref, user_token, preferred_provider);
+      if (enrichment_enabled) enrichment_.EnqueueIfNeeded(et.ref, user_token);
     }
 
     append_delta();
@@ -498,11 +496,9 @@ PathFindResult CollabService::FindPath(const ArtistRef& from,
 RadialGraphResult CollabService::BuildRadialGraphWithSource(const ArtistRef& seed,
                                                             const std::string& user_token,
                                                             std::optional<int> limit_override,
-                                                            const std::string& preferred_provider,
                                                             bool enrichment_enabled) const {
   RadialGraphResult result;
-  result.data =
-      BuildRadialGraph(seed, user_token, limit_override, preferred_provider, enrichment_enabled);
+  result.data = BuildRadialGraph(seed, user_token, limit_override, enrichment_enabled);
 
   for (const auto& song : result.data.songs) {
     for (const auto& credit : song.credits) {

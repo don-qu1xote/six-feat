@@ -38,13 +38,14 @@ std::string EnqueueHandler::HandleRequestThrow(const server::http::HttpRequest& 
 
   std::int64_t artist_id = 0;
   std::string user_token;
-  std::string preferred_provider;
   ArtistRef ref;
   try {
     const auto body = formats::json::FromString(request.RequestBody());
     artist_id = body["artist_id"].As<std::int64_t>(0);
     user_token = body["user_token"].As<std::string>("");
-    preferred_provider = body["preferred_provider"].As<std::string>("");
+    // [SF-ARCH-07] preferred_provider из тела больше не читается: провайдер
+    // один. Поле у старых клиентов просто игнорируется — ломать внутренний
+    // контракт ради этого не нужно.
     ref.id = artist_id;
     ref.name = body["name"].As<std::string>("");
     ref.image = body["image"].As<std::string>("");
@@ -63,7 +64,7 @@ std::string EnqueueHandler::HandleRequestThrow(const server::http::HttpRequest& 
     if (auto known = repo_.Lookup(ref.id)) ref = std::move(*known);
   }
 
-  const bool enqueued = worker_.EnqueueIfNeeded(ref, user_token, preferred_provider);
+  const bool enqueued = worker_.EnqueueIfNeeded(ref, user_token);
 
   resp.SetStatus(server::http::HttpStatus::kAccepted);
   formats::json::ValueBuilder b(formats::json::Type::kObject);

@@ -23,7 +23,6 @@ add_executable(six_feat_unit_tests
   ${SIX_FEAT_ROOT}/services/six-feat/src/application/artist_resolver.cpp
   test_artist_resolver.cpp
   test_bidirectional_bfs.cpp
-  test_music_source_provider_chain.cpp
   test_featured_edge_role.cpp
 )
 

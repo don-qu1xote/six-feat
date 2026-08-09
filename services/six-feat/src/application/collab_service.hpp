@@ -23,7 +23,7 @@
 
 namespace six_feat {
 
-class MusicSourceProviderChain;
+class GeniusMusicSourceProvider;
 
 struct PathContext {
   std::vector<std::int64_t> path;
@@ -73,13 +73,11 @@ class CollabService final : public userver::components::ComponentBase {
   ArtistSongs BuildRadialGraph(const ArtistRef& seed,
                                const std::string& user_token,
                                std::optional<int> limit_override = std::nullopt,
-                               const std::string& preferred_provider = "",
                                bool enrichment_enabled = true) const;
 
   RadialGraphResult BuildRadialGraphWithSource(const ArtistRef& seed,
                                                const std::string& user_token,
                                                std::optional<int> limit_override = std::nullopt,
-                                               const std::string& preferred_provider = "",
                                                bool enrichment_enabled = true) const;
 
   PathContext CheckDirectPath(const ArtistRef& from,
@@ -92,7 +90,6 @@ class CollabService final : public userver::components::ComponentBase {
                           const RoleMask& mask,
                           userver::engine::Deadline deadline,
                           const std::string& user_token,
-                          const std::string& preferred_provider = "",
                           bool enrichment_enabled = true) const;
 
   double MatchThreshold() const {
@@ -120,7 +117,7 @@ class CollabService final : public userver::components::ComponentBase {
 
   IArtistDataSource& repo_;
   IExternalArtistLookup& gateway_;
-  MusicSourceProviderChain& chain_;
+  GeniusMusicSourceProvider& source_;
   EnrichmentClient& enrichment_;
   FgFanoutLimiter& fg_fanout_;
   const int path_max_expand_rounds_;
