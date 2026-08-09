@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -15,10 +16,18 @@ PATH_URL = f"{SERVICE_BASE}/api/v1/graph/path"
 
 def _no_token_session() -> requests.Session:
     """A logged-in session (Genius is the sole provider) with no usable
-    Genius token — path search always needs one, so this must 422."""
+    Genius token — path search always needs one, so this must 422.
+
+    Имя уникальное: user_id считается из имени, а подключённые BYO-токены
+    переживают тест (их никто не чистит между тестами). С общим именем
+    сессия унаследовала бы токен, подключённый совсем другим тестом, и
+    «токена нет» перестало бы быть правдой.
+    """
     sess = requests.Session()
     sess.headers["Accept"] = "application/json"
-    cookie = session_crypto.make_cookie(TEST_APP_SECRET, access_token="")
+    cookie = session_crypto.make_cookie(
+        TEST_APP_SECRET, access_token="", name=f"SFPathNoToken-{uuid.uuid4().hex}"
+    )
     sess.cookies.update({"six_feat_session": cookie})
     return sess
 

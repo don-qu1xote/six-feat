@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <six-feat-auth-lib/user_identity.hpp>
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-core/http_cache.hpp>
@@ -174,6 +175,21 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
   std::string preferred_provider;
   bool enrichment_enabled = true;
 
+  // Валидная сессия обязательна ВСЕГДА (ТЗ-6), и проверяется она ДО разбора
+  // параметров: иначе анонимный запрос без artist/id получал 400 «'artist'
+  // or 'id' required» вместо 401 — то есть по коду ответа отличал «плохой
+  // запрос» от «не залогинен», ещё не будучи никем.
+  std::optional<auth::SessionData> session;
+  if (user_token.empty()) {
+    session = auth::RequireFullSession(request, oauth_);
+    if (!session) {
+      return ErrorGraph("not_authenticated");
+    }
+    preferred_provider =
+        user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
+    enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));
+  }
+
   const RoleMask mask = ParseRoleMask(request.GetArg("roles"));
 
   std::optional<int> limit_override;
@@ -236,22 +252,11 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
   const bool seed_fully_cached = have_seed && !limit_override.has_value() &&
                                  service_.CachedDepth(seed.id) >= Depth::kForeground;
 
-  if (user_token.empty()) {
-    // Валидная сессия обязательна ВСЕГДА (ТЗ-6) — seed_fully_cached ниже
-    // освобождает только от требования Genius-токена, не от аутентификации:
-    // иначе полностью анонимный запрос на уже закэшированный id/имя прошёл
-    // бы без единой проверки сессии.
-    const auto session = auth::RequireFullSession(request, oauth_);
-    if (!session) {
-      return ErrorGraph("not_authenticated");
-    }
-    preferred_provider =
-        user_provider_tokens_.GetPreferredEnrichmentProvider(auth::SessionUserId(*session));
-    enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));
-    if (!seed_fully_cached) {
-      const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
-      user_token = auth::GeniusTokenForSession(*session, connected);
-    }
+  // Сессия уже проверена выше; здесь остаётся только Genius-токен, и он
+  // нужен лишь тогда, когда одного кэша не хватит.
+  if (session && !seed_fully_cached) {
+    const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
+    user_token = auth::GeniusTokenForSession(*session, connected);
   }
 
   // [SF-YM-08] Резолв уже закэшированного сида не требует Genius-токена

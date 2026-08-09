@@ -166,7 +166,30 @@ class TestExpiry:
 
 
 class TestEmptyToken:
-    def test_empty_token_round_trip_is_rejected(self):
+    """Пустой tok — валидная сессия «залогинен, но Genius-токена нет».
+
+    Раньше она отвергалась прямо в decrypt, и такой пользователь выглядел
+    анонимным: вместо честного 422 «подключите токен в настройках» ручки
+    отвечали 401. Подлинность и срок куки при этом проверяются как раньше.
+    """
+
+    def test_empty_token_round_trip_keeps_the_session(self):
         key = sc.key_from_secret("a" * 64)
-        cookie = sc.encrypt("", int(time.time()) + 100, key)
+        cookie = sc.encrypt("", int(time.time()) + 100, key, name="Tokenless")
+
+        data = sc.decrypt(cookie, key)
+
+        assert data is not None
+        assert data.access_token == ""
+        assert data.name == "Tokenless"
+
+    def test_empty_token_does_not_bypass_expiry(self):
+        key = sc.key_from_secret("a" * 64)
+        cookie = sc.encrypt("", int(time.time()) - 1, key)
         assert sc.decrypt(cookie, key) is None
+
+    def test_empty_token_does_not_bypass_the_signature(self):
+        key = sc.key_from_secret("a" * 64)
+        other_key = sc.key_from_secret("b" * 64)
+        cookie = sc.encrypt("", int(time.time()) + 100, key)
+        assert sc.decrypt(cookie, other_key) is None

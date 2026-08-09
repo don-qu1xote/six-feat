@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import requests
@@ -774,10 +775,20 @@ class TestGraphGoldenNodeEdgeOrder:
 def _no_token_session(*, name: str = "") -> requests.Session:
     """A logged-in session (Genius is the sole provider) that has not
     connected/does not carry a usable Genius token — exercises the
-    cache-first path in graph_handler.cpp without hitting Genius."""
+    cache-first path in graph_handler.cpp without hitting Genius.
+
+    Имя по умолчанию уникальное: user_id считается из имени, а подключённые
+    BYO-токены никто не чистит между тестами — с общим именем сессия
+    подхватила бы токен, подключённый другим тестом, и перестала бы быть
+    сессией «без токена».
+    """
     sess = requests.Session()
     sess.headers["Accept"] = "application/json"
-    cookie = session_crypto.make_cookie(TEST_APP_SECRET, access_token="", name=name)
+    cookie = session_crypto.make_cookie(
+        TEST_APP_SECRET,
+        access_token="",
+        name=name or f"SFGraphNoToken-{uuid.uuid4().hex}",
+    )
     sess.cookies.update({"six_feat_session": cookie})
     return sess
 

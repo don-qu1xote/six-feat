@@ -15,6 +15,7 @@ API_KEYS_URL = f"{SERVICE_BASE}/api/v1/api-keys"
 API_KEYS_REVOKE_URL = f"{SERVICE_BASE}/api/v1/api-keys/revoke"
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
+SETTINGS_DISCONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/disconnect"
 
 RATE_LIMIT_STATUS = 429
 BURST_COUNT = 40
@@ -119,6 +120,13 @@ class TestIssue:
             name="",
         )
         sess.cookies.update({"six_feat_session": cookie})
+
+        # Сессия без имени всегда даёт один и тот же user_id, поэтому
+        # предыдущий тест мог оставить подключённый токен именно на нём.
+        # Отвязываем явно, чтобы «токена нет» не зависело от порядка тестов
+        # (404 not_connected — уже отвязан, это тоже ок).
+        disconnect = sess.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
+        assert disconnect.status_code in (200, 404), disconnect.text
 
         resp = sess.post(API_KEYS_URL, json={})
         assert resp.status_code == 422, resp.text
