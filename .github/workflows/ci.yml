@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_all:
+        description: "Прогнать ВСЕ джобы, не разбирая дифф (медленно, но полностью)"
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -56,6 +61,8 @@ jobs:
 
       - name: Detect changes
         id: changes
+        env:
+          FORCE_ALL: ${{ inputs.force_all }}
         run: bash scripts/detect-changes.sh HEAD~1
 
   lint-clang-tidy:
@@ -239,6 +246,7 @@ jobs:
             tests/test_migrations.py \
             tests/test_game_migrations.py \
             tests/test_component_config_parity.py \
+            tests/test_include_hygiene.py \
             -v --tb=short
 
   unit-tests-cpp:

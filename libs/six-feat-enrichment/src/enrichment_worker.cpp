@@ -6,7 +6,7 @@
 #include <optional>
 #include <six-feat-enrichment/enrichment_worker.hpp>
 #include <six-feat-genius/genius_gateway_client.hpp>
-#include <six-feat-sources/music_source_provider_chain.hpp>
+#include <six-feat-sources/genius_music_source_provider.hpp>
 #include <stdexcept>
 #include <string>
 #include <string_view>

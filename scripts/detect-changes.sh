@@ -2,6 +2,9 @@
 # Работает и как source (локально), и как exec (CI: `bash scripts/detect-changes.sh HEAD~1`),
 # значения читаются из $SERVICES/$TESTS/$LINT/$FRONTEND/$DOCKER или $GITHUB_OUTPUT.
 # workflow_dispatch не даёт осмысленного HEAD~1 — тогда затронуто всё, без git diff.
+# [SF-CI-11] FORCE_ALL=true даёт то же самое из ЛЮБОГО события (галочка force_all
+# в ci.yml). Ровно одна точка форсирования — на выходе этого скрипта, а не
+# `|| force_all` по условиям джоб: иначе следующая новая джоба про флаг забудет.
 
 set -euo pipefail
 
@@ -13,8 +16,10 @@ LINT=""
 FRONTEND="false"
 DOCKER="false"
 
-if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
-  echo "=== workflow_dispatch: treating everything as affected ==="
+FORCE_ALL="${FORCE_ALL:-false}"
+
+if [ "$FORCE_ALL" = "true" ] || [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
+  echo "=== treating everything as affected (force_all=$FORCE_ALL, event=${GITHUB_EVENT_NAME:-none}) ==="
   SERVICES="six-feat enrichment auth game genius-gateway"
   TESTS="unit integration six-feat auth genius-gateway enrichment bg-resilience health"
   LINT="clang-tidy eslint format yaml promtool"
@@ -137,7 +142,7 @@ if echo "$TESTS" | grep -q "genius-gateway"; then
 fi
 SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
-fi  # workflow_dispatch
+fi  # force_all / workflow_dispatch
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
