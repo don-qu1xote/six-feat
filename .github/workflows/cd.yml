@@ -18,6 +18,21 @@ on:
         type: string
         required: false
         default: ""
+      # [SF-INF-10] `local` — машина автора, единственная реальная среда.
+      # Выбран задокументированный ручной запуск `make deploy-local`, а НЕ
+      # self-hosted runner: runner на домашней машине пришлось бы держать
+      # включённым, регистрировать в репозитории и давать ему доступ к .env с
+      # боевыми секретами — цена несопоставима с «зайти в терминал и набрать
+      # одну команду». Пайплайн при target=local доводит до образов и честно
+      # передаёт деплой человеку, а не изображает выкладку на несуществующий
+      # хост.
+      target:
+        description: "Куда деплоим: remote-ssh = STAGING_HOST/PROD_HOST по SSH; local = машина автора (`make deploy-local`)."
+        type: choice
+        options:
+          - remote-ssh
+          - local
+        default: remote-ssh
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -42,12 +57,14 @@ jobs:
       is_rollback: ${{ steps.mode.outputs.is_rollback }}
       image_tag: ${{ steps.mode.outputs.image_tag }}
       owner: ${{ steps.mode.outputs.owner }}
+      target: ${{ steps.mode.outputs.target }}
     steps:
       - name: Resolve mode
         id: mode
         env:
           EVENT: ${{ github.event_name }}
           MODE: ${{ inputs.mode }}
+          TARGET_RAW: ${{ inputs.target }}
           OWNER_RAW: ${{ github.repository_owner }}
           SHA: ${{ github.sha }}
         run: |
@@ -61,12 +78,14 @@ jobs:
           fi
 
           owner="$(printf '%s' "$OWNER_RAW" | tr '[:upper:]' '[:lower:]')"
+          target="${TARGET_RAW:-remote-ssh}"
 
           {
             echo "is_dry_run=$is_dry_run"
             echo "is_rollback=$is_rollback"
             echo "image_tag=sha-$SHA"
             echo "owner=$owner"
+            echo "target=$target"
           } >>"$GITHUB_OUTPUT"
 
           {
@@ -77,6 +96,7 @@ jobs:
             echo "| event | \`$EVENT\` |"
             echo "| dry run | \`$is_dry_run\` |"
             echo "| rollback | \`$is_rollback\` |"
+            echo "| target | \`$target\` |"
             echo "| image tag | \`sha-$SHA\` |"
           } >>"$GITHUB_STEP_SUMMARY"
 
@@ -169,11 +189,43 @@ jobs:
         if: needs.config.outputs.is_dry_run == 'true'
         run: echo "::warning title=Dry run::Built ${{ matrix.service.name }} but did not push to ${{ env.REGISTRY }}."
 
+  # [SF-INF-10] Единственная стадия, которая при target=local вообще что-то
+  # значит. Пайплайн собрал и запушил образы — дальше деплой делает человек на
+  # своей машине одной командой, и делает ЕГО ЖЕ гейтами: deploy_local.sh
+  # вызывает те же cd_health_check.py и cd_smoke_test.py, что стадии 4 и 5.
+  # Смысл стадии — не «сделать вид, что задеплоили», а зафиксировать в логе
+  # прогона, что реальная цель этого релиза — локальная машина.
+  deploy-local-handoff:
+    name: "Stage 3L — Deploy: local machine (handoff)"
+    runs-on: ubuntu-22.04
+    needs: [config, push]
+    if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target == 'local'
+    steps:
+      - name: Hand the deploy over to the local machine
+        env:
+          IMAGE_TAG: ${{ needs.config.outputs.image_tag }}
+        run: |
+          {
+            echo "### Deploy target: local machine"
+            echo ""
+            echo "Образы собраны (\`$IMAGE_TAG\`). Выкладку выполняет автор на своей машине:"
+            echo ""
+            echo '```'
+            echo "git pull && make deploy-local"
+            echo '```'
+            echo ""
+            echo "\`make deploy-local\` поднимает тот же docker-compose.yml на не-dev"
+            echo "профиле и проходит те же гейты, что стадии 4 и 5 этого пайплайна"
+            echo "(\`scripts/cd_health_check.py\`, \`scripts/cd_smoke_test.py\`)."
+            echo "Публичный доступ (туннель) по умолчанию выключен —"
+            echo "см. docs/DEVELOPMENT.md «Как поднять у себя»."
+          } >>"$GITHUB_STEP_SUMMARY"
+
   deploy-staging:
     name: "Stage 3 — Deploy staging"
     runs-on: ubuntu-22.04
     needs: [config, push]
-    if: needs.config.outputs.is_rollback != 'true'
+    if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     environment:
       name: staging
       url: ${{ steps.target.outputs.base_url }}
@@ -245,7 +297,7 @@ jobs:
     name: "Stage 4 — Health check staging"
     runs-on: ubuntu-22.04
     needs: [config, deploy-staging]
-    if: needs.config.outputs.is_rollback != 'true'
+    if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -263,7 +315,7 @@ jobs:
     name: "Stage 5 — Smoke tests (staging)"
     runs-on: ubuntu-22.04
     needs: [config, deploy-staging, health-check-staging]
-    if: needs.config.outputs.is_rollback != 'true'
+    if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -281,7 +333,7 @@ jobs:
     name: "Stage 6 — Manual approval"
     runs-on: ubuntu-22.04
     needs: [config, smoke-staging]
-    if: needs.config.outputs.is_rollback != 'true'
+    if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     environment:
       name: ${{ needs.config.outputs.is_dry_run == 'true' && 'production-dry-run' || 'production' }}
     steps:
@@ -294,7 +346,7 @@ jobs:
     name: "Stage 7 — Deploy production"
     runs-on: ubuntu-22.04
     needs: [config, approve-production]
-    if: needs.config.outputs.is_rollback != 'true'
+    if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     environment:
       name: ${{ needs.config.outputs.is_dry_run == 'true' && 'production-dry-run' || 'production' }}
       url: ${{ steps.target.outputs.base_url }}
@@ -366,7 +418,7 @@ jobs:
     name: "Stage 7b — Health check production"
     runs-on: ubuntu-22.04
     needs: [config, deploy-production]
-    if: needs.config.outputs.is_rollback != 'true'
+    if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     permissions:
       contents: write   # двигает last-good tag; без новых секретов, GITHUB_TOKEN
     steps:
@@ -395,7 +447,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [config, deploy-production, health-check-production]
     if: >-
-      always() && !cancelled() && (
+      always() && !cancelled() && needs.config.outputs.target != 'local' && (
         needs.config.outputs.is_rollback == 'true' ||
         (needs.config.outputs.is_rollback != 'true' &&
          needs.health-check-production.result == 'failure')

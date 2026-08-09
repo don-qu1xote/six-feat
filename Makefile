@@ -51,6 +51,23 @@ install-hooks:
 dev:
 	docker compose up --build
 
+# [SF-INF-10] Полный стек на этой машине — единственная реальная среда.
+# Тот же docker-compose.yml, что у `make dev`; отличие только в ENV_PROFILE
+# (по умолчанию staging), поэтому проверяется боевая конфигурация, а не
+# dev-дефолты. Стадии те же, что у CD: подъём → health-check → smoke.
+# Публичный туннель по умолчанию ВЫКЛЮЧЕН: PUBLIC_TUNNEL=cloudflared включает.
+# Через `bash`, а не напрямую: бит +x переживает git, но теряется при
+# копировании файла руками или распаковке архива — а «Permission denied»
+# на ровном месте выглядит как сломанный таргет, хотя дело в режиме файла.
+.PHONY: deploy-local
+deploy-local:
+	bash ./scripts/deploy_local.sh
+
+# Preflight без подъёма стека: профиль, рендер compose, секреты, туннель.
+.PHONY: deploy-local-check
+deploy-local-check:
+	bash ./scripts/deploy_local.sh --dry-run
+
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)

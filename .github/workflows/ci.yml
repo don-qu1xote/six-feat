@@ -247,6 +247,7 @@ jobs:
             tests/test_game_migrations.py \
             tests/test_component_config_parity.py \
             tests/test_include_hygiene.py \
+            tests/test_deploy_local.py \
             -v --tb=short
 
   unit-tests-cpp:
