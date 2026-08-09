@@ -404,7 +404,7 @@ jobs:
       - name: Deploy
         env:
           DEPLOY_ENV: production
-          ENV_PROFILE: production
+          ENV_PROFILE: prod
           IMAGE_REGISTRY: ${{ env.REGISTRY }}
           IMAGE_OWNER: ${{ needs.config.outputs.owner }}
           IMAGE_TAG: ${{ needs.config.outputs.image_tag }}
@@ -509,7 +509,7 @@ jobs:
       - name: Redeploy last-good release
         env:
           DEPLOY_ENV: production
-          ENV_PROFILE: production
+          ENV_PROFILE: prod
           IMAGE_REGISTRY: ${{ env.REGISTRY }}
           IMAGE_OWNER: ${{ needs.config.outputs.owner }}
           IMAGE_TAG: ${{ steps.target.outputs.image_tag }}

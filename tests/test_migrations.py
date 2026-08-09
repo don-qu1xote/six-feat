@@ -123,9 +123,17 @@ def test_explain_script_applies_migrations_in_version_order():
         f"порядок применения миграций сломан: {[p.name for p in applied]}"
     )
 
-    # И заодно фиксируем, ЗАЧЕМ там ключ сортировки: без него порядок другой.
-    if len(applied) >= 10:
-        lexicographic = [script._migration_version(p) for p in sorted(applied)]
-        assert lexicographic != expected, (
-            "миграций стало меньше десяти — тест перестал что-либо доказывать"
-        )
+
+def test_version_key_keeps_double_digit_migrations_in_order():
+    """Зачем скрипту ключ сортировки, когда миграция сейчас одна.
+
+    Проверка на синтетическом наборе имён, а не на содержимом каталога:
+    после схлопывания (SF-DOC-08) миграция одна, и порядок на ней сходится
+    при любой сортировке — а грабли «V10 раньше V2» вернутся ровно в тот
+    день, когда реестр снова дорастёт до десятой.
+    """
+    version_of = _load_explain_script()._migration_version
+    names = [Path(f"V{n}__x.sql") for n in range(1, 13)]
+
+    assert [version_of(p) for p in sorted(names, key=version_of)] == list(range(1, 13))
+    assert [version_of(p) for p in sorted(names)] != list(range(1, 13))

@@ -37,6 +37,17 @@ struct Migration {
   std::vector<const char*> statements;
 };
 
+// [SF-DOC-08] Одна миграция вместо двенадцати.
+// Половина прежних версий существовала только чтобы отменить другую половину:
+// V8 заводила preferred_enrichment_provider — V12 её сносила, V10 создавала
+// artist_alias — V11 её сносила. Это история откаченного эксперимента с
+// Яндекс.Музыкой (SF-YM-00), а не история продукта, и хранить её было не для
+// кого: боевой базы у проекта никогда не существовало, мигрировать было нечего.
+// Дальше реестр снова append-only: V2 и следующие ДОБАВЛЯЮТСЯ, ранее
+// выпущенные не редактируются. Схлопывание — разовая операция, повторить её
+// будет уже нельзя, как только появится база, которую жалко потерять.
+// Зеркало postgresql/migrations/V1__initial_schema.sql, пооператорно —
+// проверяет tests/test_migrations.py (SF-DB-05).
 const std::vector<const char*> kMigrationV1 = {
     R"SQL(CREATE TABLE IF NOT EXISTS artists (
         id        BIGINT PRIMARY KEY,
@@ -60,38 +71,27 @@ const std::vector<const char*> kMigrationV1 = {
         song_count    INTEGER NOT NULL,
         last_fetch_ts BIGINT NOT NULL
     ))SQL",
-    "CREATE INDEX IF NOT EXISTS idx_credits_artist ON credits(artist_id)",
-    "CREATE INDEX IF NOT EXISTS idx_credits_song ON credits(song_id)",
-};
-
-const std::vector<const char*> kMigrationV2 = {
-    "CREATE INDEX IF NOT EXISTS idx_fetch_state_depth ON fetch_state(depth)",
-};
-
-const std::vector<const char*> kMigrationV3 = {
+    R"SQL(CREATE INDEX IF NOT EXISTS idx_credits_artist ON credits(artist_id))SQL",
+    R"SQL(CREATE INDEX IF NOT EXISTS idx_credits_song ON credits(song_id))SQL",
+    R"SQL(CREATE INDEX IF NOT EXISTS idx_fetch_state_depth ON fetch_state(depth))SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS rate_buckets (
         key          TEXT NOT NULL,
         window_start BIGINT NOT NULL,
         count        INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (key, window_start)
     ))SQL",
-    "CREATE INDEX IF NOT EXISTS idx_rate_buckets_window_start ON rate_buckets(window_start)",
-};
-
-const std::vector<const char*> kMigrationV4 = {
+    R"SQL(CREATE INDEX IF NOT EXISTS idx_rate_buckets_window_start ON rate_buckets(window_start))SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS api_keys (
         id           BIGSERIAL PRIMARY KEY,
         key_hash     TEXT NOT NULL UNIQUE,
-        owner        TEXT NOT NULL,
+        owner_id     BIGINT NOT NULL,
         genius_token TEXT NOT NULL,
         rate_tier    TEXT NOT NULL DEFAULT 'default',
         created_at   BIGINT NOT NULL,
         revoked_at   BIGINT
     ))SQL",
-    "CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner)",
-};
-
-const std::vector<const char*> kMigrationV5 = {
+    R"SQL(CREATE INDEX IF NOT EXISTS idx_api_keys_owner_id ON api_keys(owner_id))SQL",
+    R"SQL(COMMENT ON COLUMN api_keys.owner_id IS 'auth::SessionUserId of the issuing session — the key is revocable by its owner through the self-service endpoint')SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS idempotency_keys (
         key           TEXT PRIMARY KEY,
         request_hash  TEXT NOT NULL,
@@ -100,10 +100,7 @@ const std::vector<const char*> kMigrationV5 = {
         created_at    BIGINT NOT NULL,
         expires_at    BIGINT NOT NULL
     ))SQL",
-    "CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires_at ON idempotency_keys(expires_at)",
-};
-
-const std::vector<const char*> kMigrationV6 = {
+    R"SQL(CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires_at ON idempotency_keys(expires_at))SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS user_provider_tokens (
         user_id         BIGINT NOT NULL,
         provider        TEXT NOT NULL,
@@ -111,78 +108,17 @@ const std::vector<const char*> kMigrationV6 = {
         ts              BIGINT NOT NULL,
         PRIMARY KEY (user_id, provider)
     ))SQL",
-};
-
-const std::vector<const char*> kMigrationV7 = {
-    "ALTER TABLE api_keys DROP COLUMN IF EXISTS owner",
-    "ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS owner_id BIGINT NOT NULL DEFAULT 0",
-    "ALTER TABLE api_keys ALTER COLUMN owner_id DROP DEFAULT",
-    "DROP INDEX IF EXISTS idx_api_keys_owner",
-    "CREATE INDEX IF NOT EXISTS idx_api_keys_owner_id ON api_keys(owner_id)",
-    R"SQL(COMMENT ON COLUMN api_keys.owner_id IS 'auth::SessionUserId of the issuing session (SF-YM-05). Rows from before this migration were not backfilled and read owner_id=0: still valid for auth, but unrevokable via the self-service endpoint.')SQL",
-};
-
-const std::vector<const char*> kMigrationV8 = {
     R"SQL(CREATE TABLE IF NOT EXISTS user_settings (
-        user_id                       BIGINT NOT NULL PRIMARY KEY,
-        preferred_enrichment_provider TEXT NOT NULL DEFAULT 'yandex'
+        user_id            BIGINT NOT NULL PRIMARY KEY,
+        enrichment_enabled BOOLEAN NOT NULL DEFAULT true
     ))SQL",
-};
-
-const std::vector<const char*> kMigrationV9 = {
-    R"SQL(ALTER TABLE user_settings
-        ADD COLUMN IF NOT EXISTS enrichment_enabled BOOLEAN NOT NULL DEFAULT true)SQL",
-};
-
-const std::vector<const char*> kMigrationV10 = {
-    R"SQL(CREATE TABLE IF NOT EXISTS artist_alias (
-        provider             TEXT   NOT NULL,
-        provider_artist_id   BIGINT NOT NULL,
-        canonical_artist_id  BIGINT NOT NULL REFERENCES artists(id),
-        PRIMARY KEY (provider, provider_artist_id)
-    ))SQL",
-    R"SQL(CREATE INDEX IF NOT EXISTS artist_alias_canonical_idx
-        ON artist_alias(canonical_artist_id))SQL",
-};
-
-// Яндекс удалён целиком (больше не источник графа и не провайдер, с
-// которым нужна канонизация) — artist_alias (V10) только связывала
-// provider-space id с каноническим artists.id между двумя провайдерами,
-// а preferred_enrichment_provider (V8) только выбирала между ними.
-// Оба теперь мёртвый груз, раз Genius — единственный провайдер.
-const std::vector<const char*> kMigrationV11 = {
-    "DROP TABLE IF EXISTS artist_alias",
-    R"SQL(UPDATE user_settings SET preferred_enrichment_provider = 'genius'
-        WHERE preferred_enrichment_provider != 'genius')SQL",
-    "ALTER TABLE user_settings ALTER COLUMN preferred_enrichment_provider SET DEFAULT 'genius'",
-};
-
-// [SF-ARCH-07] V11 оставил колонку с единственным допустимым значением
-// 'genius': выбирать было уже не из чего, но состояние в БД осталось —
-// его читали на каждом запросе графа и пути и тащили через внутренний
-// вызов в фоновое обогащение. Цепочка провайдеров схлопнута, читать
-// колонку больше некому, и хранить одно и то же слово на пользователя
-// незачем.
-const std::vector<const char*> kMigrationV12 = {
-    "ALTER TABLE user_settings DROP COLUMN IF EXISTS preferred_enrichment_provider",
 };
 
 const std::vector<Migration> kMigrations = {
     {1, kMigrationV1},
-    {2, kMigrationV2},
-    {3, kMigrationV3},
-    {4, kMigrationV4},
-    {5, kMigrationV5},
-    {6, kMigrationV6},
-    {7, kMigrationV7},
-    {8, kMigrationV8},
-    {9, kMigrationV9},
-    {10, kMigrationV10},
-    {11, kMigrationV11},
-    {12, kMigrationV12},
 };
 
-constexpr int kTargetSchemaVersion = 12;
+constexpr int kTargetSchemaVersion = 1;
 
 void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   cluster->Execute(storages::postgres::ClusterHostType::kMaster,
@@ -197,10 +133,17 @@ void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
   auto version_result = trx.Execute("SELECT COALESCE(MAX(version), 0) FROM schema_version");
   const int current = version_result.Front()[0].As<std::int16_t>();
 
+  // База, оставшаяся от сборки до схлопывания миграций (SF-DOC-08), несёт
+  // version=12 и упрётся сюда. Схема у неё та же самая, но доказать это
+  // раннер не может, поэтому не угадывает, а говорит, что делать: локальную
+  // базу разработчика не жалко, боевой у проекта нет.
   if (current > kTargetSchemaVersion) {
-    throw std::runtime_error("PersistentStore: DB schema version " + std::to_string(current) +
-                             " is newer than the version this binary supports (" +
-                             std::to_string(kTargetSchemaVersion) + ")");
+    throw std::runtime_error(
+        "PersistentStore: DB schema version " + std::to_string(current) +
+        " is newer than the version this binary supports (" + std::to_string(kTargetSchemaVersion) +
+        "). If this is a local database created before the migrations were squashed into a "
+        "single V1 (SF-DOC-08), recreate it: `make clean` drops the volume, the next start "
+        "builds the schema from scratch. There is no production database to preserve.");
   }
 
   for (const auto& m : kMigrations) {

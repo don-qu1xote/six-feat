@@ -268,7 +268,7 @@ namespaced Yandex artist/song id, таблица `artist_alias` (миграци�
 `EnrichmentWorker` и internal-ручка `/internal/music-source/collaboration-edges`
 обращаются к `GeniusMusicSourceProvider` напрямую; параметр
 `preferred_provider` убран из сигнатур и из тела internal-вызова; колонка
-снята миграцией V12 (V8/V10/V11 не тронуты). В `libs/six-feat-common`
+снята миграцией V12 (V8/V10/V11 тогда не тронуты; позже SF-DOC-08 схлопнул весь реестр в одну V1, так что этих номеров в `postgresql/migrations/` уже нет — ищите итоговую схему, а не историю). В `libs/six-feat-common`
 остались типы самого ребра — `EdgeSource`, `ProviderEdge`, `ToString`.
 
 Раздел «Известное свойство: лимитер углубления ключуется по токену, не по

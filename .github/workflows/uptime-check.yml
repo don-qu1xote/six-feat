@@ -1,8 +1,14 @@
 name: Uptime Check
 
+# [SF-DOC-08] Расписание выключено намеренно. Постоянного хоста у продукта
+# нет (единственная среда — машина автора, SF-INF-10), и пробник по cron
+# опрашивал бы localhost раннера, где ничего не запущено: «мониторинг», который
+# ничего не мониторит, но исправно зеленеет. Механизм рабочий и остаётся —
+# вернуть расписание, когда появится адрес, который есть смысл проверять:
+# раскомментировать schedule и задать секрет UPTIME_CHECK_URL.
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # schedule:
+  #   - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -14,8 +20,11 @@ jobs:
     name: "External health check"
     runs-on: ubuntu-22.04
     env:
-      # Настраивается через secrets или переменные окружения
-      UPTIME_CHECK_URL: ${{ secrets.UPTIME_CHECK_URL || 'http://localhost:8080/api/v1/health' }}
+      # Настраивается через secrets или переменные окружения.
+      # [SF-DOC-08] Путь был /api/v1/health — такого эндпоинта нет ни в одном
+      # сервисе: пробник не заработал бы и на живом хосте. Реальные —
+      # /healthz (процесс жив) и /readyz (готов обслуживать), проверяем второй.
+      UPTIME_CHECK_URL: ${{ secrets.UPTIME_CHECK_URL || 'http://localhost:8080/readyz' }}
       UPTIME_CHECK_THRESHOLD: ${{ secrets.UPTIME_CHECK_THRESHOLD || '3' }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
