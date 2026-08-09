@@ -1,5 +1,6 @@
 #include "challenge_handler.hpp"
 
+#include "core/challenge_rules.hpp"
 #include "core/game_session.hpp"
 #include "core/game_store.hpp"
 #include "core/ideal_finder.hpp"
@@ -69,6 +70,7 @@ ChallengeHandler::ChallengeHandler(const components::ComponentConfig& config,
     : HttpHandlerBase(config, context),
       store_(context.FindComponent<GameStore>()),
       neighbours_(context.FindComponent<NeighboursClient>()),
+      rules_(context.FindComponent<ChallengeRules>()),
       session_key_(auth::KeyFromEnv()) {}
 
 std::string ChallengeHandler::HandleRequestThrow(const server::http::HttpRequest& request,
@@ -150,17 +152,29 @@ std::string ChallengeHandler::HandleRequestThrow(const server::http::HttpRequest
   }
   if (role_mask <= 0) role_mask = 15;
 
+  // [SF-GAME-22] Путь считаем ДО создания челленджа: слишком близкую пару
+  // надо отклонить, а не сохранить и потом объяснять. Пара, которую L1 не
+  // связывает вовсе, по-прежнему допустима — правило про минимум шагов, а
+  // не про обязательную связность.
+  const auto path = FindIdealPath(neighbours_, from, to, role_mask);
+  if (path) {
+    const int optimal_len = static_cast<int>(path->size()) - 1;
+    if (!rules_.PathLenOk(optimal_len)) {
+      response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+      return BuildProblemJson(request,
+                              server::http::HttpStatus::kUnprocessableEntity,
+                              rules_.TooShortMessage(optimal_len));
+    }
+  }
+
   const auto season = store_.EnsureCurrentSeason();
   auto challenge =
       store_.UpsertChallenge(from, to, role_mask, "custom", player->user_id, season.id);
 
-  if (!challenge.optimal_len) {
-    const auto path = FindIdealPath(neighbours_, from, to, role_mask);
-    if (path) {
-      const int optimal_len = static_cast<int>(path->size()) - 1;
-      if (store_.SetChallengeIdeal(challenge.id, optimal_len, *path)) {
-        challenge.optimal_len = optimal_len;
-      }
+  if (!challenge.optimal_len && path) {
+    const int optimal_len = static_cast<int>(path->size()) - 1;
+    if (store_.SetChallengeIdeal(challenge.id, optimal_len, *path)) {
+      challenge.optimal_len = optimal_len;
     }
   }
 

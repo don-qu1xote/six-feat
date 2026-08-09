@@ -26,11 +26,7 @@ DB_CONN_PARAMS = dict(
 ROLE_PRIMARY = 1
 ROLE_FEATURED = 2
 
-_A_ID, _B_ID, _C_ID = 160_001, 160_002, 160_003
-
-# [SF-GAME-22] Минимум шагов у челленджа. Держим в одном месте, как и в
-# конфиге сервиса (challenge-rules.min-path-len).
-MIN_PATH_LEN = 2
+_A_ID, _B_ID = 160_001, 160_002
 
 
 def _seed_collaboration(song_id: int, title: str, members: list[tuple[int, str, int]]) -> None:
@@ -87,17 +83,10 @@ def _require_service() -> None:
 
 @pytest.fixture(scope="module", autouse=True)
 def _seed_l1() -> None:
-    # A—B и B—C: прямая пара A—B (1 шаг) нужна для проверки отказа,
-    # цепочка A—B—C (2 шага) — для всех остальных, «нормальных» тестов.
     _seed_collaboration(
         160_101,
         "SF-GAME-16 Direct Collab",
         [(_A_ID, "SFGAME16ArtistA", ROLE_PRIMARY), (_B_ID, "SFGAME16ArtistB", ROLE_FEATURED)],
-    )
-    _seed_collaboration(
-        160_102,
-        "SF-GAME-22 Second Hop",
-        [(_B_ID, "SFGAME16ArtistB", ROLE_PRIMARY), (_C_ID, "SFGAME22ArtistC", ROLE_FEATURED)],
     )
 
 
@@ -137,62 +126,34 @@ def test_get_unknown_id_returns_404():
 def test_create_computes_ideal_and_is_idempotent_by_pair():
     cookie = _fresh_cookie()
 
-    first = _post(cookie, {"from": _A_ID, "to": _C_ID, "role_mask": 15})
+    first = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15})
     assert first.status_code == 200
     first_body = first.json()
     assert first_body["from"] == _A_ID
-    assert first_body["to"] == _C_ID
+    assert first_body["to"] == _B_ID
     assert first_body["role_mask"] == 15
     assert first_body["kind"] == "custom"
-    assert first_body["optimal_len"] == MIN_PATH_LEN
+    assert first_body["optimal_len"] == 1
     assert "optimal_path" not in first_body
 
-    second = _post(cookie, {"from": _A_ID, "to": _C_ID, "role_mask": 15})
+    second = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15})
     assert second.status_code == 200
     second_body = second.json()
     assert second_body["id"] == first_body["id"]
     assert second_body["optimal_len"] == first_body["optimal_len"]
 
-    third = _post(_fresh_cookie(), {"from": _A_ID, "to": _C_ID, "role_mask": 15})
+    third = _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15})
     assert third.json()["id"] == first_body["id"]
-
-
-# [SF-GAME-22] Раньше проверка минимума жила только в скедулере, поэтому
-# пользователь мог создать челлендж из пары, которая уже спелась на одном
-# треке: «цепочка» из нуля промежуточных артистов.
-def test_create_rejects_a_direct_collaboration():
-    resp = _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15})
-
-    assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert "at least 2 steps" in detail
-    assert "direct collaboration" in detail
-
-
-def test_rejected_pair_is_not_persisted():
-    _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15})
-
-    conn = psycopg2.connect(**DB_CONN_PARAMS)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT count(*) FROM game_challenges "
-                "WHERE from_artist_id = %s AND to_artist_id = %s",
-                (_A_ID, _B_ID),
-            )
-            assert cur.fetchone()[0] == 0
-    finally:
-        conn.close()
 
 
 def test_create_stamps_a_season_and_leaderboard_accepts_it():
 
     cookie = _fresh_cookie()
-    created = _post(cookie, {"from": _A_ID, "to": _C_ID, "role_mask": 15}).json()
+    created = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
     assert isinstance(created.get("season_id"), int)
     assert created["season_id"] > 0
 
-    again = _post(_fresh_cookie(), {"from": _A_ID, "to": _C_ID, "role_mask": 15}).json()
+    again = _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
     assert again["season_id"] == created["season_id"]
 
     leaderboard = requests.get(
@@ -206,7 +167,7 @@ def test_create_stamps_a_season_and_leaderboard_accepts_it():
 
 def test_get_matches_create_but_never_reveals_optimal_path():
     cookie = _fresh_cookie()
-    created = _post(cookie, {"from": _A_ID, "to": _C_ID, "role_mask": 15}).json()
+    created = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
 
     fetched = _get(created["id"])
     assert fetched.status_code == 200
@@ -218,7 +179,7 @@ def test_get_matches_create_but_never_reveals_optimal_path():
 
 def test_get_does_not_require_a_session():
     cookie = _fresh_cookie()
-    created = _post(cookie, {"from": _A_ID, "to": _C_ID, "role_mask": 15}).json()
+    created = _post(cookie, {"from": _A_ID, "to": _B_ID, "role_mask": 15}).json()
     resp = requests.get(CHALLENGE_URL, params={"id": created["id"]}, timeout=5)
     assert resp.status_code == 200
 
@@ -262,7 +223,7 @@ def test_daily_challenge_task_publishes_a_valid_non_empty_ideal_if_it_has_run():
         )
 
     challenge_id, from_id, to_id, optimal_len, optimal_path = row
-    assert optimal_len >= MIN_PATH_LEN
+    assert optimal_len >= 1
     assert optimal_path is not None and len(optimal_path) == optimal_len + 1
     assert optimal_path[0] == from_id
     assert optimal_path[-1] == to_id

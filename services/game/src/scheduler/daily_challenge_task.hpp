@@ -10,6 +10,7 @@
 
 namespace six_feat::game {
 
+class ChallengeRules;
 class GameStore;
 class NeighboursClient;
 
@@ -32,8 +33,8 @@ class DailyChallengeTask final : public userver::components::ComponentBase {
 
   GameStore& store_;
   const NeighboursClient& neighbours_;
+  const ChallengeRules& rules_;
   const std::chrono::seconds interval_;
-  const int min_path_len_;
   const int max_attempts_;
   const int candidate_pool_size_;
 

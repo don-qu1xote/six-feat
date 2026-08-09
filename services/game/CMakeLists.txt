@@ -12,6 +12,7 @@ six_feat_embed_schema(handlers/game/validate_handler kGameValidateHandlerSchema 
 six_feat_embed_schema(handlers/game/submit_handler kGameSubmitHandlerSchema GAME_SUBMIT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/game/challenge_handler kGameChallengeHandlerSchema GAME_CHALLENGE_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(components/daily_challenge_task kDailyChallengeTaskComponentSchema DAILY_CHALLENGE_TASK_COMPONENT_SCHEMA_HEADER)
+six_feat_embed_schema(components/challenge_rules kChallengeRulesComponentSchema CHALLENGE_RULES_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/game/leaderboard_handler kGameLeaderboardHandlerSchema GAME_LEADERBOARD_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/game/link_handler kGameLinkHandlerSchema GAME_LINK_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/game/challenges_handler kGameChallengesHandlerSchema GAME_CHALLENGES_HANDLER_SCHEMA_HEADER)
@@ -40,6 +41,7 @@ add_executable(six_feat_game
     src/core/ideal_finder.hpp
     src/core/chain_validator.hpp
     src/infrastructure/neighbours_client.cpp
+    src/core/challenge_rules.cpp
     src/scheduler/daily_challenge_task.cpp
     src/system/readiness_handler.cpp
     src/api/v1/game/admin_handler.cpp

@@ -10,6 +10,7 @@
 
 namespace six_feat::game {
 
+class ChallengeRules;
 class GameStore;
 class NeighboursClient;
 struct Player;
@@ -31,6 +32,7 @@ class AdminHandler final : public userver::server::handlers::HttpHandlerBase {
 
   const GameStore& store_;
   const NeighboursClient& neighbours_;
+  const ChallengeRules& rules_;
   std::array<unsigned char, 32> session_key_;
   std::vector<std::string> admin_ids_;
 };

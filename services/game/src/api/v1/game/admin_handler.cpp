@@ -1,5 +1,6 @@
 #include "admin_handler.hpp"
 
+#include "core/challenge_rules.hpp"
 #include "core/game_session.hpp"
 #include "core/game_store.hpp"
 #include "core/ideal_finder.hpp"
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <optional>
 #include <six-feat-auth-lib/session_crypto.hpp>
 #include <six-feat-core/error_response.hpp>
 #include <six-feat-core/request_id.hpp>
@@ -23,6 +25,8 @@
 #include <userver/server/http/http_request.hpp>
 #include <userver/utils/rand.hpp>
 #include <userver/yaml_config/merge_schemas.hpp>
+#include <utility>
+#include <vector>
 
 #include "infrastructure/neighbours_client.hpp"
 
@@ -33,6 +37,20 @@ using namespace userver;
 namespace {
 
 constexpr int kAllRolesMask = 15;
+
+// Сколько случайных пар пробуем, когда админ не назвал конкретную.
+constexpr int kRandomPairAttempts = 20;
+
+// Ожидает candidates.size() >= 2.
+void PickRandomPair(const std::vector<std::int64_t>& candidates,
+                    std::int64_t& from,
+                    std::int64_t& to) {
+  const auto i = utils::RandRange(candidates.size());
+  auto j = utils::RandRange(candidates.size());
+  if (j == i) j = (j + 1) % candidates.size();
+  from = candidates[i];
+  to = candidates[j];
+}
 
 std::string ToLower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
@@ -83,6 +101,7 @@ AdminHandler::AdminHandler(const components::ComponentConfig& config,
     : HttpHandlerBase(config, context),
       store_(context.FindComponent<GameStore>()),
       neighbours_(context.FindComponent<NeighboursClient>()),
+      rules_(context.FindComponent<ChallengeRules>()),
       session_key_(auth::KeyFromEnv()),
       admin_ids_(ParseAdminIds(config["admin-user-ids"].As<std::string>(""))) {}
 
@@ -136,19 +155,18 @@ std::string AdminHandler::HandleRequestThrow(const server::http::HttpRequest& re
                             "body, if present, must be JSON with from/to (int64)");
   }
 
-  if (from <= 0 || to <= 0) {
-    const auto candidates = store_.RandomArtistIdsWithCredits(50);
+  const bool pair_was_requested = from > 0 && to > 0;
+
+  std::vector<std::int64_t> candidates;
+  if (!pair_was_requested) {
+    candidates = store_.RandomArtistIdsWithCredits(50);
     if (candidates.size() < 2) {
       response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
       return BuildProblemJson(request,
                               server::http::HttpStatus::kUnprocessableEntity,
                               "not enough artists with L1 data to pick a pair yet");
     }
-    const auto i = utils::RandRange(candidates.size());
-    auto j = utils::RandRange(candidates.size());
-    if (j == i) j = (j + 1) % candidates.size();
-    from = candidates[i];
-    to = candidates[j];
+    PickRandomPair(candidates, from, to);
   }
 
   if (from == to) {
@@ -157,14 +175,49 @@ std::string AdminHandler::HandleRequestThrow(const server::http::HttpRequest& re
         request, server::http::HttpStatus::kBadRequest, "from and to must differ");
   }
 
-  const auto path = FindIdealPath(neighbours_, from, to, kAllRolesMask);
-  if (!path) {
-    response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
-    return BuildProblemJson(request,
-                            server::http::HttpStatus::kUnprocessableEntity,
-                            "no ideal path — L1 doesn't connect this pair (yet)");
+  std::optional<std::vector<std::int64_t>> path;
+  int path_len = 0;
+
+  if (pair_was_requested) {
+    path = FindIdealPath(neighbours_, from, to, kAllRolesMask);
+    if (!path) {
+      response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+      return BuildProblemJson(request,
+                              server::http::HttpStatus::kUnprocessableEntity,
+                              "no ideal path — L1 doesn't connect this pair (yet)");
+    }
+    path_len = static_cast<int>(path->size()) - 1;
+    // [SF-GAME-22] Пара названа явно — отказываем явно, а не подсовываем
+    // молча другую: админ просил опубликовать именно её.
+    if (!rules_.PathLenOk(path_len)) {
+      response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+      return BuildProblemJson(request,
+                              server::http::HttpStatus::kUnprocessableEntity,
+                              rules_.TooShortMessage(path_len));
+    }
+  } else {
+    // Пару не называли — ведём себя как скедулер: пересэмплируем, пока не
+    // найдём достаточно далёкую. Отказывать тут не за что.
+    for (int attempt = 0; attempt < kRandomPairAttempts; ++attempt) {
+      auto candidate = FindIdealPath(neighbours_, from, to, kAllRolesMask);
+      if (candidate) {
+        const int len = static_cast<int>(candidate->size()) - 1;
+        if (rules_.PathLenOk(len)) {
+          path = std::move(candidate);
+          path_len = len;
+          break;
+        }
+      }
+      PickRandomPair(candidates, from, to);
+    }
+    if (!path) {
+      response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
+      return BuildProblemJson(request,
+                              server::http::HttpStatus::kUnprocessableEntity,
+                              "no random pair at least " + std::to_string(rules_.MinPathLen()) +
+                                  " steps apart yet — try again once L1 has more data");
+    }
   }
-  const int path_len = static_cast<int>(path->size()) - 1;
 
   const auto season = store_.EnsureCurrentSeason();
   auto challenge =

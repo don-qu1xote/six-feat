@@ -28,7 +28,11 @@ ROLE_FEATURED = 2
 
 ADMIN_NAME = "SFG21Admin"
 
-_A_ID, _B_ID = 213_001, 213_002
+_A_ID, _B_ID, _C_ID = 213_001, 213_002, 213_003
+
+# [SF-GAME-22] Минимум шагов у челленджа, то же значение, что в конфиге
+# сервиса (challenge-rules.min-path-len).
+MIN_PATH_LEN = 2
 
 
 def _cookie(name: str) -> str:
@@ -76,6 +80,21 @@ def _seed_collaboration(song_id: int, title: str, members: list[tuple[int, str, 
         conn.close()
 
 
+def _seed_chain() -> None:
+    # A—B и B—C: прямая пара A—B (1 шаг) нужна для проверки отказа,
+    # цепочка A—B—C (2 шага) — для нормальной публикации.
+    _seed_collaboration(
+        213_101,
+        "SF-GAME-21 Admin A-B",
+        [(_A_ID, "SFG21AdminA", ROLE_PRIMARY), (_B_ID, "SFG21AdminB", ROLE_FEATURED)],
+    )
+    _seed_collaboration(
+        213_102,
+        "SF-GAME-22 Admin B-C",
+        [(_B_ID, "SFG21AdminB", ROLE_PRIMARY), (_C_ID, "SFG22AdminC", ROLE_FEATURED)],
+    )
+
+
 def _skip_if_unreachable() -> None:
     try:
         requests.get(ADMIN_URL, timeout=2)
@@ -116,17 +135,45 @@ def test_post_non_admin_is_403():
 )
 def test_admin_can_publish_a_specific_daily():
 
-    _seed_collaboration(
-        213_101,
-        "SF-GAME-21 Admin A-B",
-        [(_A_ID, "SFG21AdminA", ROLE_PRIMARY), (_B_ID, "SFG21AdminB", ROLE_FEATURED)],
-    )
+    _seed_chain()
     s = _session(ADMIN_NAME)
     assert s.get(ADMIN_URL, timeout=5).json()["admin"] is True
 
-    resp = s.post(ADMIN_URL, json={"from": _A_ID, "to": _B_ID}, timeout=15)
+    resp = s.post(ADMIN_URL, json={"from": _A_ID, "to": _C_ID}, timeout=15)
     assert resp.status_code == 200
     body = resp.json()
     assert body["kind"] == "daily"
-    assert body["from"] == _A_ID and body["to"] == _B_ID
-    assert body["optimal_len"] >= 1
+    assert body["from"] == _A_ID and body["to"] == _C_ID
+    assert body["optimal_len"] >= MIN_PATH_LEN
+
+
+# [SF-GAME-22] Админский publish считал длину пути и молча её игнорировал,
+# поэтому прямую коллаборацию можно было выкатить как обычный daily.
+@pytest.mark.skipif(
+    not _admin_configured(),
+    reason="set GAME_ADMIN_GENIUS_IDS to include SFG21Admin (on the game service "
+    "and this test env) to exercise the positive publish path",
+)
+def test_admin_publish_of_a_direct_collaboration_is_rejected():
+    _seed_chain()
+    s = _session(ADMIN_NAME)
+
+    resp = s.post(ADMIN_URL, json={"from": _A_ID, "to": _B_ID}, timeout=15)
+
+    # Явный отказ, а не тихая подмена пары: админ просил именно эту.
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "at least 2 steps" in detail
+    assert "direct collaboration" in detail
+
+    conn = psycopg2.connect(**DB_CONN_PARAMS)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM game_challenges "
+                "WHERE from_artist_id = %s AND to_artist_id = %s",
+                (_A_ID, _B_ID),
+            )
+            assert cur.fetchone()[0] == 0
+    finally:
+        conn.close()

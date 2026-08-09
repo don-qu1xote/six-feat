@@ -2,17 +2,15 @@ type: object
 description: >-
     [SF-GAME-16] Once-a-day publisher for kind="daily" challenges — picks a
     candidate artist pair from six-feat's own credits and upserts a challenge
-    for it.
+    for it. The minimum acceptable path length is not configured here — it is
+    shared with the admin and user creation paths via the challenge-rules
+    component (SF-GAME-22).
 additionalProperties: false
 properties:
     interval-seconds:
         type: integer
         description: How often the task runs
         defaultDescription: '86400'
-    min-path-len:
-        type: integer
-        description: Minimum acceptable BFS ideal length for a candidate pair to be published
-        defaultDescription: '2'
     max-attempts:
         type: integer
         description: Candidate pairs tried before giving up on a given run

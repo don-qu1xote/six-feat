@@ -1,5 +1,6 @@
 #include "daily_challenge_task.hpp"
 
+#include "core/challenge_rules.hpp"
 #include "core/game_store.hpp"
 #include "core/ideal_finder.hpp"
 
@@ -40,8 +41,8 @@ DailyChallengeTask::DailyChallengeTask(const components::ComponentConfig& config
     : ComponentBase(config, context),
       store_(context.FindComponent<GameStore>()),
       neighbours_(context.FindComponent<NeighboursClient>()),
+      rules_(context.FindComponent<ChallengeRules>()),
       interval_(RequirePositive("interval-seconds", config["interval-seconds"].As<int>(86400))),
-      min_path_len_(RequirePositive("min-path-len", config["min-path-len"].As<int>(2))),
       max_attempts_(RequirePositive("max-attempts", config["max-attempts"].As<int>(20))),
       candidate_pool_size_(
           RequirePositive("candidate-pool-size", config["candidate-pool-size"].As<int>(50))),
@@ -94,7 +95,9 @@ bool DailyChallengeTask::RunOnce() {
     if (!path) continue;
 
     const int path_len = static_cast<int>(path->size()) - 1;
-    if (path_len < min_path_len_) continue;
+    // Здесь пересэмплирование, а не ошибка: конкретного запроса, которому
+    // надо ответить отказом, нет — просто берём следующую пару.
+    if (!rules_.PathLenOk(path_len)) continue;
 
     const auto season = store_.EnsureCurrentSeason();
     auto challenge =
@@ -108,7 +111,7 @@ bool DailyChallengeTask::RunOnce() {
   }
 
   LOG_INFO() << "[DailyChallengeTask] exhausted " << max_attempts_
-             << " candidate pairs without finding one >= " << min_path_len_ << " hops";
+             << " candidate pairs without finding one >= " << rules_.MinPathLen() << " hops";
   return false;
 }
 

@@ -8,6 +8,7 @@
 
 namespace six_feat::game {
 
+class ChallengeRules;
 class GameStore;
 class NeighboursClient;
 
@@ -26,6 +27,7 @@ class ChallengeHandler final : public userver::server::handlers::HttpHandlerBase
  private:
   const GameStore& store_;
   const NeighboursClient& neighbours_;
+  const ChallengeRules& rules_;
   std::array<unsigned char, 32> session_key_;
 };
 

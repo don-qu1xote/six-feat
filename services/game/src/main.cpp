@@ -1,3 +1,4 @@
+#include "core/challenge_rules.hpp"
 #include "core/game_store.hpp"
 
 #include <six-feat-core/rate_limit_store_component.hpp>
@@ -33,6 +34,7 @@ int main(int argc, char* argv[]) {
                                   .Append<six_feat::game::NeighboursClient>()
                                   .Append<components::Postgres>("postgres-db-1")
                                   .Append<six_feat::game::GameStore>()
+                                  .Append<six_feat::game::ChallengeRules>()
                                   .Append<six_feat::RateLimitStoreComponent>()
                                   .Append<six_feat::HealthHandler>()
                                   .Append<six_feat::game::ReadinessHandler>()

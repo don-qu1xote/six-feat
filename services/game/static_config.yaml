@@ -63,9 +63,11 @@ components_manager:
       backend: shared
       dbname: postgres-db-1
 
+    challenge-rules:
+      min-path-len: 2
+
     daily-challenge-task:
       interval-seconds: 86400
-      min-path-len: 2
       max-attempts: 20
       candidate-pool-size: 50
 
