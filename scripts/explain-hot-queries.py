@@ -129,9 +129,24 @@ HOT_QUERIES = [
 ]
 
 
+def _migration_version(path: Path) -> int:
+    """V10__x.sql -> 10.
+
+    Сортировать пути как строки нельзя: "V10" < "V2" в лексикографике, и
+    начиная с десятой миграции порядок ломается — V10 (artist_alias,
+    REFERENCES artists(id)) выполнялась бы раньше V1, создающей artists.
+    """
+    return int(path.name[1:].split("_", 1)[0])
+
+
+def migration_files() -> list[Path]:
+    """Файлы миграций в порядке применения — по номеру версии, не по имени."""
+    return sorted(MIGRATIONS_DIR.glob("V*.sql"), key=_migration_version)
+
+
 def apply_migrations(conn) -> None:
     with conn.cursor() as cur:
-        for path in sorted(MIGRATIONS_DIR.glob("V*.sql")):
+        for path in migration_files():
             for statement in path.read_text(encoding="utf-8").split(";"):
                 statement = statement.strip()
                 if statement:
@@ -228,7 +243,15 @@ def main() -> int:
                 failures[query["name"]] = problems
     finally:
         conn.rollback()
-        cleanup(conn)
+        # Уборка — best-effort: если упало ДО миграций, удалять нечего, а её
+        # собственная ошибка затрёт настоящую причину падения (именно так
+        # «relation artists does not exist» пряталось за «relation credits
+        # does not exist» из DELETE).
+        try:
+            cleanup(conn)
+        except psycopg2.Error as exc:
+            conn.rollback()
+            print(f"explain-hot-queries: уборка пропущена: {exc}", file=sys.stderr)
         conn.close()
 
     if failures:

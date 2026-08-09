@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 from pathlib import Path
 from typing import List, Tuple
@@ -9,6 +10,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PERSISTENT_STORE_CPP = REPO_ROOT / "libs" / "six-feat-storage" / "src" / "persistent_store.cpp"
 MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations"
+EXPLAIN_SCRIPT = REPO_ROOT / "scripts" / "explain-hot-queries.py"
 
 
 def _normalize(sql: str) -> str:
@@ -96,3 +98,34 @@ def test_sql_file_statements_match_cpp_array(version: int, var_name: str):
         f"  .sql file:   {sql_statements}\n"
         f"  kMigrations: {cpp_statements}"
     )
+
+
+def _load_explain_script():
+    # Порядок берём из самого скрипта, а не воспроизводим рядом: проверять
+    # надо тот список, который он реально применяет.
+    spec = importlib.util.spec_from_file_location("explain_hot_queries", EXPLAIN_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_explain_script_applies_migrations_in_version_order():
+    """Единственное место, где .sql-файлы применяются напрямую — джоба
+    «Perf — EXPLAIN hot queries». Сортировка путей как строк ставит V10
+    перед V2, и с десятой миграции джоба падает на «relation ... does not
+    exist»: V10 (artist_alias) ссылается на artists из V1.
+    """
+    script = _load_explain_script()
+    applied = script.migration_files()
+    expected = [version for version, _ in _MIGRATIONS]
+
+    assert [script._migration_version(p) for p in applied] == expected, (
+        f"порядок применения миграций сломан: {[p.name for p in applied]}"
+    )
+
+    # И заодно фиксируем, ЗАЧЕМ там ключ сортировки: без него порядок другой.
+    if len(applied) >= 10:
+        lexicographic = [script._migration_version(p) for p in sorted(applied)]
+        assert lexicographic != expected, (
+            "миграций стало меньше десяти — тест перестал что-либо доказывать"
+        )
