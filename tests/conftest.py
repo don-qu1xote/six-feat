@@ -1488,8 +1488,7 @@ def clean_db_state(request: pytest.FixtureRequest) -> None:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE TABLE artists, songs, credits, fetch_state, artist_alias "
-                "RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE artists, songs, credits, fetch_state RESTART IDENTITY CASCADE"
             )
     finally:
         conn.close()

@@ -1045,18 +1045,6 @@
       <div class="ui-state-slot" id="canvas-state"></div>
 
       <section class="canvas-chrome" id="canvas-chrome">
-        <button
-          class="settings-toggle"
-          id="btn-settings-open"
-          type="button"
-          aria-label="Settings"
-          data-i18n-attr="aria-label:settings.toggleAriaLabel"
-        >
-          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <use href="#icon-gear" />
-          </svg>
-        </button>
-
         <nav class="rail rail-shell">
           <button
             class="brand"
@@ -2101,6 +2089,24 @@
         </aside>
       </div>
     </section>
+
+    <!-- Кнопка настроек стоит на верхнем уровне, рядом с игровыми
+         экранами, а не внутри .canvas-chrome: у того свой контекст
+         наложения (z-index: var(--z-panel)), внутри которого собственный
+         z-index кнопки ничего не значил, а .game-screen — такие же 20, но
+         ниже по документу, — перекрывали её и перехватывали клики.
+         Настройки обязаны открываться с любого экрана. -->
+    <button
+      class="settings-toggle"
+      id="btn-settings-open"
+      type="button"
+      aria-label="Settings"
+      data-i18n-attr="aria-label:settings.toggleAriaLabel"
+    >
+      <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <use href="#icon-gear" />
+      </svg>
+    </button>
 
     <section id="game-leaderboard-surface" class="game-screen" aria-label="Leaderboard" hidden>
       <nav class="game-rail rail-shell" aria-label="Game navigation">

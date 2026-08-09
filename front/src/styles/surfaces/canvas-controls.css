@@ -13,8 +13,12 @@
   z-index: var(--z-canvas);
 }
 
+/* fixed, а не absolute: кнопка вынесена из .canvas-chrome на верхний
+   уровень (см. комментарий в index.html), и позиционироваться ей теперь
+   нужно от вьюпорта, а не от давно исчезнувшего родителя. z-index здесь
+   наконец что-то значит: 30 > 20 у .game-screen. */
 .settings-toggle {
-  position: absolute;
+  position: fixed;
   top: var(--space-4);
   right: var(--space-4);
   z-index: var(--z-docked);

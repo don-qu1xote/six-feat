@@ -378,3 +378,42 @@ function rule(css, selector) {
   const end = css.indexOf("}", idx);
   return css.slice(idx, end + 1);
 }
+
+// [E2E settings-reachable] Кнопка настроек обязана открываться с любого
+// экрана. Она уже несла z-index: var(--z-docked) (30), но лежала внутри
+// .canvas-chrome с z-index: var(--z-panel) (20) — тот создаёт контекст
+// наложения, внутри которого 30 ничего не значит снаружи. Игровые экраны —
+// такие же 20, но ниже по документу, — накрывали кнопку и перехватывали
+// клики на всех пяти игровых поверхностях. Проверяем оба инварианта здесь,
+// а не только в E2E: тест стоит миллисекунды, E2E-прогон — минуты.
+describe("настройки достижимы с игровых экранов", () => {
+  const html = readFileSync(join(here, "..", "..", "index.html"), "utf8");
+
+  function ancestorsOf(marker) {
+    const upto = html.slice(0, html.indexOf(marker));
+    const stack = [];
+    for (const m of upto.matchAll(/<(\/?)(section|div|main|nav|aside)\b[^>]*>/g)) {
+      if (m[1]) stack.pop();
+      else if (!m[0].trimEnd().endsWith("/>")) stack.push(m[0]);
+    }
+    return stack;
+  }
+
+  it("кнопка настроек не лежит внутри .canvas-chrome", () => {
+    const enclosing = ancestorsOf('id="btn-settings-open"').join(" ");
+    expect(enclosing).not.toContain("canvas-chrome");
+  });
+
+  it("кнопка позиционируется от вьюпорта, а не от исчезнувшего родителя", () => {
+    const rule = css.slice(css.indexOf(".settings-toggle {"));
+    expect(rule.slice(0, rule.indexOf("}"))).toContain("position: fixed");
+  });
+
+  it("её слой выше игровых экранов", () => {
+    const toggle = css.slice(css.indexOf(".settings-toggle {"));
+    expect(toggle.slice(0, toggle.indexOf("}"))).toContain("--z-docked");
+
+    const screen = css.slice(css.indexOf(".game-screen {"));
+    expect(screen.slice(0, screen.indexOf("}"))).toContain("--z-surface");
+  });
+});
