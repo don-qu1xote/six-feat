@@ -14,7 +14,7 @@ pytest-cov>=7.1.0
 # cookies (mirroring src/auth/session_crypto.cpp) so the test suite can
 # authenticate against the OAuth-gated /api/v1/graph and /api/v1/graph/path
 # endpoints without a real Genius OAuth round-trip.
-cryptography>=49.0.0
+cryptography>=50.0.0
 
 # [F-35] Direct Postgres connection used by the clean_db_state autouse
 # fixture (tests/conftest.py) to truncate data tables between tests, since
