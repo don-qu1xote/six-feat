@@ -1,6 +1,7 @@
 import {
   State,
   COLOR,
+  ROLE_PRIORITY,
   setSeed,
   setNodes,
   setEdges,
@@ -9,14 +10,8 @@ import {
   resetExpansionState,
   setTruncation,
 } from "./state/state.js";
+import { roleStyle, isGeniusDefaultAvatar } from "./state/helpers.js";
 import {
-  roleStyle,
-  allRolesFromCollabs,
-  sortByPopularity,
-  isGeniusDefaultAvatar,
-} from "./state/helpers.js";
-import {
-  resolveEdgeDominantRole,
   computeNodeSizes,
   initGraphOnCanvas,
   initNetwork,
@@ -132,11 +127,10 @@ export function mergeDeepenResult(deepen) {
       continue;
     }
     existing.collaborations = [...(existing.collaborations || []), ...(e.collaborations || [])];
-    existing.dominantRole = resolveEdgeDominantRole({
-      collaborations: existing.collaborations,
-      dominantRole: existing.dominantRole,
-      dominant_role: e.dominant_role,
-    });
+    existing.dominantRole = strongerRole(
+      existing.dominantRole,
+      (e.dominant_role || "primary").toLowerCase(),
+    );
     mergedEdges.push(existing);
   }
   addEdges(newEdges);
@@ -177,6 +171,10 @@ export function buildNodeState(n, seedId, existingIds, _graph) {
     name: n.name || "",
     imageUrl,
     geniusUrl: n.url || null,
+    // [SF-WEB-77] Набор ролей узла присылает сервер (graph_handler.cpp:
+    // nb["roles"]); раньше клиент собирал его из collaborations всех
+    // входящих рёбер.
+    _rolesSet: new Set(n.roles || []),
     genres: [],
     isSeed: isSeed,
     // [SF-YM-09] Absent on older cached responses — default to available
@@ -198,10 +196,12 @@ export function edgeKey(a, b) {
   return `${lo}_${hi}`;
 }
 
+// [SF-WEB-77] Роль и стиль ребра приходят посчитанными (graph_handler.cpp:
+// dominant_role, edge_style) — клиент их только принимает. Раньше он выводил
+// роль заново из collaborations, и два вычисления могли разойтись молча.
 export function buildEdgeState(e) {
   const lo = Math.min(e.from, e.to);
   const hi = Math.max(e.from, e.to);
-  const role = resolveEdgeDominantRole(e);
   return {
     id: `${lo}_${hi}`,
     from: e.from,
@@ -210,8 +210,43 @@ export function buildEdgeState(e) {
     collaboration_count: e.collaboration_count || null,
     collaborations: e.collaborations || [],
     songs: e.songs || [],
-    dominantRole: role,
+    dominantRole: (e.dominant_role || "primary").toLowerCase(),
+    edgeStyle: e.edge_style || "solid",
   };
+}
+
+// Слияние двух ВЕРДИКТОВ сервера, а не вывод роли заново: углубление
+// приходит отдельным ответом, и по одному ребру сервер мог ответить дважды
+// — из /graph и из /graph/deepen. Какая из двух ролей сильнее, знает только
+// клиент, потому что только он видит оба ответа сразу.
+function strongerRole(a, b) {
+  for (const r of ROLE_PRIORITY) {
+    if (a === r || b === r) return r;
+  }
+  return a || b || "primary";
+}
+
+// Топ-5 треков узла: списки коллабораций приходят от сервера уже
+// отсортированными по популярности, здесь только слияние нескольких таких
+// списков — порядок задаёт сервер, клиент его не переопределяет.
+function topCollaborations(lists, limit) {
+  const heads = lists.map(() => 0);
+  const out = [];
+  while (out.length < limit) {
+    let best = -1;
+    let bestPop = -Infinity;
+    for (let i = 0; i < lists.length; i++) {
+      if (heads[i] >= lists[i].length) continue;
+      const pop = lists[i][heads[i]].popularity || 0;
+      if (pop > bestPop) {
+        bestPop = pop;
+        best = i;
+      }
+    }
+    if (best < 0) break;
+    out.push(lists[best][heads[best]++]);
+  }
+  return out;
 }
 
 function finalizeNodeRoleState() {
@@ -238,8 +273,10 @@ function finalizeNodeRoleState() {
 
   for (const n of State.graphNodes) {
     const inc = edgesByNode.get(n.id) || [];
-    n._topTracks = sortByPopularity(inc.flatMap((e) => e.collaborations || [])).slice(0, 5);
-    n._rolesSet = new Set(inc.flatMap((e) => allRolesFromCollabs(e.collaborations)));
+    n._topTracks = topCollaborations(
+      inc.map((e) => e.collaborations || []),
+      5,
+    );
     n._totalCollabs = inc.reduce((s, e) => s + (e.collaboration_count || e.weight || 1), 0);
 
     if (n.isSeed) {
@@ -355,9 +392,10 @@ export function cacheNodeCollaborations() {
   }
   for (const n of State.graphNodes) {
     const inc = edgesByNode.get(n.id) || [];
-    const all = inc.flatMap((e) => e.collaborations || []);
-    n._topTracks = sortByPopularity(all).slice(0, 5);
-    n._rolesSet = new Set(inc.flatMap((e) => allRolesFromCollabs(e.collaborations)));
+    n._topTracks = topCollaborations(
+      inc.map((e) => e.collaborations || []),
+      5,
+    );
     n._totalCollabs = inc.reduce((s, e) => s + (e.collaboration_count || e.weight || 1), 0);
   }
 }

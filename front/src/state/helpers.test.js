@@ -4,8 +4,6 @@ import {
   initialOf,
   debounce,
   lerp,
-  dominantRoleFromCollabs,
-  allRolesFromCollabs,
   roleStyle,
   brighten,
   placeholderFor,
@@ -126,35 +124,22 @@ describe("debounce", () => {
   });
 });
 
-describe("dominantRoleFromCollabs", () => {
-  it("picks the highest-priority role present (featured > primary > producer > writer)", () => {
-    const collabs = [{ roles: ["writer"] }, { roles: ["producer"] }, { roles: ["featured"] }];
-    expect(dominantRoleFromCollabs(collabs)).toBe("featured");
+// [SF-WEB-77] Функции, выводившие роль/порядок заново, удалены. Тест на их
+// отсутствие — не формальность: вернуть их легко и незаметно, а цена — второй
+// источник правды, который разойдётся с сервером молча.
+describe("role derivation is gone from the client", () => {
+  it("no longer exports the functions that re-derived server-side values", async () => {
+    const helpers = await import("./helpers.js");
+
+    expect(helpers.dominantRoleFromCollabs).toBeUndefined();
+    expect(helpers.allRolesFromCollabs).toBeUndefined();
+    expect(helpers.sortByPopularity).toBeUndefined();
   });
 
-  it("falls back to 'primary' when no roles match the known priority list", () => {
-    expect(dominantRoleFromCollabs([{ roles: ["mixer"] }])).toBe("primary");
-  });
+  it("keeps isGeniusDefaultAvatar — документированное дублирование (SF-WEB-16)", async () => {
+    const helpers = await import("./helpers.js");
 
-  it("falls back to 'primary' for empty/undefined input", () => {
-    expect(dominantRoleFromCollabs([])).toBe("primary");
-    expect(dominantRoleFromCollabs(undefined)).toBe("primary");
-  });
-
-  it("is case-insensitive on role names", () => {
-    expect(dominantRoleFromCollabs([{ roles: ["FEATURED"] }])).toBe("featured");
-  });
-});
-
-describe("allRolesFromCollabs", () => {
-  it("returns the deduplicated, lower-cased set of roles", () => {
-    const collabs = [{ roles: ["Producer", "WRITER"] }, { roles: ["producer"] }];
-    expect(allRolesFromCollabs(collabs).sort()).toEqual(["producer", "writer"]);
-  });
-
-  it("returns an empty array for no collaborations", () => {
-    expect(allRolesFromCollabs([])).toEqual([]);
-    expect(allRolesFromCollabs(undefined)).toEqual([]);
+    expect(typeof helpers.isGeniusDefaultAvatar).toBe("function");
   });
 });
 

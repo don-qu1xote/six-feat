@@ -5,7 +5,7 @@ export {
   nodeVisual,
   edgeWidthForWeight,
   edgeVisual,
-  resolveEdgeDominantRole,
+  edgeDashPattern,
   networkOptions,
 } from "./visuals.js";
 

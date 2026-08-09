@@ -1,6 +1,6 @@
 import { State, COLOR } from "../state/state.js";
 import { roleStyle } from "../state/helpers.js";
-import { resolveEdgeDominantRole, lightenHexColor, edgeWidthForWeight } from "./visuals.js";
+import { lightenHexColor, edgeWidthForWeight } from "./visuals.js";
 import { getHoveredEdgeIds, getSelectedNodeEdgeIds } from "./highlight.js";
 
 const CROSS_BOW_FRACTION = 0.28;
@@ -35,7 +35,7 @@ export function setEdgeCache(edgeClass) {
     const byId = new Map(State.graphEdges.map((e) => [e.id, e]));
     for (const [edgeId, meta] of edgeClass) {
       const ge = byId.get(edgeId);
-      const role = ge ? resolveEdgeDominantRole(ge) : "primary";
+      const role = (ge && ge.dominantRole) || "primary";
       const color = roleStyle(role).color;
       const weight = ge && Number(ge.weight) > 0 ? Number(ge.weight) : 1;
       next.set(edgeId, {

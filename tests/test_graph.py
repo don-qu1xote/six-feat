@@ -18,6 +18,7 @@ _REQUIRED_FIELDS = {"type", "nodes", "edges"}
 _REQUIRED_NODE_FIELDS = {
     "id",
     "name",
+    "roles",
     "weight",
     "betweenness",
     "betweenness_normalised",
@@ -521,6 +522,108 @@ class TestGraphEdgeDeduplication:
         assert len(edges) == 1
 
         assert edges[0]["weight"] == 1
+
+
+class TestGraphServesDerivedValues:
+    """[SF-WEB-77] Роль, набор ролей и порядок — величины сервера.
+
+    Клиент раньше выводил их заново из сырых collaborations: два источника
+    правды об одном и том же, которые расходятся молча. Здесь проверяется,
+    что сервер действительно отдаёт всё нужное готовым.
+    """
+
+    def test_node_carries_its_role_set(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        collab_id = seed_id + 1
+        song_id = seed_id * 10 + 1
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "RolesArtist"})
+        genius_mock.songs(seed_id, [song_id])
+        genius_mock.song_detail(
+            song_id,
+            _build_song_detail(
+                song_id,
+                "Roles Song",
+                seed_id,
+                "RolesArtist",
+                collaborators=[
+                    _collab(collab_id, "Collaborator", role="featured"),
+                    _collab(collab_id, "Collaborator", role="producer"),
+                ],
+            ),
+        )
+
+        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+
+        collaborator = next(n for n in data["nodes"] if n["id"] == collab_id)
+        assert set(collaborator["roles"]) == {"featured", "producer"}
+
+        seed = next(n for n in data["nodes"] if n["id"] == seed_id)
+        # Сид объединяет роли всех своих рёбер.
+        assert {"featured", "producer"} <= set(seed["roles"])
+
+    def test_node_role_set_is_present_even_for_a_single_role(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        collab_id = seed_id + 1
+        song_id = seed_id * 10 + 1
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "OneRole"})
+        genius_mock.songs(seed_id, [song_id])
+        genius_mock.song_detail(
+            song_id,
+            _build_song_detail(
+                song_id,
+                "One Role Song",
+                seed_id,
+                "OneRole",
+                collaborators=[_collab(collab_id, "Collaborator", role="writer")],
+            ),
+        )
+
+        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+
+        for node in data["nodes"]:
+            assert isinstance(node.get("roles"), list), f"нет roles у узла {node}"
+        collaborator = next(n for n in data["nodes"] if n["id"] == collab_id)
+        assert collaborator["roles"] == ["writer"]
+
+    def test_collaborations_arrive_sorted_by_popularity(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        collab_id = seed_id + 1
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "SortArtist"})
+
+        # Треки отдаются намеренно НЕ по убыванию популярности.
+        songs = [
+            (seed_id * 10 + 1, "Quiet", 10),
+            (seed_id * 10 + 2, "Loudest", 9000),
+            (seed_id * 10 + 3, "Middle", 500),
+        ]
+        genius_mock.songs(seed_id, [sid for sid, _, _ in songs])
+        for sid, title, pop in songs:
+            genius_mock.song_detail(
+                sid,
+                _build_song_detail(
+                    sid,
+                    title,
+                    seed_id,
+                    "SortArtist",
+                    collaborators=[_collab(collab_id, "Collaborator")],
+                    popularity=pop,
+                ),
+            )
+
+        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+
+        edge = next(e for e in data["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
+        popularities = [c["popularity"] for c in edge["collaborations"]]
+        assert popularities == sorted(popularities, reverse=True), (
+            f"коллаборации пришли неотсортированными: {popularities}"
+        )
+        assert [c["song"] for c in edge["collaborations"]] == ["Loudest", "Middle", "Quiet"]
 
 
 class TestGraphCollaborationPopularity:

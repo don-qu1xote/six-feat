@@ -1,4 +1,4 @@
-import { State, COLOR, ROLE_PRIORITY } from "../state/state.js";
+import { State, COLOR } from "../state/state.js";
 import { placeholderFor, roleStyle } from "../state/helpers.js";
 import { buildNodeTooltip, buildEdgeTooltip } from "./tooltips.js";
 import { ensureNodeColorSampled } from "./photo-color.js";
@@ -158,9 +158,9 @@ export function edgeWidthForWeight(weight) {
 
 export function edgeVisual(e, nameById) {
   const weight = Number(e.weight) > 0 ? Number(e.weight) : 1;
-  const role = resolveEdgeDominantRole(e);
+  const role = e.dominantRole || "primary";
   const rs = roleStyle(role);
-  const dashes = false;
+  const dashes = edgeDashPattern(e.edgeStyle);
   const brightColor = lightenHexColor(rs.color, 0.35);
 
   const width = edgeWidthForWeight(weight);
@@ -185,17 +185,24 @@ export function edgeVisual(e, nameById) {
   };
 }
 
-export function resolveEdgeDominantRole(e) {
-  const roleSet = new Set();
-  for (const c of e.collaborations || [])
-    for (const r of c.roles || []) roleSet.add(r.toLowerCase());
-  if (e.dominant_role) roleSet.add(e.dominant_role.toLowerCase());
-  if (e.role_priority) roleSet.add(e.role_priority.toLowerCase());
-  if (e.dominantRole) roleSet.add(e.dominantRole.toLowerCase());
-  for (const r of ROLE_PRIORITY) {
-    if (roleSet.has(r)) return r;
-  }
-  return "primary";
+// [SF-WEB-77] Здесь был resolveEdgeDominantRole — он собирал роли из сырых
+// collaborations, подмешивал серверные dominant_role/role_priority и выбирал
+// сильнейшую. То есть заново выводил ровно то, что сервер уже вычислил и
+// прислал (graph_handler.cpp: EdgeAgg::dominant_role). Роль ребра теперь
+// читается из состояния ребра, куда её кладёт buildEdgeState.
+
+// Серверная строка стиля (EdgeStyleForRole: featured -> solid, producer ->
+// dashed, остальные -> dotted) в пунктир vis-network. Единственное место,
+// где строка превращается в оформление.
+const EDGE_DASH = {
+  solid: false,
+  dashed: [8, 6],
+  dotted: [2, 6],
+};
+
+export function edgeDashPattern(edgeStyle) {
+  const pattern = EDGE_DASH[edgeStyle];
+  return pattern === undefined ? false : pattern;
 }
 
 export const LARGE_GRAPH_NODE_THRESHOLD = 150;

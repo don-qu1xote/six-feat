@@ -279,6 +279,7 @@
         "required": [
           "id",
           "name",
+          "roles",
           "weight",
           "betweenness",
           "betweenness_normalised",
@@ -296,6 +297,13 @@
           "weight": {
             "type": "integer",
             "description": "Total distinct-song collaboration count with the seed"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "[SF-WEB-77] Every credit role this node participates in, across its edges (sorted, deduplicated). Sent so the client does not re-derive it from the raw collaborations array."
           },
           "image": {
             "type": "string",
@@ -388,7 +396,8 @@
                 }
               },
               "additionalProperties": false
-            }
+            },
+            "description": "[SF-WEB-77] Sorted by popularity, highest first (stable — equal popularity keeps incidence order). The client relies on this order instead of re-sorting."
           }
         },
         "additionalProperties": false

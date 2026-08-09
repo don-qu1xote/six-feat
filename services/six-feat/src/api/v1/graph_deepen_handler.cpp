@@ -216,6 +216,14 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
 
     auto nb = dto::ToJson(dto::ToDto(*neighbour_ref));
     nb["weight"] = agg.weight;
+    // [SF-WEB-77] Тот же набор ролей на узле, что и в /graph: ответы
+    // углубления клиент сливает с уже нарисованным графом, и узел из
+    // deepen'а обязан быть той же формы, иначе роли у него «пропадут».
+    {
+      formats::json::ValueBuilder rb(formats::json::Type::kArray);
+      for (const auto& r : agg.roles) rb.PushBack(r);
+      nb["roles"] = std::move(rb);
+    }
     nb["betweenness"] = 0.0;
     nb["betweenness_normalised"] = 0.0;
     nb["is_seed"] = false;

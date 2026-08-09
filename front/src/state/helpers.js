@@ -1,4 +1,4 @@
-import { State, COLOR, ROLE_PRIORITY, ROLE_STYLE } from "./state.js";
+import { State, COLOR, ROLE_STYLE } from "./state.js";
 
 export function escapeHtml(s) {
   return String(s == null ? "" : s)
@@ -119,30 +119,19 @@ document.addEventListener(
 // Role helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-export function dominantRoleFromCollabs(collaborations) {
-  const set = new Set();
-  for (const c of collaborations || []) for (const r of c.roles || []) set.add(r.toLowerCase());
-  for (const r of ROLE_PRIORITY) if (set.has(r)) return r;
-  return "primary";
-}
-
-export function allRolesFromCollabs(collaborations) {
-  const set = new Set();
-  for (const c of collaborations || []) for (const r of c.roles || []) set.add(r.toLowerCase());
-  return [...set];
-}
-
+// [SF-WEB-77] Здесь жили dominantRoleFromCollabs / allRolesFromCollabs /
+// sortByPopularity — клиент выводил роль ребра, набор ролей узла и порядок
+// коллабораций заново из сырых collaborations, хотя сервер уже присылал
+// dominant_role, edge_style, roles на узле и отсортированный список
+// (graph_handler.cpp). Два источника правды об одном и том же расходятся
+// молча — и разошлись бы окончательно, как только SF-API-23 уберёт
+// collaborations из ответа.
+//
+// roleStyle остался, но это уже не вывод роли, а оформление: серверную
+// строку роли он переводит в цвета активной темы. Роль на вход обязана
+// приходить из ответа сервера, а не выводиться здесь.
 export function roleStyle(role) {
   return ROLE_STYLE[role] || ROLE_STYLE.primary;
-}
-
-// Collaborations ranked by the server-supplied popularity metric
-// (collaboration.popularity, sourced from Genius stats.pageviews — see
-// graph_handler.cpp), highest first. Array.prototype.sort is stable, so
-// entries sharing a popularity value (including the common "no data" case
-// where every value is 0/undefined) keep their original incidence order.
-export function sortByPopularity(collaborations) {
-  return [...(collaborations || [])].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 }
 
 // ────────────────────────────────────────────────────────────────────────────

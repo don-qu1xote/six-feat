@@ -5,7 +5,6 @@ import {
   seedShadow,
   nodeShadowFor,
   _imageFieldsFor,
-  resolveEdgeDominantRole,
   lightenHexColor,
   hexToRgba,
 } from "./visuals.js";
@@ -659,7 +658,7 @@ export function recolorInPlace(_nameById) {
   });
 
   const eU = State.graphEdges.map((e) => {
-    const color = roleStyle(resolveEdgeDominantRole(e)).color;
+    const color = roleStyle(e.dominantRole || "primary").color;
     const brightColor = lightenHexColor(color, 0.35);
     return {
       id: e.id,

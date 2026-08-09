@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <optional>
+#include <set>
 #include <six-feat-auth-lib/user_identity.hpp>
 #include <six-feat-common/music_source_provider.hpp>
 #include <six-feat-core/http_cache.hpp>
@@ -337,6 +338,11 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     int weight{0};
     int best_rank{0};
     std::string dominant_role{"featured"};
+    // [SF-WEB-77] Все роли ребра, а не только доминирующая: клиент собирал
+    // этот набор сам, разбирая collaborations, — теперь получает готовым.
+    // std::set, а не unordered: порядок в ответе должен быть стабильным,
+    // иначе одинаковый граф даёт разный JSON от запроса к запросу.
+    std::set<std::string> roles;
     std::string name, image, url;
     struct Collab {
       std::string song;
@@ -373,6 +379,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
       auto& roles = tc.roles;
       if (std::find(roles.begin(), roles.end(), credit.role) == roles.end())
         roles.push_back(credit.role);
+      edges[credit.artist.id].roles.insert(credit.role);
     }
     for (auto& [gid, tc] : track) {
       auto& agg = edges[gid];
@@ -485,9 +492,26 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   formats::json::ValueBuilder nodes_b(formats::json::Type::kArray);
   formats::json::ValueBuilder edges_b(formats::json::Type::kArray);
 
+  // [SF-WEB-77] Набор ролей на УЗЛЕ. Раньше клиент собирал его сам, разбирая
+  // collaborations всех входящих рёбер (graph.js: _rolesSet) — то же знание,
+  // выведенное во второй раз и на другом языке. Сид объединяет роли всех своих
+  // рёбер, коллаборатор — роли своего единственного ребра к сиду.
+  const auto roles_to_json = [](const std::set<std::string>& roles) {
+    formats::json::ValueBuilder rb(formats::json::Type::kArray);
+    for (const auto& r : roles) rb.PushBack(r);
+    return rb;
+  };
+
+  std::set<std::string> seed_roles;
+  for (const auto gid : order) {
+    const auto& agg = edges.at(gid);
+    seed_roles.insert(agg.roles.begin(), agg.roles.end());
+  }
+
   {
     auto nb = dto::ToJson(dto::ToDto(data.seed));
     nb["weight"] = seed_weight;
+    nb["roles"] = roles_to_json(seed_roles);
     const double raw = bc.count(seed_id) ? bc.at(seed_id) : 0.0;
     nb["betweenness"] = raw;
     nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
@@ -502,6 +526,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     {
       auto nb = dto::ToJson(dto::ToDto(ArtistRef{gid, agg.name, agg.image, agg.url}));
       nb["weight"] = agg.weight;
+      nb["roles"] = roles_to_json(agg.roles);
       const double raw = bc.count(gid) ? bc.at(gid) : 0.0;
       nb["betweenness"] = raw;
       nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
@@ -520,8 +545,17 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
 
       edge_dto.source = ToString(source_for(seed_id, gid));
 
-      edge_dto.collaborations.reserve(agg.collabs.size());
-      for (const auto& c : agg.collabs) {
+      // [SF-WEB-77] Порядок задаёт сервер: popularity — его величина
+      // (Genius stats.pageviews), и клиенту незачем пересортировывать список
+      // по правилу, которое он вынужден повторять. stable_sort — при равной
+      // популярности (частый случай «данных нет», все нули) сохраняется
+      // порядок появления треков.
+      auto collabs = agg.collabs;
+      std::stable_sort(collabs.begin(), collabs.end(), [](const auto& a, const auto& b) {
+        return a.popularity > b.popularity;
+      });
+      edge_dto.collaborations.reserve(collabs.size());
+      for (const auto& c : collabs) {
         edge_dto.collaborations.push_back({c.song, c.popularity, c.roles});
       }
       edges_b.PushBack(dto::ToJson(edge_dto));

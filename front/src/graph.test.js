@@ -38,6 +38,20 @@ beforeEach(() => {
 });
 
 describe("buildNodeState", () => {
+  // [SF-WEB-77] Набор ролей узла присылает сервер (nb["roles"]); клиент его
+  // больше не собирает из collaborations входящих рёбер.
+  it("takes the node's role set from the response", () => {
+    const n = buildNodeState({ id: 7, name: "X", roles: ["featured", "writer"] }, 1, new Set(), {});
+
+    expect(n._rolesSet).toEqual(new Set(["featured", "writer"]));
+  });
+
+  it("leaves the role set empty when the response has no roles", () => {
+    const n = buildNodeState({ id: 8, name: "Y" }, 1, new Set(), {});
+
+    expect(n._rolesSet).toEqual(new Set());
+  });
+
   it("marks the seed node and gives it the signal accent", () => {
     const n = buildNodeState({ id: 1, name: "Drake" }, 1, new Set(), {});
     expect(n.isSeed).toBe(true);
@@ -119,13 +133,24 @@ describe("buildEdgeState", () => {
     );
   });
 
-  it("picks the highest-priority role across collaborations (featured beats writer)", () => {
+  // [SF-WEB-77] Главный тест тикета: серверная роль намеренно НЕ совпадает с
+  // той, что вывелась бы из collaborations. Раньше клиент выводил роль сам и
+  // ответил бы "featured" — совпадение с сервером было бы случайным. Теперь
+  // ответ обязан быть серверным, даже когда он «противоречит» сырым данным.
+  it("takes the server's dominant_role even when collaborations imply another one", () => {
     const e = buildEdgeState({
       from: 1,
       to: 2,
-      collaborations: [{ roles: ["writer"] }, { roles: ["featured"] }],
+      dominant_role: "writer",
+      collaborations: [{ roles: ["featured"] }, { roles: ["producer"] }],
     });
-    expect(e.dominantRole).toBe("featured");
+
+    expect(e.dominantRole).toBe("writer");
+  });
+
+  it("takes edge_style from the response instead of hardcoding it", () => {
+    expect(buildEdgeState({ from: 1, to: 2, edge_style: "dashed" }).edgeStyle).toBe("dashed");
+    expect(buildEdgeState({ from: 1, to: 2 }).edgeStyle).toBe("solid");
   });
 
   it("falls back to primary when no role signal is present", () => {
@@ -456,7 +481,10 @@ describe("computeNodeDominantRoles", () => {
 });
 
 describe("cacheNodeCollaborations", () => {
-  it("sorts _topTracks by popularity descending, then caps at 5", () => {
+  // [SF-WEB-77] Список приходит уже отсортированным (graph_handler.cpp,
+  // stable_sort по popularity) — клиент его не переупорядочивает, только
+  // берёт первые пять.
+  it("keeps the server's order of a single edge's collaborations, capped at 5", () => {
     State.graphNodes = [{ id: 1, isSeed: false }];
     State.graphEdges = [
       {
@@ -464,9 +492,9 @@ describe("cacheNodeCollaborations", () => {
         to: 2,
         weight: 1,
         collaborations: [
-          { song: "Low", popularity: 10 },
           { song: "High", popularity: 9000 },
           { song: "Mid", popularity: 500 },
+          { song: "Low", popularity: 10 },
           { song: "C1", popularity: 1 },
           { song: "C2", popularity: 0 },
           { song: "C3", popularity: 0 },
@@ -502,14 +530,35 @@ describe("cacheNodeCollaborations", () => {
     expect(node._topTracks.map((t) => t.song)).toEqual(["Low", "High", "Mid", "C1", "C2"]);
   });
 
-  it("aggregates lowercase roles across all incident edges into _rolesSet", () => {
+  // [SF-WEB-77] Набор ролей узла больше не собирается из рёбер — он приходит
+  // с узлом (см. тест buildNodeState ниже), и cacheNodeCollaborations его не
+  // трогает: пересчитывать нечего.
+  it("merges collaborations of several edges without re-sorting them", () => {
     State.graphNodes = [{ id: 1, isSeed: false }];
     State.graphEdges = [
-      { from: 1, to: 2, weight: 1, collaborations: [{ roles: ["Featured"] }] },
-      { from: 3, to: 1, weight: 1, collaborations: [{ roles: ["WRITER"] }] },
+      {
+        from: 1,
+        to: 2,
+        weight: 1,
+        collaborations: [
+          { song: "A", popularity: 900 },
+          { song: "B", popularity: 100 },
+        ],
+      },
+      {
+        from: 3,
+        to: 1,
+        weight: 1,
+        collaborations: [
+          { song: "C", popularity: 500 },
+          { song: "D", popularity: 50 },
+        ],
+      },
     ];
+
     cacheNodeCollaborations();
-    expect(State.graphNodes[0]._rolesSet).toEqual(new Set(["featured", "writer"]));
+
+    expect(State.graphNodes[0]._topTracks.map((t) => t.song)).toEqual(["A", "C", "B", "D"]);
   });
 
   it("sums _totalCollabs using collaboration_count, falling back to weight", () => {
@@ -529,7 +578,6 @@ describe("cacheNodeCollaborations", () => {
     cacheNodeCollaborations();
     const node = State.graphNodes[0];
     expect(node._topTracks).toEqual([]);
-    expect(node._rolesSet).toEqual(new Set());
     expect(node._totalCollabs).toBe(0);
   });
 });
@@ -619,7 +667,6 @@ describe("cacheNodeCollaborations", () => {
     cacheNodeCollaborations();
 
     expect(State.graphNodes[0]._topTracks.map((t) => t.song).sort()).toEqual(["A", "B"]);
-    expect([...State.graphNodes[0]._rolesSet].sort()).toEqual(["featured", "writer"]);
   });
 
   it("keeps at most five tracks per node", () => {
@@ -662,7 +709,6 @@ describe("cacheNodeCollaborations", () => {
     cacheNodeCollaborations();
 
     expect(State.graphNodes[0]._topTracks).toEqual([]);
-    expect(State.graphNodes[0]._rolesSet.size).toBe(0);
     expect(State.graphNodes[0]._totalCollabs).toBe(0);
   });
 

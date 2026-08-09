@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { State } from "../state/state.js";
-import { nodeVisual, seedShadow, nodeShadowFor } from "./visuals.js";
+import { nodeVisual, seedShadow, nodeShadowFor, edgeVisual, edgeDashPattern } from "./visuals.js";
 import { buildNodeTooltip } from "./tooltips.js";
 
 beforeEach(() => {
@@ -59,5 +59,44 @@ describe("buildNodeTooltip", () => {
   it("still contains the artist's name", () => {
     const el = buildNodeTooltip({ id: 1, name: "Kendrick Lamar", totalWeight: 3 });
     expect(el.innerHTML).toContain("Kendrick Lamar");
+  });
+});
+
+// [SF-WEB-77] Роль ребра и его пунктир — серверные величины (dominant_role,
+// edge_style). Раньше роль выводилась заново из collaborations, а dashes был
+// захардкожен в false, то есть серверный edge_style не читал никто.
+describe("edgeVisual takes role and style from the edge state", () => {
+  it("uses the server's role even when collaborations imply another one", () => {
+    const v = edgeVisual(
+      {
+        id: "1_2",
+        from: 1,
+        to: 2,
+        weight: 1,
+        dominantRole: "writer",
+        edgeStyle: "dotted",
+        collaborations: [{ roles: ["featured"] }],
+      },
+      { 1: "A", 2: "B" },
+    );
+
+    expect(v._role).toBe("writer");
+  });
+
+  it("falls back to primary only when the edge state carries no role", () => {
+    const v = edgeVisual({ id: "1_2", from: 1, to: 2, weight: 1 }, { 1: "A", 2: "B" });
+
+    expect(v._role).toBe("primary");
+  });
+
+  it("maps the server style string onto a dash pattern", () => {
+    expect(edgeDashPattern("solid")).toBe(false);
+    expect(edgeDashPattern("dashed")).toEqual([8, 6]);
+    expect(edgeDashPattern("dotted")).toEqual([2, 6]);
+  });
+
+  it("treats an unknown or missing style as solid", () => {
+    expect(edgeDashPattern(undefined)).toBe(false);
+    expect(edgeDashPattern("wavy")).toBe(false);
   });
 });
