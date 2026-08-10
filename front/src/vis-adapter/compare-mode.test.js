@@ -10,10 +10,19 @@ vi.mock("../ui/index.js", () => ({
   showToast: (...args) => showToast(...args),
 }));
 
-const bfsPath = vi.fn(() => null);
+const fetchPathBetween = vi.fn();
 vi.mock("../api/analytics-client.js", () => ({
-  bfsPath: (...args) => bfsPath(...args),
+  fetchPathBetween: (...args) => fetchPathBetween(...args),
 }));
+
+const showLoading = vi.fn();
+vi.mock("../ui/loading.js", () => ({
+  showLoading: (...args) => showLoading(...args),
+}));
+
+function serverPath(path, extra = {}) {
+  return { path, nodes: [], edges: [], error: null, ...extra };
+}
 
 import {
   isCompareModeActive,
@@ -34,7 +43,7 @@ function mockDataSet(items) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  bfsPath.mockReturnValue(null);
+  fetchPathBetween.mockResolvedValue(serverPath([]));
   invalidateColorCache();
   resetHoverState();
   State.graphNodes = [
@@ -114,7 +123,7 @@ describe("handleCompareModeNodeClick", () => {
     expect(showComparePanel).not.toHaveBeenCalled();
 
     handleCompareModeNodeClick(2);
-    expect(showComparePanel).toHaveBeenCalledWith(1, 2, null);
+    expect(showComparePanel).toHaveBeenCalledWith(1, 2, { loading: true });
   });
 
   it("paints visibly different markers for first vs. second", () => {
@@ -176,43 +185,118 @@ describe("handleCompareModeNodeClick", () => {
   });
 });
 
-describe("handleCompareModeNodeClick — path highlight", () => {
-  it("highlights the BFS path between the two picked artists when one exists, and passes it to showComparePanel", () => {
-    bfsPath.mockReturnValue([1, 3, 2]);
+describe("[SF-API-24] handleCompareModeNodeClick — the path comes from the server", () => {
+  it("opens the panel in a loading state before the answer arrives", () => {
+    let resolve;
+    fetchPathBetween.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
     enterCompareMode();
     handleCompareModeNodeClick(1);
     handleCompareModeNodeClick(2);
 
-    expect(bfsPath).toHaveBeenCalledWith(1, 2);
+    expect(showComparePanel).toHaveBeenCalledWith(1, 2, { loading: true });
+    expect(showLoading).toHaveBeenCalledWith(true, null, expect.stringMatching(/path/i));
+    expect(showLoading).not.toHaveBeenCalledWith(false);
+
+    resolve(serverPath([1, 3, 2]));
+  });
+
+  it("asks the single server endpoint for the picked pair, and highlights what it answers", async () => {
+    fetchPathBetween.mockResolvedValue(serverPath([1, 3, 2]));
+    enterCompareMode();
+    handleCompareModeNodeClick(1);
+    await handleCompareModeNodeClick(2);
+    await vi.waitFor(() => expect(showLoading).toHaveBeenCalledWith(false));
+
+    expect(fetchPathBetween).toHaveBeenCalledWith(1, 2);
     expect(State.pathHighlight).toEqual([1, 3, 2]);
-    expect(showComparePanel).toHaveBeenCalledWith(1, 2, [1, 3, 2]);
+    expect(showComparePanel).toHaveBeenLastCalledWith(1, 2, serverPath([1, 3, 2]));
   });
 
-  it("does not touch pathHighlight when no path exists between the two artists, and passes null to showComparePanel", () => {
-    bfsPath.mockReturnValue(null);
+  it("passes the whole answer on, so the panel can name hops that are not on the canvas", async () => {
+    const answer = serverPath([1, 42, 2], {
+      nodes: [{ id: 42, name: "Never Drawn" }],
+      edges: [{ from: 1, to: 42 }],
+    });
+    fetchPathBetween.mockResolvedValue(answer);
     enterCompareMode();
     handleCompareModeNodeClick(1);
     handleCompareModeNodeClick(2);
+    await vi.waitFor(() => expect(showLoading).toHaveBeenCalledWith(false));
+
+    expect(showComparePanel).toHaveBeenLastCalledWith(1, 2, answer);
+  });
+
+  it("does not touch pathHighlight when the server reports no path", async () => {
+    fetchPathBetween.mockResolvedValue(serverPath([], { error: "no_path" }));
+    enterCompareMode();
+    handleCompareModeNodeClick(1);
+    handleCompareModeNodeClick(2);
+    await vi.waitFor(() => expect(showLoading).toHaveBeenCalledWith(false));
 
     expect(State.pathHighlight).toBeNull();
-    expect(showComparePanel).toHaveBeenCalledWith(1, 2, null);
   });
 
-  it("does not touch pathHighlight for a degenerate single-node BFS result", () => {
-    bfsPath.mockReturnValue([1]);
+  it("does not touch pathHighlight for a degenerate single-node answer", async () => {
+    fetchPathBetween.mockResolvedValue(serverPath([1]));
     enterCompareMode();
     handleCompareModeNodeClick(1);
     handleCompareModeNodeClick(2);
+    await vi.waitFor(() => expect(showLoading).toHaveBeenCalledWith(false));
 
     expect(State.pathHighlight).toBeNull();
-    expect(showComparePanel).toHaveBeenCalledWith(1, 2, null);
   });
 
-  it("leaves an off-path node at full opacity — no deep-dim in Compare mode", () => {
-    bfsPath.mockReturnValue([1, 2]);
+  it("shows the failure in the panel instead of silently claiming there is no path", async () => {
+    fetchPathBetween.mockRejectedValue(new Error("Network error"));
     enterCompareMode();
     handleCompareModeNodeClick(1);
     handleCompareModeNodeClick(2);
+    await vi.waitFor(() => expect(showLoading).toHaveBeenCalledWith(false));
+
+    expect(showComparePanel).toHaveBeenLastCalledWith(1, 2, {
+      error: "request_failed",
+      message: "Network error",
+    });
+  });
+
+  it("ignores a stale answer once a newer pair has been picked", async () => {
+    let resolveFirst;
+    fetchPathBetween.mockReturnValueOnce(
+      new Promise((r) => {
+        resolveFirst = r;
+      }),
+    );
+    fetchPathBetween.mockResolvedValueOnce(serverPath([1, 3]));
+
+    enterCompareMode();
+    handleCompareModeNodeClick(1);
+    handleCompareModeNodeClick(2);
+
+    enterCompareMode();
+    handleCompareModeNodeClick(1);
+    handleCompareModeNodeClick(3);
+    await vi.waitFor(() => expect(showLoading).toHaveBeenCalledWith(false));
+
+    resolveFirst(serverPath([1, 2]));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(State.pathHighlight).toEqual([1, 3]);
+    expect(showComparePanel).toHaveBeenLastCalledWith(1, 3, serverPath([1, 3]));
+  });
+});
+
+describe("handleCompareModeNodeClick — dimming", () => {
+  it("leaves an off-path node at full opacity — no deep-dim in Compare mode", async () => {
+    fetchPathBetween.mockResolvedValue(serverPath([1, 2]));
+    enterCompareMode();
+    handleCompareModeNodeClick(1);
+    handleCompareModeNodeClick(2);
+    await vi.waitFor(() => expect(showLoading).toHaveBeenCalledWith(false));
 
     const [nodeUpdates] = State.nodesDS.update.mock.calls.at(-1);
     const off = nodeUpdates.find((u) => u.id === 3);

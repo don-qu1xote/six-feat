@@ -9,7 +9,6 @@ import {
   clearSelectedEdge,
   clearSelectedNode,
 } from "../vis-adapter/index.js";
-import { bfsPath } from "../api/analytics-client.js";
 import { isSearchModalOpen, closeSearchModal, closeNodeSearch, closePathPanel } from "./modals.js";
 import { searchArtist, deepenArtistConnections } from "../api/api.js";
 import { showToast } from "./toast.js";
@@ -92,14 +91,25 @@ function buildEdgeEndpointsHTML(edge, nameById) {
     .join("");
 }
 
+// [SF-API-24] Пути здесь никогда не искали. Плитка показывалась только для
+// прямого соседа сида — от обхода в ширину брали ровно один бит («есть ли
+// ребро nodeId—сид»), а любой результат длиннее двух узлов отбрасывали
+// проверкой `path.length !== 2`. Поэтому вместе с клиентским обходом отсюда
+// уходит не потребитель путей, а лишний вызов: ребро уже нарисовано на
+// холсте, и спрашивать о нём сервер незачем — сайдбар открывается на каждый
+// клик по узлу и рисуется синхронно, сетевой запрос заменил бы мгновенную
+// отрисовку ожиданием ради факта, который лежит в State.graphEdges.
 function getPathToSeed(nodeId) {
   if (State.currentSeedId == null || nodeId === State.currentSeedId) {
     return null;
   }
 
-  const path = bfsPath(nodeId, State.currentSeedId);
-  if (!path || path.length !== 2) return null;
-  return { path, hops: 1 };
+  const seedId = State.currentSeedId;
+  const isDirectEdge = State.graphEdges.some(
+    (e) => (e.from === nodeId && e.to === seedId) || (e.to === nodeId && e.from === seedId),
+  );
+  if (!isDirectEdge) return null;
+  return { path: [nodeId, seedId], hops: 1 };
 }
 
 function buildPathTrackHTML(nodeId, pathInfo) {

@@ -8,7 +8,6 @@ vi.mock("../vis-adapter/index.js", () => ({
   clearSelectedNode: vi.fn(),
   clearSelectedEdge: vi.fn(),
 }));
-vi.mock("../api/analytics-client.js", () => ({ bfsPath: vi.fn(() => null) }));
 vi.mock("./modals.js", () => ({
   isSearchModalOpen: vi.fn(() => false),
   closeSearchModal: vi.fn(),
@@ -536,9 +535,10 @@ describe("object action bar", () => {
 });
 
 describe("path-to-seed track", () => {
-  beforeEach(async () => {
-    const { bfsPath } = await import("../api/analytics-client.js");
-    bfsPath.mockReturnValue([1, 2]);
+  // [SF-API-24] Плитка читает ребро прямо из нарисованного графа — сетевого
+  // ответа тут нет и никогда не было нужно, поэтому и подменять нечего:
+  // сценарии задаются составом State.graphEdges.
+  beforeEach(() => {
     State.currentSeedId = 2;
     State.graphNodes = [
       mockNode({ id: 1, name: "Drake" }),
@@ -566,22 +566,32 @@ describe("path-to-seed track", () => {
     expect(els.sidebarPathTile.style.display).toBe("none");
   });
 
-  it("hides the tile when the artist is more than one hop away", async () => {
-    const { bfsPath } = await import("../api/analytics-client.js");
-    bfsPath.mockReturnValue([1, 3, 2]);
+  it("hides the tile when the artist is more than one hop away", () => {
+    State.graphNodes.push(mockNode({ id: 3, name: "Metro" }));
+    State.graphEdges = [
+      { id: "e1", from: 1, to: 3, dominantRole: "producer", weight: 3 },
+      { id: "e2", from: 3, to: 2, dominantRole: "producer", weight: 2 },
+    ];
 
     showArtistSidebar(1);
 
     expect(els.sidebarPathTile.style.display).toBe("none");
   });
 
-  it("hides the tile when there is no path at all", async () => {
-    const { bfsPath } = await import("../api/analytics-client.js");
-    bfsPath.mockReturnValue(null);
+  it("hides the tile when there is no path at all", () => {
+    State.graphEdges = [];
 
     showArtistSidebar(1);
 
     expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  it("shows the hop no matter which way round the edge is stored", () => {
+    State.graphEdges = [{ id: "e1", from: 2, to: 1, dominantRole: "producer", weight: 3 }];
+
+    showArtistSidebar(1);
+
+    expect(els.sidebarPathTile.style.display).toBe("");
   });
 
   it("jumps to the other artist when their card is clicked", () => {

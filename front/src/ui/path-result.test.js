@@ -66,8 +66,6 @@ beforeEach(() => {
   State.network = null;
   State.currentSeedId = null;
   State.hasRendered = true;
-  State._bfsAdj = null;
-  State._bfsGraphHash = "";
   State.activeFilters = new Set(["featured", "producer", "writer"]);
   State.pathInFlight = false;
   State._pathAbortController = null;
@@ -107,13 +105,6 @@ describe("mergePathData", () => {
 
     expect(State.graphNodes.map((n) => n.id)).toEqual([1, 2, 3]);
     expect(State.graphEdges.map((e) => e.id)).toEqual(["1_2", "2_3"]);
-  });
-
-  it("refreshes the BFS cache hash when the edge set changes", () => {
-    State._bfsGraphHash = "stale";
-    mergePathData(mockPathData());
-    expect(State._bfsAdj).toBe(null);
-    expect(State._bfsGraphHash).not.toBe("stale");
   });
 });
 

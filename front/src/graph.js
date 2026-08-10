@@ -9,6 +9,7 @@ import {
   addEdges,
   resetExpansionState,
   setTruncation,
+  clearPathCache,
 } from "./state/state.js";
 import { roleStyle, isGeniusDefaultAvatar } from "./state/helpers.js";
 import {
@@ -139,7 +140,7 @@ export function mergeDeepenResult(deepen) {
   finalizeNodeRoleState();
   invalidateColorCache();
   renderGraphA11yList();
-  State._bfsAdj = null;
+  clearPathCache();
 
   if (State.network) {
     mergeNetwork(nameById, savedPositions);
@@ -316,7 +317,7 @@ export function finalizeGraphState(seedId, nameById, savedPositions, graph, isMe
 
   renderGraphA11yList();
 
-  State._bfsAdj = null;
+  clearPathCache();
 
   if (!State.hasRendered) {
     initGraphOnCanvas();

@@ -1,5 +1,5 @@
 import { State, ROLE_ICON, setPathHighlight } from "../state/state.js";
-import { escapeHtml, placeholderFor, graphHash } from "../state/helpers.js";
+import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import {
   initGraphOnCanvas,
@@ -169,12 +169,6 @@ export function mergePathData(data) {
 
     const seedNode = State.graphNodes.find((n) => n.id === newSeedId);
     if (seedNode) updateStatus({ seed: seedNode.name });
-  }
-
-  const newHash = graphHash();
-  if (newHash !== State._bfsGraphHash) {
-    State._bfsAdj = null;
-    State._bfsGraphHash = newHash;
   }
 }
 

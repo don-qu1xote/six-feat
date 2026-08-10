@@ -1,96 +1,187 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 vi.mock("../vis-adapter/index.js", () => ({
   restoreDefaultColors: vi.fn(),
   highlightPath: vi.fn(),
 }));
 
-import { State } from "../state/state.js";
-import { getBfsAdj, bfsPath } from "./analytics-client.js";
+import { State, clearPathCache } from "../state/state.js";
+import * as analyticsClient from "./analytics-client.js";
+import { fetchPathBetween } from "./analytics-client.js";
+
+// import.meta.url в jsdom-окружении не file:, поэтому путь считается от
+// корня фронтенда — vitest запускается именно оттуда.
+const SOURCE = readFileSync(resolve(process.cwd(), "src/api/analytics-client.js"), "utf8");
+
+function sourceFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...sourceFiles(full));
+    else if (entry.name.endsWith(".js") && !entry.name.endsWith(".test.js")) out.push(full);
+  }
+  return out;
+}
+
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  };
+}
+
+function pathResponse(path) {
+  return jsonResponse({
+    type: "path",
+    hops: path.length - 1,
+    path,
+    nodes: path.map((id) => ({ id, name: `Artist ${id}` })),
+    edges: [],
+  });
+}
 
 beforeEach(() => {
   State.graphNodes = [];
   State.graphEdges = [];
-  State._bfsAdj = null;
+  State.activeFilters = new Set(["featured", "producer", "writer"]);
+  clearPathCache();
+  global.fetch = vi.fn();
 });
 
-describe("getBfsAdj", () => {
-  it("builds an undirected adjacency list from graphEdges", () => {
-    State.graphEdges = [
-      { from: 1, to: 2 },
-      { from: 2, to: 3 },
-    ];
-    const adj = getBfsAdj();
-    expect(adj.get(1)).toEqual([2]);
-    expect(adj.get(2)).toEqual([1, 3]);
-    expect(adj.get(3)).toEqual([2]);
+afterEach(() => {
+  delete global.fetch;
+});
+
+describe("[SF-API-24] the client no longer carries a breadth-first search", () => {
+  it("exports no BFS entry points any more", () => {
+    expect(analyticsClient.bfsPath).toBeUndefined();
+    expect(analyticsClient.getBfsAdj).toBeUndefined();
   });
 
-  it("includes both endpoints of every edge even if one only ever appears as 'to'", () => {
-    State.graphEdges = [{ from: 5, to: 9 }];
-    const adj = getBfsAdj();
-    expect([...adj.keys()].sort()).toEqual([5, 9]);
+  it("contains no traversal of its own — the identifiers a BFS needs are absent", () => {
+    // Проверка по исходнику, а не по экспортам: обход, переставший быть
+    // экспортом, но оставшийся приватной функцией, — ровно тот второй
+    // алгоритм, который эта задача убирает.
+    const code = SOURCE.replace(/\/\/.*$/gm, "");
+    for (const marker of ["bfs", "adjacency", "visited", "queue"]) {
+      expect(code.toLowerCase()).not.toContain(marker);
+    }
   });
 
-  it("caches the adjacency map on State._bfsAdj until it is invalidated", () => {
-    State.graphEdges = [{ from: 1, to: 2 }];
-    const first = getBfsAdj();
+  it("is imported by nobody for a traversal — no module pulls a BFS out of it", () => {
+    // Удалить обход и оставить импорт — способ уронить сборку молча, поэтому
+    // проверяется весь фронтенд, а не только этот модуль.
+    const offenders = [];
+    for (const file of sourceFiles(resolve(process.cwd(), "src"))) {
+      const text = readFileSync(file, "utf8");
+      if (/\b(bfsPath|getBfsAdj|_bfsAdj)\b/.test(text)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
 
-    State.graphEdges = [
-      { from: 1, to: 2 },
-      { from: 2, to: 3 },
-    ];
-    const second = getBfsAdj();
+  it("asks the server instead — the single path endpoint, with the roles the client applies", async () => {
+    global.fetch.mockResolvedValue(pathResponse([1, 7, 2]));
+    State.activeFilters = new Set(["featured", "producer"]);
 
+    const result = await fetchPathBetween(1, 2);
+
+    expect(result.path).toEqual([1, 7, 2]);
+    const [url] = global.fetch.mock.calls[0];
+    expect(url).toContain("/api/v1/graph/path?from=1&to=2");
+    expect(url).toContain("roles=featured%2Cproducer");
+  });
+
+  it("returns nodes and edges from the response so off-canvas hops can be named", async () => {
+    global.fetch.mockResolvedValue(pathResponse([1, 7, 2]));
+
+    const result = await fetchPathBetween(1, 2);
+
+    expect(result.nodes.map((n) => n.id)).toEqual([1, 7, 2]);
+    expect(result.error).toBeNull();
+  });
+});
+
+describe("[SF-API-24] per-pair cache for the lifetime of the graph", () => {
+  it("serves a repeat request for the same pair from the cache", async () => {
+    global.fetch.mockResolvedValue(pathResponse([1, 7, 2]));
+
+    const first = await fetchPathBetween(1, 2);
+    const second = await fetchPathBetween(1, 2);
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
-    expect(second.has(3)).toBe(false);
   });
 
-  it("rebuilds the adjacency once State._bfsAdj is invalidated (nulled)", () => {
-    State.graphEdges = [{ from: 1, to: 2 }];
-    const first = getBfsAdj();
+  it("treats the pair as unordered — the reversed query hits the same entry", async () => {
+    global.fetch.mockResolvedValue(pathResponse([1, 7, 2]));
 
-    State.graphEdges = [
-      { from: 1, to: 2 },
-      { from: 2, to: 3 },
-    ];
-    State._bfsAdj = null;
-    const second = getBfsAdj();
+    await fetchPathBetween(1, 2);
+    await fetchPathBetween(2, 1);
 
-    expect(second).not.toBe(first);
-    expect(second.get(3)).toEqual([2]);
-  });
-});
-
-describe("bfsPath", () => {
-  beforeEach(() => {
-    State.graphEdges = [
-      { from: 1, to: 2 },
-      { from: 2, to: 3 },
-      { from: 3, to: 4 },
-      { from: 1, to: 5 },
-      { from: 6, to: 7 },
-    ];
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("finds the shortest path between two connected nodes", () => {
-    expect(bfsPath(1, 4)).toEqual([1, 2, 3, 4]);
+  it("re-asks when the role filter changes — that is a different question", async () => {
+    global.fetch.mockResolvedValue(pathResponse([1, 7, 2]));
+
+    await fetchPathBetween(1, 2);
+    State.activeFilters = new Set(["featured"]);
+    await fetchPathBetween(1, 2);
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("finds a path regardless of query direction", () => {
-    expect(bfsPath(4, 1)).toEqual([4, 3, 2, 1]);
+  it("re-asks after the cache is dropped with the graph", async () => {
+    global.fetch.mockResolvedValue(pathResponse([1, 7, 2]));
+
+    await fetchPathBetween(1, 2);
+    clearPathCache();
+    await fetchPathBetween(1, 2);
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("returns a single-element path for a trivial same-node query", () => {
-    expect(bfsPath(1, 1)).toEqual([1]);
+  it("caches 'no path' too — it is an answer, not a failure", async () => {
+    global.fetch.mockResolvedValue(
+      jsonResponse({ type: "path", error: "no_path", message: "No collaboration path found." }),
+    );
+
+    const first = await fetchPathBetween(1, 2);
+    const second = await fetchPathBetween(1, 2);
+
+    expect(first.path).toEqual([]);
+    expect(first.error).toBe("no_path");
+    expect(second).toBe(first);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("returns null when the two nodes belong to disconnected components", () => {
-    expect(bfsPath(1, 6)).toBeNull();
+  it.each([
+    ["503 while the graph is still being enriched", 503, "deadline_exceeded"],
+    ["401 before the user has signed in", 401, "not_authenticated"],
+    ["422 before a Genius token is connected", 422, "no_genius_token"],
+  ])("does not cache a %s — the user can fix it and retry", async (_name, status, error) => {
+    global.fetch.mockResolvedValue(jsonResponse({ type: "path", error }, status));
+
+    const first = await fetchPathBetween(1, 2);
+    await fetchPathBetween(1, 2);
+
+    expect(first.error).toBe(error);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("returns null when either node is absent from the graph", () => {
-    expect(bfsPath(1, 999)).toBeNull();
-    expect(bfsPath(999, 1)).toBeNull();
+  it("passes the server's message through so the panel can show the real reason", async () => {
+    global.fetch.mockResolvedValue(
+      jsonResponse(
+        { type: "path", error: "no_genius_token", message: "Connect a Genius token in Settings." },
+        422,
+      ),
+    );
+
+    const result = await fetchPathBetween(1, 2);
+
+    expect(result.message).toBe("Connect a Genius token in Settings.");
   });
 });

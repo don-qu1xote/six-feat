@@ -514,6 +514,159 @@ class TestPathETag:
         assert resp.headers.get("ETag")
 
 
+class TestPathIsTheSingleSourceOfTruth:
+    """[SF-API-24] Обход в ширину в системе один, и он здесь.
+
+    Клиентский обход (front/src/api/analytics-client.js) убран: и панель
+    сравнения, и поиск пути спрашивают эту ручку. Тесты ниже проверяют
+    ровно то, что от этого требуется, — что она отвечает ОДНО И ТО ЖЕ на
+    один и тот же вопрос, как его ни задай, и что её ответ не спорит с
+    графом, который в это же время нарисован у пользователя на экране.
+    """
+
+    def _setup_chain(self, genius_mock: GeniusMock) -> None:
+        """A — B — C: соседи только через середину."""
+        genius_mock.resolve("TruthA", [{"id": 800, "name": "TruthA", "score": 0.99}])
+        genius_mock.resolve("TruthB", [{"id": 801, "name": "TruthB", "score": 0.99}])
+        genius_mock.resolve("TruthC", [{"id": 802, "name": "TruthC", "score": 0.99}])
+
+        genius_mock.songs(800, [8001])
+        genius_mock.song_detail(
+            8001,
+            _build_song_detail(
+                8001,
+                "A-B Track",
+                800,
+                "TruthA",
+                collaborators=[{"id": 801, "name": "TruthB", "role": "featured"}],
+            ),
+        )
+        genius_mock.songs(801, [8002])
+        genius_mock.song_detail(
+            8002,
+            _build_song_detail(
+                8002,
+                "B-C Track",
+                801,
+                "TruthB",
+                collaborators=[{"id": 802, "name": "TruthC", "role": "featured"}],
+            ),
+        )
+        genius_mock.songs(802, [8002])
+
+    @staticmethod
+    def _hops_in_drawn_graph(graph: dict, from_id: int, to_id: int) -> int | None:
+        """Кратчайший путь по графу, который клиент НАРИСОВАЛ.
+
+        Обход здесь — не второй экземпляр алгоритма в продукте, а способ
+        независимо сформулировать вопрос «а не спорит ли ответ ручки с
+        картинкой на экране»: если бы серверный путь проходил не по тем
+        рёбрам, что видит пользователь, — разошлись бы длины.
+        """
+        adj: dict[int, list[int]] = {}
+        for edge in graph.get("edges", []):
+            adj.setdefault(edge["from"], []).append(edge["to"])
+            adj.setdefault(edge["to"], []).append(edge["from"])
+
+        if from_id not in adj or to_id not in adj:
+            return None
+
+        seen = {from_id}
+        frontier = [(from_id, 0)]
+        while frontier:
+            node, dist = frontier.pop(0)
+            if node == to_id:
+                return dist
+            for nb in adj.get(node, []):
+                if nb not in seen:
+                    seen.add(nb)
+                    frontier.append((nb, dist + 1))
+        return None
+
+    def test_the_same_pair_by_id_and_by_name_gets_the_same_path(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """Режим сравнения спрашивает по id (узлы взяты с холста), панель
+        поиска — по имени. Один вопрос — один ответ, иначе игрок опять
+        увидит одну цепочку, а сервер посчитает другую."""
+        self._setup_chain(genius_mock)
+
+        by_name = client.get(PATH_URL, params={"from": "TruthA", "to": "TruthC"}).json()
+        by_id = client.get(PATH_URL, params={"from": "800", "to": "802"}).json()
+
+        assert by_name["path"] == by_id["path"] == [800, 801, 802]
+        assert by_name["hops"] == by_id["hops"] == 2
+
+    def test_the_answer_does_not_contradict_the_graph_the_client_drew(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """Там, где нарисованный граф содержит обоих артистов, ответы обязаны
+        сойтись: иначе пользователь видит на холсте одно, а в панели другое."""
+        self._setup_chain(genius_mock)
+
+        graph = client.get(f"{SERVICE_BASE}/api/v1/graph", params={"artist": "TruthA"}).json()
+        drawn_hops = self._hops_in_drawn_graph(graph, 800, 801)
+        assert drawn_hops == 1, f"сид и прямой соавтор должны быть на холсте: {graph}"
+
+        data = client.get(PATH_URL, params={"from": "800", "to": "801"}).json()
+
+        assert data["hops"] == drawn_hops
+
+    def test_the_role_filter_the_client_applies_changes_the_answer(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """Ровно поэтому клиент обязан передавать свой набор ролей: без него
+        ручка ответила бы про другой граф, чем тот, что нарисован."""
+        genius_mock.resolve("RoleTruthA", [{"id": 810, "name": "RoleTruthA", "score": 0.99}])
+        genius_mock.resolve("RoleTruthB", [{"id": 811, "name": "RoleTruthB", "score": 0.99}])
+        genius_mock.songs(810, [8101])
+        genius_mock.songs(811, [8101])
+        genius_mock.song_detail(
+            8101,
+            _build_song_detail(
+                8101,
+                "Written Together",
+                810,
+                "RoleTruthA",
+                collaborators=[{"id": 811, "name": "RoleTruthB", "role": "writer"}],
+            ),
+        )
+
+        with_writer = client.get(
+            PATH_URL, params={"from": "810", "to": "811", "roles": "writer"}
+        ).json()
+        without_writer = client.get(
+            PATH_URL, params={"from": "810", "to": "811", "roles": "featured"}
+        ).json()
+
+        assert with_writer["hops"] == 1
+        assert without_writer.get("error") in ("no_path", "deadline_exceeded")
+
+    def test_the_server_sees_connections_the_drawn_graph_does_not(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        """Задокументированное расхождение, в исполняемом виде.
+
+        Граф вокруг сида радиальный — на холст попадают сид и его прямые
+        соавторы, но не соавторы соавторов. Клиентский обход искал по этому
+        подграфу и честно отвечал «связи нет»; сервер ищет по базе и путь
+        находит. Ответ теперь ОТЛИЧАЕТСЯ от прежнего клиентского — это и есть
+        смысл замены, а не побочный эффект (см. комментарий в
+        front/src/api/analytics-client.js).
+        """
+        self._setup_chain(genius_mock)
+
+        drawn = client.get(f"{SERVICE_BASE}/api/v1/graph", params={"artist": "TruthA"}).json()
+        assert self._hops_in_drawn_graph(drawn, 800, 802) is None, (
+            f"TruthC не должен попадать на холст вокруг TruthA: {drawn}"
+        )
+
+        data = client.get(PATH_URL, params={"from": "800", "to": "802"}).json()
+
+        assert data.get("error") is None, data
+        assert data["hops"] == 2
+
+
 class TestPathRequiresGeniusToken:
     """[SF-YM-08] Path search always resolves two endpoints from scratch
     (no cache-first shortcut like graph_handler.cpp's) — a session with no

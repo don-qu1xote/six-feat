@@ -169,7 +169,7 @@ describe("showComparePanel", () => {
   });
 
   it("renders the trace via renderHopChain (reused from the six-degrees path result) when a path is given", () => {
-    showComparePanel(1, 5, [1, 3, 5]);
+    showComparePanel(1, 5, { path: [1, 3, 5], nodes: [], edges: [] });
 
     expect(renderHopChain).toHaveBeenCalledWith(
       [1, 3, 5],
@@ -183,7 +183,54 @@ describe("showComparePanel", () => {
   it("shows a no-connection fallback instead of calling renderHopChain when no path is given", () => {
     showComparePanel(1, 5);
     expect(renderHopChain).not.toHaveBeenCalled();
-    expect(els.compareHopChain.textContent).toContain("No connecting path");
+    expect(els.compareHopChain.textContent).toContain("No collaboration path");
+  });
+});
+
+describe("[SF-API-24] showComparePanel — states of a path that arrives over the network", () => {
+  beforeEach(() => {
+    State.graphNodes = [mockNode(1, "Artist A"), mockNode(5, "Artist B")];
+  });
+
+  it("shows a waiting note while the request is in flight, without rendering a chain", () => {
+    showComparePanel(1, 5, { loading: true });
+
+    expect(renderHopChain).not.toHaveBeenCalled();
+    expect(els.compareHopChain.textContent).toMatch(/looking for a path/i);
+  });
+
+  it("shows the server's own message when the lookup failed, not a false 'no path'", () => {
+    showComparePanel(1, 5, {
+      error: "no_genius_token",
+      message: "Connect a Genius token in Settings.",
+    });
+
+    expect(renderHopChain).not.toHaveBeenCalled();
+    expect(els.compareHopChain.textContent).toBe("Connect a Genius token in Settings.");
+  });
+
+  it("falls back to a generic message when the failure carried none", () => {
+    showComparePanel(1, 5, { error: "http_500" });
+
+    expect(els.compareHopChain.textContent).toMatch(/try again/i);
+  });
+
+  it("hands the response's nodes and edges to renderHopChain — hops may be off-canvas", () => {
+    // Сервер ищет по базе, а нарисован только накопленный подграф: узел 42
+    // в State.graphNodes отсутствует, и назвать его можно лишь из ответа.
+    showComparePanel(1, 5, {
+      path: [1, 42, 5],
+      nodes: [{ id: 42, name: "Never Drawn" }],
+      edges: [{ from: 1, to: 42 }],
+    });
+
+    expect(renderHopChain).toHaveBeenCalledWith(
+      [1, 42, 5],
+      [{ from: 1, to: 42 }],
+      [{ id: 42, name: "Never Drawn" }],
+      expect.objectContaining({ 42: "Never Drawn" }),
+      els.compareHopChain,
+    );
   });
 });
 

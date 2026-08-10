@@ -255,8 +255,10 @@ const netFetchSlice = {
 };
 
 const cacheSlice = {
-  _bfsAdj: null,
-  _bfsGraphHash: "",
+  // [SF-API-24] Ответы серверной ручки путей по паре узлов. Жизнь кэша —
+  // жизнь графа: сбрасывается там же, где раньше сбрасывалась клиентская
+  // матрица смежности убранного обхода в ширину.
+  _pathCache: new Map(),
 
   _graphCache: new Map(),
 };
@@ -332,8 +334,7 @@ bridge("_abortController", netFetchSlice);
 bridge("_pathAbortController", netFetchSlice);
 bridge("_enrichmentPoller", netFetchSlice);
 
-bridge("_bfsAdj", cacheSlice);
-bridge("_bfsGraphHash", cacheSlice);
+bridge("_pathCache", cacheSlice);
 bridge("_graphCache", cacheSlice);
 
 bridge("toastTimer", animSlice);
@@ -378,6 +379,10 @@ export function setPathHighlight(path) {
   interactionSlice.pathHighlight = path;
 }
 
+export function clearPathCache() {
+  cacheSlice._pathCache = new Map();
+}
+
 export function resetExpansionState() {
   graphSlice.expandedNodes.clear();
   graphSlice.lastExpandedId = null;
@@ -385,8 +390,7 @@ export function resetExpansionState() {
   interactionSlice.compareMode = false;
   interactionSlice.compareModeStartId = null;
   netFetchSlice.pendingExpand = null;
-  cacheSlice._bfsAdj = null;
-  cacheSlice._bfsGraphHash = "";
+  clearPathCache();
 
   clearTimeout(animSlice.physicsTimer);
   animSlice.physicsTimer = null;
@@ -417,8 +421,7 @@ export function resetGraphState({ resetHasRendered = true } = {}) {
   if (animSlice._expandAnimId != null) cancelAnimationFrame(animSlice._expandAnimId);
   animSlice._expandAnimId = null;
 
-  cacheSlice._bfsAdj = null;
-  cacheSlice._bfsGraphHash = "";
+  clearPathCache();
 }
 
 export const GRAPH_CACHE_MAX = 20;

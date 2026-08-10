@@ -58,7 +58,42 @@ function _comparePairItemHtml(node, id) {
   </div>`;
 }
 
-export function showComparePanel(idA, idB, path = null) {
+function _hopChainNote(text) {
+  return `<div style="color:var(--mist);font-size:12px;">${escapeHtml(text)}</div>`;
+}
+
+// [SF-API-24] `pathInfo` — это ответ серверной ручки путей, а не готовый
+// массив идентификаторов: у запроса по сети есть ещё два состояния, которых
+// у мгновенного клиентского обхода не было — «идёт» и «не удалось».
+// И сама цепочка теперь может вести через артистов, которых на холсте нет:
+// сервер ищет по всей базе, а нарисован только накопленный подграф. Поэтому
+// имена и рёбра берутся из ответа (nodes/edges) и лишь потом — из графа;
+// renderHopChain складывает обе карты именно в этом порядке.
+function _renderCompareHopChain(pathInfo, nameById) {
+  const el = els.compareHopChain;
+
+  if (pathInfo?.loading) {
+    el.innerHTML = _hopChainNote("Looking for a path…");
+    return;
+  }
+  if (pathInfo?.error) {
+    el.innerHTML = _hopChainNote(pathInfo.message || "Couldn't look up a path — try again.");
+    return;
+  }
+
+  const path = pathInfo?.path || [];
+  if (path.length >= 2) {
+    renderHopChain(path, pathInfo.edges || [], pathInfo.nodes || [], nameById, el);
+    return;
+  }
+
+  // Формулировка сменилась вместе с источником ответа: раньше «нет пути в
+  // загруженном графе» было честной оговоркой про подграф в браузере, теперь
+  // искали по всей базе — оговорка стала бы ложью в другую сторону.
+  el.innerHTML = _hopChainNote("No collaboration path between these two artists.");
+}
+
+export function showComparePanel(idA, idB, pathInfo = null) {
   if (!els.comparePanel) return;
   const nodeA = State.graphNodes.find((n) => n.id === idA);
   const nodeB = State.graphNodes.find((n) => n.id === idB);
@@ -85,11 +120,10 @@ export function showComparePanel(idA, idB, path = null) {
     State.graphNodes.forEach((n) => {
       nameById[n.id] = n.name;
     });
-    if (path && path.length >= 2) {
-      renderHopChain(path, [], [], nameById, els.compareHopChain);
-    } else {
-      els.compareHopChain.innerHTML = `<div style="color:var(--mist);font-size:12px;">No connecting path in the loaded graph.</div>`;
-    }
+    (pathInfo?.nodes || []).forEach((n) => {
+      if (n.name) nameById[n.id] = n.name;
+    });
+    _renderCompareHopChain(pathInfo, nameById);
   }
 
   const commonIds = computeCommonCollaborators(idA, idB, State.graphEdges);

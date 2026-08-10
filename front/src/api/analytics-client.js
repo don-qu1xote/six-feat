@@ -1,42 +1,83 @@
 import { State, setPathHighlight } from "../state/state.js";
 import { restoreDefaultColors } from "../vis-adapter/index.js";
+import { apiFetch, isTransientStatus } from "./net.js";
 export { highlightPath } from "../vis-adapter/index.js";
 
-export function getBfsAdj() {
-  if (State._bfsAdj) return State._bfsAdj;
+// [SF-API-24] Обход в ширину в системе один, и он на сервере
+// (CollabService::FindPath). Здесь раньше жил второй — по накопленному в
+// браузере графу; два алгоритма на двух языках расходились в ответах, и
+// расхождение видел пользователь: панель сравнения рисовала одну цепочку, а
+// поиск пути по тем же двум артистам — другую.
 
-  const adj = new Map();
-  State.graphEdges.forEach((e) => {
-    if (!adj.has(e.from)) adj.set(e.from, []);
-    if (!adj.has(e.to)) adj.set(e.to, []);
-    adj.get(e.from).push(e.to);
-    adj.get(e.to).push(e.from);
-  });
+// Ответы теперь ОТЛИЧАЮТСЯ от прежних клиентских, и это не побочный эффект, а
+// суть замены:
+//   • Сервер ищет по всей базе, клиент искал по тому, что успел нарисовать
+//     холст (сид + глубина + обрезка по лимиту + ручные раскрытия). Поэтому
+//     сервер находит путь там, где клиент честно отвечал «связи нет», и
+//     находит более короткий — через артистов, которых на холсте нет.
+//     Отсюда же следствие для отрисовки: цепочка может содержать узлы,
+//     которых нет в State.graphNodes, и брать их имена надо из ответа
+//     (data.nodes), а не из графа.
+//   • Роль-фильтр. Клиентский граф уже приходил отфильтрованным (смена
+//     фильтра перезапрашивает граф), так что расхождения по ролям не было —
+//     и чтобы его не появилось, тот же набор ролей уходит в ручку и входит в
+//     ключ кэша: снятая галочка «producer» — это другой вопрос, а не тот же.
+//   • Путь теперь требует сессии с рабочим genius-токеном (ручка отвечает 422
+//     без него), тогда как обход по нарисованному графу не требовал ничего.
+//     Поэтому ошибка возвращается вызывающему как есть — её надо показать,
+//     а не подменять словами «пути нет».
 
-  State._bfsAdj = adj;
-  return adj;
+// Кэш живёт столько же, сколько граф: его сбрасывают там же, где раньше
+// сбрасывали клиентскую матрицу смежности (новый поиск, раскрытие узла,
+// сброс графа) — раскрытие дописывает данные в базу, поэтому ответ сервера
+// после него тоже может измениться.
+
+function pathCacheKey(fromId, toId) {
+  const lo = Math.min(fromId, toId);
+  const hi = Math.max(fromId, toId);
+  const roles = [...State.activeFilters].sort().join(",");
+  return `${lo}_${hi}_${roles}`;
 }
 
-export function bfsPath(fromId, toId) {
-  const adj = getBfsAdj();
-  if (!adj.has(fromId) || !adj.has(toId)) return null;
+function emptyResult(error, message) {
+  return { path: [], nodes: [], edges: [], error, message };
+}
 
-  const visited = new Set([fromId]);
-  const queue = [[fromId, [fromId]]];
+export async function fetchPathBetween(fromId, toId, { signal } = {}) {
+  if (!State._pathCache) State._pathCache = new Map();
+  const key = pathCacheKey(fromId, toId);
+  const cached = State._pathCache.get(key);
+  if (cached) return cached;
 
-  while (queue.length) {
-    const [curr, path] = queue.shift();
-    if (curr === toId) return path;
+  const roles = [...State.activeFilters].join(",");
+  const url =
+    `/api/v1/graph/path?from=${encodeURIComponent(fromId)}&to=${encodeURIComponent(toId)}` +
+    `&roles=${encodeURIComponent(roles)}`;
 
-    for (const nb of adj.get(curr) || []) {
-      if (!visited.has(nb)) {
-        visited.add(nb);
-        queue.push([nb, [...path, nb]]);
-      }
-    }
+  const res = await apiFetch(url, { signal });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {}
+
+  if (!res.ok || !data || data.error) {
+    const result = emptyResult(data?.error || `http_${res.status}`, data?.message);
+    // Кэшируется только устойчивый ответ. «Пути нет» — это ответ, и повторять
+    // его запросом незачем; 401/422/503 — состояние, которое пользователь
+    // может исправить (войти, подключить токен, подождать восстановления).
+    const recoverable = isTransientStatus(res.status) || res.status === 401 || res.status === 422;
+    if (!recoverable) State._pathCache.set(key, result);
+    return result;
   }
 
-  return null;
+  const result = {
+    path: data.path || [],
+    nodes: data.nodes || [],
+    edges: data.edges || [],
+    error: null,
+  };
+  State._pathCache.set(key, result);
+  return result;
 }
 
 export function clearPathHighlight() {

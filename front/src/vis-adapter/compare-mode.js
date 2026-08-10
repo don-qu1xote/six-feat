@@ -2,7 +2,8 @@ import { State, setPathHighlight } from "../state/state.js";
 import { els } from "../dom/dom.js";
 import { markCompareEndpoint, clearCompareEndpoints, highlightPath } from "./highlight.js";
 import { showComparePanel, showToast } from "../ui/index.js";
-import { bfsPath } from "../api/analytics-client.js";
+import { showLoading } from "../ui/loading.js";
+import { fetchPathBetween } from "../api/analytics-client.js";
 
 function _syncButton() {
   els.btnCompareMode?.classList.toggle("active", State.compareMode === true);
@@ -39,6 +40,13 @@ export function toggleCompareMode() {
   isCompareModeActive() ? exitCompareMode() : enterCompareMode();
 }
 
+// [SF-API-24] Пара выбирается кликами, а ответ приходит по сети — за время
+// запроса пользователь успевает выбрать следующую пару. Считается актуальным
+// ответ на последний запрос: у остальных результат отбрасывается, чтобы
+// панель не перерисовалась чужой цепочкой и чтобы оверлей загрузки снимал
+// тот же запрос, который его показал.
+let _compareRequestSeq = 0;
+
 export function handleCompareModeNodeClick(nodeId) {
   if (!isCompareModeActive()) return;
 
@@ -65,15 +73,32 @@ export function handleCompareModeNodeClick(nodeId) {
   markCompareEndpoint(nodeId, "second");
   exitCompareMode({ silent: true });
 
-  const path = bfsPath(firstId, nodeId);
-  const validPath = path && path.length >= 2 ? path : null;
+  const seq = ++_compareRequestSeq;
+  showComparePanel(firstId, nodeId, { loading: true });
+  showLoading(true, null, "Finding a path between these artists…");
 
-  showComparePanel(firstId, nodeId, validPath);
+  fetchPathBetween(firstId, nodeId)
+    .then((result) => {
+      if (seq !== _compareRequestSeq) return;
 
-  if (validPath) {
-    setPathHighlight(validPath);
-    highlightPath(validPath, { dim: false });
-  }
+      showComparePanel(firstId, nodeId, result);
+
+      const path = result.path || [];
+      if (path.length >= 2) {
+        setPathHighlight(path);
+        highlightPath(path, { dim: false });
+      }
+    })
+    .catch((err) => {
+      if (seq !== _compareRequestSeq) return;
+      showComparePanel(firstId, nodeId, {
+        error: "request_failed",
+        message: err?.message || "Request failed.",
+      });
+    })
+    .finally(() => {
+      if (seq === _compareRequestSeq) showLoading(false);
+    });
 }
 
 export function setupCompareModeToggle() {
