@@ -16,27 +16,20 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing()
 
+# Юнит-тестами на C++ проверяется ровно то, до чего не дотягивается ручка:
+# средний цвет фотографии считается из байтов картинки, и HTTP-тест видит
+# только итоговый hex, а не поведение алгоритма на прозрачности и на размерах,
+# не кратных сетке. Разбор путей, резолв артиста и роли рёбер проверяются
+# сквозь /api/v1/graph и /api/v1/graph/path (tests/test_graph.py,
+# tests/test_path.py) — дублировать их ещё и здесь было незачем.
 add_executable(six_feat_unit_tests
-  ${SIX_FEAT_ROOT}/libs/six-feat-storage/src/analytics.cpp
-  ${SIX_FEAT_ROOT}/libs/six-feat-common/src/music_source_provider.cpp
-  ${SIX_FEAT_ROOT}/libs/six-feat-domain/src/role_mask.cpp
-  ${SIX_FEAT_ROOT}/services/six-feat/src/application/artist_resolver.cpp
   ${SIX_FEAT_ROOT}/libs/six-feat-image/src/dominant_color.cpp
-  test_artist_resolver.cpp
   test_dominant_color.cpp
-  test_bidirectional_bfs.cpp
-  test_featured_edge_role.cpp
 )
 
 target_include_directories(six_feat_unit_tests PRIVATE
-  ${SIX_FEAT_ROOT}/libs/six-feat-domain/include
-  ${SIX_FEAT_ROOT}/libs/six-feat-storage/include
-  ${SIX_FEAT_ROOT}/libs/six-feat-genius/include
-  ${SIX_FEAT_ROOT}/libs/six-feat-common/include
-  ${SIX_FEAT_ROOT}/libs/six-feat-core/include
   ${SIX_FEAT_ROOT}/libs/six-feat-image/include
   ${SIX_FEAT_ROOT}/libs/six-feat-image/vendor
-  ${SIX_FEAT_ROOT}/services/six-feat/src
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 

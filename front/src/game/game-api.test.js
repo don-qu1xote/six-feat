@@ -27,102 +27,69 @@ beforeEach(() => {
   apiFetch.mockReset();
 });
 
-describe("GET reads (getJson)", () => {
-  it("fetchDailyChallenge hits the daily endpoint and returns the body", async () => {
-    apiFetch.mockResolvedValue(ok({ id: 7, from_name: "Drake" }));
-    expect(await fetchDailyChallenge()).toEqual({ id: 7, from_name: "Drake" });
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/challenge?daily=1");
+describe("GET reads", () => {
+  it.each([
+    ["fetchDailyChallenge", () => fetchDailyChallenge(), "/api/v1/game/challenge?daily=1"],
+    ["fetchChallenge", () => fetchChallenge(12), "/api/v1/game/challenge?id=12"],
+    ["fetchProfile", () => fetchProfile(), "/api/v1/game/profile"],
+    ["fetchPublicProfile", () => fetchPublicProfile(5), "/api/v1/game/profile?user=5"],
+    ["fetchSeason", () => fetchSeason(), "/api/v1/game/season"],
+    ["fetchChallenges", () => fetchChallenges(), "/api/v1/game/challenges"],
+  ])("%s calls %s and returns the body", async (_name, call, url) => {
+    apiFetch.mockResolvedValue(ok({ id: 7 }));
+
+    expect(await call()).toEqual({ id: 7 });
+    expect(apiFetch).toHaveBeenCalledWith(url);
   });
 
-  it("returns null on a non-ok status (e.g. 404 no daily yet)", async () => {
+  it("collapses a non-ok status and a transport error alike to null", async () => {
     apiFetch.mockResolvedValue(notOk(404));
     expect(await fetchDailyChallenge()).toBeNull();
-  });
 
-  it("returns null when apiFetch throws (transport error)", async () => {
     apiFetch.mockRejectedValue(new Error("network"));
     expect(await fetchDailyChallenge()).toBeNull();
   });
 
-  it("fetchChallenge encodes the id", async () => {
-    apiFetch.mockResolvedValue(ok({ id: 12 }));
-    await fetchChallenge(12);
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/challenge?id=12");
-  });
-
-  it("fetchProfile / fetchSeason hit their endpoints", async () => {
-    apiFetch.mockResolvedValue(ok({}));
-    await fetchProfile();
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/profile");
-    await fetchSeason();
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/season");
-  });
-
-  it("fetchPublicProfile encodes the user id", async () => {
-    apiFetch.mockResolvedValue(ok({ user_id: 5 }));
-    await fetchPublicProfile(5);
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/profile?user=5");
-  });
-});
-
-describe("fetchChallenges query building", () => {
-  it("omits all params when none given", async () => {
+  it("builds paging and filter query strings only from the params it was given", async () => {
     apiFetch.mockResolvedValue(ok({ challenges: [] }));
-    await fetchChallenges();
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/challenges");
-  });
 
-  it("includes kind, cursor and limit when provided", async () => {
-    apiFetch.mockResolvedValue(ok({ challenges: [] }));
     await fetchChallenges({ kind: "daily", cursor: "100:5", limit: 24 });
-    const url = apiFetch.mock.calls[0][0];
-    expect(url).toContain("kind=daily");
-    expect(url).toContain("cursor=100%3A5");
-    expect(url).toContain("limit=24");
-  });
-});
+    expect(apiFetch.mock.calls[0][0]).toContain("kind=daily");
+    expect(apiFetch.mock.calls[0][0]).toContain("cursor=100%3A5");
+    expect(apiFetch.mock.calls[0][0]).toContain("limit=24");
 
-describe("leaderboards", () => {
-  it("fetchLeaderboard uses challenge_id and optional cursor/limit", async () => {
-    apiFetch.mockResolvedValue(ok({ entries: [] }));
     await fetchLeaderboard(7);
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/leaderboard?challenge_id=7");
-    await fetchLeaderboard(7, { cursor: "c", limit: 50 });
-    const url = apiFetch.mock.calls[1][0];
-    expect(url).toContain("challenge_id=7");
-    expect(url).toContain("cursor=c");
-    expect(url).toContain("limit=50");
-  });
+    expect(apiFetch.mock.calls[1][0]).toBe("/api/v1/game/leaderboard?challenge_id=7");
 
-  it("fetchSeasonLeaderboard uses season_id", async () => {
-    apiFetch.mockResolvedValue(ok({ entries: [] }));
+    await fetchLeaderboard(7, { cursor: "c", limit: 50 });
+    expect(apiFetch.mock.calls[2][0]).toContain("cursor=c");
+
     await fetchSeasonLeaderboard(3, { limit: 10 });
-    const url = apiFetch.mock.calls[0][0];
-    expect(url).toContain("season_id=3");
-    expect(url).toContain("limit=10");
+    expect(apiFetch.mock.calls[3][0]).toContain("season_id=3");
+    expect(apiFetch.mock.calls[3][0]).toContain("limit=10");
   });
 });
 
-describe("POST writes (postJson)", () => {
-  it("createChallenge posts a JSON body with the role mask", async () => {
+describe("writes", () => {
+  it("createChallenge posts the pair as JSON, defaulting the role mask to 0", async () => {
     apiFetch.mockResolvedValue(ok({ id: 1 }));
+
     await createChallenge(100, 900, 0);
     const [url, opts] = apiFetch.mock.calls[0];
     expect(url).toBe("/api/v1/game/challenge");
     expect(opts.method).toBe("POST");
     expect(opts.headers["Content-Type"]).toBe("application/json");
     expect(JSON.parse(opts.body)).toEqual({ from: 100, to: 900, role_mask: 0 });
-  });
 
-  it("createChallenge defaults role mask to 0", async () => {
-    apiFetch.mockResolvedValue(ok({ id: 1 }));
     await createChallenge(1, 2);
-    expect(JSON.parse(apiFetch.mock.calls[0][1].body).role_mask).toBe(0);
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body).role_mask).toBe(0);
   });
 
-  it("submitChain posts challenge_id, chain and elapsed_ms", async () => {
+  it("submitChain posts the challenge, the chain and the elapsed time", async () => {
     apiFetch.mockResolvedValue(ok({ valid: true }));
+
     await submitChain(7, [1, 2], 4200);
+
     expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({
       challenge_id: 7,
       chain: [1, 2],
@@ -130,46 +97,11 @@ describe("POST writes (postJson)", () => {
     });
   });
 
-  it("returns null when a POST fails", async () => {
-    apiFetch.mockResolvedValue(notOk(403));
-    expect(await createChallenge(1, 2, 0)).toBeNull();
-  });
-
-  it("returns null when a POST throws", async () => {
-    apiFetch.mockRejectedValue(new Error("net"));
-    expect(await submitChain(7, [1, 2], 0)).toBeNull();
-  });
-});
-
-describe("admin", () => {
-  it("fetchAdminStatus is true only when the body says admin:true", async () => {
-    apiFetch.mockResolvedValue(ok({ admin: true }));
-    expect(await fetchAdminStatus()).toBe(true);
-  });
-  it("fetchAdminStatus is false for admin:false / null / failure", async () => {
-    apiFetch.mockResolvedValue(ok({ admin: false }));
-    expect(await fetchAdminStatus()).toBe(false);
-    apiFetch.mockResolvedValue(notOk(401));
-    expect(await fetchAdminStatus()).toBe(false);
-  });
-
-  it("publishDaily omits blank endpoints (random pair)", async () => {
-    apiFetch.mockResolvedValue(ok({ id: 9 }));
-    await publishDaily();
-    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({});
-  });
-
-  it("publishDaily includes a supplied pair", async () => {
-    apiFetch.mockResolvedValue(ok({ id: 9 }));
-    await publishDaily({ from: 11, to: 22 });
-    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({ from: 11, to: 22 });
-  });
-});
-
-describe("updateDisplayName (PATCH)", () => {
-  it("PATCHes the display_name and returns the refreshed profile", async () => {
+  it("updateDisplayName PATCHes the name and hands back the refreshed profile", async () => {
     apiFetch.mockResolvedValue(ok({ display_name: "New" }));
+
     const res = await updateDisplayName("New");
+
     const [url, opts] = apiFetch.mock.calls[0];
     expect(url).toBe("/api/v1/game/profile");
     expect(opts.method).toBe("PATCH");
@@ -177,37 +109,54 @@ describe("updateDisplayName (PATCH)", () => {
     expect(res).toEqual({ display_name: "New" });
   });
 
-  it("returns null when the name is rejected (non-ok) or the call throws", async () => {
-    apiFetch.mockResolvedValue(notOk(400));
+  it("returns null from any write the server rejected or the transport lost", async () => {
+    apiFetch.mockResolvedValue(notOk(403));
+    expect(await createChallenge(1, 2, 0)).toBeNull();
     expect(await updateDisplayName("bad")).toBeNull();
+
     apiFetch.mockRejectedValue(new Error("net"));
+    expect(await submitChain(7, [1, 2], 0)).toBeNull();
     expect(await updateDisplayName("x")).toBeNull();
   });
 });
 
+describe("admin", () => {
+  it("fetchAdminStatus is true only when the body says so", async () => {
+    apiFetch.mockResolvedValue(ok({ admin: true }));
+    expect(await fetchAdminStatus()).toBe(true);
+
+    apiFetch.mockResolvedValue(ok({ admin: false }));
+    expect(await fetchAdminStatus()).toBe(false);
+
+    apiFetch.mockResolvedValue(notOk(401));
+    expect(await fetchAdminStatus()).toBe(false);
+  });
+
+  it("publishDaily sends a pair when given one and an empty body for a random one", async () => {
+    apiFetch.mockResolvedValue(ok({ id: 9 }));
+
+    await publishDaily();
+    expect(JSON.parse(apiFetch.mock.calls[0][1].body)).toEqual({});
+
+    await publishDaily({ from: 11, to: 22 });
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body)).toEqual({ from: 11, to: 22 });
+  });
+});
+
 describe("checkLink three-state verdict", () => {
-  it("passes through a boolean true/false", async () => {
+  it("passes a real yes/no through and encodes both ids", async () => {
     apiFetch.mockResolvedValue(ok({ linked: true }));
-    expect(await checkLink(1, 2)).toEqual({ linked: true });
+    expect(await checkLink(100, 900)).toEqual({ linked: true });
+    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/link?from=100&to=900");
+
     apiFetch.mockResolvedValue(ok({ linked: false }));
     expect(await checkLink(1, 2)).toEqual({ linked: false });
   });
 
-  it("collapses a JSON null / missing field to { linked: null }", async () => {
-    apiFetch.mockResolvedValue(ok({ linked: null }));
-    expect(await checkLink(1, 2)).toEqual({ linked: null });
-    apiFetch.mockResolvedValue(ok({}));
-    expect(await checkLink(1, 2)).toEqual({ linked: null });
-  });
-
-  it("collapses a failed lookup to { linked: null } (fail open)", async () => {
-    apiFetch.mockResolvedValue(notOk(502));
-    expect(await checkLink(1, 2)).toEqual({ linked: null });
-  });
-
-  it("encodes both ids", async () => {
-    apiFetch.mockResolvedValue(ok({ linked: true }));
-    await checkLink(100, 900);
-    expect(apiFetch).toHaveBeenCalledWith("/api/v1/game/link?from=100&to=900");
+  it("fails open to 'unknown' for a null, a missing field or a failed lookup", async () => {
+    for (const response of [ok({ linked: null }), ok({}), notOk(502)]) {
+      apiFetch.mockResolvedValue(response);
+      expect(await checkLink(1, 2)).toEqual({ linked: null });
+    }
   });
 });

@@ -19,150 +19,99 @@ beforeEach(() => {
 });
 
 describe("parseSurfaceFromHash (pure)", () => {
-  it("recognizes the two canonical surface hashes", () => {
+  it("maps every known hash to its surface and everything else to the default", () => {
+    expect(DEFAULT_SURFACE).toBe(SURFACE_GRAPH);
     expect(parseSurfaceFromHash("#/graph")).toBe(SURFACE_GRAPH);
     expect(parseSurfaceFromHash("#/game")).toBe(SURFACE_GAME);
-  });
-
-  it("falls back to the default surface for a missing hash", () => {
-    expect(parseSurfaceFromHash("")).toBe(DEFAULT_SURFACE);
-    expect(parseSurfaceFromHash(undefined)).toBe(DEFAULT_SURFACE);
-  });
-
-  it("falls back to the default surface for an unrecognized hash", () => {
-    expect(parseSurfaceFromHash("#/nonsense")).toBe(DEFAULT_SURFACE);
-    expect(parseSurfaceFromHash("#/")).toBe(DEFAULT_SURFACE);
-    expect(parseSurfaceFromHash("#graph-typo")).toBe(DEFAULT_SURFACE);
-  });
-
-  it("default surface is graph", () => {
-    expect(DEFAULT_SURFACE).toBe(SURFACE_GRAPH);
-  });
-
-  it("[game #4] recognizes the routed season sub-surface", () => {
     expect(parseSurfaceFromHash("#/game/season")).toBe(SURFACE_GAME_SEASON);
-    expect(SURFACE_GAME_SEASON).toBe("game/season");
     expect(isGameSurface(SURFACE_GAME_SEASON)).toBe(true);
+
+    for (const junk of ["", undefined, "#/nonsense", "#/", "#graph-typo"]) {
+      expect(parseSurfaceFromHash(junk)).toBe(DEFAULT_SURFACE);
+    }
   });
 });
 
 describe("navigateToSurface", () => {
-  it("reflects graph<->game transitions in the URL hash", () => {
-    navigateToSurface(SURFACE_GAME);
-    expect(window.location.hash).toBe("#/game");
-    expect(getCurrentSurface()).toBe(SURFACE_GAME);
-
-    navigateToSurface(SURFACE_GRAPH);
-    expect(window.location.hash).toBe("#/graph");
-    expect(getCurrentSurface()).toBe(SURFACE_GRAPH);
-  });
-
-  it("updates State.surface", () => {
-    navigateToSurface(SURFACE_GAME);
-    expect(State.surface).toBe(SURFACE_GAME);
-  });
-
-  it("notifies onSurfaceChange listeners", () => {
+  it("writes the hash, updates State.surface and notifies listeners until they unsubscribe", () => {
     const fn = vi.fn();
     const unsubscribe = onSurfaceChange(fn);
 
     navigateToSurface(SURFACE_GAME);
+    expect(window.location.hash).toBe("#/game");
+    expect(getCurrentSurface()).toBe(SURFACE_GAME);
+    expect(State.surface).toBe(SURFACE_GAME);
     expect(fn).toHaveBeenCalledWith(SURFACE_GAME);
 
     unsubscribe();
     fn.mockClear();
+
     navigateToSurface(SURFACE_GRAPH);
+    expect(window.location.hash).toBe("#/graph");
     expect(fn).not.toHaveBeenCalled();
   });
 
-  it("normalizes an invalid surface argument to the default", () => {
-    navigateToSurface("not-a-real-surface");
-    expect(window.location.hash).toBe("#/graph");
-    expect(State.surface).toBe(SURFACE_GRAPH);
-  });
-
-  it("preserves the existing query string (composes with history.js's state encoding)", () => {
+  it("normalises an unknown surface and never disturbs the query string", () => {
     history.replaceState(null, "", "http://localhost:3000/?artist=Drake&seed=1");
-    navigateToSurface(SURFACE_GAME);
+
+    navigateToSurface("not-a-real-surface");
+
+    expect(State.surface).toBe(SURFACE_GRAPH);
+    expect(window.location.hash).toBe("#/graph");
     expect(window.location.search).toBe("?artist=Drake&seed=1");
-    expect(window.location.hash).toBe("#/game");
   });
 });
 
 describe("restoreSurfaceFromUrl", () => {
-  it("restores game when the URL hash is #/game", () => {
-    history.replaceState(null, "", "http://localhost:3000/#/game");
-    expect(restoreSurfaceFromUrl()).toBe(SURFACE_GAME);
-    expect(State.surface).toBe(SURFACE_GAME);
+  it.each([
+    ["#/game", SURFACE_GAME],
+    ["#/graph", SURFACE_GRAPH],
+    ["#/totally-unknown", DEFAULT_SURFACE],
+    ["", DEFAULT_SURFACE],
+  ])("resolves %s to its surface and mirrors it into State", (hash, expected) => {
+    history.replaceState(null, "", `http://localhost:3000/${hash}`);
+
+    expect(restoreSurfaceFromUrl()).toBe(expected);
+    expect(State.surface).toBe(expected);
   });
 
-  it("restores graph when the URL hash is #/graph", () => {
-    history.replaceState(null, "", "http://localhost:3000/#/graph");
-    expect(restoreSurfaceFromUrl()).toBe(SURFACE_GRAPH);
-    expect(State.surface).toBe(SURFACE_GRAPH);
-  });
-
-  it("an invalid hash resolves to the default surface", () => {
+  it("rewrites an unknown hash to the default surface's own URL", () => {
     history.replaceState(null, "", "http://localhost:3000/#/totally-unknown");
-    expect(restoreSurfaceFromUrl()).toBe(DEFAULT_SURFACE);
-    expect(State.surface).toBe(DEFAULT_SURFACE);
-  });
 
-  it("a missing hash (current graph behavior) resolves to the default surface", () => {
-    history.replaceState(null, "", "http://localhost:3000/");
-    expect(restoreSurfaceFromUrl()).toBe(DEFAULT_SURFACE);
-    expect(window.location.hash === "" || window.location.hash === "#/graph").toBe(true);
-  });
-
-  it("normalizes an invalid hash to the default surface's own URL", () => {
-    history.replaceState(null, "", "http://localhost:3000/#/totally-unknown");
     restoreSurfaceFromUrl();
+
     expect(window.location.hash).toBe("#/graph");
   });
-});
 
-describe("graph <-> game round trip via the URL", () => {
-  it("navigating away and restoring from the resulting URL reproduces the same surface", () => {
-    navigateToSurface(SURFACE_GAME);
-    const hashAfterNav = window.location.hash;
+  it("round-trips: whatever navigateToSurface wrote is what restore reads back", () => {
+    for (const surface of [SURFACE_GAME, SURFACE_GRAPH]) {
+      navigateToSurface(surface);
+      history.replaceState(null, "", `http://localhost:3000/${window.location.hash}`);
+      State.surface = null;
 
-    history.replaceState(null, "", `http://localhost:3000/${hashAfterNav}`);
-    State.surface = DEFAULT_SURFACE;
-    expect(restoreSurfaceFromUrl()).toBe(SURFACE_GAME);
-
-    navigateToSurface(SURFACE_GRAPH);
-    history.replaceState(null, "", `http://localhost:3000/${window.location.hash}`);
-    State.surface = SURFACE_GAME;
-    expect(restoreSurfaceFromUrl()).toBe(SURFACE_GRAPH);
+      expect(restoreSurfaceFromUrl()).toBe(surface);
+    }
   });
 });
 
-describe("popstate (browser back/forward)", () => {
-  it("updates State.surface and notifies listeners on popstate", () => {
+describe("browser navigation", () => {
+  // popstate — кнопка «назад», hashchange — обычная ссылка <a href="#/graph">
+  // (ей пользуется сама игра, чтобы вернуться на граф). Оба события обязаны
+  // двигать State и слушателей: на одном popstate ссылка ничего не меняла.
+  it.each([
+    ["popstate", () => new PopStateEvent("popstate")],
+    ["hashchange", () => new HashChangeEvent("hashchange")],
+  ])("%s moves State.surface and notifies listeners", (_name, makeEvent) => {
     const fn = vi.fn();
     const unsubscribe = onSurfaceChange(fn);
+    try {
+      history.pushState(null, "", "http://localhost:3000/#/game");
+      window.dispatchEvent(makeEvent());
 
-    history.pushState(null, "", "http://localhost:3000/#/game");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-
-    expect(State.surface).toBe(SURFACE_GAME);
-    expect(fn).toHaveBeenCalledWith(SURFACE_GAME);
-    unsubscribe();
-  });
-});
-
-describe("hashchange (plain <a href=\"#/graph\"> links, e.g. the game surface's own 'Back to graph')", () => {
-  it("[fix] updates State.surface and notifies listeners on a direct hash change, not just popstate", () => {
-    const fn = vi.fn();
-    const unsubscribe = onSurfaceChange(fn);
-    navigateToSurface(SURFACE_GAME);
-    fn.mockClear();
-
-    window.location.hash = "#/graph";
-    window.dispatchEvent(new HashChangeEvent("hashchange"));
-
-    expect(State.surface).toBe(SURFACE_GRAPH);
-    expect(fn).toHaveBeenCalledWith(SURFACE_GRAPH);
-    unsubscribe();
+      expect(State.surface).toBe(SURFACE_GAME);
+      expect(fn).toHaveBeenCalledWith(SURFACE_GAME);
+    } finally {
+      unsubscribe();
+    }
   });
 });

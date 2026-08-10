@@ -632,6 +632,10 @@ class TestPathIsTheSingleSourceOfTruth:
             ),
         )
 
+        # Артистов сперва надо завести в базе: путь по id резолвится по ней,
+        # а сами по себе моки Genius в базу ничего не кладут.
+        client.get(f"{SERVICE_BASE}/api/v1/graph", params={"artist": "RoleTruthA"})
+
         with_writer = client.get(
             PATH_URL, params={"from": "810", "to": "811", "roles": "writer"}
         ).json()
@@ -639,7 +643,7 @@ class TestPathIsTheSingleSourceOfTruth:
             PATH_URL, params={"from": "810", "to": "811", "roles": "featured"}
         ).json()
 
-        assert with_writer["hops"] == 1
+        assert with_writer.get("hops") == 1, with_writer
         assert without_writer.get("error") in ("no_path", "deadline_exceeded")
 
     def test_the_server_sees_connections_the_drawn_graph_does_not(

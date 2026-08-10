@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -39,13 +40,14 @@ struct StbImageDeleter {
 using StbImagePtr = std::unique_ptr<unsigned char, StbImageDeleter>;
 
 std::string ToHex(int r, int g, int b) {
-  static constexpr char kDigits[] = "0123456789abcdef";
+  static constexpr std::array<char, 16> kDigits{
+      '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
   std::string out = "#______";
-  const int channels[3] = {r, g, b};
-  for (int i = 0; i < 3; ++i) {
-    const int v = std::clamp(channels[i], 0, 255);
-    out[1 + i * 2] = kDigits[(v >> 4) & 0xF];
-    out[2 + i * 2] = kDigits[v & 0xF];
+  const std::array<int, 3> channels{r, g, b};
+  for (std::size_t i = 0; i < channels.size(); ++i) {
+    const auto v = static_cast<unsigned>(std::clamp(channels[i], 0, 255));
+    out[1 + i * 2] = kDigits[(v >> 4U) & 0xFU];
+    out[2 + i * 2] = kDigits[v & 0xFU];
   }
   return out;
 }

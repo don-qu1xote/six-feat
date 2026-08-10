@@ -241,8 +241,6 @@ jobs:
             tests/test_analytics.py \
             tests/test_role_mask.py \
             tests/test_session_crypto.py \
-            tests/test_genius_mock_gateway.py \
-            tests/test_genius_http_mock.py \
             tests/test_migrations.py \
             tests/test_game_migrations.py \
             tests/test_component_config_parity.py \

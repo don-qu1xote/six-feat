@@ -8,19 +8,21 @@ import {
   State,
 } from "./state.js";
 
+const BUCKETS = {
+  fast: 120,
+  base: 150,
+  med: 200,
+  slow: 280,
+  slower: 320,
+  xslow: 380,
+  flight: 420,
+  camera: 500,
+  xxslow: 600,
+  loop: 800,
+};
+
 afterEach(() => {
-  for (const key of [
-    "fast",
-    "base",
-    "med",
-    "slow",
-    "slower",
-    "xslow",
-    "flight",
-    "camera",
-    "xxslow",
-    "loop",
-  ]) {
+  for (const key of Object.keys(BUCKETS)) {
     document.documentElement.style.removeProperty(`--duration-${key}`);
   }
   vi.unstubAllGlobals();
@@ -28,99 +30,69 @@ afterEach(() => {
 });
 
 describe("MOTION", () => {
-  it("reads each bucket live from its --duration-* custom property", () => {
+  it("falls back to the documented default for every bucket while the token is unset", () => {
+    expect({ ...MOTION }).toMatchObject(BUCKETS);
+  });
+
+  it("re-reads the custom property on every access, in ms or bare seconds", () => {
     document.documentElement.style.setProperty("--duration-base", "999ms");
     expect(MOTION.base).toBe(999);
+
     document.documentElement.style.setProperty("--duration-base", "111ms");
     expect(MOTION.base).toBe(111);
-  });
 
-  it("tolerates a bare-seconds value (Ns, not just Nms)", () => {
     document.documentElement.style.setProperty("--duration-slow", ".5s");
     expect(MOTION.slow).toBe(500);
-  });
-
-  it("falls back to the documented default when the token is unset", () => {
-    expect(MOTION.fast).toBe(120);
-    expect(MOTION.base).toBe(150);
-    expect(MOTION.med).toBe(200);
-    expect(MOTION.slow).toBe(280);
-    expect(MOTION.slower).toBe(320);
-    expect(MOTION.xslow).toBe(380);
-    expect(MOTION.flight).toBe(420);
-    expect(MOTION.camera).toBe(500);
-    expect(MOTION.xxslow).toBe(600);
-    expect(MOTION.loop).toBe(800);
-  });
-});
-
-describe("VIS_EASING", () => {
-  it("is the single vis.js easingFunction keyword every network.fit/focus/moveTo call now shares", () => {
-    expect(VIS_EASING).toBe("easeInOutQuad");
-  });
-});
-
-describe("prefersReducedMotion", () => {
-  it("reflects window.matchMedia('(prefers-reduced-motion: reduce)').matches", () => {
-    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
-    expect(prefersReducedMotion()).toBe(true);
-
-    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
-    expect(prefersReducedMotion()).toBe(false);
   });
 });
 
 describe("visAnimation", () => {
-  it("returns {duration, easingFunction} from the given MOTION value normally", () => {
+  it("hands vis.js a duration and the one shared easing, or false under reduced motion", () => {
+    expect(VIS_EASING).toBe("easeInOutQuad");
+
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
-    expect(visAnimation(MOTION.camera)).toEqual({ duration: 500, easingFunction: "easeInOutQuad" });
+    expect(prefersReducedMotion()).toBe(false);
+    expect(visAnimation(MOTION.camera)).toEqual({ duration: 500, easingFunction: VIS_EASING });
+
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    expect(prefersReducedMotion()).toBe(true);
+    expect(visAnimation(MOTION.camera)).toBe(false);
   });
 
-  it("returns false (vis.js's own 'skip the animation' value) under prefers-reduced-motion", () => {
-    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
-    expect(visAnimation(MOTION.camera)).toBe(false);
+  it("carries the same zoom scaling that scaledDuration applies", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+    State.network = { getScale: () => 3 };
+
+    expect(visAnimation(MOTION.camera)).toEqual({
+      duration: scaledDuration(MOTION.camera),
+      easingFunction: VIS_EASING,
+    });
   });
 });
 
 describe("scaledDuration (zoom-aware)", () => {
-  it("leaves duration unchanged with no network mounted (baseline scale)", () => {
-    State.network = null;
-    expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
-  });
-
-  it("leaves duration unchanged at the baseline scale (1x)", () => {
-    State.network = { getScale: () => 1 };
-    expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
-  });
-
-  it("lengthens the duration when zoomed in (scale > 1)", () => {
+  it("stretches when zoomed in, shrinks when zoomed out, and stays clamped either way", () => {
     State.network = { getScale: () => 3 };
     expect(scaledDuration(MOTION.camera)).toBeGreaterThan(MOTION.camera);
-  });
 
-  it("shortens the duration when zoomed out (scale < 1)", () => {
     State.network = { getScale: () => 0.35 };
     expect(scaledDuration(MOTION.camera)).toBeLessThan(MOTION.camera);
-  });
 
-  it("clamps the multiplier so extreme scales don't blow past sane bounds", () => {
     State.network = { getScale: () => 100 };
     expect(scaledDuration(MOTION.camera)).toBeLessThanOrEqual(MOTION.camera * 2);
+
     State.network = { getScale: () => 0.0001 };
     expect(scaledDuration(MOTION.camera)).toBeGreaterThanOrEqual(MOTION.camera * 0.6);
   });
 
-  it("tolerates a broken/non-finite getScale by falling back to baseline", () => {
+  it("returns the duration untouched at baseline, with no network, or with a broken getScale", () => {
+    State.network = null;
+    expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
+
+    State.network = { getScale: () => 1 };
+    expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
+
     State.network = { getScale: () => NaN };
     expect(scaledDuration(MOTION.camera)).toBe(MOTION.camera);
-  });
-
-  it("visAnimation()'s duration reflects the same zoom scaling as scaledDuration", () => {
-    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
-    State.network = { getScale: () => 3 };
-    expect(visAnimation(MOTION.camera)).toEqual({
-      duration: scaledDuration(MOTION.camera),
-      easingFunction: "easeInOutQuad",
-    });
   });
 });

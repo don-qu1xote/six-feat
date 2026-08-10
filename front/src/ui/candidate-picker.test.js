@@ -24,54 +24,44 @@ beforeEach(() => {
 });
 
 describe("showCandidatePicker rendering", () => {
-  it("renders one item per candidate and reveals the overlay", () => {
+  it("renders one item per candidate, reveals the overlay and caps the list at six", () => {
     showCandidatePicker([candidate({ name: "Drake" }), candidate({ id: 2, name: "Drizzy" })], "dr");
-
     expect(els.candidateList.querySelectorAll(".candidate-item")).toHaveLength(2);
     expect(els.candidateOverlay.classList.contains("show")).toBe(true);
-  });
 
-  it("caps the list at six so the overlay cannot grow unbounded", () => {
     const many = Array.from({ length: 12 }, (_, i) => candidate({ id: i, name: `Artist ${i}` }));
     showCandidatePicker(many, "artist");
-
     expect(els.candidateList.querySelectorAll(".candidate-item")).toHaveLength(6);
   });
 
-  it("names the query in the title when there is one", () => {
+  it("names the query in the title, and stays readable when there isn't one", () => {
     showCandidatePicker([candidate()], "drake");
     expect(document.querySelector(".candidate-title").textContent).toContain("drake");
-  });
 
-  it("falls back to a generic title when the query is empty", () => {
     showCandidatePicker([candidate()], "");
     const title = document.querySelector(".candidate-title").textContent;
     expect(title).toBeTruthy();
     expect(title).not.toContain('""');
   });
 
-  it("shows a match percentage when the backend scored the candidate", () => {
+  it("shows the backend's match percentage, and nothing at all when it scored nothing", () => {
     showCandidatePicker([candidate({ score: 0.87 })], "drake");
     expect(els.candidateList.querySelector(".candidate-score").textContent).toContain("87");
-  });
 
-  it("omits the score line entirely when the backend gave no score", () => {
     showCandidatePicker([candidate({ score: null })], "drake");
     expect(els.candidateList.querySelector(".candidate-score")).toBeNull();
   });
 
-  it("uses a generated placeholder avatar when the candidate has no image", () => {
-    showCandidatePicker([candidate({ image: "" })], "drake");
-    const img = els.candidateList.querySelector(".candidate-avatar");
-    expect(img.getAttribute("src")).toBeTruthy();
-    expect(img.getAttribute("data-fallback")).toBeTruthy();
-  });
-
-  it("keeps the candidate's own image when it has one", () => {
+  it("uses the candidate's photo when it has one, a generated placeholder when it doesn't", () => {
     showCandidatePicker([candidate({ image: "https://img.example/a.jpg" })], "drake");
     expect(els.candidateList.querySelector(".candidate-avatar").getAttribute("src")).toBe(
       "https://img.example/a.jpg",
     );
+
+    showCandidatePicker([candidate({ image: "" })], "drake");
+    const img = els.candidateList.querySelector(".candidate-avatar");
+    expect(img.getAttribute("src")).toBeTruthy();
+    expect(img.getAttribute("data-fallback")).toBeTruthy();
   });
 
   it("escapes markup in artist names instead of injecting it", () => {
@@ -85,52 +75,35 @@ describe("showCandidatePicker rendering", () => {
 });
 
 describe("showCandidatePicker selection", () => {
-  it("loads the picked artist as an explicit, already-disambiguated choice", () => {
+  it("loads the picked artist as an already-disambiguated choice and closes the overlay", () => {
     showCandidatePicker([candidate({ name: "Drake" }), candidate({ id: 2, name: "Drizzy" })], "dr");
 
     els.candidateList.querySelectorAll(".candidate-item")[1].click();
 
     expect(searchArtist).toHaveBeenCalledWith("Drizzy", false, true);
-  });
-
-  it("closes the overlay on pick so the graph is not rendered behind it", () => {
-    showCandidatePicker([candidate()], "drake");
-    els.candidateList.querySelector(".candidate-item").click();
-
     expect(els.candidateOverlay.classList.contains("show")).toBe(false);
   });
 });
 
 describe("candidate picker guards", () => {
-  it("does nothing when the overlay is not on this page", () => {
+  it("does nothing when the overlay or the list is not on this page", () => {
     els.candidateOverlay = null;
     expect(() => showCandidatePicker([candidate()], "drake")).not.toThrow();
+    expect(() => hideCandidatePicker()).not.toThrow();
     expect(searchArtist).not.toHaveBeenCalled();
-  });
 
-  it("does nothing when the list container is missing", () => {
+    renderMarkup();
     els.candidateList = null;
     expect(() => showCandidatePicker([candidate()], "drake")).not.toThrow();
     expect(els.candidateOverlay.classList.contains("show")).toBe(false);
   });
 
-  it("renders an empty list rather than failing when there are no candidates", () => {
+  it("shows an empty list rather than failing when nothing matched, and hides on request", () => {
     showCandidatePicker([], "nobody");
-
     expect(els.candidateList.querySelectorAll(".candidate-item")).toHaveLength(0);
     expect(els.candidateOverlay.classList.contains("show")).toBe(true);
-  });
-});
 
-describe("hideCandidatePicker", () => {
-  it("hides a shown overlay", () => {
-    showCandidatePicker([candidate()], "drake");
     hideCandidatePicker();
     expect(els.candidateOverlay.classList.contains("show")).toBe(false);
-  });
-
-  it("is safe to call when the overlay is not on this page", () => {
-    els.candidateOverlay = null;
-    expect(() => hideCandidatePicker()).not.toThrow();
   });
 });
