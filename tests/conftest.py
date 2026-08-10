@@ -612,12 +612,12 @@ def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
 
 
 def _wait_for_schema(table: str, timeout: float = 15.0) -> bool:
-    """[SF-WEB-76] PersistentStore::OnAllComponentsLoaded() applies schema
-    migrations as a fire-and-forget async task — the port accepting
-    connections (see _wait_for_port) does not mean migrations have
-    finished, and /readyz's own DB check is a plain Ping(), not a schema
-    check. Poll for the table directly so tests don't race the migration
-    task."""
+    """[SF-WEB-76] PersistentStore::OnAllComponentsLoaded() applies the schema
+    bootstrap (postgresql/schema.sql mirror, idempotent) as a fire-and-forget
+    async task — the port accepting connections (see _wait_for_port) does not
+    mean bootstrap has finished, and /readyz's own DB check is a plain Ping(),
+    not a schema check. Poll for the table directly so tests don't race the
+    bootstrap task."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
@@ -763,7 +763,7 @@ def service_proc(
     if not _wait_for_schema("artists"):
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
-        pytest.fail(f"Schema migrations did not finish within timeout.\nstderr:\n{stderr}")
+        pytest.fail(f"Schema bootstrap did not finish within timeout.\nstderr:\n{stderr}")
 
     yield proc
 
@@ -1373,7 +1373,7 @@ def service_proc_bg(
     if not _wait_for_schema("artists"):
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
-        pytest.fail(f"Schema migrations did not finish within timeout.\nstderr:\n{stderr}")
+        pytest.fail(f"Schema bootstrap did not finish within timeout.\nstderr:\n{stderr}")
 
     yield proc
 

@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <chrono>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <userver/components/component_config.hpp>
 #include <userver/components/component_context.hpp>
@@ -26,12 +25,13 @@ using namespace userver;
 
 namespace {
 
-struct Migration {
-  int version;
-  std::vector<const char*> statements;
-};
+// Полная схема БД игры одним идемпотентным списком: реестра версий и
+// миграций нет (см. kSchemaStatements в persistent_store.cpp — то же
+// решение для БД six-feat). Сид достижений — часть бутстрапа: каждая
+// операция идемпотентна, повторные старты безопасны.
+// Зеркало postgresql/game/schema.sql, пооператорно — проверяет
 
-const std::vector<const char*> kGameMigrationV1 = {
+const std::vector<const char*> kGameSchema = {
     R"SQL(CREATE TABLE IF NOT EXISTS game_profiles (
         user_id      BIGINT PRIMARY KEY,
         display_name TEXT,
@@ -86,9 +86,6 @@ const std::vector<const char*> kGameMigrationV1 = {
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_season_score ON game_attempts(season_id, score DESC)",
     // clang-format on
     "CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts)",
-};
-
-const std::vector<const char*> kGameMigrationV2 = {
     R"SQL(INSERT INTO game_achievements (code, title, descr) VALUES
         ('first_win', 'First Blood', 'Complete your first challenge'),
         ('perfect_solve', 'Perfect Chain', 'Match the ideal path exactly — no wasted hops'),
@@ -98,60 +95,32 @@ const std::vector<const char*> kGameMigrationV2 = {
     ON CONFLICT (code) DO NOTHING)SQL",
 };
 
-const std::vector<Migration> kGameMigrations = {
-    {1, kGameMigrationV1},
-    {2, kGameMigrationV2},
-};
-
-constexpr int kGameTargetSchemaVersion = 2;
-
-void RunGameMigrations(const storages::postgres::ClusterPtr& cluster) {
-  cluster->Execute(storages::postgres::ClusterHostType::kMaster,
-                   "CREATE TABLE IF NOT EXISTS game_schema_version ("
-                   "  version SMALLINT PRIMARY KEY"
-                   ")");
-
+void BootstrapGameSchema(const storages::postgres::ClusterPtr& cluster) {
   auto trx = cluster->Begin(storages::postgres::ClusterHostType::kMaster,
                             storages::postgres::TransactionOptions{});
-  trx.Execute("LOCK TABLE game_schema_version IN EXCLUSIVE MODE");
-
-  auto version_result = trx.Execute("SELECT COALESCE(MAX(version), 0) FROM game_schema_version");
-  const int current = version_result.Front()[0].As<std::int16_t>();
-
-  if (current > kGameTargetSchemaVersion) {
-    throw std::runtime_error("GameStore: DB game schema version " + std::to_string(current) +
-                             " is newer than the version this binary supports (" +
-                             std::to_string(kGameTargetSchemaVersion) + ")");
-  }
-
-  for (const auto& m : kGameMigrations) {
-    if (m.version <= current) continue;
-    for (const char* stmt : m.statements) {
-      trx.Execute(stmt);
-    }
-    trx.Execute("INSERT INTO game_schema_version(version) VALUES($1)", m.version);
+  for (const char* stmt : kGameSchema) {
+    trx.Execute(stmt);
   }
   trx.Commit();
 }
 
-constexpr int kMigrationMaxAttempts = 10;
-constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
-constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
+constexpr int kSchemaMaxAttempts = 10;
+constexpr std::chrono::milliseconds kSchemaBackoffBase{200};
+constexpr std::chrono::milliseconds kSchemaBackoffCap{5000};
 
-void RunGameMigrationsWithRetry(const storages::postgres::ClusterPtr& cluster) {
+void BootstrapGameSchemaWithRetry(const storages::postgres::ClusterPtr& cluster) {
   for (int attempt = 1;; ++attempt) {
     try {
-      RunGameMigrations(cluster);
+      BootstrapGameSchema(cluster);
       return;
     } catch (const std::exception& ex) {
-      if (attempt >= kMigrationMaxAttempts) {
-        LOG_ERROR() << "[GameStore] schema migration failed after " << attempt
+      if (attempt >= kSchemaMaxAttempts) {
+        LOG_ERROR() << "[GameStore] schema bootstrap failed after " << attempt
                     << " attempts, giving up: " << ex.what();
         throw;
       }
-      const auto delay =
-          std::min(kMigrationBackoffCap, kMigrationBackoffBase * (1 << (attempt - 1)));
-      LOG_WARNING() << "[GameStore] schema migration attempt " << attempt << " failed ("
+      const auto delay = std::min(kSchemaBackoffCap, kSchemaBackoffBase * (1 << (attempt - 1)));
+      LOG_WARNING() << "[GameStore] schema bootstrap attempt " << attempt << " failed ("
                     << ex.what() << "), retrying in " << delay.count() << "ms — likely Postgres's "
                     << "connection pool is still starting up";
       engine::SleepFor(delay);
@@ -166,9 +135,9 @@ struct GameStore::Impl {
 
   explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
     try {
-      RunGameMigrations(cluster);
+      BootstrapGameSchema(cluster);
     } catch (const std::exception& ex) {
-      LOG_WARNING() << "[GameStore] initial schema migration attempt "
+      LOG_WARNING() << "[GameStore] initial schema bootstrap attempt "
                     << "failed (" << ex.what() << "), deferring to the "
                     << "background retry";
     }
@@ -187,14 +156,14 @@ GameStore::GameStore(const components::ComponentConfig& config,
 GameStore::~GameStore() = default;
 
 void GameStore::OnAllComponentsLoaded() {
-  migration_task_ = utils::Async(main_tp_, "game-store-migrate", [this] {
+  bootstrap_task_ = utils::Async(main_tp_, "game-store-bootstrap", [this] {
     try {
-      RunGameMigrationsWithRetry(impl_->cluster);
-      LOG_INFO() << "[GameStore] schema migrations complete";
+      BootstrapGameSchemaWithRetry(impl_->cluster);
+      LOG_INFO() << "[GameStore] schema bootstrap complete";
     } catch (const std::exception& ex) {
-      LOG_ERROR() << "[GameStore] giving up on schema migrations, "
-                  << "continuing to serve with an unmigrated/stale "
-                  << "schema until Postgres recovers: " << ex.what();
+      LOG_ERROR() << "[GameStore] giving up on schema bootstrap, "
+                  << "continuing to serve with the current schema until "
+                  << "Postgres recovers: " << ex.what();
     }
   });
 }

@@ -1,3 +1,13 @@
+-- Полная схема БД игры одним идемпотентным файлом.
+--
+-- Миграций и версий схемы нет — см. postgresql/schema.sql. Приложение
+-- применяет этот файл (из зеркала kGameSchema в
+-- services/game/src/core/game_store.cpp) при каждом старте; каждая операция
+-- идемпотентна. Сид достижений — часть бутстрапа: INSERT ... ON CONFLICT
+-- DO NOTHING безопасен на любом количестве повторных стартов.
+--
+-- Зеркало kGameSchema в services/game/src/core/game_store.cpp: совпадение
+-- пооператорно проверяет tests/test_game_migrations.py.
 
 CREATE TABLE IF NOT EXISTS game_profiles (
     user_id      BIGINT PRIMARY KEY,
@@ -57,3 +67,11 @@ CREATE TABLE IF NOT EXISTS game_user_achievements (
 CREATE INDEX IF NOT EXISTS idx_game_attempts_challenge_score ON game_attempts(challenge_id, score DESC);
 CREATE INDEX IF NOT EXISTS idx_game_attempts_season_score ON game_attempts(season_id, score DESC);
 CREATE INDEX IF NOT EXISTS idx_game_attempts_user_ts ON game_attempts(user_id, ts);
+
+INSERT INTO game_achievements (code, title, descr) VALUES
+    ('first_win', 'First Blood', 'Complete your first challenge'),
+    ('perfect_solve', 'Perfect Chain', 'Match the ideal path exactly — no wasted hops'),
+    ('speedrunner', 'Speedrunner', 'Solve a challenge in under 15 seconds'),
+    ('veteran', 'Veteran', 'Play 50 games'),
+    ('elo_1500', 'Rising Star', 'Reach 1500 Elo')
+ON CONFLICT (code) DO NOTHING;

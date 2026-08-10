@@ -24,7 +24,6 @@ import {
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
 import { placeExpandedNodes, LEAF_R } from "./layout.js";
 import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from "./edge-render.js";
-import { clearDominantColorCache } from "./photo-color.js";
 import { setContourData, clearContourData, drawContours } from "./bubble-contours.js";
 
 function _layoutNodeItems(nameById, savedPositions = {}) {
@@ -225,7 +224,6 @@ function _resetGraphState({
 } = {}) {
   resetFastRenderMode();
   clearEdgeCache();
-  clearDominantColorCache();
   clearContourData();
   resetGraphState({ resetHasRendered: !keepRendered });
   if (clearCache) {

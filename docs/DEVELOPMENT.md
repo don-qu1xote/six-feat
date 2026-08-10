@@ -92,7 +92,7 @@ C4-диаграммы контекста/контейнеров и sequence-ди
 | **six-feat-enrichment** (`services/six-feat-enrichment/`) | 8081 | Фоновый глубокий скан коллабораций (IDEA-25/26) | да (тот же кластер) |
 | **six-feat-genius-gateway** (`services/genius-gateway/`) | 8082 | Весь исходящий трафик к Genius API — CircuitBreaker + FG/BG rate-limiting централизованы здесь (IDEA-45/46) | нет |
 | **six-feat-auth** (`services/auth/`) | 8083 | Весь OAuth 2.0 Authorization Code Flow: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` (IDEA-53) | нет |
-| **six-feat-game** (`services/game/`) | 8084 | Игровой режим «собери цепочку»: `/api/v1/game/{profile,challenge,challenges,validate,submit,leaderboard,season,link,admin}`. Сессия читается **локально** (как в six-feat), анти-чит ходит в six-feat через internal-mesh `/internal/neighbours` (ADR-0007) | да (тот же кластер, свой реестр миграций `postgresql/migrations/game/`) |
+| **six-feat-game** (`services/game/`) | 8084 | Игровой режим «собери цепочку»: `/api/v1/game/{profile,challenge,challenges,validate,submit,leaderboard,season,link,admin}`. Сессия читается **локально** (как в six-feat), анти-чит ходит в six-feat через internal-mesh `/internal/neighbours` (ADR-0007) | да (тот же кластер, своя идемпотентная схема `postgresql/game/schema.sql`) |
 
 ### Раскладка исходников сервиса
 
@@ -210,7 +210,7 @@ HTTP-вызовом к six-feat-auth — [ADR-0004](./adr/0004-auth-service-loca
   повторного выполнения (заголовок ответа `Idempotent-Replay: true`). Тот
   же ключ + ДРУГОЕ тело → 422 (переиспользование ключа для другого
   запроса), не подмена ответа.
-- **Хранение** — таблица `idempotency_keys` (`kMigrationV1`,
+- **Хранение** — таблица `idempotency_keys` (схема-бутстрап,
   `six-feat-storage/persistent_store.cpp`): `key` (PK), `request_hash`
   (SHA-256 от `route_id + тело запроса` — `route_id` разруливает коллизию,
   если один и тот же ключ клиент случайно использовал на двух разных
@@ -275,7 +275,7 @@ Genius-токен пользователя (полученный при вход
   тумблера — одна прямая строка текста рядом с полем ввода на фронте
   (`index.html`, карточка Genius), до вставки токена.
 - **Хранение** — таблица `user_provider_tokens` (`user_id, provider,
-  encrypted_token, ts`, `kMigrationV1`, six-feat-storage) через новый
+  encrypted_token, ts`, схема-бутстрап, six-feat-storage) через новый
   `UserProviderTokenStore` (six-feat-auth-lib) — переиспользует тот же
   AES-256-GCM `Encrypt`/`Decrypt`/`KeyFromEnv`, что и сессионная cookie, а
   не новый механизм шифрования. `user_id` — детерминированный FNV-1a-хеш
@@ -548,10 +548,11 @@ DB_REPLICA_HOST=postgres-replica
 ### EXPLAIN-регресс по горячим запросам (SF-DB-08)
 
 Индексы уже вручную проаудированы (SF-DB-04) — этого достаточно, пока их
-кто-нибудь случайно не уронит будущей миграцией и никто не заметит, пока не
-станет медленно в проде. `scripts/explain-hot-queries.py` ловит именно это:
-против реального Postgres применяет `postgresql/migrations/V*.sql` (тот же
-файл, с которым SF-DB-05 держит `kMigrations` в парите), сеет небольшой
+кто-нибудь случайно не уронит будущим изменением схемы и никто не заметит,
+пока не станет медленно в проде. `scripts/explain-hot-queries.py` ловит
+именно это: против реального Postgres применяет `postgresql/schema.sql`
+(тот же файл, с которым SF-DB-05 держит `kSchemaStatements` в парите),
+сеет небольшой
 объём синтетических строк в выделенном id-диапазоне (`>= 900_000_000` —
 заведомо выше всего, что использует любой pytest-мок или продовый Genius
 id, поэтому не пересекается ни с чьими данными и полностью удаляется в
@@ -577,7 +578,7 @@ python3 scripts/explain-hot-queries.py
 
 Пошаговый порядок действий при потере базы — [`docs/runbooks/disaster-recovery.md`](runbooks/disaster-recovery.md) (SF-INF-09). Он же ежемесячно проверяется автоматически: `scripts/dr-drill.py` восстанавливает последний дамп в чистый Postgres и проверяет данные (`.github/workflows/dr-drill.yml`).
 
-**Реплика — это не бэкап.** `postgres-replica` (SF-INF-02, профиль `prod-like`) защищает от нагрузки и от потери хоста с мастером. От потери *данных* она не защищает вообще: любой `DELETE`, любая неудачная миграция, любой `DROP TABLE` приезжают на standby за миллисекунды. Восстановиться из такого можно только из дампа. Это две разные задачи, и нужны обе.
+**Реплика — это не бэкап.** `postgres-replica` (SF-INF-02, профиль `prod-like`) защищает от нагрузки и от потери хоста с мастером. От потери *данных* она не защищает вообще: любой `DELETE`, любое деструктивное изменение схемы, любой `DROP TABLE` приезжают на standby за миллисекунды. Восстановиться из такого можно только из дампа. Это две разные задачи, и нужны обе.
 
 **Два разных «профиля», не перепутайте.** `ENV_PROFILE=dev|staging|prod` (SF-CFG-01, раздел «Env-профили» выше) выбирает *значения* переменных и на состав сервисов не влияет. Compose-ключ `profiles:` решает, *запускается* ли сервис вообще. Бэкапы — второе: `postgres-backup` стоит за compose-профилем `backup` и не поднимается обычным `docker compose up`, независимо от `ENV_PROFILE`. Включать его надо там, где он нужен — на staging и prod:
 

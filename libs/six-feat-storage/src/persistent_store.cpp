@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <optional>
 #include <six-feat-storage/persistent_store.hpp>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <userver/components/component_config.hpp>
@@ -32,28 +31,22 @@ using namespace userver;
 
 namespace {
 
-struct Migration {
-  int version;
-  std::vector<const char*> statements;
-};
+// Полная схема одним идемпотентным списком: реестра версий и миграций нет.
+// Проект живёт только в git-репозитории, боевой базы нет — значит, мигрировать
+// нечего, и при каждом старте приложение просто приводит базу к текущей схеме.
+// Каждая операция идемпотентна (IF NOT EXISTS / ON CONFLICT), поэтому старт
+// поверх базы из прошлой версии приложения, как и повторный старт, ничего не
+// ломает; старые таблицы schema_version/game_schema_version, оставшиеся от
+// прежнего реестра, просто не трогаются.
+// Зеркало postgresql/schema.sql, пооператорно — проверяет
 
-// [SF-DOC-08] Одна миграция вместо двенадцати.
-// Половина прежних версий существовала только чтобы отменить другую половину:
-// V8 заводила preferred_enrichment_provider — V12 её сносила, V10 создавала
-// artist_alias — V11 её сносила. Это история откаченного эксперимента с
-// Яндекс.Музыкой (SF-YM-00), а не история продукта, и хранить её было не для
-// кого: боевой базы у проекта никогда не существовало, мигрировать было нечего.
-// Дальше реестр снова append-only: V2 и следующие ДОБАВЛЯЮТСЯ, ранее
-// выпущенные не редактируются. Схлопывание — разовая операция, повторить её
-// будет уже нельзя, как только появится база, которую жалко потерять.
-// Зеркало postgresql/migrations/V1__initial_schema.sql, пооператорно —
-// проверяет tests/test_migrations.py (SF-DB-05).
-const std::vector<const char*> kMigrationV1 = {
+const std::vector<const char*> kSchemaStatements = {
     R"SQL(CREATE TABLE IF NOT EXISTS artists (
-        id        BIGINT PRIMARY KEY,
-        name      TEXT NOT NULL,
-        image_url TEXT,
-        url       TEXT
+        id             BIGINT PRIMARY KEY,
+        name           TEXT NOT NULL,
+        image_url      TEXT,
+        url            TEXT,
+        dominant_color TEXT
     ))SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS songs (
         id    BIGINT PRIMARY KEY,
@@ -112,68 +105,41 @@ const std::vector<const char*> kMigrationV1 = {
         user_id            BIGINT NOT NULL PRIMARY KEY,
         enrichment_enabled BOOLEAN NOT NULL DEFAULT true
     ))SQL",
+    // [SF-API-20] Средний цвет фотографии артиста. Считается один раз в
+    // image-proxy — там, где картинка и так скачивается, — и живёт рядом с
+    // артистом. NULL значит «ещё не считали»: колонка заполняется по мере
+    // прохождения изображений через прокси, backfill не нужен. Колонка
+    // объявлена прямо в CREATE TABLE: версий схемы нет, отдельный ALTER
+    // не нужен.
+    R"SQL(COMMENT ON COLUMN artists.dominant_color IS 'average colour of the artist photo as #rrggbb, computed once in the image proxy — NULL means not sampled yet')SQL",
 };
 
-const std::vector<Migration> kMigrations = {
-    {1, kMigrationV1},
-};
-
-constexpr int kTargetSchemaVersion = 1;
-
-void RunMigrations(const storages::postgres::ClusterPtr& cluster) {
-  cluster->Execute(storages::postgres::ClusterHostType::kMaster,
-                   "CREATE TABLE IF NOT EXISTS schema_version ("
-                   "  version SMALLINT PRIMARY KEY"
-                   ")");
-
+void BootstrapSchema(const storages::postgres::ClusterPtr& cluster) {
   auto trx = cluster->Begin(storages::postgres::ClusterHostType::kMaster,
                             storages::postgres::TransactionOptions{});
-  trx.Execute("LOCK TABLE schema_version IN EXCLUSIVE MODE");
-
-  auto version_result = trx.Execute("SELECT COALESCE(MAX(version), 0) FROM schema_version");
-  const int current = version_result.Front()[0].As<std::int16_t>();
-
-  // База, оставшаяся от сборки до схлопывания миграций (SF-DOC-08), несёт
-  // version=12 и упрётся сюда. Схема у неё та же самая, но доказать это
-  // раннер не может, поэтому не угадывает, а говорит, что делать: локальную
-  // базу разработчика не жалко, боевой у проекта нет.
-  if (current > kTargetSchemaVersion) {
-    throw std::runtime_error(
-        "PersistentStore: DB schema version " + std::to_string(current) +
-        " is newer than the version this binary supports (" + std::to_string(kTargetSchemaVersion) +
-        "). If this is a local database created before the migrations were squashed into a "
-        "single V1 (SF-DOC-08), recreate it: `make clean` drops the volume, the next start "
-        "builds the schema from scratch. There is no production database to preserve.");
-  }
-
-  for (const auto& m : kMigrations) {
-    if (m.version <= current) continue;
-    for (const char* stmt : m.statements) {
-      trx.Execute(stmt);
-    }
-    trx.Execute("INSERT INTO schema_version(version) VALUES($1)", m.version);
+  for (const char* stmt : kSchemaStatements) {
+    trx.Execute(stmt);
   }
   trx.Commit();
 }
 
-constexpr int kMigrationMaxAttempts = 10;
-constexpr std::chrono::milliseconds kMigrationBackoffBase{200};
-constexpr std::chrono::milliseconds kMigrationBackoffCap{5000};
+constexpr int kSchemaMaxAttempts = 10;
+constexpr std::chrono::milliseconds kSchemaBackoffBase{200};
+constexpr std::chrono::milliseconds kSchemaBackoffCap{5000};
 
-void RunMigrationsWithRetry(const storages::postgres::ClusterPtr& cluster) {
+void BootstrapSchemaWithRetry(const storages::postgres::ClusterPtr& cluster) {
   for (int attempt = 1;; ++attempt) {
     try {
-      RunMigrations(cluster);
+      BootstrapSchema(cluster);
       return;
     } catch (const std::exception& ex) {
-      if (attempt >= kMigrationMaxAttempts) {
-        LOG_ERROR() << "[PersistentStore] schema migration failed after " << attempt
+      if (attempt >= kSchemaMaxAttempts) {
+        LOG_ERROR() << "[PersistentStore] schema bootstrap failed after " << attempt
                     << " attempts, giving up: " << ex.what();
         throw;
       }
-      const auto delay =
-          std::min(kMigrationBackoffCap, kMigrationBackoffBase * (1 << (attempt - 1)));
-      LOG_WARNING() << "[PersistentStore] schema migration attempt " << attempt << " failed ("
+      const auto delay = std::min(kSchemaBackoffCap, kSchemaBackoffBase * (1 << (attempt - 1)));
+      LOG_WARNING() << "[PersistentStore] schema bootstrap attempt " << attempt << " failed ("
                     << ex.what() << "), retrying in " << delay.count()
                     << "ms — likely Postgres's connection pool is "
                     << "still starting up";
@@ -249,9 +215,9 @@ struct PersistentStore::Impl {
 
   explicit Impl(storages::postgres::ClusterPtr c) : cluster(std::move(c)) {
     try {
-      RunMigrations(cluster);
+      BootstrapSchema(cluster);
     } catch (const std::exception& ex) {
-      LOG_WARNING() << "[PersistentStore] initial schema migration "
+      LOG_WARNING() << "[PersistentStore] initial schema bootstrap "
                     << "attempt failed (" << ex.what() << "), deferring "
                     << "to the background retry";
     }
@@ -409,7 +375,12 @@ struct PersistentStore::Impl {
     trx.Execute(
         "INSERT INTO artists(id, name, image_url, url) VALUES($1, $2, $3, $4) "
         "ON CONFLICT (id) DO UPDATE SET "
-        "  name = excluded.name, image_url = excluded.image_url, url = excluded.url",
+        "  name = excluded.name, image_url = excluded.image_url, url = excluded.url, "
+        // [SF-API-20] Сменилась фотография — посчитанный цвет относится уже
+        // не к ней. Обнуляем, а не пересчитываем: пересчёт будет, когда новая
+        // картинка пройдёт через прокси.
+        "  dominant_color = CASE WHEN artists.image_url IS DISTINCT FROM excluded.image_url "
+        "                       THEN NULL ELSE artists.dominant_color END",
         data.seed.id,
         data.seed.name,
         data.seed.image,
@@ -532,14 +503,14 @@ PersistentStore::PersistentStore(const components::ComponentConfig& config,
 PersistentStore::~PersistentStore() = default;
 
 void PersistentStore::OnAllComponentsLoaded() {
-  migration_task_ = utils::Async(main_tp_, "persistent-store-migrate", [this] {
+  bootstrap_task_ = utils::Async(main_tp_, "persistent-store-bootstrap", [this] {
     try {
-      RunMigrationsWithRetry(impl_->cluster);
-      LOG_INFO() << "[PersistentStore] schema migrations complete";
+      BootstrapSchemaWithRetry(impl_->cluster);
+      LOG_INFO() << "[PersistentStore] schema bootstrap complete";
     } catch (const std::exception& ex) {
-      LOG_ERROR() << "[PersistentStore] giving up on schema migrations, "
-                  << "continuing to serve with an unmigrated/stale "
-                  << "schema until Postgres recovers: " << ex.what();
+      LOG_ERROR() << "[PersistentStore] giving up on schema bootstrap, "
+                  << "continuing to serve with the current schema until "
+                  << "Postgres recovers: " << ex.what();
     }
   });
 }
@@ -592,6 +563,47 @@ FetchState PersistentStore::GetFetchState(std::int64_t artist_id) const {
     fs.song_count = row["song_count"].As<int>();
     fs.last_fetch_ts = row["last_fetch_ts"].As<std::int64_t>();
     return fs;
+  });
+}
+
+bool PersistentStore::NeedsDominantColor(const std::string& image_url) const {
+  if (image_url.empty()) return false;
+  return ExecuteReadQueryWithRetry([&] {
+    auto res = impl_->cluster->Execute(
+        impl_->read_host_type,
+        kReadQueryCommandControl,
+        "SELECT 1 FROM artists WHERE image_url = $1 AND dominant_color IS NULL LIMIT 1",
+        image_url);
+    return !res.IsEmpty();
+  });
+}
+
+void PersistentStore::SetDominantColor(const std::string& image_url, const std::string& hex) {
+  if (image_url.empty() || hex.empty()) return;
+  impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
+                          "UPDATE artists SET dominant_color = $2 "
+                          "WHERE image_url = $1 AND dominant_color IS NULL",
+                          image_url,
+                          hex);
+}
+
+std::unordered_map<std::int64_t, std::string> PersistentStore::LoadDominantColors(
+    const std::vector<std::int64_t>& artist_ids) const {
+  if (artist_ids.empty()) return {};
+
+  return ExecuteReadQueryWithRetry([&] {
+    std::unordered_map<std::int64_t, std::string> colors;
+    auto res =
+        impl_->cluster->Execute(impl_->read_host_type,
+                                kReadQueryCommandControl,
+                                "SELECT id, dominant_color FROM artists "
+                                "WHERE id = ANY($1::bigint[]) AND dominant_color IS NOT NULL",
+                                artist_ids);
+    colors.reserve(res.Size());
+    for (const auto& row : res) {
+      colors.emplace(row["id"].As<std::int64_t>(), row["dominant_color"].As<std::string>());
+    }
+    return colors;
   });
 }
 

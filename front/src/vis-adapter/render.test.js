@@ -60,7 +60,6 @@ vi.mock("./edge-render.js", () => ({
   drawEdges: vi.fn(),
   suppressNativeEdgeColor: vi.fn((e) => e),
 }));
-vi.mock("./photo-color.js", () => ({ clearDominantColorCache: vi.fn() }));
 vi.mock("./bubble-contours.js", () => ({
   setContourData: vi.fn(),
   clearContourData: vi.fn(),

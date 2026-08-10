@@ -57,6 +57,12 @@ macro(six_feat_init_service)
     add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-http"
                      "${CMAKE_BINARY_DIR}/six-feat-http")
   endif()
+  # [SF-API-20] Декодер картинок: нужен только image-proxy, но подключается
+  # здесь же — список библиотек в этом макросе один на все сервисы.
+  if(NOT TARGET six_feat_image)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-image"
+                     "${CMAKE_BINARY_DIR}/six-feat-image")
+  endif()
 
   include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 endmacro()

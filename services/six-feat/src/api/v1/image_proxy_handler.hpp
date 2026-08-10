@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <six-feat-auth-lib/oauth_handler.hpp>
+#include <six-feat-storage/persistent_store.hpp>
 #include <string>
 #include <string_view>
 #include <userver/clients/http/client.hpp>
@@ -26,7 +27,13 @@ class ImageProxyHandler final : public AuthenticatedHandlerBase {
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
  private:
+  // [SF-API-20] Прокси — единственное место, где сервер и так держит в руках
+  // байты картинки. Средний цвет считается здесь, чтобы не заводить второй
+  // поход в сеть за тем же файлом, и складывается рядом с артистом.
+  void SampleDominantColor(const std::string& url, const std::string& body) const;
+
   userver::clients::http::Client& http_client_;
+  PersistentStore& store_;
   const std::chrono::milliseconds timeout_;
   const std::vector<std::string> allowed_hosts_;
 };

@@ -5,6 +5,7 @@
 #include <six-feat-auth-lib/user_provider_token_store.hpp>
 #include <six-feat-core/rate_limiter.hpp>
 #include <six-feat-sources/genius_music_source_provider.hpp>
+#include <six-feat-storage/persistent_store.hpp>
 #include <string>
 #include <string_view>
 #include <userver/components/component_fwd.hpp>
@@ -30,6 +31,7 @@ class GraphDeepenHandler final : public AuthenticatedHandlerBase {
 
  private:
   CollabService& service_;
+  PersistentStore& store_;
   GeniusMusicSourceProvider& genius_provider_;
   const auth::OAuthConfig& oauth_;
   auth::ApiKeyStore& api_key_store_;

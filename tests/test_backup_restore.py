@@ -14,7 +14,7 @@ from conftest import DB_CONN_PARAMS
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BACKUP_SCRIPT = REPO_ROOT / "scripts" / "backup-postgres.sh"
 RESTORE_SCRIPT = REPO_ROOT / "scripts" / "restore-postgres.sh"
-SCHEMA_SQL = REPO_ROOT / "postgresql" / "migrations" / "V1__initial_schema.sql"
+SCHEMA_SQL = REPO_ROOT / "postgresql" / "schema.sql"
 
 SOURCE_DB = "six_feat_bk_src"
 TARGET_DB = "six_feat_bk_dst"

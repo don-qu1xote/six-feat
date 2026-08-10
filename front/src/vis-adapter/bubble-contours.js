@@ -1,6 +1,5 @@
 import { State } from "../state/state.js";
 import { roleStyle } from "../state/helpers.js";
-import { getCachedDominantColor } from "./photo-color.js";
 import { NODE_GAP } from "./layout.js";
 
 export const CONTOUR_MAX_TOTAL_MEMBERS = 600;
@@ -86,7 +85,10 @@ export function setContourData(sectorMembers) {
     const byId = new Map(State.graphNodes.map((n) => [n.id, n]));
     for (const [hubId, members] of sectorMembers) {
       const hub = byId.get(hubId);
-      const photoColor = getCachedDominantColor(hubId);
+      // [SF-API-20] Цвет фотографии приходит с узлом (сервер считает его один
+      // раз на артиста). Нет его — контур красится ролью, ровно как красился
+      // раньше, пока фотография ещё не загрузилась.
+      const photoColor = hub?.dominantColor || null;
       const role = hub?._dominantRole || (hub?.isSeed ? "featured" : "primary");
       const color = photoColor ? toneMutedNeon(photoColor) : roleStyle(role).color;
       next.set(hubId, { ids: [...members], color });

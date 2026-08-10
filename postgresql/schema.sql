@@ -1,24 +1,22 @@
--- [SF-DOC-08] Схема целиком, одной миграцией.
+-- Полная схема six-feat одним идемпотентным файлом.
 --
--- До этого их было двенадцать, и половина существовала только чтобы отменить
--- другую половину: V8 заводила preferred_enrichment_provider, V12 её сносила,
--- V10 создавала artist_alias, V11 её сносила — археология откаченного
--- эксперимента с Яндекс.Музыкой (SF-YM-00). Боевой базы у проекта никогда не
--- было, сохранять эту историю не для кого: единственные читатели этих файлов —
--- люди, которым надо понять текущую схему, а не путь к ней.
+-- Проект живёт только в git-репозитории: боевой базы нет, версий схемы нет,
+-- поэтому и миграций с реестром версий нет. Этот файл — единственный источник
+-- правды о схеме, приложение применяет его (пооператорно, из зеркала
+-- kSchemaStatements в libs/six-feat-storage/src/persistent_store.cpp) при
+-- каждом старте. Каждая операция идемпотентна: повторный старт, как и старт
+-- поверх базы, созданной старыми миграциями, ничего не ломает. Такой же файл
+-- для БД игры — postgresql/game/schema.sql.
 --
--- Дальше реестр снова append-only: V2 и следующие добавляются, ранее
--- выпущенные не редактируются. Схлопывание — разовая операция «пока не поздно»,
--- и повторить её будет уже нельзя, как только появится база, которую жалко.
---
--- Зеркало kMigrationV1 в libs/six-feat-storage/src/persistent_store.cpp:
--- совпадение пооператорно проверяет tests/test_migrations.py (SF-DB-05).
+-- Зеркало kSchemaStatements в libs/six-feat-storage/src/persistent_store.cpp:
+-- совпадение пооператорно проверяет tests/test_migrations.py.
 
 CREATE TABLE IF NOT EXISTS artists (
-    id        BIGINT PRIMARY KEY,
-    name      TEXT NOT NULL,
-    image_url TEXT,
-    url       TEXT
+    id             BIGINT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    image_url      TEXT,
+    url            TEXT,
+    dominant_color TEXT
 );
 
 CREATE TABLE IF NOT EXISTS songs (
@@ -92,3 +90,9 @@ CREATE TABLE IF NOT EXISTS user_settings (
     user_id            BIGINT NOT NULL PRIMARY KEY,
     enrichment_enabled BOOLEAN NOT NULL DEFAULT true
 );
+
+-- [SF-API-20] Средний цвет фотографии артиста — считаем один раз на сервере.
+-- NULL — законное состояние «ещё не считали», а не ошибка: колонка
+-- заполняется по мере того, как изображения проходят через image-proxy.
+-- Backfill не нужен — боевой базы у проекта нет.
+COMMENT ON COLUMN artists.dominant_color IS 'average colour of the artist photo as #rrggbb, computed once in the image proxy — NULL means not sampled yet';

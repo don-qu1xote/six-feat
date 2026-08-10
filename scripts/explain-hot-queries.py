@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "tests"))
 from conftest import DB_CONN_PARAMS  # noqa: E402  (path must be set up first)
 
-MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations"
+SCHEMA_SQL = REPO_ROOT / "postgresql" / "schema.sql"
 
 SEED_ARTIST_BASE = 900_000_000
 SEED_SONG_BASE = 900_000_000
@@ -129,30 +129,17 @@ HOT_QUERIES = [
 ]
 
 
-def _migration_version(path: Path) -> int:
-    """V10__x.sql -> 10.
+def apply_schema(conn) -> None:
+    """Единственная схема, идемпотентная целиком: postgresql/schema.sql.
 
-    Сортировать пути как строки нельзя: "V10" < "V2" в лексикографике, и
-    начиная с десятой миграции порядок ломается — десятая выполнялась бы
-    раньше первой, создающей таблицы, на которые она ссылается. Ровно так
-    эта джоба и падала, пока миграций было двенадцать (SF-DOC-08 схлопнул их
-    в одну, но реестр снова растёт, и грабли вернутся вместе с V10).
+    Миграций с реестром версий нет (проект живёт только в git-репозитории),
+    файл один, порядок — порядок операторов внутри него.
     """
-    return int(path.name[1:].split("_", 1)[0])
-
-
-def migration_files() -> list[Path]:
-    """Файлы миграций в порядке применения — по номеру версии, не по имени."""
-    return sorted(MIGRATIONS_DIR.glob("V*.sql"), key=_migration_version)
-
-
-def apply_migrations(conn) -> None:
     with conn.cursor() as cur:
-        for path in migration_files():
-            for statement in path.read_text(encoding="utf-8").split(";"):
-                statement = statement.strip()
-                if statement:
-                    cur.execute(statement)
+        for statement in SCHEMA_SQL.read_text(encoding="utf-8").split(";"):
+            statement = statement.strip()
+            if statement:
+                cur.execute(statement)
     conn.commit()
 
 
@@ -237,7 +224,7 @@ def main() -> int:
     conn.autocommit = False
     failures: dict[str, list[str]] = {}
     try:
-        apply_migrations(conn)
+        apply_schema(conn)
         seed(conn)
         for query in HOT_QUERIES:
             problems = check_query(conn, query)
@@ -245,7 +232,7 @@ def main() -> int:
                 failures[query["name"]] = problems
     finally:
         conn.rollback()
-        # Уборка — best-effort: если упало ДО миграций, удалять нечего, а её
+        # Уборка — best-effort: если упало ДО схемы, удалять нечего, а её
         # собственная ошибка затрёт настоящую причину падения (именно так
         # «relation artists does not exist» пряталось за «relation credits
         # does not exist» из DELETE).

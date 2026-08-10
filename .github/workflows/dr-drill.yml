@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           echo "::warning title=Реальный бэкап не проверялся::BACKUP_S3_URL не задан — drill гоняется на дампе своей тестовой базы и проверяет только механизм restore."
           export PGPASSWORD="$DB_PASSWORD"
-          psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -q -f postgresql/migrations/V1__initial_schema.sql
+          psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -q -f postgresql/schema.sql
           psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -q <<'SQL'
           INSERT INTO artists SELECT g, 'Artist ' || g, NULL, NULL FROM generate_series(1, 100) g;
           INSERT INTO songs   SELECT g, 'Song ' || g FROM generate_series(1, 100) g;

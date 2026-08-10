@@ -11,7 +11,9 @@ CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
 
 DIRECTIVE_PATTERNS = {
     "cpp": [
-        re.compile(r"^\s*//\s*NOLINT(?:NEXTLINE)?\b"),
+        # NOLINTBEGIN/NOLINTEND — такие же директивы clang-tidy, как NOLINT:
+        # ими глушат проверку на блоке, а не на одной строке.
+        re.compile(r"^\s*//\s*NOLINT(?:NEXTLINE|BEGIN|END)?\b"),
         re.compile(r"^\s*//\s*IWYU\s+pragma:"),
         re.compile(r"^\s*//\s*clang-format\s+(off|on)\b"),
         re.compile(r"^\s*//\s*namespace\b"),

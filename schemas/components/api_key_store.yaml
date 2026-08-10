@@ -1,10 +1,10 @@
 type: object
 description: >-
     [SF-API-15] Postgres-backed store for api_keys (issue/resolve/revoke) —
-    schema migration itself lives in PersistentStore (kMigrationV4,
-    six-feat-storage), same split already used for rate_buckets/
-    RateLimitStoreComponent: this component gets its own cluster handle and
-    trusts the table already exists.
+    the table is bootstrapped idempotently by PersistentStore
+    (six-feat-storage, see postgresql/schema.sql), same split already used
+    for rate_buckets/RateLimitStoreComponent: this component gets its own
+    cluster handle and trusts the table already exists.
 additionalProperties: false
 properties:
     dbname:

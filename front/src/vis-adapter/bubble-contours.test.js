@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { State } from "../state/state.js";
 import { placeExpandedNodes } from "./layout.js";
 import {
@@ -13,7 +13,6 @@ import {
   CONTOUR_MAX_TOTAL_MEMBERS,
   toneMutedNeon,
 } from "./bubble-contours.js";
-import { ensureNodeColorSampled, clearDominantColorCache } from "./photo-color.js";
 
 function mockCtx({ withFilter = false } = {}) {
   const calls = [];
@@ -98,7 +97,6 @@ beforeEach(() => {
   State.network = null;
   State.bubbleSetsEnabled = true;
   clearContourData();
-  clearDominantColorCache();
 });
 
 describe("layout.js sectorMembers (SF-WEB-58 C membership contract)", () => {
@@ -324,40 +322,14 @@ describe("toneMutedNeon (SF-WEB-59)", () => {
 });
 
 describe("setContourData — photo color vs role-hue fallback (SF-WEB-59)", () => {
-  let realImage, realGetContext;
-  beforeEach(() => {
-    realImage = globalThis.Image;
-    realGetContext = HTMLCanvasElement.prototype.getContext;
-  });
-  afterEach(() => {
-    globalThis.Image = realImage;
-    HTMLCanvasElement.prototype.getContext = realGetContext;
-  });
-
-  it("uses the hub's sampled photo color (tone-mapped) once one is ready", () => {
-    const images = [];
-    globalThis.Image = class {
-      constructor() {
-        images.push(this);
-      }
-    };
-    HTMLCanvasElement.prototype.getContext = () => ({
-      drawImage() {},
-      getImageData(x, y, w, h) {
-        const data = new Uint8ClampedArray(w * h * 4);
-        for (let i = 0; i < data.length; i += 4) {
-          data[i] = 200;
-          data[i + 1] = 50;
-          data[i + 2] = 10;
-          data[i + 3] = 255;
-        }
-        return { data };
-      },
-    });
-
+  // [SF-API-20] Цвет фотографии больше не выбирается в браузере: сервер
+  // считает его один раз (image_proxy_handler.cpp) и присылает вместе с узлом.
+  // Поэтому подменять Image и canvas здесь нечего — сценарий задаётся полем
+  // узла, а «цвет ещё не посчитан» это просто его отсутствие.
+  it("uses the hub's dominant colour from the node data (tone-mapped)", () => {
     const g = buildTwoPoleGraph();
-    ensureNodeColorSampled(g.poleA, "https://images.genius.com/a.jpg");
-    images[0].onload();
+    State.graphNodes.find((n) => n.id === g.poleA).dominantColor = "#c8320a";
+
     const { targets, sectorMembers } = placeExpandedNodes({});
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };

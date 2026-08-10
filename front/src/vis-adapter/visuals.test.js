@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { State } from "../state/state.js";
+import { placeholderFor, proxiedImageUrl } from "../state/helpers.js";
 import { nodeVisual, seedShadow, nodeShadowFor, edgeVisual, edgeDashPattern } from "./visuals.js";
 import { buildNodeTooltip } from "./tooltips.js";
 
@@ -98,5 +101,84 @@ describe("edgeVisual takes role and style from the edge state", () => {
   it("treats an unknown or missing style as solid", () => {
     expect(edgeDashPattern(undefined)).toBe(false);
     expect(edgeDashPattern("wavy")).toBe(false);
+  });
+});
+
+describe("[SF-API-20] the browser no longer samples artist photos", () => {
+  it("loads the avatar through the image proxy — the same fetch the server samples from", () => {
+    const v = nodeVisual({
+      id: 1,
+      name: "Kendrick Lamar",
+      imageUrl: "https://images.genius.com/kdot.jpg",
+      computedRadius: 22,
+    });
+
+    expect(v.image).toBe(proxiedImageUrl("https://images.genius.com/kdot.jpg"));
+  });
+
+  it("still falls back to the generated placeholder when the artist has no photo", () => {
+    const v = nodeVisual({ id: 2, name: "No Photo", computedRadius: 22 });
+
+    expect(v.image).toBe(placeholderFor("No Photo", undefined));
+    expect(v.image).not.toContain("/api/v1/image");
+  });
+
+  it("touches no canvas and creates no Image while building a node", () => {
+    // Выборка цвета в браузере была именно этим: new Image() на каждый узел
+    // плюс canvas.getContext на каждую загрузку. Если что-то из этого вернётся,
+    // тест упадёт здесь, а не в профайлере у пользователя.
+    const realImage = globalThis.Image;
+    const realGetContext = HTMLCanvasElement.prototype.getContext;
+    let images = 0;
+    let contexts = 0;
+    globalThis.Image = class {
+      constructor() {
+        images++;
+      }
+    };
+    HTMLCanvasElement.prototype.getContext = function patched(...args) {
+      contexts++;
+      return realGetContext.apply(this, args);
+    };
+    try {
+      nodeVisual({
+        id: 3,
+        name: "Sampled",
+        imageUrl: "https://images.genius.com/a.jpg",
+        computedRadius: 22,
+      });
+    } finally {
+      globalThis.Image = realImage;
+      HTMLCanvasElement.prototype.getContext = realGetContext;
+    }
+
+    expect(images).toBe(0);
+    expect(contexts).toBe(0);
+  });
+
+  it("has no module left to import — photo-color.js is gone and nothing references it", () => {
+    // Проверка по всему фронтенду, а не по одному файлу: удалить модуль и
+    // оставить импорт — способ уронить сборку молча, а вернуть его обратно
+    // «на время» — способ вернуть и обход по картинкам.
+    const srcDir = resolve(process.cwd(), "src");
+    expect(existsSync(join(srcDir, "vis-adapter/photo-color.js"))).toBe(false);
+
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.name.endsWith(".js") && !entry.name.endsWith(".test.js")) {
+          const text = readFileSync(full, "utf8").replace(/\/\/.*$/gm, "");
+          if (/photo-color|getCachedDominantColor|ensureNodeColorSampled/.test(text)) {
+            offenders.push(full);
+          }
+        }
+      }
+    };
+    walk(srcDir);
+
+    expect(offenders).toEqual([]);
   });
 });

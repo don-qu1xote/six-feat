@@ -76,6 +76,7 @@ GraphDeepenHandler::GraphDeepenHandler(const components::ComponentConfig& config
                                        const components::ComponentContext& context)
     : AuthenticatedHandlerBase(config, context, context.FindComponent<auth::OAuthConfig>()),
       service_(context.FindComponent<CollabService>()),
+      store_(context.FindComponent<PersistentStore>()),
       genius_provider_(context.FindComponent<GeniusMusicSourceProvider>()),
       oauth_(context.FindComponent<auth::OAuthConfig>()),
       api_key_store_(context.FindComponent<auth::ApiKeyStore>()),
@@ -193,6 +194,16 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
     agg.source = ToString(pe.source);
   }
 
+  // [SF-API-20] Цвета — тем же запросом и в том же виде, что в /graph: ответ
+  // углубления клиент сливает с уже нарисованным графом, и узел отсюда обязан
+  // быть той же формы, иначе цвет у дорисованных узлов «пропадёт».
+  const auto dominant_colors = store_.LoadDominantColors(order);
+  const auto color_of = [&dominant_colors](std::int64_t id) -> const std::string& {
+    static const std::string kNone;
+    const auto it = dominant_colors.find(id);
+    return it == dominant_colors.end() ? kNone : it->second;
+  };
+
   formats::json::ValueBuilder nodes_b(formats::json::Type::kArray);
   formats::json::ValueBuilder edges_b(formats::json::Type::kArray);
 
@@ -214,7 +225,7 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
                   << " has no resolvable card — keeping the edge without a name";
     }
 
-    auto nb = dto::ToJson(dto::ToDto(*neighbour_ref));
+    auto nb = dto::ToJson(dto::ToDto(*neighbour_ref, color_of(neighbour_id)));
     nb["weight"] = agg.weight;
     // [SF-WEB-77] Тот же набор ролей на узле, что и в /graph: ответы
     // углубления клиент сливает с уже нарисованным графом, и узел из

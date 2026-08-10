@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List, Tuple
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GAME_STORE_CPP = REPO_ROOT / "services" / "game" / "src" / "core" / "game_store.cpp"
-MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations" / "game"
+GAME_SCHEMA_SQL = REPO_ROOT / "postgresql" / "game" / "schema.sql"
 
 
 def _normalize(sql: str) -> str:
@@ -18,13 +15,14 @@ def _normalize(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
 
 
-def _extract_cpp_array(source: str, var_name: str) -> List[str]:
+def _extract_schema_statements(source: str) -> list[str]:
+    """Операторы из kGameSchema в game_store.cpp, по порядку."""
     block_match = re.search(
-        rf"const std::vector<const char\*>\s+{re.escape(var_name)}\s*=\s*\{{(.*?)\}};",
+        r"const std::vector<const char\*>\s+kGameSchema\s*=\s*\{(.*?)\};",
         source,
         re.DOTALL,
     )
-    assert block_match, f"could not find {var_name} array in game_store.cpp"
+    assert block_match, "could not find kGameSchema array in game_store.cpp"
     block = block_match.group(1)
 
     statements = []
@@ -34,21 +32,7 @@ def _extract_cpp_array(source: str, var_name: str) -> List[str]:
     return statements
 
 
-def _extract_migrations_list(source: str) -> List[Tuple[int, str]]:
-    block_match = re.search(
-        r"const std::vector<Migration>\s+kGameMigrations\s*=\s*\{(.*?)\};",
-        source,
-        re.DOTALL,
-    )
-    assert block_match, "could not find kGameMigrations array in game_store.cpp"
-    block = block_match.group(1)
-
-    pairs = re.findall(r"\{\s*(\d+)\s*,\s*(kGameMigrationV\d+)\s*\}", block)
-    assert pairs, "game_migrations array is empty or unparseable"
-    return [(int(version), var_name) for version, var_name in pairs]
-
-
-def _extract_sql_file_statements(path: Path) -> List[str]:
+def _extract_sql_file_statements(path: Path) -> list[str]:
     text = path.read_text()
     lines = [line.split("--", 1)[0] for line in text.splitlines()]
     text_no_comments = "\n".join(lines)
@@ -56,43 +40,21 @@ def _extract_sql_file_statements(path: Path) -> List[str]:
 
 
 _CPP_SOURCE = GAME_STORE_CPP.read_text()
-_MIGRATIONS = _extract_migrations_list(_CPP_SOURCE)
 
 
-def test_every_migration_has_a_versioned_sql_file():
-    missing = []
-    for version, _ in _MIGRATIONS:
-        if not list(MIGRATIONS_DIR.glob(f"V{version}__*.sql")):
-            missing.append(version)
-    assert not missing, (
-        f"no postgresql/migrations/game/V{{n}}__*.sql for game_migrations version(s): {missing}"
-    )
+def test_schema_statements_match_schema_sql():
+    """Единственный источник правды о схеме БД игры — postgresql/game/schema.sql.
 
-
-def test_every_versioned_sql_file_has_a_matching_migration():
-    known_versions = {version for version, _ in _MIGRATIONS}
-    orphans = []
-    for path in sorted(MIGRATIONS_DIR.glob("V*__*.sql")):
-        m = re.match(r"V(\d+)__", path.name)
-        assert m, f"unexpected migration filename shape: {path.name}"
-        if int(m.group(1)) not in known_versions:
-            orphans.append(path.name)
-    assert not orphans, f"game/V*.sql file(s) with no matching game_migrations entry: {orphans}"
-
-
-@pytest.mark.parametrize("version,var_name", _MIGRATIONS, ids=[f"V{v}" for v, _ in _MIGRATIONS])
-def test_sql_file_statements_match_cpp_array(version: int, var_name: str):
-    cpp_statements = [_normalize(s) for s in _extract_cpp_array(_CPP_SOURCE, var_name)]
-
-    matches = list(MIGRATIONS_DIR.glob(f"V{version}__*.sql"))
-    assert len(matches) == 1, (
-        f"expected exactly one game/V{version}__*.sql, found {[m.name for m in matches]}"
-    )
-    sql_statements = [_normalize(s) for s in _extract_sql_file_statements(matches[0])]
+    Приложение применяет её через зеркало kGameSchema в game_store.cpp.
+    Реестра версий и миграций нет: файл один, сид достижений — идемпотентная
+    часть бутстрапа, а не отдельная версия.
+    """
+    cpp_statements = [_normalize(s) for s in _extract_schema_statements(_CPP_SOURCE)]
+    sql_statements = [_normalize(s) for s in _extract_sql_file_statements(GAME_SCHEMA_SQL)]
 
     assert sql_statements == cpp_statements, (
-        f"postgresql/migrations/game/{matches[0].name} has drifted from "
-        f"{var_name} in game_store.cpp:\n"
-        f"  .sql file:   {sql_statements}\n"
-        f"  game_migrations: {cpp_statements}"
+        f"postgresql/game/schema.sql has drifted from kGameSchema in "
+        f"game_store.cpp:\n"
+        f"  .sql file: {sql_statements}\n"
+        f"  C++:       {cpp_statements}"
     )

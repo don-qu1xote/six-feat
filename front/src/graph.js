@@ -176,6 +176,10 @@ export function buildNodeState(n, seedId, existingIds, _graph) {
     // nb["roles"]); раньше клиент собирал его из collaborations всех
     // входящих рёбер.
     _rolesSet: new Set(n.roles || []),
+    // [SF-API-20] Средний цвет фотографии считает сервер, один раз на артиста
+    // (image_proxy_handler.cpp). Поля может не быть — цвет ещё не считали;
+    // потребители в таком случае берут роль-цвет темы, как и до загрузки фото.
+    dominantColor: n.dominant_color || null,
     genres: [],
     isSeed: isSeed,
     // [SF-YM-09] Absent on older cached responses — default to available

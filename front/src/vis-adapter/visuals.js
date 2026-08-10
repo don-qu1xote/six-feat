@@ -1,7 +1,6 @@
 import { State, COLOR } from "../state/state.js";
-import { placeholderFor, roleStyle } from "../state/helpers.js";
+import { placeholderFor, proxiedImageUrl, roleStyle } from "../state/helpers.js";
 import { buildNodeTooltip, buildEdgeTooltip } from "./tooltips.js";
-import { ensureNodeColorSampled } from "./photo-color.js";
 
 export function hexToRgba(hex, alpha) {
   hex = hex.replace("#", "");
@@ -65,7 +64,9 @@ export function computeNodeSizes() {
 
 export function _imageFieldsFor(graphNode) {
   if (!graphNode) return {};
-  const image = graphNode.imageUrl || placeholderFor(graphNode.name, graphNode.isSeed);
+  const image = graphNode.imageUrl
+    ? proxiedImageUrl(graphNode.imageUrl)
+    : placeholderFor(graphNode.name, graphNode.isSeed);
   return {
     shape: "circularImage",
     image,
@@ -81,9 +82,11 @@ export function nodeVisual(nodeData) {
 
   const domRole = nodeData._dominantRole || (isSeed ? "featured" : "primary");
   const rs = roleStyle(domRole);
-  const image = imageUrl || placeholderFor(name, isSeed);
-
-  if (imageUrl) ensureNodeColorSampled(id, imageUrl);
+  // [SF-API-20] Аватарка идёт через image-proxy, а не напрямую с CDN Genius.
+  // Раньше её качали дважды: холст — с CDN, а photo-color.js — ещё раз через
+  // прокси, ради пикселей для среднего цвета. Теперь загрузка одна, и цвет
+  // считается на сервере ровно там, где эти байты уже есть.
+  const image = imageUrl ? proxiedImageUrl(imageUrl) : placeholderFor(name, isSeed);
 
   let radius;
   if (isSeed || isExpanded) {

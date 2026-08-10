@@ -189,7 +189,7 @@ class GameStore final : public userver::components::ComponentBase {
   struct Impl;
   userver::engine::TaskProcessor& main_tp_;
   std::unique_ptr<Impl> impl_;
-  userver::engine::TaskWithResult<void> migration_task_;
+  userver::engine::TaskWithResult<void> bootstrap_task_;
 };
 
 }  // namespace six_feat::game

@@ -66,7 +66,7 @@ flowchart TB
 
         postgres[("`**Postgres**
 *«postgres:16-alpine»*
-Общий кластер: L1-кэш артистов/треков/коллабораций (six-feat/enrichment), свой реестр миграций для game.`")]
+Общий кластер: L1-кэш артистов/треков/коллабораций (six-feat/enrichment), своя идемпотентная схема игры.`")]
     end
 
     genius_ext["`**Genius API**
@@ -79,7 +79,7 @@ api.genius.com`"]
     nginx -->|"/api/v1/game/*"| game
 
     sixfeat -->|"ArtistRepository: L1 read/write-through<br/>SQL"| postgres
-    game -->|"Свой реестр миграций postgresql/migrations/game/<br/>SQL"| postgres
+    game -->|"Своя идемпотентная схема postgresql/game/schema.sql<br/>SQL"| postgres
     enrichment -->|"ArtistRepository (тот же кластер)<br/>SQL"| postgres
 
     sixfeat -->|"GeniusGatewayClient: артисты/треки/сиды/резолв<br/>internal-mesh HTTP"| genius_gw
@@ -129,7 +129,7 @@ api.genius.com`"]
   `docs/DEVELOPMENT.md` «OAuth: выдача сессии... vs проверка сессии...»).
 - **Постгрес один кластер, не три базы**: `six-feat`/`six-feat-enrichment`
   используют общую схему артистов/треков/коллабораций; `six-feat-game`
-  использует тот же физический Postgres-инстанс, но собственный реестр
-  миграций (`postgresql/migrations/game/`) — раздельные схемы, не
+  использует тот же физический Postgres-инстанс, но собственную
+  идемпотентную схему (`postgresql/game/schema.sql`) — раздельные схемы, не
   раздельные БД. Подробнее топология (реплика, `prod-like`) —
   `docs/DEVELOPMENT.md` «Postgres cluster topology».

@@ -100,6 +100,7 @@ target_link_libraries(six_feat
         six_feat_enrichment
         six_feat_auth_lib
         six_feat_http
+        six_feat_image
         OpenSSL::Crypto
 )
 

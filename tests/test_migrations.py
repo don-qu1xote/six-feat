@@ -3,13 +3,10 @@ from __future__ import annotations
 import importlib.util
 import re
 from pathlib import Path
-from typing import List, Tuple
-
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PERSISTENT_STORE_CPP = REPO_ROOT / "libs" / "six-feat-storage" / "src" / "persistent_store.cpp"
-MIGRATIONS_DIR = REPO_ROOT / "postgresql" / "migrations"
+SCHEMA_SQL = REPO_ROOT / "postgresql" / "schema.sql"
 EXPLAIN_SCRIPT = REPO_ROOT / "scripts" / "explain-hot-queries.py"
 
 
@@ -20,13 +17,14 @@ def _normalize(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
 
 
-def _extract_cpp_array(source: str, var_name: str) -> List[str]:
+def _extract_schema_statements(source: str) -> list[str]:
+    """Операторы из kSchemaStatements в persistent_store.cpp, по порядку."""
     block_match = re.search(
-        rf"const std::vector<const char\*>\s+{re.escape(var_name)}\s*=\s*\{{(.*?)\}};",
+        r"const std::vector<const char\*>\s+kSchemaStatements\s*=\s*\{(.*?)\};",
         source,
         re.DOTALL,
     )
-    assert block_match, f"could not find {var_name} array in persistent_store.cpp"
+    assert block_match, "could not find kSchemaStatements array in persistent_store.cpp"
     block = block_match.group(1)
 
     statements = []
@@ -36,21 +34,7 @@ def _extract_cpp_array(source: str, var_name: str) -> List[str]:
     return statements
 
 
-def _extract_migrations_list(source: str) -> List[Tuple[int, str]]:
-    block_match = re.search(
-        r"const std::vector<Migration>\s+kMigrations\s*=\s*\{(.*?)\};",
-        source,
-        re.DOTALL,
-    )
-    assert block_match, "could not find kMigrations array in persistent_store.cpp"
-    block = block_match.group(1)
-
-    pairs = re.findall(r"\{\s*(\d+)\s*,\s*(kMigrationV\d+)\s*\}", block)
-    assert pairs, "kMigrations array is empty or unparseable"
-    return [(int(version), var_name) for version, var_name in pairs]
-
-
-def _extract_sql_file_statements(path: Path) -> List[str]:
+def _extract_sql_file_statements(path: Path) -> list[str]:
     text = path.read_text()
     lines = [line.split("--", 1)[0] for line in text.splitlines()]
     text_no_comments = "\n".join(lines)
@@ -58,82 +42,44 @@ def _extract_sql_file_statements(path: Path) -> List[str]:
 
 
 _CPP_SOURCE = PERSISTENT_STORE_CPP.read_text()
-_MIGRATIONS = _extract_migrations_list(_CPP_SOURCE)
 
 
-def test_every_migration_has_a_versioned_sql_file():
-    missing = []
-    for version, _ in _MIGRATIONS:
-        if not list(MIGRATIONS_DIR.glob(f"V{version}__*.sql")):
-            missing.append(version)
-    assert not missing, (
-        f"no postgresql/migrations/V{{n}}__*.sql for kMigrations version(s): {missing}"
-    )
+def test_schema_statements_match_schema_sql():
+    """Единственный источник правды о схеме — postgresql/schema.sql.
 
-
-def test_every_versioned_sql_file_has_a_matching_migration():
-    known_versions = {version for version, _ in _MIGRATIONS}
-    orphans = []
-    for path in sorted(MIGRATIONS_DIR.glob("V*__*.sql")):
-        m = re.match(r"V(\d+)__", path.name)
-        assert m, f"unexpected migration filename shape: {path.name}"
-        if int(m.group(1)) not in known_versions:
-            orphans.append(path.name)
-    assert not orphans, f"V*.sql file(s) with no matching kMigrations entry: {orphans}"
-
-
-@pytest.mark.parametrize("version,var_name", _MIGRATIONS, ids=[f"V{v}" for v, _ in _MIGRATIONS])
-def test_sql_file_statements_match_cpp_array(version: int, var_name: str):
-    cpp_statements = [_normalize(s) for s in _extract_cpp_array(_CPP_SOURCE, var_name)]
-
-    matches = list(MIGRATIONS_DIR.glob(f"V{version}__*.sql"))
-    assert len(matches) == 1, (
-        f"expected exactly one V{version}__*.sql, found {[m.name for m in matches]}"
-    )
-    sql_statements = [_normalize(s) for s in _extract_sql_file_statements(matches[0])]
+    Приложение применяет её через зеркало kSchemaStatements в
+    persistent_store.cpp (SF-DB-05). Реестра версий и миграций больше нет:
+    файл один, версий в имени нет, каждая операция идемпотентна.
+    """
+    cpp_statements = [_normalize(s) for s in _extract_schema_statements(_CPP_SOURCE)]
+    sql_statements = [_normalize(s) for s in _extract_sql_file_statements(SCHEMA_SQL)]
 
     assert sql_statements == cpp_statements, (
-        f"postgresql/migrations/{matches[0].name} has drifted from "
-        f"{var_name} in persistent_store.cpp:\n"
-        f"  .sql file:   {sql_statements}\n"
-        f"  kMigrations: {cpp_statements}"
+        f"postgresql/schema.sql has drifted from kSchemaStatements in "
+        f"persistent_store.cpp:\n"
+        f"  .sql file: {sql_statements}\n"
+        f"  C++:       {cpp_statements}"
     )
+
+
+def test_no_versioned_schema_files_remain():
+    """Версии схемы отменены: V*.sql в репозитории больше не живут."""
+    versioned = sorted(REPO_ROOT.glob("postgresql/**/V*__*.sql"))
+    assert not versioned, f"versioned files still present: {[p.name for p in versioned]}"
 
 
 def _load_explain_script():
-    # Порядок берём из самого скрипта, а не воспроизводим рядом: проверять
-    # надо тот список, который он реально применяет.
     spec = importlib.util.spec_from_file_location("explain_hot_queries", EXPLAIN_SCRIPT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_explain_script_applies_migrations_in_version_order():
-    """Единственное место, где .sql-файлы применяются напрямую — джоба
-    «Perf — EXPLAIN hot queries». Сортировка путей как строк ставит V10
-    перед V2, и с десятой миграции джоба падает на «relation ... does not
-    exist»: V10 (artist_alias) ссылается на artists из V1.
+def test_explain_script_applies_the_single_schema_file():
+    """Единственное место, где postgresql/schema.sql применяется напрямую —
+    джоба «Perf — EXPLAIN hot queries». Скрипт обязан указывать на тот же
+    файл, что и зеркало в C++: иначе проверка планов уедет от реальной
+    схемы приложения.
     """
     script = _load_explain_script()
-    applied = script.migration_files()
-    expected = [version for version, _ in _MIGRATIONS]
-
-    assert [script._migration_version(p) for p in applied] == expected, (
-        f"порядок применения миграций сломан: {[p.name for p in applied]}"
-    )
-
-
-def test_version_key_keeps_double_digit_migrations_in_order():
-    """Зачем скрипту ключ сортировки, когда миграция сейчас одна.
-
-    Проверка на синтетическом наборе имён, а не на содержимом каталога:
-    после схлопывания (SF-DOC-08) миграция одна, и порядок на ней сходится
-    при любой сортировке — а грабли «V10 раньше V2» вернутся ровно в тот
-    день, когда реестр снова дорастёт до десятой.
-    """
-    version_of = _load_explain_script()._migration_version
-    names = [Path(f"V{n}__x.sql") for n in range(1, 13)]
-
-    assert [version_of(p) for p in sorted(names, key=version_of)] == list(range(1, 13))
-    assert [version_of(p) for p in sorted(names)] != list(range(1, 13))
+    assert script.SCHEMA_SQL.resolve() == SCHEMA_SQL.resolve()

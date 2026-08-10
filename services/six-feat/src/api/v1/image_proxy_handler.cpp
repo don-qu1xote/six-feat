@@ -8,6 +8,7 @@
 #include <cctype>
 #include <optional>
 #include <six-feat-core/request_id.hpp>
+#include <six-feat-image/dominant_color.hpp>
 #include <string>
 #include <string_view>
 #include <userver/clients/http/component.hpp>
@@ -110,6 +111,7 @@ ImageProxyHandler::ImageProxyHandler(const components::ComponentConfig& config,
                                      const components::ComponentContext& context)
     : AuthenticatedHandlerBase(config, context, context.FindComponent<auth::OAuthConfig>()),
       http_client_(context.FindComponent<components::HttpClient>().GetHttpClient()),
+      store_(context.FindComponent<PersistentStore>()),
       timeout_(std::chrono::milliseconds{config["timeout-ms"].As<int>(5000)}),
       allowed_hosts_(LoadAllowedHosts(config)) {}
 
@@ -159,11 +161,37 @@ std::string ImageProxyHandler::HandleRequestThrow(const server::http::HttpReques
     auto& http_response = request.GetHttpResponse();
     http_response.SetContentType(http::ContentType(content_type));
     http_response.SetHeader(std::string{"Cache-Control"}, "public, max-age=31536000, immutable");
+
+    SampleDominantColor(url, response->body());
+
     return response->body();
   } catch (const std::exception& ex) {
     LOG_WARNING() << "[ImageProxy] request_id=" << CurrentRequestId() << " host=" << parsed->host
                   << " fetch failed: " << ex.what();
     return BadGateway(request, "upstream fetch failed");
+  }
+}
+
+// Считаем ровно один раз за всю жизнь артиста. Проверка «нужен ли цвет» стоит
+// один индексный запрос, декодирование — сотни микросекунд на JPEG, поэтому
+// порядок именно такой: без проверки каждая отдача файла разбирала бы картинку
+// заново, а отдаётся она с Cache-Control: immutable, то есть часто и помногу.
+// Всё, что здесь не получилось, — не повод ломать отдачу картинки: цвет это
+// украшение, а прокси обязан вернуть байты. Поэтому ошибки только логируются.
+void ImageProxyHandler::SampleDominantColor(const std::string& url, const std::string& body) const {
+  try {
+    if (!store_.NeedsDominantColor(url)) return;
+
+    const auto hex = image::DominantColorHex(body.data(), body.size());
+    if (!hex) {
+      LOG_DEBUG() << "[ImageProxy] request_id=" << CurrentRequestId()
+                  << " could not sample a dominant colour — leaving it NULL";
+      return;
+    }
+    store_.SetDominantColor(url, *hex);
+  } catch (const std::exception& ex) {
+    LOG_WARNING() << "[ImageProxy] request_id=" << CurrentRequestId()
+                  << " dominant colour sampling failed: " << ex.what();
   }
 }
 

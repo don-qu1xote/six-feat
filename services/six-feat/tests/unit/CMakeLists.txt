@@ -21,7 +21,9 @@ add_executable(six_feat_unit_tests
   ${SIX_FEAT_ROOT}/libs/six-feat-common/src/music_source_provider.cpp
   ${SIX_FEAT_ROOT}/libs/six-feat-domain/src/role_mask.cpp
   ${SIX_FEAT_ROOT}/services/six-feat/src/application/artist_resolver.cpp
+  ${SIX_FEAT_ROOT}/libs/six-feat-image/src/dominant_color.cpp
   test_artist_resolver.cpp
+  test_dominant_color.cpp
   test_bidirectional_bfs.cpp
   test_featured_edge_role.cpp
 )
@@ -32,6 +34,8 @@ target_include_directories(six_feat_unit_tests PRIVATE
   ${SIX_FEAT_ROOT}/libs/six-feat-genius/include
   ${SIX_FEAT_ROOT}/libs/six-feat-common/include
   ${SIX_FEAT_ROOT}/libs/six-feat-core/include
+  ${SIX_FEAT_ROOT}/libs/six-feat-image/include
+  ${SIX_FEAT_ROOT}/libs/six-feat-image/vendor
   ${SIX_FEAT_ROOT}/services/six-feat/src
   ${CMAKE_CURRENT_SOURCE_DIR}
 )

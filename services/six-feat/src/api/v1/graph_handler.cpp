@@ -489,6 +489,17 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     return std::max(w, 1);
   }();
 
+  // [SF-API-20] Средние цвета фотографий — одним запросом на весь граф.
+  // Считать их клиенту больше не нужно: раньше каждый браузер качал полсотни
+  // картинок ещё раз, через прокси, и усреднял пиксели в canvas — при том что
+  // результат для артиста не меняется никогда.
+  const auto dominant_colors = store_.LoadDominantColors(node_ids);
+  const auto color_of = [&dominant_colors](std::int64_t id) -> const std::string& {
+    static const std::string kNone;
+    const auto it = dominant_colors.find(id);
+    return it == dominant_colors.end() ? kNone : it->second;
+  };
+
   formats::json::ValueBuilder nodes_b(formats::json::Type::kArray);
   formats::json::ValueBuilder edges_b(formats::json::Type::kArray);
 
@@ -509,7 +520,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   }
 
   {
-    auto nb = dto::ToJson(dto::ToDto(data.seed));
+    auto nb = dto::ToJson(dto::ToDto(data.seed, color_of(seed_id)));
     nb["weight"] = seed_weight;
     nb["roles"] = roles_to_json(seed_roles);
     const double raw = bc.count(seed_id) ? bc.at(seed_id) : 0.0;
@@ -524,7 +535,8 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   for (const auto gid : order) {
     const auto& agg = edges.at(gid);
     {
-      auto nb = dto::ToJson(dto::ToDto(ArtistRef{gid, agg.name, agg.image, agg.url}));
+      auto nb =
+          dto::ToJson(dto::ToDto(ArtistRef{gid, agg.name, agg.image, agg.url}, color_of(gid)));
       nb["weight"] = agg.weight;
       nb["roles"] = roles_to_json(agg.roles);
       const double raw = bc.count(gid) ? bc.at(gid) : 0.0;
