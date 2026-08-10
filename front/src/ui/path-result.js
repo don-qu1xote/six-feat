@@ -212,7 +212,7 @@ export function renderHopChain(path, edges, nodes, nameById, targetEl = els.hopC
       const hi = Math.max(id, nextId);
       const edge = edgeMap.get(`${lo}_${hi}`);
       const edgeId = edge?.id || `${lo}_${hi}`;
-      const songList = edge?.songs || edge?.collaborations || [];
+      const songList = edge?.songs || [];
       const titles = songList
         .slice(0, 3)
         .map((s) => (typeof s === "string" ? s : s.song || s.title || "Untitled"));

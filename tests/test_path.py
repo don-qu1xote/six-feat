@@ -683,3 +683,25 @@ class TestPathRequiresGeniusToken:
 
         assert resp.status_code == 422, resp.text
         assert resp.json().get("error") == "no_genius_token"
+
+
+class TestPathStillCarriesItsTracks:
+    """[SF-API-23] Треки на рёбрах пути НЕ трогали.
+
+    В графе список совместных треков уехал в отдельную ручку — пользователь
+    раскрывает одно-два ребра из полусотни. В ответе поиска пути всё наоборот:
+    треки — это и есть ответ на вопрос «почему так», их смотрят всегда.
+    Поэтому здесь они остаются в ответе, и тест держит это отдельно от графа.
+    """
+
+    def test_path_edges_still_inline_their_songs(
+        self, client: requests.Session, genius_mock: GeniusMock
+    ):
+        _setup_direct_path(genius_mock)
+
+        data = client.get(PATH_URL, params={"from": "ArtistA", "to": "ArtistB"}).json()
+
+        assert data["edges"], "путь без рёбер ничего не доказывает"
+        for edge in data["edges"]:
+            assert isinstance(edge["songs"], list)
+            assert edge["songs"], f"у ребра пути пропали треки: {edge}"

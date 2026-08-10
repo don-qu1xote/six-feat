@@ -144,7 +144,6 @@ describe("buildGraphExportData — SF-WEB-04", () => {
         dominantRole: "featured",
         collaboration_count: 3,
         songs: ["Track A"],
-        collaborations: [{ song: "Track A", roles: ["featured"] }],
       },
     ];
     State.currentSeedId = 1;
@@ -177,7 +176,6 @@ describe("buildGraphExportData — SF-WEB-04", () => {
         dominantRole: "featured",
         collaboration_count: 3,
         songs: ["Track A"],
-        collaborations: [{ song: "Track A", roles: ["featured"] }],
       },
     ]);
   });

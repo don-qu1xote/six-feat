@@ -277,6 +277,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-graph-edge:
+      path: /api/v1/graph/edge
+      method: GET
+      task_processor: main-task-processor
+
     handler-path:
       path: /api/v1/graph/path
       method: GET

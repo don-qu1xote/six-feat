@@ -284,7 +284,8 @@
           "betweenness",
           "betweenness_normalised",
           "is_seed",
-          "deepen_available"
+          "deepen_available",
+          "top_tracks"
         ],
         "properties": {
           "id": {
@@ -325,13 +326,40 @@
           "deepen_available": {
             "type": "boolean",
             "description": "[SF-YM-09] Whether \"find more connections\" (Genius-only) can work for this node. Always true — Genius is the sole graph source, so every resolved node is already Genius-identified."
+          },
+          "dominant_color": {
+            "type": "string",
+            "description": "Average colour of the artist photo as #rrggbb, sampled once in the image proxy (SF-API-20). Absent while it has not been sampled yet."
+          },
+          "top_tracks": {
+            "type": "array",
+            "description": "Up to five most popular tracks across this node's edges (SF-API-23). An aggregate, not the full list: edge details come from GET /api/v1/graph/edge.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "song": {
+                  "type": "string"
+                },
+                "popularity": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
           }
         },
         "additionalProperties": false
       },
       "GraphEdge": {
         "type": "object",
-        "description": "One edge in /api/v1/graph's \"edges\" array (SF-API-14).",
+        "description": "One edge in /api/v1/graph's \"edges\" array (SF-API-14). Aggregate only: the shared-track list moved to GET /api/v1/graph/edge (SF-API-23), which serves it when the user actually expands an edge.",
         "required": [
           "from",
           "to",
@@ -339,8 +367,7 @@
           "collaboration_count",
           "dominant_role",
           "edge_style",
-          "source",
-          "collaborations"
+          "source"
         ],
         "properties": {
           "from": {
@@ -375,29 +402,6 @@
               "genius_credit"
             ],
             "description": "Which upstream produced this edge — \"genius_credit\" for a Genius-tagged credit role (primary/producer/writer/featured). Derived from dominant_role, not a persisted per-edge tag."
-          },
-          "collaborations": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "song": {
-                  "type": "string"
-                },
-                "popularity": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "roles": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "additionalProperties": false
-            },
-            "description": "[SF-WEB-77] Sorted by popularity, highest first (stable — equal popularity keeps incidence order). The client relies on this order instead of re-sorting."
           }
         },
         "additionalProperties": false
@@ -487,6 +491,69 @@
           }
         },
         "additionalProperties": false
+      },
+      "GraphEdgeDetail": {
+        "type": "object",
+        "description": "Shared tracks for one edge, served on demand (SF-API-23). The list is the same one /api/v1/graph used to inline, in the same order.",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "from",
+          "to",
+          "collaboration_count",
+          "dominant_role",
+          "collaborations"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "graph_edge"
+            ]
+          },
+          "from": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "to": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "collaboration_count": {
+            "type": "integer"
+          },
+          "dominant_role": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "producer",
+              "writer",
+              "featured"
+            ]
+          },
+          "collaborations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "song": {
+                  "type": "string"
+                },
+                "popularity": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
       }
     }
   },
@@ -884,6 +951,69 @@
             "apiKeyAuth": []
           }
         ]
+      }
+    },
+    "/api/v1/graph/edge": {
+      "get": {
+        "summary": "Shared tracks for one graph edge (SF-API-23)",
+        "description": "Details behind a single edge, fetched when the user expands it. The graph response carries only the aggregate; a session opens a handful of edges, and inlining every track made the browser parse and hold them all. Auth, API keys and the rate limit are the same as /api/v1/graph.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Artist id on one end of the edge"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "Artist id on the other end"
+          },
+          {
+            "name": "roles",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Same comma-separated role filter as /api/v1/graph"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Shared tracks for the pair",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphEdgeDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "'from'/'to' missing, non-numeric or equal"
+          },
+          "401": {
+            "description": "No valid session"
+          },
+          "404": {
+            "description": "Unknown artist id, or no edge between the pair"
+          },
+          "422": {
+            "description": "Signed in with no Genius token, and the artist is not cached yet"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          }
+        }
       }
     },
     "/api/v1/search": {

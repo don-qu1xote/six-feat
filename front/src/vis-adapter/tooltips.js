@@ -97,25 +97,26 @@ export function buildEdgeTooltip(e, nameById) {
   const weight = Number(e.weight) > 0 ? Number(e.weight) : 1;
   const role = e.dominantRole || "primary";
   const icon = wrapRoleIconGraph(ROLE_ICON[role] || "");
-  const collabs = Array.isArray(e.collaborations) ? e.collaborations : [];
+  // [SF-API-23] Подсказка при наведении показывает сводку, а не список треков.
+  // Списка у ребра больше нет: он приезжает по клику, из /api/v1/graph/edge.
+  // Тянуть его на каждое наведение — ровно то, от чего уходили, только хуже:
+  // наводят на десятки рёбер, раскрывают одно.
+  //
+  // Треки на рёбрах ПУТИ остаются в ответе поиска (их там смотрят всегда),
+  // поэтому если они есть — показываем их, как показывали.
+  const songs = Array.isArray(e.songs) ? e.songs : [];
 
   let rows = "";
-  for (const c of collabs) {
-    const roles = Array.isArray(c.roles) ? c.roles : [];
-    const pills = roles
-      .map((r) => {
-        const slug = String(r)
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "");
-        const ico = wrapRoleIconGraph(ROLE_ICON[slug] || "");
-        return `<span class="tt-role tt-role--${slug}" title="${escapeHtml(r)}">${ico}</span>`;
-      })
-      .join("");
+  for (const s of songs) {
+    const title = typeof s === "string" ? s : s.song || s.title || "";
     rows +=
-      `<li class="tt-row"><span class="tt-song">${escapeHtml(c.song || t("tooltip.untitled"))}</span>` +
-      `<span class="tt-roles">${pills}</span></li>`;
+      `<li class="tt-row"><span class="tt-song">${escapeHtml(title || t("tooltip.untitled"))}</span>` +
+      `<span class="tt-roles"></span></li>`;
   }
-  if (!rows) rows = `<li class="tt-empty">${t("tooltip.noTracks")}</li>`;
+  if (!rows) {
+    const count = Number(e.collaboration_count) > 0 ? Number(e.collaboration_count) : weight;
+    rows = `<li class="tt-row"><span class="tt-song">${escapeHtml(tPlural("tooltip.sharedTracks", count))}</span><span class="tt-roles"></span></li>`;
+  }
 
   const el = document.createElement("div");
   el.className = "tt";

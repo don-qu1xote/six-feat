@@ -98,6 +98,8 @@ export const en = {
   "sidebar.collabCount.few": "{n} collabs",
   "sidebar.collabCount.many": "{n} collabs",
   "sidebar.expandedSuffix": " · expanded ✓",
+  "sidebar.loadingTracks": "Loading shared tracks…",
+  "sidebar.tracksFailed": "Couldn't load the shared tracks.",
   "sidebar.thisArtist": " (this artist)",
   "sidebar.expandingToast": "Expanding {name}…",
 
@@ -370,6 +372,8 @@ export const ru = {
   "sidebar.collabCount.few": "{n} коллаборации",
   "sidebar.collabCount.many": "{n} коллабораций",
   "sidebar.expandedSuffix": " · развёрнуто ✓",
+  "sidebar.loadingTracks": "Загружаем совместные треки…",
+  "sidebar.tracksFailed": "Не удалось загрузить совместные треки.",
   "sidebar.thisArtist": " (этот артист)",
   "sidebar.expandingToast": "Разворачиваем {name}…",
 

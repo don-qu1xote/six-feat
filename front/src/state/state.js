@@ -260,6 +260,11 @@ const cacheSlice = {
   // матрица смежности убранного обхода в ширину.
   _pathCache: new Map(),
 
+  // [SF-API-23] Совместные треки по паре узлов — ответы /api/v1/graph/edge.
+  // Жизнь та же: раскрытие узла дописывает данные в базу, новый поиск рисует
+  // другой граф, — поэтому и сбрасываются оба вместе.
+  _edgeCache: new Map(),
+
   _graphCache: new Map(),
 };
 
@@ -335,6 +340,7 @@ bridge("_pathAbortController", netFetchSlice);
 bridge("_enrichmentPoller", netFetchSlice);
 
 bridge("_pathCache", cacheSlice);
+bridge("_edgeCache", cacheSlice);
 bridge("_graphCache", cacheSlice);
 
 bridge("toastTimer", animSlice);
@@ -379,8 +385,11 @@ export function setPathHighlight(path) {
   interactionSlice.pathHighlight = path;
 }
 
-export function clearPathCache() {
+// Оба кэша серверных ответов про текущий граф. Раздельно их сбрасывать
+// незачем: у них одна жизнь и одни поводы устареть.
+export function clearGraphQueryCaches() {
   cacheSlice._pathCache = new Map();
+  cacheSlice._edgeCache = new Map();
 }
 
 export function resetExpansionState() {
@@ -390,7 +399,7 @@ export function resetExpansionState() {
   interactionSlice.compareMode = false;
   interactionSlice.compareModeStartId = null;
   netFetchSlice.pendingExpand = null;
-  clearPathCache();
+  clearGraphQueryCaches();
 
   clearTimeout(animSlice.physicsTimer);
   animSlice.physicsTimer = null;
@@ -421,7 +430,7 @@ export function resetGraphState({ resetHasRendered = true } = {}) {
   if (animSlice._expandAnimId != null) cancelAnimationFrame(animSlice._expandAnimId);
   animSlice._expandAnimId = null;
 
-  clearPathCache();
+  clearGraphQueryCaches();
 }
 
 export const GRAPH_CACHE_MAX = 20;

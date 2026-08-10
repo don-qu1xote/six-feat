@@ -420,27 +420,6 @@ describe("renderHopChain — connectors", () => {
     expect(songs).not.toContain("D");
   });
 
-  it("reads titles out of collaboration objects too", () => {
-    renderHopChain(
-      [1, 2],
-      [
-        {
-          from: 1,
-          to: 2,
-          weight: 1,
-          collaborations: [{ song: "Jumpman" }, { title: "Draco" }, {}],
-        },
-      ],
-      nodes,
-      {},
-    );
-
-    const songs = els.hopChain.querySelector(".hop-songs").textContent;
-    expect(songs).toContain("Jumpman");
-    expect(songs).toContain("Draco");
-    expect(songs).toContain("Untitled");
-  });
-
   it("falls back to the id when a node has no name anywhere", () => {
     renderHopChain([1, 9], [], nodes, {});
     expect(els.hopChain.textContent).toContain("9");

@@ -16,6 +16,12 @@ vi.mock("./modals.js", () => ({
 }));
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn(), deepenArtistConnections: vi.fn() }));
 vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
+// [SF-API-23] Треки ребра приезжают отдельным запросом — панель их просит,
+// а не получает вместе с графом.
+const fetchEdgeDetails = vi.fn();
+vi.mock("../api/analytics-client.js", () => ({
+  fetchEdgeDetails: (...args) => fetchEdgeDetails(...args),
+}));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
@@ -206,20 +212,90 @@ describe("showEdgeSidebar (edge context)", () => {
       from: 1,
       to: 2,
       weight: 3,
+      collaboration_count: 3,
       dominantRole: "featured",
-      collaborations: [{ song: "Jumpman", roles: ["featured"] }],
       ...overrides,
     };
   }
 
-  it("renders the shared header/tracks section reused from node context, without duplicating it", () => {
+  const detailsWith = (collaborations) => ({ collaborations, error: null });
+
+  beforeEach(() => {
+    State.selectedEdgeId = "1_2";
+    fetchEdgeDetails.mockResolvedValue(detailsWith([{ song: "Jumpman", roles: ["featured"] }]));
+  });
+
+  it("renders the shared header, then fills the tracks section once the details arrive", async () => {
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", { 1: "Drake", 2: "Future" });
 
     expect(els.sidebarName.textContent).toBe("Drake × Future");
-    expect(els.sidebarTracks.innerHTML).toContain("Jumpman");
     expect(els.artistSidebar.classList.contains("show")).toBe(true);
     expect(els.companionPanel.classList.contains("show")).toBe(true);
+    // Пока ответа нет — общее состояние загрузки SF-WEB-19, а не свой спиннер.
+    expect(els.sidebarTracks.classList.contains("ui-state--loading")).toBe(true);
+
+    expect(fetchEdgeDetails).toHaveBeenCalledWith(1, 2);
+    await vi.waitFor(() => expect(els.sidebarTracks.innerHTML).toContain("Jumpman"));
+  });
+
+  it("shows a retryable error instead of claiming the pair has no tracks", async () => {
+    fetchEdgeDetails.mockResolvedValue({ collaborations: [], error: "http_500" });
+    State.graphEdges = [mockEdge()];
+
+    showEdgeSidebar("1_2", {});
+
+    await vi.waitFor(() =>
+      expect(els.sidebarTracks.classList.contains("ui-state--error")).toBe(true),
+    );
+    expect(els.sidebarTracks.querySelector(".ui-state-action")).toBeTruthy();
+  });
+
+  it("shows the retryable error when the request itself rejects", async () => {
+    fetchEdgeDetails.mockRejectedValue(new Error("network"));
+    State.graphEdges = [mockEdge()];
+
+    showEdgeSidebar("1_2", {});
+
+    await vi.waitFor(() =>
+      expect(els.sidebarTracks.classList.contains("ui-state--error")).toBe(true),
+    );
+  });
+
+  it("drops a rejection that arrived after the user opened another edge", async () => {
+    let reject;
+    fetchEdgeDetails.mockReturnValue(
+      new Promise((_, r) => {
+        reject = r;
+      }),
+    );
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", {});
+
+    State.selectedEdgeId = "9_9";
+    reject(new Error("too late"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.sidebarTracks.classList.contains("ui-state--error")).toBe(false);
+  });
+
+  it("drops an answer that arrived after the user opened another edge", async () => {
+    let resolve;
+    fetchEdgeDetails.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", {});
+
+    State.selectedEdgeId = "9_9";
+    resolve(detailsWith([{ song: "Stale", roles: ["featured"] }]));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.sidebarTracks.innerHTML).not.toContain("Stale");
   });
 
   it("hides the path-to-seed tile — it only makes sense for a single artist", () => {
@@ -237,20 +313,22 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.sidebarAvatar.classList.contains("is-seed")).toBe(false);
   });
 
-  it("[SF-WEB-33] shows and populates the role-breakdown tile with THIS edge's roles, not a per-node breakdown", () => {
-    State.graphEdges = [
-      mockEdge({
-        collaborations: [
-          { song: "Jumpman", roles: ["featured"] },
-          { song: "Life Is Good", roles: ["producer", "featured"] },
-        ],
-      }),
-    ];
+  it("[SF-WEB-33] fills the role-breakdown tile from THIS edge, refining it once the tracks land", async () => {
+    fetchEdgeDetails.mockResolvedValue(
+      detailsWith([
+        { song: "Jumpman", roles: ["featured"] },
+        { song: "Life Is Good", roles: ["producer", "featured"] },
+      ]),
+    );
+    State.graphEdges = [mockEdge()];
+
     showEdgeSidebar("1_2", {});
 
+    // Плитка показывается сразу — из доминирующей роли ребра, без ожидания сети.
     expect(els.sidebarRoleBreakdownTile.style.display).toBe("");
-    expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer");
     expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--featured");
+
+    await vi.waitFor(() => expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer"));
   });
 
   it("[SF-WEB-33] shows both endpoints as clickable cards, and hides the tile for node context", () => {
@@ -302,34 +380,17 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.artistSidebar.classList.contains("show")).toBe(false);
   });
 
-  it("falls back to songs[] + the edge's dominant role when collaborations[] is empty", () => {
-    State.graphEdges = [
-      mockEdge({
-        collaborations: [],
-        songs: ["A-B Track", "B-C Track"],
-        dominantRole: "producer",
-      }),
-    ];
+  it("uses the songs a path answer already carried, without asking the server again", () => {
+    // Ответ поиска пути несёт треки осознанно (SF-API-23 их там не трогает).
+    State.graphEdges = [mockEdge({ songs: ["A-B Track", "B-C Track"], dominantRole: "producer" })];
+
     showEdgeSidebar("1_2", {});
 
     const tracks = els.sidebarTracks.querySelectorAll(".sidebar-track");
     expect(tracks).toHaveLength(2);
     expect(els.sidebarTracks.innerHTML).toContain("A-B Track");
-    expect(els.sidebarTracks.innerHTML).toContain("B-C Track");
     expect(els.sidebarTracks.innerHTML).toContain("role-chip--producer");
-  });
-
-  it("prefers collaborations[] (per-song roles) over songs[] when both are present", () => {
-    State.graphEdges = [
-      mockEdge({
-        collaborations: [{ song: "Regular Graph Track", roles: ["producer"] }],
-        songs: ["Path Track"],
-      }),
-    ];
-    showEdgeSidebar("1_2", {});
-
-    expect(els.sidebarTracks.innerHTML).toContain("Regular Graph Track");
-    expect(els.sidebarTracks.innerHTML).not.toContain("Path Track");
+    expect(fetchEdgeDetails).not.toHaveBeenCalled();
   });
 });
 
@@ -368,11 +429,18 @@ describe("[SF-WEB-28] node and edge selection go through equivalent marker calls
       from: 1,
       to: 2,
       weight: 3,
+      collaboration_count: 3,
       dominantRole: "featured",
-      collaborations: [{ song: "Jumpman", roles: ["featured"] }],
       ...overrides,
     };
   }
+
+  const detailsWith = (collaborations) => ({ collaborations, error: null });
+
+  beforeEach(() => {
+    State.selectedEdgeId = "1_2";
+    fetchEdgeDetails.mockResolvedValue(detailsWith([{ song: "Jumpman", roles: ["featured"] }]));
+  });
 
   it("showEdgeSidebar calls selectEdge(edgeId) — the single place mutual exclusion with a node is enforced", () => {
     State.graphEdges = [mockEdge()];
@@ -640,6 +708,8 @@ describe("showEdgeSidebar", () => {
 
   beforeEach(() => {
     State.graphNodes = [mockNode({ id: 1, name: "Drake" }), mockNode({ id: 2, name: "Future" })];
+    State.selectedEdgeId = "e1";
+    fetchEdgeDetails.mockResolvedValue({ collaborations: [], error: null });
   });
 
   it("titles the sidebar with both artists", () => {
@@ -663,13 +733,18 @@ describe("showEdgeSidebar", () => {
     expect(els.sidebarName.textContent).toBe("Drake × ?");
   });
 
-  it("lists each collaboration with a chip per credited role", () => {
-    State.graphEdges = [
-      edge({ collaborations: [{ song: "Life Is Good", roles: ["featured", "writer"] }] }),
-    ];
+  it("lists each fetched collaboration with a chip per credited role", async () => {
+    fetchEdgeDetails.mockResolvedValue({
+      collaborations: [{ song: "Life Is Good", roles: ["featured", "writer"] }],
+      error: null,
+    });
+    State.graphEdges = [edge()];
+
     showEdgeSidebar("e1", names);
 
-    expect(els.sidebarTracks.querySelectorAll(".sidebar-track")).toHaveLength(1);
+    await vi.waitFor(() =>
+      expect(els.sidebarTracks.querySelectorAll(".sidebar-track")).toHaveLength(1),
+    );
     expect(els.sidebarTracks.querySelectorAll(".sidebar-track-role")).toHaveLength(2);
   });
 
@@ -685,28 +760,32 @@ describe("showEdgeSidebar", () => {
     expect(names_[2].trim()).not.toBe("");
   });
 
-  it("says so when the pair has no known tracks", () => {
+  it("says so when the server answers that the pair has no known tracks", async () => {
     State.graphEdges = [edge()];
+
     showEdgeSidebar("e1", names);
 
-    expect(els.sidebarTracks.textContent.toLowerCase()).toContain("no");
+    await vi.waitFor(() => expect(els.sidebarTracks.textContent.toLowerCase()).toContain("no"));
   });
 
-  it("counts roles across collaborations for the breakdown", () => {
-    State.graphEdges = [
-      edge({
-        collaborations: [
-          { song: "A", roles: ["featured"] },
-          { song: "B", roles: ["featured", "writer"] },
-        ],
-      }),
-    ];
+  it("counts roles across the fetched collaborations for the breakdown", async () => {
+    fetchEdgeDetails.mockResolvedValue({
+      collaborations: [
+        { song: "A", roles: ["featured"] },
+        { song: "B", roles: ["featured", "writer"] },
+      ],
+      error: null,
+    });
+    State.graphEdges = [edge()];
+
     showEdgeSidebar("e1", names);
 
-    const counts = [...els.sidebarRoleChips.querySelectorAll(".rbc-count")].map(
-      (n) => n.textContent,
-    );
-    expect(counts).toEqual(["2", "1"]);
+    await vi.waitFor(() => {
+      const counts = [...els.sidebarRoleChips.querySelectorAll(".rbc-count")].map(
+        (n) => n.textContent,
+      );
+      expect(counts).toEqual(["2", "1"]);
+    });
   });
 
   it("falls back to the shared-track count when there are no role credits", () => {

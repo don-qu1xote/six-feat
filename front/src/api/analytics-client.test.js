@@ -7,9 +7,9 @@ vi.mock("../vis-adapter/index.js", () => ({
   highlightPath: vi.fn(),
 }));
 
-import { State, clearPathCache } from "../state/state.js";
+import { State, clearGraphQueryCaches } from "../state/state.js";
 import * as analyticsClient from "./analytics-client.js";
-import { fetchPathBetween } from "./analytics-client.js";
+import { fetchPathBetween, fetchEdgeDetails } from "./analytics-client.js";
 
 // import.meta.url в jsdom-окружении не file:, поэтому путь считается от
 // корня фронтенда — vitest запускается именно оттуда.
@@ -47,7 +47,7 @@ beforeEach(() => {
   State.graphNodes = [];
   State.graphEdges = [];
   State.activeFilters = new Set(["featured", "producer", "writer"]);
-  clearPathCache();
+  clearGraphQueryCaches();
   global.fetch = vi.fn();
 });
 
@@ -138,7 +138,7 @@ describe("[SF-API-24] per-pair cache for the lifetime of the graph", () => {
     global.fetch.mockResolvedValue(pathResponse([1, 7, 2]));
 
     await fetchPathBetween(1, 2);
-    clearPathCache();
+    clearGraphQueryCaches();
     await fetchPathBetween(1, 2);
 
     expect(global.fetch).toHaveBeenCalledTimes(2);
@@ -183,5 +183,65 @@ describe("[SF-API-24] per-pair cache for the lifetime of the graph", () => {
     const result = await fetchPathBetween(1, 2);
 
     expect(result.message).toBe("Connect a Genius token in Settings.");
+  });
+});
+
+describe("[SF-API-23] edge details are fetched on expand, once per pair", () => {
+  const edgeResponse = (songs) =>
+    jsonResponse({
+      type: "graph_edge",
+      from: 1,
+      to: 2,
+      collaboration_count: songs.length,
+      dominant_role: "featured",
+      collaborations: songs.map((song, i) => ({ song, popularity: 100 - i, roles: ["featured"] })),
+    });
+
+  it("asks the edge endpoint with the roles the client applies", async () => {
+    global.fetch.mockResolvedValue(edgeResponse(["A", "B"]));
+    State.activeFilters = new Set(["featured", "producer"]);
+
+    const result = await fetchEdgeDetails(1, 2);
+
+    expect(result.collaborations.map((c) => c.song)).toEqual(["A", "B"]);
+    const [url] = global.fetch.mock.calls[0];
+    expect(url).toContain("/api/v1/graph/edge?from=1&to=2");
+    expect(url).toContain("roles=featured%2Cproducer");
+  });
+
+  it("serves a second expand of the same edge from the cache, either way round", async () => {
+    global.fetch.mockResolvedValue(edgeResponse(["A"]));
+
+    const first = await fetchEdgeDetails(1, 2);
+    const second = await fetchEdgeDetails(1, 2);
+    const reversed = await fetchEdgeDetails(2, 1);
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+    expect(reversed).toBe(first);
+  });
+
+  it("re-asks after the graph is replaced, and when the role filter changes", async () => {
+    global.fetch.mockResolvedValue(edgeResponse(["A"]));
+
+    await fetchEdgeDetails(1, 2);
+    clearGraphQueryCaches();
+    await fetchEdgeDetails(1, 2);
+    State.activeFilters = new Set(["featured"]);
+    await fetchEdgeDetails(1, 2);
+
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports a failure instead of pretending the edge has no tracks", async () => {
+    global.fetch.mockResolvedValue(jsonResponse({ error: "not_authenticated" }, 401));
+
+    const result = await fetchEdgeDetails(1, 2);
+
+    expect(result.collaborations).toEqual([]);
+    expect(result.error).toBe("not_authenticated");
+    // 401 поправим входом — кэшировать нечего.
+    await fetchEdgeDetails(1, 2);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 });

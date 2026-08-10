@@ -253,7 +253,6 @@ export function buildGraphExportData() {
       dominantRole: e.dominantRole,
       collaboration_count: e.collaboration_count ?? null,
       songs: e.songs || [],
-      collaborations: e.collaborations || [],
     })),
   };
 }

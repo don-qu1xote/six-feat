@@ -1,0 +1,7 @@
+type: object
+description: >-
+    Shared tracks for a single graph edge (SF-API-23). The graph response
+    carries only the aggregate; this endpoint serves the list on demand,
+    when the user actually expands an edge.
+additionalProperties: false
+properties: {}

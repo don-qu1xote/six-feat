@@ -35,6 +35,7 @@
 #include <variant>
 #include <vector>
 
+#include "application/edge_aggregation.hpp"
 #include "infrastructure/genius_error_mapping.hpp"
 
 namespace six_feat {
@@ -87,25 +88,6 @@ std::string RateLimitKey(const server::http::HttpRequest& request, const auth::O
   std::string token = auth::ExtractToken(request, oauth.SessionKey());
   if (!token.empty()) return token;
   return request.GetRemoteAddress().PrimaryAddressString();
-}
-
-constexpr std::size_t kExpectedCollaboratorsPerSong = 3;
-
-std::string NormalizedTitle(const std::string& title) {
-  std::string out;
-  out.reserve(title.size());
-  bool last_was_space = true;
-  for (unsigned char c : title) {
-    if (std::isspace(c)) {
-      if (!last_was_space) out.push_back(' ');
-      last_was_space = true;
-    } else {
-      out.push_back(static_cast<char>(std::tolower(c)));
-      last_was_space = false;
-    }
-  }
-  while (!out.empty() && out.back() == ' ') out.pop_back();
-  return out;
 }
 
 std::string BuildGraphETag(std::int64_t seed_id,
@@ -334,79 +316,11 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   const auto& data = result.data;
   const std::int64_t seed_id = data.seed.id;
 
-  struct EdgeAgg {
-    int weight{0};
-    int best_rank{0};
-    std::string dominant_role{"featured"};
-    // [SF-WEB-77] Все роли ребра, а не только доминирующая: клиент собирал
-    // этот набор сам, разбирая collaborations, — теперь получает готовым.
-    // std::set, а не unordered: порядок в ответе должен быть стабильным,
-    // иначе одинаковый граф даёт разный JSON от запроса к запросу.
-    std::set<std::string> roles;
-    std::string name, image, url;
-    struct Collab {
-      std::string song;
-      std::vector<std::string> roles;
-      std::int64_t popularity{0};
-    };
-    std::vector<Collab> collabs;
-    std::unordered_set<std::string> seen_titles;
-  };
-
-  std::unordered_map<std::int64_t, EdgeAgg> edges;
-  std::vector<std::int64_t> order;
-  edges.reserve(data.songs.size() * kExpectedCollaboratorsPerSong);
-  order.reserve(data.songs.size() * kExpectedCollaboratorsPerSong);
-
-  for (const auto& song : data.songs) {
-    std::unordered_map<std::int64_t, EdgeAgg::Collab> track;
-    track.reserve(8);
-    for (const auto& credit : song.credits) {
-      if (credit.artist.id == seed_id) continue;
-      if (!RoleAllowed(credit.role, mask)) continue;
-      auto& tc = track[credit.artist.id];
-      if (tc.song.empty()) {
-        tc.song = song.title;
-        tc.popularity = song.popularity;
-        auto& agg = edges[credit.artist.id];
-        if (agg.name.empty()) {
-          agg.name = credit.artist.name;
-          agg.image = credit.artist.image;
-          agg.url = credit.artist.url;
-          order.push_back(credit.artist.id);
-        }
-      }
-      auto& roles = tc.roles;
-      if (std::find(roles.begin(), roles.end(), credit.role) == roles.end())
-        roles.push_back(credit.role);
-      edges[credit.artist.id].roles.insert(credit.role);
-    }
-    for (auto& [gid, tc] : track) {
-      auto& agg = edges[gid];
-      const bool is_new_song = agg.seen_titles.insert(NormalizedTitle(tc.song)).second;
-      if (is_new_song) {
-        ++agg.weight;
-      }
-      int tr = 0;
-      for (const auto& r : tc.roles) tr = std::max(tr, RoleRank(r));
-      if (tr > agg.best_rank) {
-        agg.best_rank = tr;
-        std::string top;
-        int top_r = -1;
-        for (const auto& r : tc.roles) {
-          const int rr = RoleRank(r);
-          if (rr > top_r) {
-            top_r = rr;
-            top = r;
-          }
-        }
-        agg.dominant_role = std::move(top);
-      }
-      if (is_new_song) {
-        agg.collabs.push_back(std::move(tc));
-      }
-    }
-  }
+  // [SF-API-23] Свод рёбер считает общий AggregateEdges: ту же карту берёт
+  // ручка деталей ребра, поэтому расходиться им негде.
+  const auto aggregation = AggregateEdges(data, seed_id, mask);
+  const auto& edges = aggregation.by_neighbour;
+  const auto& order = aggregation.order;
 
   if (order.empty()) return EmptyGraph(seed_id, data.seed.name);
 
@@ -519,10 +433,40 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     seed_roles.insert(agg.roles.begin(), agg.roles.end());
   }
 
+  // [SF-API-23] Пять самых заметных треков узла — на самом узле.
+  // Раньше клиент собирал их сам, сливая collaborations всех входящих рёбер;
+  // теперь рёбра список не несут, а плитка треков в панели артиста нужна
+  // сразу при открытии — за ней не пошлёшь запрос на каждое ребро. Это по-
+  // прежнему агрегат: пять записей на узел против всех треков на всех рёбрах.
+  constexpr std::size_t kTopTracksPerNode = 5;
+  const auto top_tracks_json = [](std::vector<EdgeAggregation::Collaboration> collaborations) {
+    auto sorted = SortedByPopularity(std::move(collaborations));
+    if (sorted.size() > kTopTracksPerNode) sorted.resize(kTopTracksPerNode);
+    formats::json::ValueBuilder arr(formats::json::Type::kArray);
+    for (const auto& c : sorted) {
+      formats::json::ValueBuilder item(formats::json::Type::kObject);
+      item["song"] = c.song;
+      item["popularity"] = c.popularity;
+      formats::json::ValueBuilder rb(formats::json::Type::kArray);
+      for (const auto& r : c.roles) rb.PushBack(r);
+      item["roles"] = std::move(rb);
+      arr.PushBack(std::move(item));
+    }
+    return arr;
+  };
+
+  std::vector<EdgeAggregation::Collaboration> seed_collaborations;
+  for (const auto gid : order) {
+    const auto& agg = edges.at(gid);
+    seed_collaborations.insert(
+        seed_collaborations.end(), agg.collaborations.begin(), agg.collaborations.end());
+  }
+
   {
     auto nb = dto::ToJson(dto::ToDto(data.seed, color_of(seed_id)));
     nb["weight"] = seed_weight;
     nb["roles"] = roles_to_json(seed_roles);
+    nb["top_tracks"] = top_tracks_json(std::move(seed_collaborations));
     const double raw = bc.count(seed_id) ? bc.at(seed_id) : 0.0;
     nb["betweenness"] = raw;
     nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
@@ -539,6 +483,7 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
           dto::ToJson(dto::ToDto(ArtistRef{gid, agg.name, agg.image, agg.url}, color_of(gid)));
       nb["weight"] = agg.weight;
       nb["roles"] = roles_to_json(agg.roles);
+      nb["top_tracks"] = top_tracks_json(agg.collaborations);
       const double raw = bc.count(gid) ? bc.at(gid) : 0.0;
       nb["betweenness"] = raw;
       nb["betweenness_normalised"] = (bc_max > 0.0) ? raw / bc_max : 0.0;
@@ -557,19 +502,11 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
 
       edge_dto.source = ToString(source_for(seed_id, gid));
 
-      // [SF-WEB-77] Порядок задаёт сервер: popularity — его величина
-      // (Genius stats.pageviews), и клиенту незачем пересортировывать список
-      // по правилу, которое он вынужден повторять. stable_sort — при равной
-      // популярности (частый случай «данных нет», все нули) сохраняется
-      // порядок появления треков.
-      auto collabs = agg.collabs;
-      std::stable_sort(collabs.begin(), collabs.end(), [](const auto& a, const auto& b) {
-        return a.popularity > b.popularity;
-      });
-      edge_dto.collaborations.reserve(collabs.size());
-      for (const auto& c : collabs) {
-        edge_dto.collaborations.push_back({c.song, c.popularity, c.roles});
-      }
+      // [SF-API-23] Список совместных треков ребро больше не несёт: за сессию
+      // пользователь раскрывает одно-два ребра, а разбирал JSON и держал в
+      // памяти все. Детали отдаёт /api/v1/graph/edge по требованию;
+      // collaboration_count остаётся здесь, потому что он нужен всегда — им
+      // подписано само ребро.
       edges_b.PushBack(dto::ToJson(edge_dto));
     }
   }

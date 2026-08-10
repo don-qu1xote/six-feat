@@ -9,7 +9,7 @@ import {
   addEdges,
   resetExpansionState,
   setTruncation,
-  clearPathCache,
+  clearGraphQueryCaches,
 } from "./state/state.js";
 import { roleStyle, isGeniusDefaultAvatar } from "./state/helpers.js";
 import {
@@ -127,7 +127,6 @@ export function mergeDeepenResult(deepen) {
       newEdges.push(buildEdgeState(e));
       continue;
     }
-    existing.collaborations = [...(existing.collaborations || []), ...(e.collaborations || [])];
     existing.dominantRole = strongerRole(
       existing.dominantRole,
       (e.dominant_role || "primary").toLowerCase(),
@@ -140,7 +139,7 @@ export function mergeDeepenResult(deepen) {
   finalizeNodeRoleState();
   invalidateColorCache();
   renderGraphA11yList();
-  clearPathCache();
+  clearGraphQueryCaches();
 
   if (State.network) {
     mergeNetwork(nameById, savedPositions);
@@ -176,6 +175,10 @@ export function buildNodeState(n, seedId, existingIds, _graph) {
     // nb["roles"]); раньше клиент собирал его из collaborations всех
     // входящих рёбер.
     _rolesSet: new Set(n.roles || []),
+    // [SF-API-23] Пять заметных треков узла считает сервер (graph_handler:
+    // nb["top_tracks"]). Раньше клиент сливал их из collaborations всех
+    // входящих рёбер — тех самых, которых у рёбер больше нет.
+    _topTracks: n.top_tracks || [],
     // [SF-API-20] Средний цвет фотографии считает сервер, один раз на артиста
     // (image_proxy_handler.cpp). Поля может не быть — цвет ещё не считали;
     // потребители в таком случае берут роль-цвет темы, как и до загрузки фото.
@@ -213,7 +216,9 @@ export function buildEdgeState(e) {
     to: e.to,
     weight: e.weight || 1,
     collaboration_count: e.collaboration_count || null,
-    collaborations: e.collaborations || [],
+    // [SF-API-23] Списка треков у ребра больше нет — его отдаёт
+    // /api/v1/graph/edge, когда пользователь раскроет ребро. songs остаётся:
+    // им приходит ответ поиска пути, и там треки нужны всегда.
     songs: e.songs || [],
     dominantRole: (e.dominant_role || "primary").toLowerCase(),
     edgeStyle: e.edge_style || "solid",
@@ -234,26 +239,6 @@ function strongerRole(a, b) {
 // Топ-5 треков узла: списки коллабораций приходят от сервера уже
 // отсортированными по популярности, здесь только слияние нескольких таких
 // списков — порядок задаёт сервер, клиент его не переопределяет.
-function topCollaborations(lists, limit) {
-  const heads = lists.map(() => 0);
-  const out = [];
-  while (out.length < limit) {
-    let best = -1;
-    let bestPop = -Infinity;
-    for (let i = 0; i < lists.length; i++) {
-      if (heads[i] >= lists[i].length) continue;
-      const pop = lists[i][heads[i]].popularity || 0;
-      if (pop > bestPop) {
-        bestPop = pop;
-        best = i;
-      }
-    }
-    if (best < 0) break;
-    out.push(lists[best][heads[best]++]);
-  }
-  return out;
-}
-
 function finalizeNodeRoleState() {
   const edgesByNode = new Map();
   const roleWeights = new Map();
@@ -278,10 +263,6 @@ function finalizeNodeRoleState() {
 
   for (const n of State.graphNodes) {
     const inc = edgesByNode.get(n.id) || [];
-    n._topTracks = topCollaborations(
-      inc.map((e) => e.collaborations || []),
-      5,
-    );
     n._totalCollabs = inc.reduce((s, e) => s + (e.collaboration_count || e.weight || 1), 0);
 
     if (n.isSeed) {
@@ -321,7 +302,7 @@ export function finalizeGraphState(seedId, nameById, savedPositions, graph, isMe
 
   renderGraphA11yList();
 
-  clearPathCache();
+  clearGraphQueryCaches();
 
   if (!State.hasRendered) {
     initGraphOnCanvas();
@@ -397,10 +378,6 @@ export function cacheNodeCollaborations() {
   }
   for (const n of State.graphNodes) {
     const inc = edgesByNode.get(n.id) || [];
-    n._topTracks = topCollaborations(
-      inc.map((e) => e.collaborations || []),
-      5,
-    );
     n._totalCollabs = inc.reduce((s, e) => s + (e.collaboration_count || e.weight || 1), 0);
   }
 }

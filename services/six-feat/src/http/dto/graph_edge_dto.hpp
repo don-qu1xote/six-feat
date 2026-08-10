@@ -3,17 +3,13 @@
 #include <cstdint>
 #include <string>
 #include <userver/formats/json/value_builder.hpp>
-#include <vector>
 
 namespace six_feat::dto {
 
+// [SF-API-23] Ребро графа несёт только агрегат. Список совместных треков
+// уехал в /api/v1/graph/edge: за сессию раскрывают одно-два ребра, а платили
+// разбором и удержанием в памяти всех.
 struct GraphEdgeDto {
-  struct Collaboration {
-    std::string song;
-    std::int64_t popularity{0};
-    std::vector<std::string> roles;
-  };
-
   std::int64_t from{0};
   std::int64_t to{0};
   int weight{0};
@@ -21,7 +17,6 @@ struct GraphEdgeDto {
   std::string dominant_role;
   std::string edge_style;
   std::string source;
-  std::vector<Collaboration> collaborations;
 };
 
 userver::formats::json::ValueBuilder ToJson(const GraphEdgeDto& dto);

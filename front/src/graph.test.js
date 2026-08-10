@@ -120,11 +120,13 @@ describe("buildEdgeState", () => {
     expect(buildEdgeState({ from: 1, to: 2, weight: 7 }).weight).toBe(7);
   });
 
-  it("defaults collaboration_count/collaborations/songs", () => {
+  it("[SF-API-23] carries the aggregate and no track list at all", () => {
     const e = buildEdgeState({ from: 1, to: 2 });
     expect(e.collaboration_count).toBe(null);
-    expect(e.collaborations).toEqual([]);
     expect(e.songs).toEqual([]);
+    // Список треков ребра приходит по требованию, из /api/v1/graph/edge —
+    // держать под него пустое поле значит обещать данные, которых тут нет.
+    expect("collaborations" in e).toBe(false);
   });
 
   it("derives dominantRole from e.dominant_role (case-insensitive)", () => {
@@ -382,7 +384,7 @@ describe("[SF-YM-03] mergeDeepenResult", () => {
     expect(result).toEqual({ addedNodes: 1, addedEdges: 1, mergedEdges: 0 });
   });
 
-  it("does not draw a second edge for a pair already present — merges collaborations instead", () => {
+  it("does not draw a second edge for a pair already present — merges the verdicts instead", () => {
     State.graphNodes = [
       buildNodeState({ id: 1, name: "Seed" }, 1, new Set()),
       buildNodeState({ id: 2, name: "Existing" }, 1, new Set()),
@@ -393,29 +395,22 @@ describe("[SF-YM-03] mergeDeepenResult", () => {
         to: 2,
         weight: 1,
         dominant_role: "writer",
-        collaborations: [{ song: "Track A", popularity: 10, roles: ["writer"] }],
       }),
     ];
 
     const result = mergeDeepenResult({
       seed_id: 1,
       nodes: [{ id: 2, name: "Existing" }],
-      edges: [
-        {
-          from: 2,
-          to: 1,
-          dominant_role: "producer",
-          collaborations: [{ song: "", popularity: 0, roles: ["producer"] }],
-        },
-      ],
+      edges: [{ from: 2, to: 1, dominant_role: "producer" }],
     });
 
     expect(State.graphEdges).toHaveLength(1);
     expect(result).toEqual({ addedNodes: 0, addedEdges: 0, mergedEdges: 1 });
 
-    const merged = State.graphEdges[0];
-    expect(merged.collaborations).toHaveLength(2);
-    expect(merged.dominantRole).toBe("producer");
+    // [SF-API-23] Склеивать списки треков больше не нужно — их у рёбер нет.
+    // Сливается ровно то, ради чего слияние и было: два вердикта сервера о
+    // роли, из которых клиент выбирает сильнейший.
+    expect(State.graphEdges[0].dominantRole).toBe("producer");
   });
 
   it("does not add a node that already exists", () => {
@@ -454,113 +449,10 @@ describe("[SF-YM-03] mergeDeepenResult", () => {
   });
 });
 
-describe("computeNodeDominantRoles", () => {
-  it("always assigns 'featured' to the seed node", () => {
-    State.graphNodes = [{ id: 1, isSeed: true }];
-    State.graphEdges = [{ from: 1, to: 2, dominantRole: "writer", weight: 9 }];
-    computeNodeDominantRoles();
-    expect(State.graphNodes[0]._dominantRole).toBe("featured");
-  });
-
-  it("assigns the role with the highest accumulated weight to non-seed nodes", () => {
-    State.graphNodes = [{ id: 10, isSeed: false }];
-    State.graphEdges = [
-      { from: 10, to: 20, dominantRole: "producer", weight: 5 },
-      { from: 10, to: 30, dominantRole: "writer", weight: 2 },
-    ];
-    computeNodeDominantRoles();
-    expect(State.graphNodes[0]._dominantRole).toBe("producer");
-  });
-
-  it("defaults to 'primary' for a node with no incident edges", () => {
-    State.graphNodes = [{ id: 99, isSeed: false }];
-    State.graphEdges = [];
-    computeNodeDominantRoles();
-    expect(State.graphNodes[0]._dominantRole).toBe("primary");
-  });
-});
-
 describe("cacheNodeCollaborations", () => {
-  // [SF-WEB-77] Список приходит уже отсортированным (graph_handler.cpp,
-  // stable_sort по popularity) — клиент его не переупорядочивает, только
-  // берёт первые пять.
-  it("keeps the server's order of a single edge's collaborations, capped at 5", () => {
-    State.graphNodes = [{ id: 1, isSeed: false }];
-    State.graphEdges = [
-      {
-        from: 1,
-        to: 2,
-        weight: 1,
-        collaborations: [
-          { song: "High", popularity: 9000 },
-          { song: "Mid", popularity: 500 },
-          { song: "Low", popularity: 10 },
-          { song: "C1", popularity: 1 },
-          { song: "C2", popularity: 0 },
-          { song: "C3", popularity: 0 },
-        ],
-      },
-    ];
-    cacheNodeCollaborations();
-    const node = State.graphNodes[0];
-    expect(node._topTracks).toHaveLength(5);
-    expect(node._topTracks.map((t) => t.song)).toEqual(["High", "Mid", "Low", "C1", "C2"]);
-  });
-
-  it("preserves incidence order for equal popularity (stable sort), including when the field is absent", () => {
-    State.graphNodes = [{ id: 1, isSeed: false }];
-    State.graphEdges = [
-      {
-        from: 1,
-        to: 2,
-        weight: 1,
-        collaborations: [
-          { song: "Low" },
-          { song: "High" },
-          { song: "Mid" },
-          { song: "C1" },
-          { song: "C2" },
-          { song: "C3" },
-        ],
-      },
-    ];
-    cacheNodeCollaborations();
-    const node = State.graphNodes[0];
-    expect(node._topTracks).toHaveLength(5);
-    expect(node._topTracks.map((t) => t.song)).toEqual(["Low", "High", "Mid", "C1", "C2"]);
-  });
-
-  // [SF-WEB-77] Набор ролей узла больше не собирается из рёбер — он приходит
-  // с узлом (см. тест buildNodeState ниже), и cacheNodeCollaborations его не
-  // трогает: пересчитывать нечего.
-  it("merges collaborations of several edges without re-sorting them", () => {
-    State.graphNodes = [{ id: 1, isSeed: false }];
-    State.graphEdges = [
-      {
-        from: 1,
-        to: 2,
-        weight: 1,
-        collaborations: [
-          { song: "A", popularity: 900 },
-          { song: "B", popularity: 100 },
-        ],
-      },
-      {
-        from: 3,
-        to: 1,
-        weight: 1,
-        collaborations: [
-          { song: "C", popularity: 500 },
-          { song: "D", popularity: 50 },
-        ],
-      },
-    ];
-
-    cacheNodeCollaborations();
-
-    expect(State.graphNodes[0]._topTracks.map((t) => t.song)).toEqual(["A", "C", "B", "D"]);
-  });
-
+  // [SF-API-23] Пятёрку заметных треков узла считает сервер и присылает в
+  // top_tracks: собирать её из рёбер больше не из чего — списка треков у них
+  // нет. Здесь осталась только сумма по счётчикам.
   it("sums _totalCollabs using collaboration_count, falling back to weight", () => {
     State.graphNodes = [{ id: 1, isSeed: false }];
     State.graphEdges = [
@@ -568,17 +460,28 @@ describe("cacheNodeCollaborations", () => {
       { from: 1, to: 3, weight: 2 },
       { from: 1, to: 4 },
     ];
+
     cacheNodeCollaborations();
+
     expect(State.graphNodes[0]._totalCollabs).toBe(4 + 2 + 1);
   });
 
-  it("gives a node with no incident edges empty stats", () => {
+  it("gives a node with no incident edges a zero count, not undefined", () => {
     State.graphNodes = [{ id: 42, isSeed: false }];
     State.graphEdges = [];
+
     cacheNodeCollaborations();
-    const node = State.graphNodes[0];
-    expect(node._topTracks).toEqual([]);
-    expect(node._totalCollabs).toBe(0);
+
+    expect(State.graphNodes[0]._totalCollabs).toBe(0);
+  });
+
+  it("does not touch the server's top_tracks", () => {
+    State.graphNodes = [{ id: 1, isSeed: false, _topTracks: [{ song: "From the server" }] }];
+    State.graphEdges = [{ from: 1, to: 2, weight: 1 }];
+
+    cacheNodeCollaborations();
+
+    expect(State.graphNodes[0]._topTracks).toEqual([{ song: "From the server" }]);
   });
 });
 
@@ -640,83 +543,6 @@ describe("computeNodeDominantRoles", () => {
 
     expect(() => computeNodeDominantRoles()).not.toThrow();
     expect(State.graphNodes[1]._dominantRole).toBe("writer");
-  });
-});
-
-describe("cacheNodeCollaborations", () => {
-  beforeEach(() => {
-    State.graphNodes = [
-      { id: 1, name: "Alpha" },
-      { id: 2, name: "Beta" },
-    ];
-  });
-
-  it("collects the tracks on every incident edge", () => {
-    State.graphEdges = [
-      {
-        from: 1,
-        to: 2,
-        weight: 2,
-        collaborations: [
-          { song: "A", roles: ["featured"] },
-          { song: "B", roles: ["writer"] },
-        ],
-      },
-    ];
-
-    cacheNodeCollaborations();
-
-    expect(State.graphNodes[0]._topTracks.map((t) => t.song).sort()).toEqual(["A", "B"]);
-  });
-
-  it("keeps at most five tracks per node", () => {
-    State.graphEdges = [
-      {
-        from: 1,
-        to: 2,
-        weight: 9,
-        collaborations: Array.from({ length: 9 }, (_, i) => ({ song: `S${i}`, roles: [] })),
-      },
-    ];
-
-    cacheNodeCollaborations();
-
-    expect(State.graphNodes[0]._topTracks).toHaveLength(5);
-  });
-
-  it("prefers the backend's collaboration count over the raw weight", () => {
-    State.graphEdges = [{ from: 1, to: 2, weight: 2, collaboration_count: 7 }];
-
-    cacheNodeCollaborations();
-
-    expect(State.graphNodes[0]._totalCollabs).toBe(7);
-  });
-
-  it("falls back to the weight, then to one, when no count is given", () => {
-    State.graphEdges = [
-      { from: 1, to: 2, weight: 3 },
-      { from: 2, to: 1 },
-    ];
-
-    cacheNodeCollaborations();
-
-    expect(State.graphNodes[0]._totalCollabs).toBe(4);
-  });
-
-  it("leaves an isolated node with empty caches, not undefined ones", () => {
-    State.graphEdges = [];
-
-    cacheNodeCollaborations();
-
-    expect(State.graphNodes[0]._topTracks).toEqual([]);
-    expect(State.graphNodes[0]._totalCollabs).toBe(0);
-  });
-
-  it("tolerates an edge with no collaborations array", () => {
-    State.graphEdges = [{ from: 1, to: 2, weight: 1 }];
-
-    expect(() => cacheNodeCollaborations()).not.toThrow();
-    expect(State.graphNodes[0]._topTracks).toEqual([]);
   });
 });
 

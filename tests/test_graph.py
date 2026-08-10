@@ -5,6 +5,7 @@ import time
 import uuid
 from pathlib import Path
 
+import pytest
 import requests
 from conftest import SERVICE_BASE, TEST_APP_SECRET, GeniusMock, _build_song_detail
 
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import session_crypto  # noqa: E402
 
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
+EDGE_URL = f"{SERVICE_BASE}/api/v1/graph/edge"
 SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
 
 _REQUIRED_FIELDS = {"type", "nodes", "edges"}
@@ -616,17 +618,17 @@ class TestGraphServesDerivedValues:
                 ),
             )
 
-        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+        client.get(GRAPH_URL, params={"id": str(seed_id)})
+        detail = client.get(EDGE_URL, params={"from": str(seed_id), "to": str(collab_id)}).json()
 
-        edge = next(e for e in data["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
-        popularities = [c["popularity"] for c in edge["collaborations"]]
+        popularities = [c["popularity"] for c in detail["collaborations"]]
         assert popularities == sorted(popularities, reverse=True), (
             f"коллаборации пришли неотсортированными: {popularities}"
         )
-        assert [c["song"] for c in edge["collaborations"]] == ["Loudest", "Middle", "Quiet"]
+        assert [c["song"] for c in detail["collaborations"]] == ["Loudest", "Middle", "Quiet"]
 
 
-class TestGraphCollaborationPopularity:
+class TestGraphEdgeDetailPopularity:
     def test_collaboration_carries_popularity_field(
         self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
     ):
@@ -647,10 +649,11 @@ class TestGraphCollaborationPopularity:
             ),
         )
 
-        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
-        edge = next(e for e in data["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
-        assert edge["collaborations"], "expected at least one collaboration entry"
-        collab = edge["collaborations"][0]
+        client.get(GRAPH_URL, params={"id": str(seed_id)})
+        detail = client.get(EDGE_URL, params={"from": str(seed_id), "to": str(collab_id)}).json()
+
+        assert detail["collaborations"], "expected at least one collaboration entry"
+        collab = detail["collaborations"][0]
         assert "popularity" in collab
         assert collab["popularity"] == 98765
 
@@ -673,10 +676,10 @@ class TestGraphCollaborationPopularity:
             ),
         )
 
-        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
-        edge = next(e for e in data["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
-        collab = edge["collaborations"][0]
-        assert collab["popularity"] == 0
+        client.get(GRAPH_URL, params={"id": str(seed_id)})
+        detail = client.get(EDGE_URL, params={"from": str(seed_id), "to": str(collab_id)}).json()
+
+        assert detail["collaborations"][0]["popularity"] == 0
 
 
 class TestGraphTruncationIndicator:
@@ -961,3 +964,139 @@ class TestGraphCachedArtistServedWithoutGeniusToken:
 
         assert resp.status_code == 422
         assert resp.json().get("error") == "no_genius_token"
+
+
+# ── [SF-API-23] Детали ребра — по требованию ────────────────────────────────
+#
+# Ответ графа нёс полный список совместных треков на КАЖДОМ ребре, а за сессию
+# пользователь раскрывает одно-два. Список уехал в отдельную ручку; здесь
+# проверяется, что уехал целиком и что в графе на его месте остался агрегат.
+
+
+class TestGraphEdgeCarriesOnlyTheAggregate:
+    def _seed_pair(self, genius_mock: GeniusMock, seed_id: int, collab_id: int) -> None:
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "AggArtist"})
+        songs = [
+            (seed_id * 10 + 1, "Quiet One", 10),
+            (seed_id * 10 + 2, "Loud One", 9000),
+        ]
+        genius_mock.songs(seed_id, [sid for sid, _, _ in songs])
+        for sid, title, pop in songs:
+            genius_mock.song_detail(
+                sid,
+                _build_song_detail(
+                    sid,
+                    title,
+                    seed_id,
+                    "AggArtist",
+                    collaborators=[_collab(collab_id, "Collaborator")],
+                    popularity=pop,
+                ),
+            )
+
+    def test_no_edge_carries_a_track_list_any_more(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        self._seed_pair(genius_mock, seed_id, seed_id + 1)
+
+        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+
+        assert data["edges"], "граф без рёбер ничего не доказывает"
+        for edge in data["edges"]:
+            assert "collaborations" not in edge, f"ребро всё ещё несёт треки: {edge}"
+
+    def test_every_edge_still_says_how_many_tracks_there_are(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        collab_id = seed_id + 1
+        self._seed_pair(genius_mock, seed_id, collab_id)
+
+        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+
+        edge = next(e for e in data["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
+        assert edge["collaboration_count"] == 2
+        for field in ("weight", "dominant_role", "edge_style", "source"):
+            assert field in edge, f"пропал агрегат {field}: {edge}"
+
+    def test_the_endpoint_returns_exactly_what_the_graph_used_to_inline(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        """Единственный источник правды: и счётчик в графе, и список в ручке
+        считает один и тот же AggregateEdges. Разойтись им негде, и проверяется
+        это по содержимому — заголовки, популярность, роли и порядок."""
+        seed_id = unique_artist_id
+        collab_id = seed_id + 1
+        self._seed_pair(genius_mock, seed_id, collab_id)
+
+        graph = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+        edge = next(e for e in graph["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
+
+        detail = client.get(EDGE_URL, params={"from": str(seed_id), "to": str(collab_id)}).json()
+
+        assert detail["type"] == "graph_edge"
+        assert detail["collaboration_count"] == edge["collaboration_count"]
+        assert detail["dominant_role"] == edge["dominant_role"]
+        assert len(detail["collaborations"]) == edge["collaboration_count"]
+        assert [c["song"] for c in detail["collaborations"]] == ["Loud One", "Quiet One"]
+        assert [c["popularity"] for c in detail["collaborations"]] == [9000, 10]
+        for collab in detail["collaborations"]:
+            assert collab["roles"], f"у трека пропали роли: {collab}"
+
+    def test_node_keeps_a_short_track_list_so_the_artist_panel_still_has_one(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        """Плитку треков в панели артиста собирал клиент — из списков всех
+        входящих рёбер. Списков больше нет, поэтому пятёрка приходит на узле:
+        это агрегат, а не возврат к «всё сразу»."""
+        seed_id = unique_artist_id
+        self._seed_pair(genius_mock, seed_id, seed_id + 1)
+
+        data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+
+        seed = next(n for n in data["nodes"] if n["id"] == seed_id)
+        assert [c["song"] for c in seed["top_tracks"]] == ["Loud One", "Quiet One"]
+        assert len(seed["top_tracks"]) <= 5
+
+
+class TestGraphEdgeEndpointGuards:
+    def test_anonymous_is_unauthorized(self, anon_client: requests.Session):
+        resp = anon_client.get(EDGE_URL, params={"from": "1", "to": "2"})
+
+        assert resp.status_code == 401
+        assert resp.json().get("error") == "not_authenticated"
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {},
+            {"from": "1"},
+            {"to": "2"},
+            {"from": "abc", "to": "2"},
+            {"from": "1", "to": "1"},
+        ],
+    )
+    def test_bad_endpoints_are_rejected_before_any_lookup(
+        self, client: requests.Session, params: dict
+    ):
+        resp = client.get(EDGE_URL, params=params)
+
+        assert resp.status_code == 400
+        assert "error" in resp.json()
+
+    def test_a_pair_with_no_edge_between_them_is_404(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "LonelyArtist"})
+        genius_mock.songs(seed_id, [seed_id * 10 + 1])
+        genius_mock.song_detail(
+            seed_id * 10 + 1,
+            _build_song_detail(seed_id * 10 + 1, "Solo", seed_id, "LonelyArtist"),
+        )
+        client.get(GRAPH_URL, params={"id": str(seed_id)})
+
+        resp = client.get(EDGE_URL, params={"from": str(seed_id), "to": str(seed_id + 777)})
+
+        assert resp.status_code == 404

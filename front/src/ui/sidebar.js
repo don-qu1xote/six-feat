@@ -14,6 +14,8 @@ import { searchArtist, deepenArtistConnections } from "../api/api.js";
 import { showToast } from "./toast.js";
 import { closeComparePanel } from "./compare-panel.js";
 import { t, tPlural } from "../i18n/i18n.js";
+import { fetchEdgeDetails } from "../api/analytics-client.js";
+import { renderLoadingState, renderErrorState } from "./canvas-states.js";
 
 function wrapRoleIconSidebar(roleIconUseString) {
   return `<svg class="role-icon" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">${roleIconUseString}</svg>`;
@@ -54,9 +56,13 @@ function buildRoleBreakdownHTML(nodeId) {
   return buildRoleChipsHTML(computeRoleBreakdown(nodeId));
 }
 
-function computeEdgeRoleBreakdown(edge) {
+// [SF-API-23] Раскладка по ролям считается из того, что уже пришло с ребром,
+// или из подгруженных треков, если панель их успела получить. Ждать сети ради
+// одной плитки незачем: у ребра есть доминирующая роль и число треков, а это
+// ровно то, что раскладка и показывала, пока треки не загрузились.
+function computeEdgeRoleBreakdown(edge, collaborations) {
   const breakdown = {};
-  const collabs = edge.collaborations || [];
+  const collabs = collaborations || [];
   if (collabs.length) {
     collabs.forEach((c) => {
       (c.roles || []).forEach((r) => {
@@ -68,12 +74,12 @@ function computeEdgeRoleBreakdown(edge) {
   }
   const songs = edge.songs || [];
   const role = (edge.dominantRole || "featured").toLowerCase();
-  breakdown[role] = songs.length || edge.weight || 0;
+  breakdown[role] = songs.length || edge.collaboration_count || edge.weight || 0;
   return breakdown;
 }
 
-function buildEdgeRoleBreakdownHTML(edge) {
-  return buildRoleChipsHTML(computeEdgeRoleBreakdown(edge));
+function buildEdgeRoleBreakdownHTML(edge, collaborations) {
+  return buildRoleChipsHTML(computeEdgeRoleBreakdown(edge, collaborations));
 }
 
 function buildEdgeEndpointsHTML(edge, nameById) {
@@ -292,10 +298,10 @@ export function showEdgeSidebar(edgeId, nameById) {
   els.sidebarName.textContent = `${fromName} × ${toName}`;
   els.sidebarMeta.innerHTML = `${escapeHtml(tPlural("tooltip.sharedTracks", edge.weight))} · <span title="${escapeHtml(role)}">${icon}</span>`;
 
-  const collabs = edge.collaborations || [];
   const songs = edge.songs || [];
   const roleSlug = role.toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (collabs.length) {
+
+  const renderCollaborations = (collabs) => {
     els.sidebarTracks.innerHTML = collabs
       .map((c) => {
         const roles = c.roles || [];
@@ -312,7 +318,11 @@ export function showEdgeSidebar(edgeId, nameById) {
       </div>`;
       })
       .join("");
-  } else if (songs.length) {
+  };
+
+  if (songs.length) {
+    // Ответ поиска пути несёт треки на рёбрах осознанно (SF-API-23 их там не
+    // трогает) — значит спрашивать сервер не о чем.
     els.sidebarTracks.innerHTML = songs
       .map(
         (title) => `
@@ -323,7 +333,35 @@ export function showEdgeSidebar(edgeId, nameById) {
       )
       .join("");
   } else {
-    els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">${escapeHtml(t("tooltip.noTracks"))}</div>`;
+    // [SF-API-23] Ребро графа списка треков не несёт — запрашиваем его на
+    // раскрытии. Спиннер и ошибка — общие состояния SF-WEB-19, а не свои:
+    // панель ничем не особеннее остальных.
+    const requestedEdgeId = edge.id;
+    renderLoadingState(els.sidebarTracks, t("sidebar.loadingTracks"));
+
+    fetchEdgeDetails(edge.from, edge.to)
+      .then((result) => {
+        // Пока ходили в сеть, пользователь мог открыть другое ребро.
+        if (State.selectedEdgeId !== requestedEdgeId) return;
+        if (result.error) {
+          renderErrorState(els.sidebarTracks, t("sidebar.tracksFailed"), () =>
+            showEdgeSidebar(requestedEdgeId, nameById),
+          );
+          return;
+        }
+        if (!result.collaborations.length) {
+          els.sidebarTracks.innerHTML = `<div style="color:var(--mist);font-size:12px;">${escapeHtml(t("tooltip.noTracks"))}</div>`;
+          return;
+        }
+        renderCollaborations(result.collaborations);
+        els.sidebarRoleChips.innerHTML = buildEdgeRoleBreakdownHTML(edge, result.collaborations);
+      })
+      .catch(() => {
+        if (State.selectedEdgeId !== requestedEdgeId) return;
+        renderErrorState(els.sidebarTracks, t("sidebar.tracksFailed"), () =>
+          showEdgeSidebar(requestedEdgeId, nameById),
+        );
+      });
   }
 
   els.sidebarPathTile.style.display = "none";

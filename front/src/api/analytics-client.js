@@ -80,6 +80,52 @@ export async function fetchPathBetween(fromId, toId, { signal } = {}) {
   return result;
 }
 
+// [SF-API-23] Совместные треки одного ребра — по требованию.
+// Ответ графа их больше не несёт: за сессию пользователь раскрывает одно-два
+// ребра из полусотни, а разбирал JSON и держал в памяти все. Роли уходят в
+// запрос и в ключ кэша по той же причине, что и у путей: с другим фильтром
+// это другой вопрос, а не тот же.
+function edgeCacheKey(fromId, toId) {
+  const lo = Math.min(fromId, toId);
+  const hi = Math.max(fromId, toId);
+  const roles = [...State.activeFilters].sort().join(",");
+  return `${lo}_${hi}_${roles}`;
+}
+
+export async function fetchEdgeDetails(fromId, toId, { signal } = {}) {
+  if (!State._edgeCache) State._edgeCache = new Map();
+  const key = edgeCacheKey(fromId, toId);
+  const cached = State._edgeCache.get(key);
+  if (cached) return cached;
+
+  const roles = [...State.activeFilters].join(",");
+  const url =
+    `/api/v1/graph/edge?from=${encodeURIComponent(fromId)}&to=${encodeURIComponent(toId)}` +
+    `&roles=${encodeURIComponent(roles)}`;
+
+  const res = await apiFetch(url, { signal });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {}
+
+  if (!res.ok || !data || data.error) {
+    const result = {
+      collaborations: [],
+      error: data?.error || `http_${res.status}`,
+    };
+    // Кэшируется только устойчивый ответ: 401/422/5xx пользователь ещё может
+    // исправить, а «такого ребра нет» — уже ответ.
+    const recoverable = isTransientStatus(res.status) || res.status === 401 || res.status === 422;
+    if (!recoverable) State._edgeCache.set(key, result);
+    return result;
+  }
+
+  const result = { collaborations: data.collaborations || [], error: null };
+  State._edgeCache.set(key, result);
+  return result;
+}
+
 export function clearPathHighlight() {
   if (!State.pathHighlight || !State.nodesDS) {
     setPathHighlight(null);

@@ -248,7 +248,10 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
     edge_dto.dominant_role = agg.dominant_role;
     edge_dto.edge_style = std::string{EdgeStyleForRole(agg.dominant_role)};
     edge_dto.source = agg.source;
-    edge_dto.collaborations.push_back({"", 0, agg.roles});
+    // [SF-API-23] Раньше сюда клали одну запись с пустым названием трека —
+    // способ протащить роли ребра через поле collaborations. Поля больше нет,
+    // и подпорка вместе с ним: роли узла уходят выше в nb["roles"], а треки
+    // ребра клиент берёт у /api/v1/graph/edge, когда раскроет его.
     edges_b.PushBack(dto::ToJson(edge_dto));
   }
 

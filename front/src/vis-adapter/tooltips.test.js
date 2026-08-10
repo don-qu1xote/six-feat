@@ -74,57 +74,49 @@ describe("buildEdgeTooltip", () => {
     expect(el.querySelector(".tt-head").textContent).toContain("?");
   });
 
-  it("lists each shared track", () => {
-    const el = buildEdgeTooltip(
-      edge({
-        collaborations: [
-          { song: "Way 2 Sexy", roles: ["featured"] },
-          { song: "Life Is Good", roles: ["featured", "writer"] },
-        ],
-      }),
-      names,
-    );
+  // [SF-API-23] Наведение показывает сводку, а не список треков: списка у
+  // ребра больше нет, а тянуть его на каждое наведение — ровно то, от чего
+  // уходили. Треки остаются только там, где их и так прислали: на рёбрах пути.
+  it("summarises the edge by its shared-track count when there is no song list", () => {
+    const el = buildEdgeTooltip(edge({ weight: 3, collaboration_count: 7 }), names);
+
+    expect(el.querySelector(".tt-song").textContent).toContain("7");
+    expect(el.querySelectorAll(".tt-song")).toHaveLength(1);
+  });
+
+  it("falls back to the weight when the count is absent", () => {
+    const el = buildEdgeTooltip(edge({ weight: 4 }), names);
+
+    expect(el.querySelector(".tt-song").textContent).toContain("4");
+  });
+
+  it("lists the songs a path answer carried, in order", () => {
+    const el = buildEdgeTooltip(edge({ songs: ["Way 2 Sexy", { song: "Life Is Good" }] }), names);
 
     const songs = [...el.querySelectorAll(".tt-song")].map((n) => n.textContent);
     expect(songs).toEqual(["Way 2 Sexy", "Life Is Good"]);
   });
 
-  it("renders one role pill per credited role on a track", () => {
-    const el = buildEdgeTooltip(
-      edge({ collaborations: [{ song: "Life Is Good", roles: ["featured", "writer"] }] }),
-      names,
-    );
-    expect(el.querySelectorAll(".tt-role")).toHaveLength(2);
-  });
+  it("names an untitled path track rather than leaving the row blank", () => {
+    const el = buildEdgeTooltip(edge({ songs: [{}] }), names);
 
-  it("names an untitled track rather than leaving the row blank", () => {
-    const el = buildEdgeTooltip(edge({ collaborations: [{ roles: ["featured"] }] }), names);
     expect(el.querySelector(".tt-song").textContent.trim()).not.toBe("");
   });
 
-  it("says so explicitly when no track list came back", () => {
-    expect(buildEdgeTooltip(edge(), names).querySelector(".tt-empty")).not.toBeNull();
+  it("treats a malformed songs payload as no list, and still summarises", () => {
+    const el = buildEdgeTooltip(edge({ songs: "nope", weight: 2 }), names);
+
+    expect(el.querySelector(".tt-song").textContent).toContain("2");
   });
 
-  it("treats a malformed collaborations payload as no tracks, not a crash", () => {
-    const el = buildEdgeTooltip(edge({ collaborations: "nope" }), names);
-    expect(el.querySelector(".tt-empty")).not.toBeNull();
-  });
+  it("escapes a role before it reaches a class name or a title", () => {
+    // Плиток по трекам в подсказке больше нет (SF-API-23), но роль ребра
+    // по-прежнему попадает и в class, и в title — и по-прежнему из данных.
+    const el = buildEdgeTooltip(edge({ dominantRole: 'x" onmouseover="boom' }), names);
 
-  it("tolerates a track whose roles field is not a list", () => {
-    const el = buildEdgeTooltip(edge({ collaborations: [{ song: "X", roles: null }] }), names);
-    expect(el.querySelector(".tt-song").textContent).toBe("X");
-    expect(el.querySelectorAll(".tt-role")).toHaveLength(0);
-  });
-
-  it("slugifies a role so it can only ever produce a safe class name", () => {
-    const el = buildEdgeTooltip(
-      edge({ collaborations: [{ song: "X", roles: ["Co-Producer!"] }] }),
-      names,
-    );
-    const pill = el.querySelector(".tt-role");
-    expect(pill.className).toBe("tt-role tt-role--coproducer");
-    expect(pill.getAttribute("title")).toBe("Co-Producer!");
+    const badge = el.querySelector(".tt-role-badge");
+    expect(badge.getAttribute("onmouseover")).toBeNull();
+    expect(badge.getAttribute("title")).toBe('x" onmouseover="boom');
   });
 
   it("defaults an edge with no dominant role to primary", () => {
