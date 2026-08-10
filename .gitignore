@@ -12,7 +12,7 @@ htmlcov/
 front/coverage/
 front/node_modules/
 front/dist/
-/loadtest/.output/
+/loadtest/output/
 .DS_Store
 # [SF-CI-07] Оверрайд docker-compose, генерируемый scripts/cd_deploy.sh при деплое —
 # всегда результат генерации, никогда не авторский файл.

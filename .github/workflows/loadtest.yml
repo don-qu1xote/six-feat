@@ -112,7 +112,7 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          for f in loadtest/.output/*-summary.txt; do
+          for f in loadtest/output/*-summary.txt; do
             {
               echo '```'
               cat "$f"
@@ -125,5 +125,5 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: k6-loadtest-summary
-          path: loadtest/.output/
+          path: loadtest/output/
           retention-days: 14

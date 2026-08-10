@@ -66,5 +66,5 @@ export default function () {
 }
 
 export function handleSummary(data) {
-  return summaryHandler("graph warm-cache", "loadtest/.output/graph_warm")(data);
+  return summaryHandler("graph warm-cache", "loadtest/output/graph_warm")(data);
 }

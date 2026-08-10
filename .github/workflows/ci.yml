@@ -94,6 +94,11 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
+      # header-filter сужен до наших каталогов намеренно: вендоренный
+      # libs/six-feat-image/vendor/stb_image.h тоже подходит под «six-feat-» и
+      # заваливал отчёт тысячами замечаний к чужому коду. Отсечь его отдельным
+      # --exclude-header-filter нельзя — этот флаг появился только в clang-tidy 19,
+      # а здесь закреплён 18.1.8.
       - name: Run clang-tidy
         shell: bash
         run: |
@@ -101,8 +106,7 @@ jobs:
           find libs/six-feat-*/src services/six-feat/src -name '*.cpp' | xargs -r \
             clang-tidy -p build \
               --checks='-*,readability-identifier-naming,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
-              --header-filter='six-feat-|services/six-feat' \
-              --exclude-header-filter='/vendor/' \
+              --header-filter='six-feat-[^/]*/(include|src)/|services/six-feat' \
             2>&1 | tee clang-tidy-report.txt
 
       - name: Run clang-tidy (game)
@@ -112,8 +116,7 @@ jobs:
           find services/game -name '*.cpp' | xargs -r \
             clang-tidy -p build-game \
               --checks='-*,readability-identifier-naming,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
-              --header-filter='six-feat-|services/game' \
-              --exclude-header-filter='/vendor/' \
+              --header-filter='six-feat-[^/]*/(include|src)/|services/game' \
             2>&1 | tee -a clang-tidy-report.txt
 
       - name: Check clang-tidy report
@@ -1142,7 +1145,7 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          for f in loadtest/.output/*-summary.txt; do
+          for f in loadtest/output/*-summary.txt; do
             {
               echo '```'
               cat "$f"
@@ -1155,7 +1158,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: k6-summary
-          path: loadtest/.output/
+          path: loadtest/output/
           retention-days: 14
 
   sbom:

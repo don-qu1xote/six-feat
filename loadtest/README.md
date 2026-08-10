@@ -104,7 +104,7 @@ SEARCH_QUERIES="Drake,Kendrick,SZA,Travis Scott" \
 
 ## Output
 
-Every scenario writes `loadtest/.output/<scenario>-summary.{json,txt}`
+Every scenario writes `loadtest/output/<scenario>-summary.{json,txt}`
 (gitignored) via a shared `handleSummary()` (`lib/summary.js`) — the
 `.txt` is a short human-readable digest (iteration count, avg/p95
 duration, error rate, threshold pass/fail); the `.json` is k6's full
@@ -146,6 +146,6 @@ Two separate CI consumers of this harness, deliberately not merged (see
   never-blocking check outside the PR path — useful if load-test above
   ever gets flipped to advisory, or just as a second nightly data point.
 
-Both upload `loadtest/.output/` as a build artifact regardless of outcome
+Both upload `loadtest/output/` as a build artifact regardless of outcome
 (`k6-loadtest-ci-summary` from ci.yml, `k6-loadtest-summary` from
 loadtest.yml) and publish the same summary to the job's step summary.

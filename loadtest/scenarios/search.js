@@ -55,5 +55,5 @@ export default function () {
 }
 
 export function handleSummary(data) {
-  return summaryHandler("search", "loadtest/.output/search")(data);
+  return summaryHandler("search", "loadtest/output/search")(data);
 }
