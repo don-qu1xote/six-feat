@@ -102,6 +102,7 @@ jobs:
             clang-tidy -p build \
               --checks='-*,readability-identifier-naming,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
               --header-filter='six-feat-|services/six-feat' \
+              --exclude-header-filter='/vendor/' \
             2>&1 | tee clang-tidy-report.txt
 
       - name: Run clang-tidy (game)
@@ -112,6 +113,7 @@ jobs:
             clang-tidy -p build-game \
               --checks='-*,readability-identifier-naming,bugprone-*,performance-*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers,-cppcoreguidelines-pro-bounds-pointer-arithmetic,-cppcoreguidelines-non-private-member-variables-in-classes,-cppcoreguidelines-pro-type-reinterpret-cast,-cppcoreguidelines-pro-type-const-cast,-cppcoreguidelines-special-member-functions,-cppcoreguidelines-pro-bounds-constant-array-index,-cppcoreguidelines-pro-type-vararg,-cppcoreguidelines-avoid-non-const-global-variables,-bugprone-easily-swappable-parameters' \
               --header-filter='six-feat-|services/game' \
+              --exclude-header-filter='/vendor/' \
             2>&1 | tee -a clang-tidy-report.txt
 
       - name: Check clang-tidy report
