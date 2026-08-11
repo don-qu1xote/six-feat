@@ -10,14 +10,13 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <six-feat-image/dominant_color.hpp>
+#include <six-feat-layout/contours.hpp>
+#include <six-feat-layout/layout.hpp>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <six-feat-image/dominant_color.hpp>
-#include <six-feat-layout/contours.hpp>
-#include <six-feat-layout/layout.hpp>
 
 namespace {
 
@@ -221,8 +220,8 @@ std::int32_t sf_resolve_collisions(const std::int64_t* order,
     extra.emplace_back(extra_ids[i], Point{extra_xy[2 * i], extra_xy[2 * i + 1]});
   }
 
-  six_feat::layout::ResolveCollisions(order_vec, targets, pinned_vec, extra, nullptr,
-                                      MakeParams(node_radius, node_gap));
+  six_feat::layout::ResolveCollisions(
+      order_vec, targets, pinned_vec, extra, nullptr, MakeParams(node_radius, node_gap));
 
   for (std::int32_t i = 0; i < order_count; ++i) {
     const auto it = targets.find(order[i]);
@@ -234,5 +233,4 @@ std::int32_t sf_resolve_collisions(const std::int64_t* order,
   }
   return static_cast<std::int32_t>(targets.size());
 }
-
 }
