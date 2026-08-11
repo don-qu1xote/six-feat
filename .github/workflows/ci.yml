@@ -41,7 +41,7 @@ jobs:
     name: "Config validation (env parity + profiles dev/staging/prod)"
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Run verify-env-parity.py
         run: python3 scripts/verify-env-parity.py
@@ -59,7 +59,7 @@ jobs:
       frontend: ${{ steps.changes.outputs.frontend }}
       docker: ${{ steps.changes.outputs.docker }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 2
 
@@ -78,7 +78,7 @@ jobs:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev
@@ -146,7 +146,7 @@ jobs:
     needs: detect-changes
     if: contains(needs.detect-changes.outputs.lint, 'eslint')
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           node-version: "20"
@@ -165,7 +165,7 @@ jobs:
     needs: detect-changes
     if: contains(needs.detect-changes.outputs.lint, 'format')
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: python3-pip python3-venv
@@ -203,7 +203,7 @@ jobs:
     needs: detect-changes
     if: contains(needs.detect-changes.outputs.lint, 'yaml')
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install PyYAML
         run: pip install --user pyyaml
       - name: Verify YAML anchors
@@ -217,7 +217,7 @@ jobs:
     env:
       PROMETHEUS_VERSION: "3.9.1"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install promtool
         run: |
           curl -fsSL -o /tmp/prometheus.tar.gz \
@@ -238,7 +238,7 @@ jobs:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
@@ -262,7 +262,7 @@ jobs:
     runs-on: ubuntu-22.04
     needs: detect-changes
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: build-essential python3 python3-pip python3-venv
@@ -308,7 +308,7 @@ jobs:
       DB_USER: six_feat
       DB_PASSWORD: six_feat_test_password
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
@@ -350,7 +350,7 @@ jobs:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev
@@ -379,7 +379,7 @@ jobs:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev
@@ -408,7 +408,7 @@ jobs:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev
@@ -437,7 +437,7 @@ jobs:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev
@@ -466,7 +466,7 @@ jobs:
       image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
       options: --user root
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev
@@ -518,7 +518,7 @@ jobs:
       DB_USER: six_feat
       DB_PASSWORD: six_feat_test_password
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
@@ -528,7 +528,7 @@ jobs:
         # v7 — под пару к upload-artifact v7.0.1 ниже. v5 всё ещё собран под
         # Node 20: раннеры печатают о нём предупреждение на каждом шаге и заодно
         # тащат свои DeprecationWarning про punycode и Buffer().
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -599,7 +599,7 @@ jobs:
       DB_USER: six_feat
       DB_PASSWORD: six_feat_test_password
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: python3 python3-pip python3-venv curl
@@ -640,14 +640,14 @@ jobs:
       DB_USER: six_feat
       DB_PASSWORD: six_feat_test_password
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -701,14 +701,14 @@ jobs:
       DB_USER: six_feat
       DB_PASSWORD: six_feat_test_password
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -761,14 +761,14 @@ jobs:
       DB_USER: six_feat
       DB_PASSWORD: six_feat_test_password
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -821,14 +821,14 @@ jobs:
       DB_USER: six_feat
       DB_PASSWORD: six_feat_test_password
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -858,7 +858,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           node-version: "20"
@@ -877,7 +877,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           node-version: "20"
@@ -904,7 +904,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           node-version: "20"
@@ -941,7 +941,7 @@ jobs:
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
@@ -1002,7 +1002,7 @@ jobs:
       DB_PASSWORD: six_feat_e2e_password
       E2E_ENV_FILE: /tmp/six_feat_e2e_env.json
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
@@ -1010,7 +1010,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -1092,7 +1092,7 @@ jobs:
       DB_PASSWORD: six_feat_ci_loadtest_password
       E2E_ENV_FILE: /tmp/six_feat_ci_loadtest_env.json
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup
         with:
           apt-packages: libssl-dev python3 python3-pip python3-venv curl
@@ -1100,7 +1100,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -1208,7 +1208,7 @@ jobs:
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
@@ -1275,13 +1275,13 @@ jobs:
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
       - name: Log in to GHCR
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -1305,7 +1305,7 @@ jobs:
 
       - name: Install cosign
         if: github.ref_type == 'tag'
-        uses: sigstore/cosign-installer@v3.7.0
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Sign image
         if: github.ref_type == 'tag'

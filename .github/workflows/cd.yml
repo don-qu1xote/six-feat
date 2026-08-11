@@ -120,7 +120,7 @@ jobs:
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
@@ -160,14 +160,14 @@ jobs:
           - name: six-feat-game
             dockerfile: services/game/Dockerfile
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
       - name: Log in to GHCR
         if: needs.config.outputs.is_dry_run != 'true'
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -233,7 +233,7 @@ jobs:
       dry_run: ${{ steps.target.outputs.dry_run }}
       base_url: ${{ steps.target.outputs.base_url }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Resolve staging target
         id: target
@@ -299,7 +299,7 @@ jobs:
     needs: [config, deploy-staging]
     if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Probe /readyz until ready (180s budget)
         if: needs.deploy-staging.outputs.dry_run != 'true'
@@ -317,7 +317,7 @@ jobs:
     needs: [config, deploy-staging, health-check-staging]
     if: needs.config.outputs.is_rollback != 'true' && needs.config.outputs.target != 'local'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Run smoke tests
         if: needs.deploy-staging.outputs.dry_run != 'true'
@@ -354,7 +354,7 @@ jobs:
       dry_run: ${{ steps.target.outputs.dry_run }}
       base_url: ${{ steps.target.outputs.base_url }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Resolve production target
         id: target
@@ -422,7 +422,7 @@ jobs:
     permissions:
       contents: write   # двигает last-good tag; без новых секретов, GITHUB_TOKEN
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Probe /readyz until ready (180s budget)
         if: needs.deploy-production.outputs.dry_run != 'true'
@@ -456,7 +456,7 @@ jobs:
       name: ${{ needs.config.outputs.is_dry_run == 'true' && 'production-dry-run' || 'production' }}
     steps:
       # Для разрешения LAST_GOOD_TAG нужен tag object — shallow checkout его не забирает
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
           fetch-tags: true
