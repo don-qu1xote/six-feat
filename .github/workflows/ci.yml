@@ -275,6 +275,7 @@ jobs:
         run: |
           /opt/testenv/bin/pytest \
             tests/test_layout_geometry.py \
+            tests/test_contours.py \
             tests/test_dominant_color.py \
             -v --tb=short
 

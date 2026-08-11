@@ -141,7 +141,10 @@ export function cachedLayout(request) {
   return State._layoutCache.get(layoutCacheKey(request)) || null;
 }
 
-// Возвращает Map(id -> {x, y}) или null, если раскладку получить не удалось.
+// Возвращает {positions: Map(id -> {x, y}), contours: [...]} или null, если
+// раскладку получить не удалось. [SF-API-22] Контуры едут вместе с позициями:
+// они из этих позиций и выведены, и отдельный запрос за ними означал бы
+// пересчитать раскладку второй раз ради тех же чисел.
 // Ошибка здесь не исключение: у вызывающего есть чем нарисовать граф и без
 // неё, и падать посреди раскрытия было бы хуже, чем разложить похуже.
 export async function fetchLayout(request, { signal } = {}) {
@@ -173,8 +176,9 @@ export async function fetchLayout(request, { signal } = {}) {
 
   const positions = new Map();
   for (const p of data.positions) positions.set(p.id, { x: p.x, y: p.y });
-  State._layoutCache.set(key, positions);
-  return positions;
+  const answer = { positions, contours: Array.isArray(data.contours) ? data.contours : [] };
+  State._layoutCache.set(key, answer);
+  return answer;
 }
 
 export function clearPathHighlight() {

@@ -223,11 +223,12 @@ describe("nudgePhysics — shorter live-physics settle window on large graphs", 
   });
 });
 
-const EXPAND_LAYOUT = new Map([
+const EXPAND_POSITIONS = new Map([
   [2, { x: 0, y: -520 }],
   [100, { x: -120, y: -660 }],
   [101, { x: 120, y: -660 }],
 ]);
+const EXPAND_LAYOUT = { positions: EXPAND_POSITIONS, contours: [] };
 
 describe("mergeNetwork — expand lands nodes exactly on targets, no live physics", () => {
   beforeEach(() => {
@@ -324,7 +325,7 @@ describe("mergeNetwork — expand lands nodes exactly on targets, no live physic
 
     // Ни одного await — узлы уже на местах.
     expect(cachedLayout).toHaveBeenCalledTimes(1);
-    for (const [id, pos] of EXPAND_LAYOUT) {
+    for (const [id, pos] of EXPAND_POSITIONS) {
       expect(landed.get(id), `node ${id} was not placed synchronously`).toEqual(pos);
     }
   });
@@ -384,7 +385,7 @@ describe("mergeNetwork — expand lands nodes exactly on targets, no live physic
   });
 
   it("lands every node on exactly the coordinate the layout answered with (no post-drift)", () => {
-    const expected = EXPAND_LAYOUT;
+    const expected = EXPAND_POSITIONS;
 
     const moveCalls = new Map();
     State.network.moveNode = vi.fn((id, x, y) => moveCalls.set(id, { x, y }));
@@ -529,7 +530,7 @@ describe("mergeNetwork — camera focuses on the just-expanded node's own new co
       [newLeaf, { x: 1050, y: 120 }],
     ]);
     cachedLayout.mockReset();
-    cachedLayout.mockReturnValue(targets);
+    cachedLayout.mockReturnValue({ positions: targets, contours: [] });
     const oldPos = targets.get(oldPole),
       newPos = targets.get(newPole);
     expect(Math.hypot(oldPos.x - newPos.x, oldPos.y - newPos.y)).toBeGreaterThan(100);
@@ -864,12 +865,13 @@ describe("mergeNetwork — раскрытие поверх неотвеченн�
   });
 
   it("закрепляет их, как только раскладка ответила и узлы встали", async () => {
-    fetchLayout.mockResolvedValue(
-      new Map([
+    fetchLayout.mockResolvedValue({
+      positions: new Map([
         [100, { x: 300, y: 40 }],
         [101, { x: 300, y: -40 }],
       ]),
-    );
+      contours: [],
+    });
     const positions = seedGraph();
 
     mergeNetwork({}, { 1: { x: 0, y: 0 }, 2: { x: 150, y: 0 } });
@@ -918,7 +920,7 @@ describe("mergeNetwork — раскрытие поверх неотвеченн�
     mergeNetwork({}, {});
     mergeNetwork({}, {});
 
-    resolveStale(new Map([[100, { x: 9999, y: 9999 }]]));
+    resolveStale({ positions: new Map([[100, { x: 9999, y: 9999 }]]), contours: [] });
     await Promise.resolve();
     await Promise.resolve();
 

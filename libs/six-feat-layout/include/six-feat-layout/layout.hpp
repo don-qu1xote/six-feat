@@ -1,16 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <six-feat-layout/geometry.hpp>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace six_feat::layout {
-
-struct Point {
-  double x{0.0};
-  double y{0.0};
-};
 
 struct LayoutParams {
   double node_radius{22.0};
@@ -39,6 +35,10 @@ struct LayoutRequest {
 struct LayoutResult {
   std::vector<std::int64_t> order;
   std::unordered_map<std::int64_t, Point> positions;
+
+  /// [SF-API-22] Контуры групп считаются здесь же, следом за координатами: они
+  /// из этих координат и выводятся, а клиенту остаётся их обвести.
+  std::vector<Contour> contours;
 };
 
 LayoutResult PlaceExpandedNodes(const LayoutRequest& request);

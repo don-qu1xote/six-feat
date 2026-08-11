@@ -112,9 +112,11 @@ class TestOnlyStructureIsNeeded:
 
     def test_no_artist_data_leaks_into_the_answer(self, client: requests.Session):
         body = client.post(LAYOUT_URL, json=_two_poles()).json()
-        assert set(body) == {"type", "positions"}
+        assert set(body) == {"type", "positions", "contours"}
         for p in body["positions"]:
             assert set(p) == {"id", "x", "y"}
+        for c in body["contours"]:
+            assert set(c) == {"hub", "points"}
 
     def test_a_genius_token_is_never_asked_for(self, client: requests.Session):
 
@@ -187,3 +189,78 @@ class TestBadRequests:
         r = client.post(LAYOUT_URL, json=request, timeout=15)
         assert r.status_code == 400
         assert "too many" in r.json()["error"]
+
+
+class TestContours:
+    """[SF-API-22] Контуры групп приезжают тем же ответом, что и координаты."""
+
+    def test_every_expanded_pole_gets_an_outline(self, client: requests.Session):
+        """Сид сюда не попадает: своих листьев у него нет, а группу из одного не обвести."""
+        body = client.post(LAYOUT_URL, json=_two_poles()).json()
+
+        assert {c["hub"] for c in body["contours"]} == {2, 3}
+
+    def test_a_seed_with_leaves_of_its_own_is_outlined_too(self, client: requests.Session):
+        body = client.post(LAYOUT_URL, json=_star(leaves=6)).json()
+
+        assert {c["hub"] for c in body["contours"]} == {1}
+
+    def test_an_outline_is_a_closed_shape_of_at_least_three_points(self, client: requests.Session):
+        body = client.post(LAYOUT_URL, json=_two_poles()).json()
+
+        assert body["contours"]
+        for contour in body["contours"]:
+            assert len(contour["points"]) >= 3
+            for point in contour["points"]:
+                assert set(point) == {"x", "y"}
+                assert isinstance(point["x"], (int, float))
+                assert isinstance(point["y"], (int, float))
+
+    def test_an_outline_encloses_the_nodes_it_was_built_around(self, client: requests.Session):
+        body = client.post(LAYOUT_URL, json=_two_poles()).json()
+        placed = {p["id"]: (p["x"], p["y"]) for p in body["positions"]}
+        placed[1] = (0.0, 0.0)
+
+        by_hub = {c["hub"]: [(p["x"], p["y"]) for p in c["points"]] for c in body["contours"]}
+        pole_a_leaves = [i for i in range(200, 208)]
+
+        polygon = by_hub[2]
+        for leaf in pole_a_leaves:
+            assert _inside(placed[leaf], polygon), f"лист {leaf} вне контура своего полюса"
+
+    def test_an_outline_leaves_the_other_group_outside(self, client: requests.Session):
+        body = client.post(LAYOUT_URL, json=_two_poles()).json()
+        placed = {p["id"]: (p["x"], p["y"]) for p in body["positions"]}
+        by_hub = {c["hub"]: [(p["x"], p["y"]) for p in c["points"]] for c in body["contours"]}
+
+        strangers = [i for i in range(300, 308)]
+        assert any(not _inside(placed[i], by_hub[2]) for i in strangers)
+
+    def test_a_seed_with_no_neighbours_has_nothing_to_outline(self, client: requests.Session):
+        request = {"seed_id": 1, "nodes": [1], "edges": [], "expanded": [1]}
+        body = client.post(LAYOUT_URL, json=request).json()
+
+        assert body["contours"] == []
+
+    def test_the_node_size_from_the_request_widens_the_outline_too(self, client: requests.Session):
+        def span(gap: float) -> float:
+            request = _two_poles()
+            request["node_gap"] = gap
+            body = client.post(LAYOUT_URL, json=request).json()
+            points = [p for c in body["contours"] for p in c["points"]]
+            return max(p["x"] for p in points) - min(p["x"] for p in points)
+
+        assert span(120.0) > span(34.0)
+
+
+def _inside(point, polygon) -> bool:
+    """Точка внутри многоугольника — луч вправо, чётность пересечений."""
+    if len(polygon) < 3:
+        return False
+    px, py = point
+    inside = False
+    for i, (xi, yi) in enumerate(polygon):
+        xj, yj = polygon[i - 1]
+        if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
+            inside = not inside
+    return inside

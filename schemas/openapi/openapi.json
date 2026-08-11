@@ -1132,6 +1132,33 @@
                           }
                         }
                       }
+                    },
+                    "contours": {
+                      "type": "array",
+                      "description": "[SF-API-22] Готовые контуры групп: точки обвода в порядке обхода. Цвет сюда не входит — он зависит от фотографии и роли артиста, а эта ручка про артистов не знает.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "hub": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "points": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "x": {
+                                  "type": "number"
+                                },
+                                "y": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }

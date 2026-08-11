@@ -117,9 +117,7 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   const freshNodes = State.graphNodes.filter((n) => n._isNew && !dsNodeIds.has(n.id));
 
   const isPathMode = !!(options.pathTargets && options.pathFromPos);
-  const { edgeClass, sectorMembers } = isPathMode
-    ? { edgeClass: null, sectorMembers: null }
-    : classifyGraph();
+  const { edgeClass } = isPathMode ? { edgeClass: null } : classifyGraph();
 
   const newEdgeItems = State.graphEdges
     .filter((e) => !dsEdgeIds.has(e.id))
@@ -137,8 +135,6 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     }
     if (catchUpUpdates.length && State.edgesDS) State.edgesDS.update(catchUpUpdates);
   }
-  if (sectorMembers) setContourData(sectorMembers);
-
   const seedId = State.currentSeedId;
   if (seedId != null) {
     State.nodesDS.update({ id: seedId, x: 0, y: 0, fixed: { x: true, y: true } });
@@ -200,6 +196,10 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   for (const n of freshNodes) n._isNew = false;
 
   const flyTo = (targets) => _flyToLayout({ targets, fromPos, entranceTargets, freshNodes });
+  const apply = (answer) => {
+    setContourData(answer ? answer.contours : null);
+    flyTo(answer ? answer.positions : null);
+  };
 
   const request = isPathMode ? null : buildLayoutRequest(savedPositions);
   const { generation, signal } = beginLayout();
@@ -211,15 +211,15 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
 
   const ready = cachedLayout(request);
   if (ready) {
-    flyTo(ready);
+    apply(ready);
     return;
   }
   fetchLayout(request, { signal }).then(
-    (targets) => {
-      if (isCurrentLayout(generation)) flyTo(targets);
+    (answer) => {
+      if (isCurrentLayout(generation)) apply(answer);
     },
     () => {
-      if (isCurrentLayout(generation)) flyTo(null);
+      if (isCurrentLayout(generation)) apply(null);
     },
   );
 }

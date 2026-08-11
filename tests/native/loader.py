@@ -26,6 +26,7 @@ LIBRARY = BUILD_DIR / "libsix_feat_native.so"
 SOURCES = (
     ROOT / "libs" / "six-feat-image" / "src" / "dominant_color.cpp",
     ROOT / "libs" / "six-feat-layout" / "src" / "layout.cpp",
+    ROOT / "libs" / "six-feat-layout" / "src" / "contours.cpp",
     Path(__file__).with_name("bridge.cpp"),
 )
 
@@ -133,6 +134,34 @@ def load() -> ctypes.CDLL:
         ctypes.POINTER(ctypes.c_int64),
         ctypes.POINTER(ctypes.c_double),
         ctypes.POINTER(ctypes.c_int32),
+        ctypes.POINTER(ctypes.c_int64),
+        ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_int32),
+    ]
+
+    lib.sf_contour_polygon.restype = ctypes.c_int32
+    lib.sf_contour_polygon.argtypes = [
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.c_int32,
+        ctypes.c_double,
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.c_int32,
+    ]
+
+    lib.sf_contours_build.restype = ctypes.c_int32
+    lib.sf_contours_build.argtypes = [
+        ctypes.POINTER(ctypes.c_int64),
+        ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_int64),
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.c_int32,
+        ctypes.c_double,
+        ctypes.POINTER(ctypes.c_int64),
+        ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_double),
+        ctypes.c_int32,
     ]
 
     lib.sf_resolve_collisions.restype = ctypes.c_int32
@@ -179,6 +208,7 @@ class LayoutResult:
     order: List[int] = field(default_factory=list)
     positions: Dict[int, Tuple[float, float]] = field(default_factory=dict)
     position_count: int = 0
+    contours: List[Tuple[int, List[Tuple[float, float]]]] = field(default_factory=list)
 
     def distance(self, first: int, second: int) -> float:
         ax, ay = self.positions[first]
@@ -224,6 +254,12 @@ def place_expanded_nodes(
     out_xy = (ctypes.c_double * (2 * capacity))()
     position_count = ctypes.c_int32(0)
 
+    meta_capacity = 2 * (len(nodes) + 2)
+    point_capacity = 8 * (len(nodes) + 2)
+    contour_meta = (ctypes.c_int64 * meta_capacity)()
+    contour_xy = (ctypes.c_double * (2 * point_capacity))()
+    contour_count = ctypes.c_int32(0)
+
     placed = lib.sf_layout_place(
         seed_id,
         _int64_array(list(nodes)),
@@ -243,6 +279,11 @@ def place_expanded_nodes(
         out_ids,
         out_xy,
         ctypes.byref(position_count),
+        contour_meta,
+        meta_capacity,
+        contour_xy,
+        point_capacity,
+        ctypes.byref(contour_count),
     )
     if placed < 0:
         raise RuntimeError("раскладка не поместилась в буфер ответа")
@@ -252,6 +293,16 @@ def place_expanded_nodes(
         node_id = out_ids[index]
         result.order.append(node_id)
         result.positions[node_id] = (out_xy[2 * index], out_xy[2 * index + 1])
+
+    offset = 0
+    for index in range(contour_count.value):
+        hub = contour_meta[2 * index]
+        size = contour_meta[2 * index + 1]
+        points = [
+            (contour_xy[2 * (offset + i)], contour_xy[2 * (offset + i) + 1]) for i in range(size)
+        ]
+        offset += size
+        result.contours.append((hub, points))
     return result
 
 
@@ -299,3 +350,80 @@ def available() -> bool:
     except CompilerMissingError:
         return False
     return sys.platform.startswith("linux")
+
+
+def contour_polygon(
+    members: Sequence[Tuple[float, float]], padding: float = NODE_GAP
+) -> List[Tuple[float, float]]:
+    """Многоугольник вокруг группы — тот же, что уедет клиенту в ответе."""
+    lib = load()
+    flat: List[float] = []
+    for x, y in members:
+        flat += [float(x), float(y)]
+
+    capacity = max(len(members) + 8, 8)
+    out = (ctypes.c_double * (2 * capacity))()
+    count = lib.sf_contour_polygon(_double_array(flat), len(members), padding, out, capacity)
+    if count < 0:
+        raise RuntimeError("контур не поместился в буфер ответа")
+    return [(out[2 * i], out[2 * i + 1]) for i in range(count)]
+
+
+def build_contours(
+    sectors: Mapping[int, Sequence[int]],
+    positions: Mapping[int, Tuple[float, float]],
+    padding: float = NODE_GAP,
+) -> List[Tuple[int, List[Tuple[float, float]]]]:
+    """Контуры всех групп в том порядке, в каком их вернёт раскладка."""
+    lib = load()
+    flat_sectors: List[int] = []
+    for hub, members in sectors.items():
+        flat_sectors += [hub, len(members), *members]
+
+    ids = list(positions)
+    flat_xy: List[float] = []
+    for node_id in ids:
+        flat_xy += [float(positions[node_id][0]), float(positions[node_id][1])]
+
+    meta_capacity = 2 * (len(sectors) + 1)
+    point_capacity = sum(len(m) for m in sectors.values()) + 8 * len(sectors) + 8
+    out_meta = (ctypes.c_int64 * max(meta_capacity, 2))()
+    out_xy = (ctypes.c_double * (2 * max(point_capacity, 1)))()
+
+    count = lib.sf_contours_build(
+        _int64_array(flat_sectors),
+        len(flat_sectors),
+        _int64_array(ids),
+        _double_array(flat_xy),
+        len(ids),
+        padding,
+        out_meta,
+        meta_capacity,
+        out_xy,
+        point_capacity,
+    )
+    if count < 0:
+        raise RuntimeError("контуры не поместились в буфер ответа")
+
+    result: List[Tuple[int, List[Tuple[float, float]]]] = []
+    offset = 0
+    for index in range(count):
+        hub = out_meta[2 * index]
+        size = out_meta[2 * index + 1]
+        points = [(out_xy[2 * (offset + i)], out_xy[2 * (offset + i) + 1]) for i in range(size)]
+        offset += size
+        result.append((hub, points))
+    return result
+
+
+def point_in_polygon(point: Tuple[float, float], polygon: Sequence[Tuple[float, float]]) -> bool:
+    """Проверка «точка внутри» для тестов: сам контур ею нигде не пользуется."""
+    if len(polygon) < 3:
+        return False
+    inside = False
+    px, py = point
+    for i, (xi, yi) in enumerate(polygon):
+        xj, yj = polygon[i - 1]
+        if (yi > py) != (yj > py) and px < (xj - xi) * (py - yi) / (yj - yi) + xi:
+            inside = not inside
+    return inside

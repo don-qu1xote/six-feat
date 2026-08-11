@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <six-feat-layout/contours.hpp>
 #include <six-feat-layout/layout.hpp>
 #include <string>
 #include <unordered_set>
@@ -17,23 +18,6 @@ constexpr int kSolverIters = 8;
 constexpr double kSolverEps = 0.01;
 constexpr double kRingCapMargin = 1.08;
 constexpr double kAngularGap = 0.02;
-
-double Hypot(double a, double b) {
-  const double ax = std::fabs(a);
-  const double ay = std::fabs(b);
-  const double max = ax > ay ? ax : ay;
-  if (max == 0.0) return 0.0;
-  double sum = 0.0;
-  double comp = 0.0;
-  for (const double v : {ax, ay}) {
-    const double n = v / max;
-    const double summand = n * n - comp;
-    const double prelim = sum + summand;
-    comp = (prelim - sum) - summand;
-    sum = prelim;
-  }
-  return std::sqrt(sum) * max;
-}
 
 double Clamp(double v, double lo, double hi) {
   return v < lo ? lo : (v > hi ? hi : v);
@@ -811,6 +795,15 @@ LayoutResult PlaceExpandedNodes(const LayoutRequest& request) {
 
   result.order = targets.order;
   result.positions = targets.values;
+
+  std::unordered_map<std::int64_t, Point> drawn = targets.values;
+  drawn[seed_id] = Point{0.0, 0.0};
+  std::vector<std::pair<std::int64_t, std::vector<std::int64_t>>> sectors;
+  sectors.reserve(sector_members.order.size());
+  for (const auto sector_id : sector_members.order) {
+    sectors.emplace_back(sector_id, sector_members.values.at(sector_id).order);
+  }
+  result.contours = BuildContours(sectors, drawn, request.params.node_gap);
   return result;
 }
 

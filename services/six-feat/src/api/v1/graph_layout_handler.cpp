@@ -192,6 +192,26 @@ std::string GraphLayoutHandler::HandleRequestThrow(const server::http::HttpReque
   }
   out["positions"] = std::move(positions);
 
+  /// [SF-API-22] Контуры групп — та же геометрия поверх тех же координат, и
+  /// считать их отдельным запросом значило бы пересчитать раскладку дважды.
+  /// Цвет контура сюда не попадает намеренно: он зависит от фотографии артиста
+  /// и его роли, а эта ручка про артистов ничего не знает и знать не должна.
+  formats::json::ValueBuilder contours(formats::json::Type::kArray);
+  for (const auto& contour : result.contours) {
+    formats::json::ValueBuilder item(formats::json::Type::kObject);
+    item["hub"] = contour.hub;
+    formats::json::ValueBuilder points(formats::json::Type::kArray);
+    for (const auto& point : contour.points) {
+      formats::json::ValueBuilder xy(formats::json::Type::kObject);
+      xy["x"] = point.x;
+      xy["y"] = point.y;
+      points.PushBack(std::move(xy));
+    }
+    item["points"] = std::move(points);
+    contours.PushBack(std::move(item));
+  }
+  out["contours"] = std::move(contours);
+
   return formats::json::ToString(out.ExtractValue());
 }
 

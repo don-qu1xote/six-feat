@@ -213,7 +213,6 @@ describe("initNetwork", () => {
     expect(ensureTooltipCollisionGuard).toHaveBeenCalled();
     expect(updateEdgeRenderMode).toHaveBeenCalled();
     expect(setEdgeCache).toHaveBeenCalled();
-    expect(setContourData).toHaveBeenCalled();
   });
 
   it("turns physics off — positions come from the layout, not simulation", () => {
@@ -234,10 +233,11 @@ describe("initNetwork", () => {
   });
 
   it("applies the coordinates the layout answered with, pinning the seed at the origin", () => {
-    cachedLayout.mockReturnValueOnce(new Map([[2, { x: 50, y: 60 }]]));
+    cachedLayout.mockReturnValueOnce({ positions: new Map([[2, { x: 50, y: 60 }]]), contours: [] });
 
     initNetwork(1, nameById);
 
+    expect(setContourData).toHaveBeenCalledWith([]);
     expect(State.network.moveNode).toHaveBeenCalledWith(1, 0, 0);
     expect(State.network.moveNode).toHaveBeenCalledWith(2, 50, 60);
     expect(State.nodesDS.updated.flat()).toContainEqual({
@@ -254,13 +254,14 @@ describe("initNetwork", () => {
   });
 
   it("never lets the layout move the seed, and ignores a coordinate for a node it does not have", () => {
-    cachedLayout.mockReturnValueOnce(
-      new Map([
+    cachedLayout.mockReturnValueOnce({
+      positions: new Map([
         [1, { x: 700, y: 700 }],
         [2, { x: 50, y: 60 }],
         [4242, { x: -9, y: -9 }],
       ]),
-    );
+      contours: [],
+    });
 
     initNetwork(1, nameById);
 
@@ -344,7 +345,7 @@ describe("refreshNetwork", () => {
   });
 
   it("re-centres the seed and repositions the rest", () => {
-    cachedLayout.mockReturnValueOnce(new Map([[2, { x: 40, y: 50 }]]));
+    cachedLayout.mockReturnValueOnce({ positions: new Map([[2, { x: 40, y: 50 }]]), contours: [] });
 
     refreshNetwork(1, nameById, {});
 

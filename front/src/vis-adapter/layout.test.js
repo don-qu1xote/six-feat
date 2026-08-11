@@ -398,48 +398,6 @@ describe("[SF-WEB-55] edgeClass", () => {
   });
 });
 
-describe("classifyGraph — sectorMembers", () => {
-  it("returns empty maps when there is no seed", () => {
-    expect(classifyGraph()).toEqual({ edgeClass: new Map(), sectorMembers: new Map() });
-  });
-
-  it("gives every pole and the seed a sector of its own", () => {
-    const g = buildTwoPoleGraph();
-    const { sectorMembers } = classifyGraph();
-    expect([...sectorMembers.keys()].sort((a, b) => a - b)).toEqual([g.seedId, g.poleA, g.poleB]);
-  });
-
-  it("puts an exclusive leaf in its own pole's sector and nowhere else", () => {
-    const g = buildTwoPoleGraph();
-    const { sectorMembers } = classifyGraph();
-    expect(sectorMembers.get(g.poleA).has(g.aLeaves[0])).toBe(true);
-    expect(sectorMembers.get(g.poleB).has(g.aLeaves[0])).toBe(false);
-    expect(sectorMembers.get(g.seedId).has(g.aLeaves[0])).toBe(false);
-  });
-
-  it("puts a shared leaf in both owning sectors — that is what makes the lens a lens", () => {
-    const g = buildTwoPoleGraph();
-    const { sectorMembers } = classifyGraph();
-    expect(sectorMembers.get(g.poleA).has(g.shared)).toBe(true);
-    expect(sectorMembers.get(g.poleB).has(g.shared)).toBe(true);
-  });
-
-  it("leaves a neighbour of the seed alone in the seed's sector", () => {
-    const g = buildTwoPoleGraph();
-    const { sectorMembers } = classifyGraph();
-    expect(sectorMembers.get(g.seedId).has(g.seedLeaf)).toBe(true);
-    expect(sectorMembers.get(g.poleA).has(g.seedLeaf)).toBe(false);
-  });
-
-  it("does not hang on a cycle in the expand chain", () => {
-    const g = buildTwoPoleGraph();
-    State.graphNodes.find((n) => n.id === g.poleA)._expandParent = g.poleB;
-    State.graphNodes.find((n) => n.id === g.poleB)._expandParent = g.poleA;
-    const { sectorMembers } = classifyGraph();
-    expect(sectorMembers.size).toBe(3);
-  });
-});
-
 describe("buildLayoutRequest — structure, not data", () => {
   it("returns null without a seed", () => {
     expect(buildLayoutRequest({})).toBeNull();

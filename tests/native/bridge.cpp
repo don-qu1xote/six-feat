@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <six-feat-image/dominant_color.hpp>
+#include <six-feat-layout/contours.hpp>
 #include <six-feat-layout/layout.hpp>
 
 namespace {
@@ -68,7 +69,12 @@ std::int32_t sf_layout_place(std::int64_t seed_id,
                              std::int32_t capacity,
                              std::int64_t* out_ids,
                              double* out_xy,
-                             std::int32_t* out_position_count) {
+                             std::int32_t* out_position_count,
+                             std::int64_t* out_contour_meta,
+                             std::int32_t meta_capacity,
+                             double* out_contour_xy,
+                             std::int32_t point_capacity,
+                             std::int32_t* out_contour_count) {
   LayoutRequest request;
   request.seed_id = seed_id;
   request.params = MakeParams(node_radius, node_gap);
@@ -101,7 +107,94 @@ std::int32_t sf_layout_place(std::int64_t seed_id,
     out_xy[2 * i] = it == result.positions.end() ? 0.0 : it->second.x;
     out_xy[2 * i + 1] = it == result.positions.end() ? 0.0 : it->second.y;
   }
+
+  if (out_contour_count != nullptr) {
+    *out_contour_count = static_cast<std::int32_t>(result.contours.size());
+    std::int32_t written = 0;
+    for (std::size_t c = 0; c < result.contours.size(); ++c) {
+      if (static_cast<std::int32_t>(2 * c + 2) > meta_capacity) return -1;
+      out_contour_meta[2 * c] = result.contours[c].hub;
+      out_contour_meta[2 * c + 1] = static_cast<std::int64_t>(result.contours[c].points.size());
+      for (const auto& point : result.contours[c].points) {
+        if (written + 1 > point_capacity) return -1;
+        out_contour_xy[2 * written] = point.x;
+        out_contour_xy[2 * written + 1] = point.y;
+        written++;
+      }
+    }
+  }
   return static_cast<std::int32_t>(result.order.size());
+}
+
+/// Многоугольник вокруг группы по координатам её участников.
+///
+/// Возвращает число вершин, либо -1, если они не поместились в capacity.
+std::int32_t sf_contour_polygon(const double* member_xy,
+                                std::int32_t member_count,
+                                double padding,
+                                double* out_xy,
+                                std::int32_t capacity) {
+  std::vector<Point> members;
+  members.reserve(member_count);
+  for (std::int32_t i = 0; i < member_count; ++i) {
+    members.push_back(Point{member_xy[2 * i], member_xy[2 * i + 1]});
+  }
+
+  const std::vector<Point> polygon = six_feat::layout::ComputeSectorPolygon(members, padding);
+  if (static_cast<std::int32_t>(polygon.size()) > capacity) return -1;
+  for (std::size_t i = 0; i < polygon.size(); ++i) {
+    out_xy[2 * i] = polygon[i].x;
+    out_xy[2 * i + 1] = polygon[i].y;
+  }
+  return static_cast<std::int32_t>(polygon.size());
+}
+
+/// Контуры всех групп разом: группы приезжают сплющенными, ответ — тоже.
+///
+/// sectors_flat: hub, число участников, идентификаторы участников — и так по
+/// кругу. Ответ: для каждого контура hub и число вершин в out_meta, вершины
+/// подряд в out_xy. Возвращается число контуров, либо -1 при нехватке места.
+std::int32_t sf_contours_build(const std::int64_t* sectors_flat,
+                               std::int32_t sectors_len,
+                               const std::int64_t* position_ids,
+                               const double* position_xy,
+                               std::int32_t position_count,
+                               double padding,
+                               std::int64_t* out_meta,
+                               std::int32_t meta_capacity,
+                               double* out_xy,
+                               std::int32_t point_capacity) {
+  std::vector<std::pair<std::int64_t, std::vector<std::int64_t>>> sectors;
+  for (std::int32_t i = 0; i < sectors_len;) {
+    const std::int64_t hub = sectors_flat[i++];
+    const std::int64_t members = sectors_flat[i++];
+    std::vector<std::int64_t> ids;
+    ids.reserve(static_cast<std::size_t>(members));
+    for (std::int64_t k = 0; k < members; ++k) ids.push_back(sectors_flat[i++]);
+    sectors.emplace_back(hub, std::move(ids));
+  }
+
+  std::unordered_map<std::int64_t, Point> positions;
+  for (std::int32_t i = 0; i < position_count; ++i) {
+    positions[position_ids[i]] = Point{position_xy[2 * i], position_xy[2 * i + 1]};
+  }
+
+  const std::vector<six_feat::layout::Contour> contours =
+      six_feat::layout::BuildContours(sectors, positions, padding);
+
+  std::int32_t points_written = 0;
+  for (std::size_t c = 0; c < contours.size(); ++c) {
+    if (static_cast<std::int32_t>(2 * c + 2) > meta_capacity) return -1;
+    out_meta[2 * c] = contours[c].hub;
+    out_meta[2 * c + 1] = static_cast<std::int64_t>(contours[c].points.size());
+    for (const auto& point : contours[c].points) {
+      if (points_written + 1 > point_capacity) return -1;
+      out_xy[2 * points_written] = point.x;
+      out_xy[2 * points_written + 1] = point.y;
+      points_written++;
+    }
+  }
+  return static_cast<std::int32_t>(contours.size());
 }
 
 /// Разведение наложившихся узлов: xy правится на месте, возвращается размер карты.

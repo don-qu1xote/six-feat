@@ -1,16 +1,20 @@
 import { State } from "../state/state.js";
 import { roleStyle } from "../state/helpers.js";
-import { NODE_GAP } from "./layout.js";
-
-export const CONTOUR_MAX_TOTAL_MEMBERS = 600;
 
 const FILL_ALPHA = 0.16;
-const HULL_PADDING = NODE_GAP;
 const BLUR_PX = 16;
 const BITMAP_MARGIN = BLUR_PX * 3;
 const BITMAP_MAX_DIM = 4096;
-let _sectors = new Map();
-let _pathCache = new Map();
+
+/**
+ * [SF-API-22] Готовые контуры от раскладки: hub, цвет и точки обвода.
+ *
+ * Геометрия (оболочка, отступ, состав групп) переехала в
+ * libs/six-feat-layout/src/contours.cpp и приезжает в ответе
+ * POST /api/v1/graph/layout. Здесь остаётся то, что и должно быть у клиента:
+ * цвет по данным артиста и рисование.
+ */
+let _paths = [];
 let _bitmap = null;
 function _clamp01(v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -79,112 +83,34 @@ export function toneMutedNeon(hex) {
   return _hslToHex(h, Math.min(Math.max(s, S_MIN), S_MAX), Math.min(Math.max(l, L_MIN), L_MAX));
 }
 
-export function setContourData(sectorMembers) {
-  const next = new Map();
-  if (sectorMembers && sectorMembers.size) {
+export function setContourData(contours) {
+  const next = [];
+  if (contours && contours.length) {
     const byId = new Map(State.graphNodes.map((n) => [n.id, n]));
-    for (const [hubId, members] of sectorMembers) {
-      const hub = byId.get(hubId);
+    for (const contour of contours) {
+      const points = contour && contour.points;
+      if (!points || points.length < 3) continue;
+      const hub = byId.get(contour.hub);
       // [SF-API-20] Цвет фотографии приходит с узлом (сервер считает его один
       // раз на артиста). Нет его — контур красится ролью, ровно как красился
       // раньше, пока фотография ещё не загрузилась.
       const photoColor = hub?.dominantColor || null;
       const role = hub?._dominantRole || (hub?.isSeed ? "featured" : "primary");
       const color = photoColor ? toneMutedNeon(photoColor) : roleStyle(role).color;
-      next.set(hubId, { ids: [...members], color });
+      next.push({ hub: contour.hub, color, points });
     }
   }
-  _sectors = next;
-  _pathCache = new Map();
+  _paths = next;
   _bitmap = null;
 }
 
 export function clearContourData() {
-  _sectors = new Map();
-  _pathCache = new Map();
+  _paths = [];
   _bitmap = null;
 }
 
 export function _contourSectorCount() {
-  return _sectors.size;
-}
-
-export function _convexHull(points) {
-  const pts = [...new Map(points.map((p) => [`${p.x}:${p.y}`, p])).values()].sort(
-    (a, b) => a.x - b.x || a.y - b.y,
-  );
-  if (pts.length <= 2) return pts;
-
-  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const build = (seq) => {
-    const hull = [];
-    for (const p of seq) {
-      while (hull.length >= 2 && cross(hull[hull.length - 2], hull[hull.length - 1], p) <= 0)
-        hull.pop();
-      hull.push(p);
-    }
-    hull.pop();
-    return hull;
-  };
-  const lower = build(pts);
-  const upper = build([...pts].reverse());
-  return [...lower, ...upper];
-}
-
-export function _padHull(hull, padding) {
-  if (hull.length < 3) return hull;
-  const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length;
-  const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length;
-  return hull.map((p) => {
-    const dx = p.x - cx,
-      dy = p.y - cy;
-    const d = Math.hypot(dx, dy) || 1;
-    const scale = (d + padding) / d;
-    return { x: cx + dx * scale, y: cy + dy * scale };
-  });
-}
-
-export function computeSectorPolygon(memberPositions, padding = HULL_PADDING) {
-  if (memberPositions.length < 2) return [];
-  const hull = _convexHull(memberPositions);
-  if (hull.length < 3) {
-    const xs = memberPositions.map((p) => p.x),
-      ys = memberPositions.map((p) => p.y);
-    const minX = Math.min(...xs) - padding,
-      maxX = Math.max(...xs) + padding;
-    const minY = Math.min(...ys) - padding,
-      maxY = Math.max(...ys) + padding;
-    return [
-      { x: minX, y: minY },
-      { x: maxX, y: minY },
-      { x: maxX, y: maxY },
-      { x: minX, y: maxY },
-    ];
-  }
-  return _padHull(hull, padding);
-}
-
-export function pointInPolygon(pt, polygon) {
-  if (polygon.length < 3) return false;
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x,
-      yi = polygon[i].y;
-    const xj = polygon[j].x,
-      yj = polygon[j].y;
-    const intersects = yi > pt.y !== yj > pt.y && pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi;
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
-
-function _quantize(positions, ids) {
-  let key = "";
-  for (const id of ids) {
-    const p = positions[id];
-    key += p ? `${Math.round(p.x / 2)},${Math.round(p.y / 2)}|` : "∅|";
-  }
-  return key;
+  return _paths.length;
 }
 
 function _tracePath(ctx, points) {
@@ -301,27 +227,11 @@ function _drawViaBitmapCache(ctx, paths) {
 
 export function drawContours(ctx) {
   if (!State.bubbleSetsEnabled) return;
-  if (!_sectors.size || !State.network) return;
-
-  const positions = State.network.getPositions();
-  const paths = [];
-  for (const [hubId, { ids, color }] of _sectors) {
-    const memberPositions = ids.map((id) => positions[id]).filter(Boolean);
-    if (memberPositions.length < 2) continue;
-    const key = _quantize(positions, ids);
-    let cached = _pathCache.get(hubId);
-    if (!cached || cached.key !== key) {
-      cached = { key, points: computeSectorPolygon(memberPositions) };
-      _pathCache.set(hubId, cached);
-    }
-    if (cached.points.length < 3) continue;
-    paths.push({ color, points: cached.points });
-  }
-  if (!paths.length) return;
+  if (!_paths.length) return;
 
   if (_offscreenSupported()) {
-    _drawViaBitmapCache(ctx, paths);
+    _drawViaBitmapCache(ctx, _paths);
   } else {
-    _drawDirect(ctx, paths);
+    _drawDirect(ctx, _paths);
   }
 }

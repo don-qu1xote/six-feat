@@ -36,7 +36,7 @@ import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from
 import { setContourData, clearContourData, drawContours } from "./bubble-contours.js";
 
 function _layoutNodeItems(nameById, savedPositions = {}) {
-  const { edgeClass, sectorMembers } = classifyGraph();
+  const { edgeClass } = classifyGraph();
   /**
    * Узлу без сохранённой позиции координату придумает vis. Она ничем не хуже
    * любой другой для первого кадра, но решением раскладки не является, и
@@ -55,11 +55,14 @@ function _layoutNodeItems(nameById, savedPositions = {}) {
   markEntrancePending(unplaced);
   const edgeItems = State.graphEdges.map((e) => suppressNativeEdgeColor(edgeVisual(e, nameById)));
   setEdgeCache(edgeClass);
-  setContourData(sectorMembers);
   return { nodeItems, edgeItems };
 }
 
-function _applyLayout(targets) {
+function _applyLayout(answer) {
+  if (!answer) return;
+  setContourData(answer.contours);
+
+  const targets = answer.positions;
   if (!State.network || !targets || !targets.size) return;
   markLayoutSettled(targets);
   const updates = [];
@@ -83,8 +86,8 @@ function _positionFromLayout(savedPositions) {
     return;
   }
   fetchLayout(request, { signal }).then(
-    (targets) => {
-      if (isCurrentLayout(generation)) _applyLayout(targets);
+    (answer) => {
+      if (isCurrentLayout(generation)) _applyLayout(answer);
     },
     () => {},
   );

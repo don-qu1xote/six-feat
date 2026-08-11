@@ -116,8 +116,13 @@ export function resolveCollisions(targets, pinnedIds, extraPinned, sectorOf) {
   }
 }
 
+/**
+ * [SF-API-22] Состав групп отсюда ушёл: контуры вокруг них теперь строит сервер
+ * (libs/six-feat-layout/src/contours.cpp) и присылает готовыми точками.
+ * Классификация рёбер осталась — она про рисование рёбер, а не про геометрию.
+ */
 export function classifyGraph() {
-  const empty = { edgeClass: new Map(), sectorMembers: new Map() };
+  const empty = { edgeClass: new Map() };
   const seedId = State.currentSeedId;
   if (seedId == null) return empty;
 
@@ -143,30 +148,6 @@ export function classifyGraph() {
     }
   }
 
-  const exclusive = new Map(poles.map((id) => [id, []]));
-  const sharedLeaves = [];
-  const handledLeaves = new Set();
-
-  for (const [leaf, owners] of leafOwners) {
-    if (owners.size === 1) {
-      const [owner] = owners;
-      if (owner === seedId) continue;
-      if (exclusive.has(owner)) {
-        exclusive.get(owner).push(leaf);
-        handledLeaves.add(leaf);
-      }
-    } else {
-      sharedLeaves.push({ leaf, owners });
-      handledLeaves.add(leaf);
-    }
-  }
-
-  const seedLeaves = [];
-  for (const n of State.graphNodes) {
-    if (expandedSet.has(n.id) || n.id === seedId || handledLeaves.has(n.id)) continue;
-    seedLeaves.push(n.id);
-  }
-
   const poleParent = new Map();
   const graphNodeById = new Map(State.graphNodes.map((n) => [n.id, n]));
   for (const id of poles) {
@@ -187,23 +168,6 @@ export function classifyGraph() {
       }
       seen.add(cur);
       cur = poleParent.get(cur);
-    }
-  }
-
-  const eulerZones = new Map();
-  for (const { leaf, owners } of sharedLeaves) {
-    const key = [...owners].map(String).sort().join("_");
-    if (!eulerZones.has(key)) eulerZones.set(key, { owners: [...owners], leaves: [] });
-    eulerZones.get(key).leaves.push(leaf);
-  }
-
-  const sectorMembers = new Map(poles.map((id) => [id, new Set([id, ...exclusive.get(id)])]));
-  sectorMembers.set(seedId, new Set([seedId, ...seedLeaves]));
-  for (const { owners, leaves: zoneLeaves } of eulerZones.values()) {
-    for (const owner of owners) {
-      const members = sectorMembers.get(owner);
-      if (!members) continue;
-      for (const leaf of zoneLeaves) members.add(leaf);
     }
   }
 
@@ -246,7 +210,7 @@ export function classifyGraph() {
     edgeClass.set(key, { from: a, to: b, kind, hub });
   }
 
-  return { edgeClass, sectorMembers };
+  return { edgeClass };
 }
 
 // Запрос к раскладке — структура графа, а не данные о нём. Ни имён, ни

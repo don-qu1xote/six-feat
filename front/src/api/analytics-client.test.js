@@ -265,8 +265,8 @@ describe("[SF-API-21] fetchLayout / cachedLayout", () => {
     node_gap: 34,
   };
 
-  function layoutResponse(positions) {
-    return jsonResponse({ type: "graph_layout", positions });
+  function layoutResponse(positions, contours = []) {
+    return jsonResponse({ type: "graph_layout", positions, contours });
   }
 
   beforeEach(() => {
@@ -281,14 +281,44 @@ describe("[SF-API-21] fetchLayout / cachedLayout", () => {
       ]),
     );
 
-    const positions = await fetchLayout(REQUEST);
+    const answer = await fetchLayout(REQUEST);
 
     const [url, opts] = global.fetch.mock.calls[0];
     expect(url).toBe("/api/v1/graph/layout");
     expect(opts.method).toBe("POST");
     expect(JSON.parse(opts.body)).toEqual(REQUEST);
-    expect(positions.get(2)).toEqual({ x: 150, y: 0 });
-    expect(positions.get(3)).toEqual({ x: -150, y: 0 });
+    expect(answer.positions.get(2)).toEqual({ x: 150, y: 0 });
+    expect(answer.positions.get(3)).toEqual({ x: -150, y: 0 });
+  });
+
+  // [SF-API-22] Контуры едут тем же ответом, что и координаты: они из этих
+  // координат и выведены, и второй запрос за ними означал бы пересчитать
+  // раскладку заново ради тех же чисел.
+  it("carries the group outlines back with the coordinates they were built from", async () => {
+    const outline = [
+      {
+        hub: 1,
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+          { x: 10, y: 10 },
+        ],
+      },
+    ];
+    global.fetch.mockResolvedValueOnce(layoutResponse([{ id: 2, x: 1, y: 2 }], outline));
+
+    const answer = await fetchLayout(REQUEST);
+
+    expect(answer.contours).toEqual(outline);
+  });
+
+  it("treats an answer without outlines as an answer with none, not as a broken answer", async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ type: "graph_layout", positions: [] }));
+
+    const answer = await fetchLayout(REQUEST);
+
+    expect(answer.contours).toEqual([]);
+    expect(answer.positions.size).toBe(0);
   });
 
   it("asks the server once per structure — the second time the answer is already here", async () => {
@@ -306,10 +336,10 @@ describe("[SF-API-21] fetchLayout / cachedLayout", () => {
     await fetchLayout(REQUEST);
     global.fetch.mockClear();
 
-    const positions = cachedLayout({ ...REQUEST });
+    const answer = cachedLayout({ ...REQUEST });
 
-    expect(positions).toBeInstanceOf(Map);
-    expect(positions.get(2)).toEqual({ x: 9, y: 8 });
+    expect(answer.positions).toBeInstanceOf(Map);
+    expect(answer.positions.get(2)).toEqual({ x: 9, y: 8 });
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
