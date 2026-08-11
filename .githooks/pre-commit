@@ -28,6 +28,28 @@ wrong_version() {
     exit 1
 }
 
+# Подпись автора проверяется до всего остального и независимо от того, какие
+# файлы в коммите: заготовка из `git config --global` по умолчанию
+# ("Your Name <you@example.com>") молча уезжает в историю, а переписать её
+# задним числом можно только переписав саму историю. Дешевле не пустить.
+author_name=$(git config user.name || true)
+author_email=$(git config user.email || true)
+
+if [ -z "$author_name" ] || [ -z "$author_email" ]; then
+    echo "pre-commit: не задано авторство коммитов."
+    echo "  git config user.name \"Имя\" && git config user.email \"почта@example.org\""
+    exit 1
+fi
+
+case "$author_name/$author_email" in
+    "Your Name/"* | */"you@example.com" | */"you@example.org")
+        echo "pre-commit: авторство осталось заготовкой — $author_name <$author_email>."
+        echo "  Задай своё: git config user.name \"Имя\" && git config user.email \"почта@example.org\""
+        echo "  В истории уже есть коммиты с этой подписью; исправить их можно только переписав историю."
+        exit 1
+        ;;
+esac
+
 staged=$(git diff --cached --name-only --diff-filter=ACM || true)
 
 if [ -z "$staged" ]; then

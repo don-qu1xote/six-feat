@@ -10,7 +10,9 @@ __pycache__/
 coverage.xml
 htmlcov/
 front/coverage/
-front/node_modules/
+# Кэш vitest пишется в node_modules/.vite и однажды уже уехал в индекс:
+# правило было привязано к front/, а корневой каталог остался открытым.
+node_modules/
 front/dist/
 /loadtest/output/
 .DS_Store
