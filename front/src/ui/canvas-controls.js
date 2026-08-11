@@ -228,7 +228,7 @@ function _downloadBlob(blob, filename) {
 }
 
 function downloadPngBlob(blob) {
-  _downloadBlob(blob, `six-feet-${_graphExportSlug()}.png`);
+  _downloadBlob(blob, `six-feat-${_graphExportSlug()}.png`);
 }
 
 export function buildGraphExportData() {
@@ -265,7 +265,7 @@ export function exportGraphJson() {
   const data = buildGraphExportData();
   const dateStr = data.exportedAt.slice(0, 10);
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  _downloadBlob(blob, `six-feet-${_graphExportSlug()}-${dateStr}.json`);
+  _downloadBlob(blob, `six-feat-${_graphExportSlug()}-${dateStr}.json`);
 }
 
 const EXPORT_MIN_SETTLE_MS = 150;

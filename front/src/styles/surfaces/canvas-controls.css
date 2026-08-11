@@ -698,10 +698,10 @@ body.view-home .role-filter-segment {
   justify-content: flex-end;
 }
 
-.rail-btn[href*="sixfeet"] {
+.rail-btn[href*="sixfeat"] {
   color: var(--pulse);
 }
-.rail-btn[href*="sixfeet"]:hover {
+.rail-btn[href*="sixfeat"]:hover {
   color: var(--paper);
   background: rgba(185, 138, 255, 0.08);
 }

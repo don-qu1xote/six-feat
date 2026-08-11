@@ -86,7 +86,7 @@ export const en = {
   "settings.genius.connectedToast": "Genius token connected.",
   "settings.genius.disconnectedToast": "Genius token disconnected.",
 
-  "rail.brandTitle": "Six Feet — back to start",
+  "rail.brandTitle": "Six Feat — back to start",
   "rail.search": "Search",
   "rail.searchTip": "Search artist",
   "rail.findOnMap": "Find on map",
@@ -360,7 +360,7 @@ export const ru = {
   "settings.genius.connectedToast": "Токен Genius подключён.",
   "settings.genius.disconnectedToast": "Токен Genius отключён.",
 
-  "rail.brandTitle": "Six Feet — на главную",
+  "rail.brandTitle": "Six Feat — на главную",
   "rail.search": "Поиск",
   "rail.searchTip": "Найти артиста",
   "rail.findOnMap": "Найти на карте",
