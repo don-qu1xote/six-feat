@@ -30,6 +30,37 @@ _REQUIRED_NODE_FIELDS = {
 _REQUIRED_EDGE_FIELDS = {"from", "to", "weight", "dominant_role", "source"}
 
 
+# [SF-API-23 fix-02] Поиск узла и ребра — с внятной ошибкой вместо StopIteration.
+# `next(...)` на пустом генераторе роняет тест StopIteration'ом, из которого не
+# видно ничего: ни что ответил сервер, ни какие узлы в графе вообще есть. В CI
+# это стоит целого прогона — причину приходится угадывать по коду. Здесь ошибка
+# несёт с собой ответ, и следующий красный прогон сразу показывает, что пришло.
+
+
+def _describe_graph(data: dict) -> str:
+    return (
+        f"\n  seed_id ответа: {data.get('seed_id')!r}"
+        f"\n  узлы:           {[n.get('id') for n in data.get('nodes', [])]}"
+        f"\n  рёбра:          {[(e.get('from'), e.get('to')) for e in data.get('edges', [])]}"
+        f"\n  ключи ответа:   {sorted(data)}"
+        f"\n  ответ целиком:  {data}"
+    )
+
+
+def _node_by_id(data: dict, node_id: int) -> dict:
+    for node in data.get("nodes", []):
+        if node.get("id") == node_id:
+            return node
+    raise AssertionError(f"узла {node_id} нет в графе.{_describe_graph(data)}")
+
+
+def _edge_between(data: dict, left: int, right: int) -> dict:
+    for edge in data.get("edges", []):
+        if {edge.get("from"), edge.get("to")} == {left, right}:
+            return edge
+    raise AssertionError(f"ребра {left}—{right} нет в графе.{_describe_graph(data)}")
+
+
 def _seed_artist(artist_id: int, name: str) -> dict:
     return {"id": artist_id, "name": name, "image": "", "url": ""}
 
@@ -558,10 +589,10 @@ class TestGraphServesDerivedValues:
 
         data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
 
-        collaborator = next(n for n in data["nodes"] if n["id"] == collab_id)
+        collaborator = _node_by_id(data, collab_id)
         assert set(collaborator["roles"]) == {"featured", "producer"}
 
-        seed = next(n for n in data["nodes"] if n["id"] == seed_id)
+        seed = _node_by_id(data, seed_id)
         # Сид объединяет роли всех своих рёбер.
         assert {"featured", "producer"} <= set(seed["roles"])
 
@@ -588,7 +619,7 @@ class TestGraphServesDerivedValues:
 
         for node in data["nodes"]:
             assert isinstance(node.get("roles"), list), f"нет roles у узла {node}"
-        collaborator = next(n for n in data["nodes"] if n["id"] == collab_id)
+        collaborator = _node_by_id(data, collab_id)
         assert collaborator["roles"] == ["writer"]
 
     def test_collaborations_arrive_sorted_by_popularity(
@@ -1015,7 +1046,7 @@ class TestGraphEdgeCarriesOnlyTheAggregate:
 
         data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
 
-        edge = next(e for e in data["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
+        edge = _edge_between(data, seed_id, collab_id)
         assert edge["collaboration_count"] == 2
         for field in ("weight", "dominant_role", "edge_style", "source"):
             assert field in edge, f"пропал агрегат {field}: {edge}"
@@ -1031,7 +1062,7 @@ class TestGraphEdgeCarriesOnlyTheAggregate:
         self._seed_pair(genius_mock, seed_id, collab_id)
 
         graph = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
-        edge = next(e for e in graph["edges"] if {e["from"], e["to"]} == {seed_id, collab_id})
+        edge = _edge_between(graph, seed_id, collab_id)
 
         detail = client.get(EDGE_URL, params={"from": str(seed_id), "to": str(collab_id)}).json()
 
@@ -1055,7 +1086,7 @@ class TestGraphEdgeCarriesOnlyTheAggregate:
 
         data = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
 
-        seed = next(n for n in data["nodes"] if n["id"] == seed_id)
+        seed = _node_by_id(data, seed_id)
         assert [c["song"] for c in seed["top_tracks"]] == ["Loud One", "Quiet One"]
         assert len(seed["top_tracks"]) <= 5
 
@@ -1099,7 +1130,7 @@ class TestPopularitySurvivesTheCache:
         second = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
 
         def tile(graph):
-            node = next(n for n in graph["nodes"] if n["id"] == seed_id)
+            node = _node_by_id(graph, seed_id)
             return [(t["song"], t["popularity"]) for t in node["top_tracks"]]
 
         assert tile(first) == [("Loudest", 9000), ("Middle", 500), ("Quiet", 10)]

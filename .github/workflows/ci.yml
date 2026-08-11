@@ -84,7 +84,7 @@ jobs:
           apt-packages: libssl-dev
 
       - name: Install clang-tidy 18
-        run: pip install clang-tidy==18.1.8
+        run: pip install --root-user-action=ignore clang-tidy==18.1.8
 
       - name: Configure CMake (six-feat)
         run: |
@@ -521,7 +521,10 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v5
+        # v7 — под пару к upload-artifact v7.0.1 ниже. v5 всё ещё собран под
+        # Node 20: раннеры печатают о нём предупреждение на каждом шаге и заодно
+        # тащат свои DeprecationWarning про punycode и Buffer().
+        uses: actions/download-artifact@v7
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -640,7 +643,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -701,7 +704,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -761,7 +764,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -821,7 +824,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -1003,7 +1006,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -1093,7 +1096,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: /install/bin
           pattern: "*-binary"
