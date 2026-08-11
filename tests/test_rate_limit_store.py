@@ -142,6 +142,14 @@ def shared_backend_replicas(
 def _fire(base_url: str, n: int) -> List[requests.Response]:
     url = f"{base_url}/api/v1/graph"
     session = requests.Session()
+    # [SF-API-23 fix-03] Пул под размер залпа, как в conftest._make_session_with_cookie.
+    # По умолчанию urllib3 держит 10 соединений: 40 «одновременных» запросов на
+    # деле уходили пачками по десять, залп размазывался, и на медленном раннере
+    # переставал укладываться в одно окно лимитера — общий бюджет не
+    # исчерпывался, 429 не приходил, тест падал. Побочно уходят и три десятка
+    # предупреждений «Connection pool is full» в логе.
+    adapter = requests.adapters.HTTPAdapter(pool_connections=n, pool_maxsize=n)
+    session.mount("http://", adapter)
     responses: List[requests.Response] = []
     with ThreadPoolExecutor(max_workers=n) as pool:
         futures = [
