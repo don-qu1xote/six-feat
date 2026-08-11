@@ -1060,6 +1060,83 @@ class TestGraphEdgeCarriesOnlyTheAggregate:
         assert len(seed["top_tracks"]) <= 5
 
 
+class TestPopularitySurvivesTheCache:
+    """[SF-API-23 fix-01] Популярность лежит в базе, а не только в памяти запроса.
+
+    Пока список совместных треков ехал внутри ответа графа, он собирался из
+    только что скачанных песен — и популярность там была всегда. Список уехал
+    в /api/v1/graph/edge, а та отвечает уже со второго запроса, то есть из
+    базы; популярность там не хранилась, и и сортировка, и само поле
+    приезжали нулями. Здесь проверяется именно кэш-путь: тот же вопрос,
+    заданный второй раз."""
+
+    def test_the_node_track_tile_stays_ordered_on_a_repeated_request(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        collab_id = seed_id + 1
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "CacheOrderArtist"})
+        songs = [
+            (seed_id * 10 + 1, "Quiet", 10),
+            (seed_id * 10 + 2, "Loudest", 9000),
+            (seed_id * 10 + 3, "Middle", 500),
+        ]
+        genius_mock.songs(seed_id, [sid for sid, _, _ in songs])
+        for sid, title, pop in songs:
+            genius_mock.song_detail(
+                sid,
+                _build_song_detail(
+                    sid,
+                    title,
+                    seed_id,
+                    "CacheOrderArtist",
+                    collaborators=[_collab(collab_id, "Collaborator")],
+                    popularity=pop,
+                ),
+            )
+
+        first = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+        second = client.get(GRAPH_URL, params={"id": str(seed_id)}).json()
+
+        def tile(graph):
+            node = next(n for n in graph["nodes"] if n["id"] == seed_id)
+            return [(t["song"], t["popularity"]) for t in node["top_tracks"]]
+
+        assert tile(first) == [("Loudest", 9000), ("Middle", 500), ("Quiet", 10)]
+        assert tile(second) == tile(first), (
+            "второй запрос отвечает из базы — если популярность там не хранится, "
+            f"плитка треков рассыпается: {tile(second)}"
+        )
+
+    def test_the_edge_endpoint_carries_popularity_from_the_database(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+        seed_id = unique_artist_id
+        collab_id = seed_id + 1
+        song_id = seed_id * 10 + 1
+        genius_mock.artist(seed_id, {"id": seed_id, "name": "CachePopArtist"})
+        genius_mock.songs(seed_id, [song_id])
+        genius_mock.song_detail(
+            song_id,
+            _build_song_detail(
+                song_id,
+                "Cached Popular Song",
+                seed_id,
+                "CachePopArtist",
+                collaborators=[_collab(collab_id, "Collaborator")],
+                popularity=4242,
+            ),
+        )
+
+        # Граф спрашивается дважды: второй ответ уже из базы, и ручка ребра
+        # читает ровно оттуда же.
+        client.get(GRAPH_URL, params={"id": str(seed_id)})
+        client.get(GRAPH_URL, params={"id": str(seed_id)})
+        detail = client.get(EDGE_URL, params={"from": str(seed_id), "to": str(collab_id)}).json()
+
+        assert [c["popularity"] for c in detail["collaborations"]] == [4242]
+
+
 class TestGraphEdgeEndpointGuards:
     def test_anonymous_is_unauthorized(self, anon_client: requests.Session):
         resp = anon_client.get(EDGE_URL, params={"from": "1", "to": "2"})

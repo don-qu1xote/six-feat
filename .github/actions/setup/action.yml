@@ -35,7 +35,11 @@ runs:
         $SUDO apt-get install -y --no-install-recommends ${{ inputs.apt-packages }}
         $SUDO rm -rf /var/lib/apt/lists/*
 
-    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+    # v5: v4 работает на Node 20, а раннеры его уже сняли и на каждом запуске
+    # печатают предупреждение о принудительном запуске на Node 24. Здесь тег, а
+    # не SHA — сверить SHA для v5 было неоткуда, а тегом major уже закреплены
+    # download-artifact и cache в этом же репозитории.
+    - uses: actions/setup-node@v5
       if: inputs.node-version != ''
       with:
         node-version: ${{ inputs.node-version }}
@@ -45,5 +49,5 @@ runs:
       shell: bash
       run: |
         python3 -m venv /opt/testenv
-        /opt/testenv/bin/pip install --upgrade pip
-        /opt/testenv/bin/pip install -r config/requirements-test.txt
+        /opt/testenv/bin/pip install --no-cache-dir --upgrade pip
+        /opt/testenv/bin/pip install --no-cache-dir -r config/requirements-test.txt

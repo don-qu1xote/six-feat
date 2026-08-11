@@ -44,6 +44,13 @@ using namespace userver;
 
 namespace {
 
+// [SF-API-23] Пять самых заметных треков узла — на самом узле.
+// Раньше клиент собирал их сам, сливая collaborations всех входящих рёбер;
+// теперь рёбра список не несут, а плитка треков в панели артиста нужна сразу
+// при открытии — за ней не пошлёшь запрос на каждое ребро. Это по-прежнему
+// агрегат: пять записей на узел против всех треков на всех рёбрах.
+constexpr std::size_t kTopTracksPerNode = 5;
+
 std::string EmptyGraph(std::int64_t seed_id = 0, const std::string& seed_name = "") {
   formats::json::ValueBuilder b(formats::json::Type::kObject);
   b["type"] = std::string{"graph"};
@@ -433,12 +440,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     seed_roles.insert(agg.roles.begin(), agg.roles.end());
   }
 
-  // [SF-API-23] Пять самых заметных треков узла — на самом узле.
-  // Раньше клиент собирал их сам, сливая collaborations всех входящих рёбер;
-  // теперь рёбра список не несут, а плитка треков в панели артиста нужна
-  // сразу при открытии — за ней не пошлёшь запрос на каждое ребро. Это по-
-  // прежнему агрегат: пять записей на узел против всех треков на всех рёбрах.
-  constexpr std::size_t kTopTracksPerNode = 5;
   const auto top_tracks_json = [](std::vector<EdgeAggregation::Collaboration> collaborations) {
     auto sorted = SortedByPopularity(std::move(collaborations));
     if (sorted.size() > kTopTracksPerNode) sorted.resize(kTopTracksPerNode);

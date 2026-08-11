@@ -43,7 +43,7 @@ HOT_QUERIES = [
     {
         "name": "SongsForArtist",
         "sql": (
-            "SELECT s.id, s.title, c.role, a.id, a.name, a.image_url, a.url "
+            "SELECT s.id, s.title, s.popularity, c.role, a.id, a.name, a.image_url, a.url "
             "FROM songs s "
             "JOIN credits c ON c.song_id = s.id "
             "JOIN artists a ON a.id = c.artist_id "

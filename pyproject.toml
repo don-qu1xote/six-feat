@@ -13,12 +13,3 @@ ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tests", "mocks", "session_crypto"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-markers = [
-    "bg_profile: runs with enrichment background profile",
-    "game_profile: runs with game component profile",
-    "rate_limit_store: runs with rate-limit-store profile",
-    "slow: integration test that takes longer than 30s",
-]

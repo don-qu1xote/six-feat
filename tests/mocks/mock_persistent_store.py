@@ -31,6 +31,7 @@ class TrackCredit:
 class SongRecord:
     id: int
     title: str
+    popularity: int = 0
     credits: List[TrackCredit] = field(default_factory=list)
 
 
@@ -74,8 +75,9 @@ CREATE TABLE IF NOT EXISTS artists (
 );
 
 CREATE TABLE IF NOT EXISTS songs (
-    id    INTEGER PRIMARY KEY,
-    title TEXT NOT NULL
+    id         INTEGER PRIMARY KEY,
+    title      TEXT NOT NULL,
+    popularity INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS credits (
@@ -207,7 +209,7 @@ class InMemoryStore:
             return None
 
         cur = self._conn.execute(
-            """SELECT DISTINCT s.id, s.title
+            """SELECT DISTINCT s.id, s.title, s.popularity
                FROM songs s
                JOIN credits c ON c.song_id = s.id
                WHERE c.artist_id = ?""",
@@ -215,7 +217,7 @@ class InMemoryStore:
         )
         song_rows = cur.fetchall()
         songs = []
-        for song_id, title in song_rows:
+        for song_id, title, popularity in song_rows:
             ccur = self._conn.execute(
                 """SELECT a.id, a.name, a.image_url, a.url, c.role
                    FROM credits c
@@ -231,7 +233,9 @@ class InMemoryStore:
                         role=_int_to_role(role_int),
                     )
                 )
-            songs.append(SongRecord(id=song_id, title=title, credits=credits))
+            songs.append(
+                SongRecord(id=song_id, title=title, popularity=popularity, credits=credits)
+            )
 
         return ArtistSongs(seed=ref, songs=songs)
 
@@ -261,9 +265,14 @@ class InMemoryStore:
         )
 
         for song in data.songs:
+            # [SF-API-23 fix-01] MAX, а не перезапись — как ON CONFLICT ... GREATEST
+            # в боевом сторе: ноль от источника, не приславшего просмотры, не
+            # затирает уже известное число.
             self._conn.execute(
-                "INSERT OR IGNORE INTO songs(id, title) VALUES (?,?)",
-                (song.id, song.title),
+                """INSERT INTO songs(id, title, popularity) VALUES (?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       popularity = MAX(songs.popularity, excluded.popularity)""",
+                (song.id, song.title, song.popularity),
             )
             for credit in song.credits:
                 self._conn.execute(

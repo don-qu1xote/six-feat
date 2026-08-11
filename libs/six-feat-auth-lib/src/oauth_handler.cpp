@@ -78,11 +78,6 @@ bool ConstantTimeEquals(std::string_view a, std::string_view b) {
   return CRYPTO_memcmp(a.data(), b.data(), a.size()) == 0;
 }
 
-std::string EnvOrEmpty(const char* name) {
-  const char* value = std::getenv(name);
-  return (value && *value) ? value : "";
-}
-
 std::string EnvOr(const char* name, std::string_view fallback) {
   const char* value = std::getenv(name);
   return (value && *value) ? std::string(value) : std::string(fallback);

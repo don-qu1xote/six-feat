@@ -1,22 +1,40 @@
 #include <array>
-#include <openssl/sha.h>
+#include <memory>
+#include <openssl/evp.h>
 #include <six-feat-core/error_response.hpp>
 #include <six-feat-core/idempotency.hpp>
+#include <span>
+#include <stdexcept>
 
 namespace six_feat {
 
 namespace {
 
-std::string HashRequest(std::string_view route_id, std::string_view raw_body) {
-  SHA256_CTX ctx;
-  SHA256_Init(&ctx);
-  SHA256_Update(&ctx, route_id.data(), route_id.size());
-  static constexpr unsigned char kSep = '\n';
-  SHA256_Update(&ctx, &kSep, 1);
-  SHA256_Update(&ctx, raw_body.data(), raw_body.size());
+struct EvpMdCtxDeleter {
+  void operator()(EVP_MD_CTX* ctx) const noexcept {
+    EVP_MD_CTX_free(ctx);
+  }
+};
+using EvpMdCtx = std::unique_ptr<EVP_MD_CTX, EvpMdCtxDeleter>;
 
-  std::array<unsigned char, SHA256_DIGEST_LENGTH> digest{};
-  SHA256_Final(digest.data(), &ctx);
+// EVP, а не SHA256_Init/Update/Final: низкоуровневые функции объявлены
+// устаревшими с OpenSSL 3.0 и на каждой сборке дают по пять предупреждений.
+// Хэш тот же самый — считается тот же SHA-256 от тех же байт в том же порядке,
+// поэтому уже записанные ключи идемпотентности остаются валидными.
+std::string HashRequest(std::string_view route_id, std::string_view raw_body) {
+  static constexpr unsigned char kSep = '\n';
+  std::array<unsigned char, EVP_MAX_MD_SIZE> digest_buf{};
+  unsigned int digest_len = 0;
+
+  EvpMdCtx ctx{EVP_MD_CTX_new()};
+  if (!ctx || EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1 ||
+      EVP_DigestUpdate(ctx.get(), route_id.data(), route_id.size()) != 1 ||
+      EVP_DigestUpdate(ctx.get(), &kSep, 1) != 1 ||
+      EVP_DigestUpdate(ctx.get(), raw_body.data(), raw_body.size()) != 1 ||
+      EVP_DigestFinal_ex(ctx.get(), digest_buf.data(), &digest_len) != 1) {
+    throw std::runtime_error("idempotency: SHA-256 failed");
+  }
+  const std::span<const unsigned char> digest{digest_buf.data(), digest_len};
 
   static constexpr const char* kHex = "0123456789abcdef";
   std::string out;

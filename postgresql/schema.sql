@@ -19,10 +19,18 @@ CREATE TABLE IF NOT EXISTS artists (
     dominant_color TEXT
 );
 
+-- [SF-API-23 fix-01] popularity лежит в базе, а не только в памяти запроса:
+-- список совместных треков отдаёт /api/v1/graph/edge, а он со второго запроса
+-- читает уже из базы, и без колонки сортировка «по популярности» шла по нулям.
 CREATE TABLE IF NOT EXISTS songs (
-    id    BIGINT PRIMARY KEY,
-    title TEXT NOT NULL
+    id         BIGINT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    popularity BIGINT NOT NULL DEFAULT 0
 );
+
+-- CREATE TABLE IF NOT EXISTS не добавит колонку к уже существующей таблице,
+-- поэтому для базы от прошлой версии приложения — отдельный идемпотентный шаг.
+ALTER TABLE songs ADD COLUMN IF NOT EXISTS popularity BIGINT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS credits (
     song_id   BIGINT NOT NULL REFERENCES songs(id),
@@ -96,3 +104,5 @@ CREATE TABLE IF NOT EXISTS user_settings (
 -- заполняется по мере того, как изображения проходят через image-proxy.
 -- Backfill не нужен — боевой базы у проекта нет.
 COMMENT ON COLUMN artists.dominant_color IS 'average colour of the artist photo as #rrggbb, computed once in the image proxy — NULL means not sampled yet';
+
+COMMENT ON COLUMN songs.popularity IS 'Genius pageviews for the track — orders the shared-track list served by /api/v1/graph/edge and the top_tracks tile on a node';

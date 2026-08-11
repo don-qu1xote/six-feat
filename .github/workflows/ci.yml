@@ -18,6 +18,10 @@ defaults:
     shell: bash
 
 env:
+  # Контейнеры job'ов запускаются с HOME=/github/home, куда pip писать не может,
+  # и на каждой установке печатает предупреждение про недоступный кэш. Кэша тут
+  # всё равно нет — раннер одноразовый, — так что его просто не просим.
+  PIP_NO_CACHE_DIR: "1"
   USERVER_IMAGE_TAG: v3.0
   USERVER_IMAGE_REPO: ghcr.io/userver-framework/ubuntu-22.04-userver
   USERVER_IMAGE_DIGEST: sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
@@ -517,7 +521,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -636,7 +640,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -697,7 +701,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -757,7 +761,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -817,7 +821,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -999,7 +1003,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /install/bin
           pattern: "*-binary"
@@ -1089,7 +1093,7 @@ jobs:
           python-testenv: "true"
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: /install/bin
           pattern: "*-binary"

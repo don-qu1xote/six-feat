@@ -48,10 +48,23 @@ const std::vector<const char*> kSchemaStatements = {
         url            TEXT,
         dominant_color TEXT
     ))SQL",
+    // [SF-API-23 fix-01] Популярность трека хранится, а не живёт только в
+    // памяти запроса. Пока список совместных треков ехал внутри ответа графа,
+    // он собирался из свежескачанных песен, и популярность там была. Список
+    // уехал в отдельную ручку — а та отвечает уже со второго запроса, то есть
+    // из базы, где популярности не было: и сортировка «по популярности», и
+    // само поле приезжали нулями. Колонка объявлена прямо в CREATE TABLE:
+    // версий схемы нет, отдельный ALTER не нужен.
     R"SQL(CREATE TABLE IF NOT EXISTS songs (
-        id    BIGINT PRIMARY KEY,
-        title TEXT NOT NULL
+        id         BIGINT PRIMARY KEY,
+        title      TEXT NOT NULL,
+        popularity BIGINT NOT NULL DEFAULT 0
     ))SQL",
+    // CREATE TABLE IF NOT EXISTS не добавит колонку к уже существующей
+    // таблице, а весь список обещает быть идемпотентным именно в смысле
+    // «поверх базы от прошлой версии приложения». Для новой базы этот ALTER
+    // ничего не делает, для старой — доводит её до текущей схемы.
+    R"SQL(ALTER TABLE songs ADD COLUMN IF NOT EXISTS popularity BIGINT NOT NULL DEFAULT 0)SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS credits (
         song_id   BIGINT NOT NULL REFERENCES songs(id),
         artist_id BIGINT NOT NULL REFERENCES artists(id),
@@ -112,6 +125,7 @@ const std::vector<const char*> kSchemaStatements = {
     // объявлена прямо в CREATE TABLE: версий схемы нет, отдельный ALTER
     // не нужен.
     R"SQL(COMMENT ON COLUMN artists.dominant_color IS 'average colour of the artist photo as #rrggbb, computed once in the image proxy — NULL means not sampled yet')SQL",
+    R"SQL(COMMENT ON COLUMN songs.popularity IS 'Genius pageviews for the track — orders the shared-track list served by /api/v1/graph/edge and the top_tracks tile on a node')SQL",
 };
 
 void BootstrapSchema(const storages::postgres::ClusterPtr& cluster) {
@@ -286,7 +300,7 @@ struct PersistentStore::Impl {
       auto res = cluster->Execute(
           read_host_type,
           kReadQueryCommandControl,
-          "SELECT s.id, s.title, c.role, "
+          "SELECT s.id, s.title, s.popularity, c.role, "
           "       a.id, a.name, a.image_url, a.url "
           "FROM songs s "
           "JOIN credits c ON c.song_id = s.id "
@@ -302,14 +316,15 @@ struct PersistentStore::Impl {
           SongRecord rec;
           rec.id = song_id;
           rec.title = row[1].As<std::string>();
+          rec.popularity = row[2].As<std::int64_t>();
           songs.push_back(std::move(rec));
         }
         TrackCredit tc;
-        tc.role = IntToRole(row[2].As<std::int16_t>());
-        tc.artist.id = row[3].As<std::int64_t>();
-        tc.artist.name = row[4].As<std::string>();
-        tc.artist.image = row[5].As<std::optional<std::string>>().value_or("");
-        tc.artist.url = row[6].As<std::optional<std::string>>().value_or("");
+        tc.role = IntToRole(row[3].As<std::int16_t>());
+        tc.artist.id = row[4].As<std::int64_t>();
+        tc.artist.name = row[5].As<std::string>();
+        tc.artist.image = row[6].As<std::optional<std::string>>().value_or("");
+        tc.artist.url = row[7].As<std::optional<std::string>>().value_or("");
         songs.back().credits.push_back(std::move(tc));
       }
       return songs;
@@ -394,6 +409,7 @@ struct PersistentStore::Impl {
 
     std::vector<std::int64_t> song_ids;
     std::vector<std::string> song_titles;
+    std::vector<std::int64_t> song_popularity;
 
     std::vector<std::int64_t> credit_song_ids;
     std::vector<std::int64_t> credit_artist_ids;
@@ -402,6 +418,7 @@ struct PersistentStore::Impl {
     for (const auto& song : data.songs) {
       song_ids.push_back(song.id);
       song_titles.push_back(song.title);
+      song_popularity.push_back(song.popularity);
 
       for (const auto& tc : song.credits) {
         if (seen_artists.emplace(tc.artist.id, artist_ids.size()).second) {
@@ -428,12 +445,18 @@ struct PersistentStore::Impl {
     }
 
     if (!song_ids.empty()) {
+      // GREATEST, а не перезапись: фоновое обогащение и передний план ходят в
+      // Genius разными запросами, и не в каждом ответе есть stats.pageviews.
+      // Ноль от источника, который её не прислал, не должен затирать уже
+      // известное число — просмотры только растут.
       trx.Execute(
-          "INSERT INTO songs(id, title) "
-          "SELECT * FROM UNNEST($1::bigint[], $2::text[]) "
-          "ON CONFLICT (id) DO NOTHING",
+          "INSERT INTO songs(id, title, popularity) "
+          "SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::bigint[]) "
+          "ON CONFLICT (id) DO UPDATE SET "
+          "  popularity = GREATEST(songs.popularity, excluded.popularity)",
           song_ids,
-          song_titles);
+          song_titles,
+          song_popularity);
     }
 
     if (!credit_song_ids.empty()) {
