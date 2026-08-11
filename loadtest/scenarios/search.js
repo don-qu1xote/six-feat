@@ -1,21 +1,21 @@
-// loadtest/scenarios/search.js — SF-INF-05
-//
-// GET /api/v1/search: no persistent state at all (DEVELOPMENT.md,
-// "Кэширование ответов") — every call is a live Genius API round-trip, so
-// this scenario is the harness's most direct measure of upstream Genius
-// latency/error-rate under load rather than six-feat's own DB/graph path.
-//
-// SEARCH_QUERIES (comma-separated) picks a random query per iteration —
-// falls back to a single SEARCH_QUERY when unset, and to lib/config.js's
-// own default ("Aurora Vale"/"Kessler Vane" — the two names
-// scripts/e2e_env.py's mock Genius actually has registered, see its
-// GeniusMock.resolve() calls; that mock's /search dispatch is an EXACT
-// string match, so anything else 404s) when neither is set at all.
-//
-// Run standalone:
-//   BASE_URL=http://localhost:8080 SESSION_COOKIE=<cookie> \
-//     SEARCH_QUERIES="Drake,Kendrick,SZA" k6 run loadtest/scenarios/search.js
-// Or via loadtest/run-all.sh — see loadtest/README.md.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import http from "k6/http";
 import { check, sleep } from "k6";
@@ -33,9 +33,9 @@ export const options = {
     },
   },
   thresholds: {
-    // Advisory only (SF-INF-05) — every call is a live Genius round-trip,
-    // so this is the scenario most exposed to Genius-mock/API latency
-    // variance outside six-feat's own control. See loadtest/README.md.
+
+
+
     http_req_duration: ["p(95)<1000"],
     http_req_failed: ["rate<0.02"],
   },
@@ -55,5 +55,5 @@ export default function () {
 }
 
 export function handleSummary(data) {
-  return summaryHandler("search", "loadtest/.output/search")(data);
+  return summaryHandler("search", "loadtest/output/search")(data);
 }

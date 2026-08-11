@@ -1,760 +1,2521 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Feature Atlas — map who an artist makes songs with</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Feature Atlas — map who an artist makes songs with</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Unbounded:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
 
-  <!-- [SF-WEB-40] Design system bundled from src/styles/ (esbuild →
-       dist/style.<hash>.css). "/style.css" is rewritten to the real
-       content-hashed URL at serve time by handler-index (see
-       static_handler.cpp TransformContent), exactly like "/script.js"
-       below. The former ~1932-line inline stylesheet now lives, verbatim
-       and systematised, under src/styles/. -->
-  <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
 
-</head>
+  <body class="view-home">
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none">
+      <symbol id="icon-search" viewBox="0 0 24 24">
+        <circle
+          cx="10"
+          cy="10"
+          r="6"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M14.5 14.5l4.5 4.5"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-<body class="view-home">
+      <symbol id="icon-locate" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <path
+          d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+        />
+      </symbol>
 
-  <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
-    
-    <symbol id="icon-search" viewBox="0 0 24 24">
-      <circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M14.5 14.5l4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-shuffle" viewBox="0 0 24 24">
+        <circle
+          cx="5"
+          cy="7"
+          r="1.8"
+          fill="currentColor"
+          stroke="currentColor"
+          stroke-width="1.5"
+        />
+        <circle
+          cx="12"
+          cy="4"
+          r="1.8"
+          fill="currentColor"
+          stroke="currentColor"
+          stroke-width="1.5"
+        />
+        <circle
+          cx="19"
+          cy="9"
+          r="1.8"
+          fill="currentColor"
+          stroke="currentColor"
+          stroke-width="1.5"
+        />
+        <circle
+          cx="12"
+          cy="18"
+          r="1.8"
+          fill="currentColor"
+          stroke="currentColor"
+          stroke-width="1.5"
+        />
+        <circle
+          cx="5"
+          cy="21"
+          r="1.8"
+          fill="currentColor"
+          stroke="currentColor"
+          stroke-width="1.5"
+        />
+        <path
+          d="M 5 9 L 12 6"
+          stroke="currentColor"
+          stroke-width="1.2"
+          opacity="0.35"
+          stroke-linecap="round"
+        />
+        <path
+          d="M 12 6 L 19 8"
+          stroke="currentColor"
+          stroke-width="1.2"
+          opacity="0.35"
+          stroke-linecap="round"
+        />
+        <path
+          d="M 12 6 L 12 16.2"
+          stroke="currentColor"
+          stroke-width="1.2"
+          opacity="0.35"
+          stroke-linecap="round"
+        />
+        <path
+          d="M 5 19 L 12 16.2"
+          stroke="currentColor"
+          stroke-width="1.2"
+          opacity="0.35"
+          stroke-linecap="round"
+        />
+        <path
+          d="M 5 7 L 12 4 L 12 18 L 5 21"
+          stroke="currentColor"
+          stroke-width="2"
+          fill="none"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-locate" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
-      <circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    </symbol>
+      <symbol id="icon-game" viewBox="0 0 24 24">
+        <rect
+          x="2"
+          y="7"
+          width="20"
+          height="10"
+          rx="5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle cx="8" cy="12" r="1.2" fill="currentColor" />
+        <circle cx="16" cy="10.5" r="1" fill="currentColor" />
+        <circle cx="18" cy="13" r="1" fill="currentColor" />
+      </symbol>
 
-    <symbol id="icon-shuffle" viewBox="0 0 24 24">
-      <circle cx="5" cy="7" r="1.8" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="12" cy="4" r="1.8" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="19" cy="9" r="1.8" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="12" cy="18" r="1.8" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="5" cy="21" r="1.8" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M 5 9 L 12 6" stroke="currentColor" stroke-width="1.2" opacity="0.35" stroke-linecap="round"/>
-      <path d="M 12 6 L 19 8" stroke="currentColor" stroke-width="1.2" opacity="0.35" stroke-linecap="round"/>
-      <path d="M 12 6 L 12 16.2" stroke="currentColor" stroke-width="1.2" opacity="0.35" stroke-linecap="round"/>
-      <path d="M 5 19 L 12 16.2" stroke="currentColor" stroke-width="1.2" opacity="0.35" stroke-linecap="round"/>
-      <path d="M 5 7 L 12 4 L 12 18 L 5 21" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-swap" viewBox="0 0 24 24">
+        <path
+          d="M7 5v13M7 5L3.5 8.5M7 5l3.5 3.5"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"
+        />
+        <path
+          d="M17 19V6M17 19l3.5-3.5M17 19l-3.5-3.5"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"
+        />
+      </symbol>
 
-    <symbol id="icon-swap" viewBox="0 0 24 24">
-      <path d="M7 5v13M7 5L3.5 8.5M7 5l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-      <path d="M17 19V6M17 19l3.5-3.5M17 19l-3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    </symbol>
+      <symbol id="icon-mic" viewBox="0 0 24 24">
+        <path
+          d="M6 10c0-3.3 2.7-6 6-6s6 2.7 6 6v4c0 3.3-2.7 6-6 6s-6-2.7-6-6V10z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M4 14h16M12 20v2M10 22h4"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-mic" viewBox="0 0 24 24">
-      <path d="M6 10c0-3.3 2.7-6 6-6s6 2.7 6 6v4c0 3.3-2.7 6-6 6s-6-2.7-6-6V10z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M4 14h16M12 20v2M10 22h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-sliders" viewBox="0 0 24 24">
+        <path d="M6 3v11M6 21v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        <path
+          d="M12 3v3M12 21v-11"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+        />
+        <path
+          d="M18 3v7M18 21v-6"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+        />
+        <circle cx="6" cy="16" r="2" fill="currentColor" stroke="none" />
+        <circle cx="12" cy="8" r="2" fill="currentColor" stroke="none" />
+        <circle cx="18" cy="12" r="2" fill="currentColor" stroke="none" />
+      </symbol>
 
-    <symbol id="icon-sliders" viewBox="0 0 24 24">
-      <path d="M6 3v11M6 21v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <path d="M12 3v3M12 21v-11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <path d="M18 3v7M18 21v-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <circle cx="6" cy="16" r="2" fill="currentColor" stroke="none"/>
-      <circle cx="12" cy="8" r="2" fill="currentColor" stroke="none"/>
-      <circle cx="18" cy="12" r="2" fill="currentColor" stroke="none"/>
-    </symbol>
+      <symbol id="icon-pen" viewBox="0 0 24 24">
+        <path
+          d="M16.5 4.5a2.12 2.12 0 0 1 3 3L8.5 18.5l-4.2 1.2 1.2-4.2L16.5 4.5z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M14.2 6.8l3 3"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-pen" viewBox="0 0 24 24">
-      <path d="M16.5 4.5a2.12 2.12 0 0 1 3 3L8.5 18.5l-4.2 1.2 1.2-4.2L16.5 4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M14.2 6.8l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-frame" viewBox="0 0 24 24">
+        <path
+          d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-frame" viewBox="0 0 24 24">
-      <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-link" viewBox="0 0 24 24">
+        <path
+          d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-link" viewBox="0 0 24 24">
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24">
+        <path
+          d="M18 6L6 18M6 6l12 12"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-close" viewBox="0 0 24 24">
-      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+        <path
+          d="M14 6l-6 6 6 6"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-download" viewBox="0 0 24 24">
-      <path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24">
+        <path
+          d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <!-- [SF-WEB-04] #btn-export-json's icon — braces, to read as "data"
-         next to #btn-export-png's download arrow. -->
-    <symbol id="icon-braces" viewBox="0 0 24 24">
-      <path d="M8 4c-1.7 0-2.5.9-2.5 2.5v2.8c0 1-.4 1.4-1.5 1.7 1.1.3 1.5.7 1.5 1.7v2.8C5.5 17.1 6.3 18 8 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M16 4c1.7 0 2.5.9 2.5 2.5v2.8c0 1 .4 1.4 1.5 1.7-1.1.3-1.5.7-1.5 1.7v2.8c0 1.6-.8 2.5-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-braces" viewBox="0 0 24 24">
+        <path
+          d="M8 4c-1.7 0-2.5.9-2.5 2.5v2.8c0 1-.4 1.4-1.5 1.7 1.1.3 1.5.7 1.5 1.7v2.8C5.5 17.1 6.3 18 8 18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M16 4c1.7 0 2.5.9 2.5 2.5v2.8c0 1 .4 1.4 1.5 1.7-1.1.3-1.5.7-1.5 1.7v2.8c0 1.6-.8 2.5-2.5 2.5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <symbol id="icon-key" viewBox="0 0 24 24">
-      <circle cx="7" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <rect x="10" y="10" width="8" height="4" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="18" cy="10" r="0.9" fill="currentColor"/>
-      <circle cx="18" cy="14" r="0.9" fill="currentColor"/>
-      <path d="M 19 10 L 21 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <path d="M 19 14 L 21 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <path d="M 21 10 L 21 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <circle cx="21" cy="12" r="1.5" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" stroke-linecap="round"/>
-    </symbol>
+      <symbol id="icon-key" viewBox="0 0 24 24">
+        <circle
+          cx="7"
+          cy="12"
+          r="4.5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <rect
+          x="10"
+          y="10"
+          width="8"
+          height="4"
+          rx="1.2"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle cx="18" cy="10" r="0.9" fill="currentColor" />
+        <circle cx="18" cy="14" r="0.9" fill="currentColor" />
+        <path d="M 19 10 L 21 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        <path d="M 19 14 L 21 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        <path d="M 21 10 L 21 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        <circle
+          cx="21"
+          cy="12"
+          r="1.5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1"
+          opacity="0.5"
+          stroke-linecap="round"
+        />
+      </symbol>
 
-    <symbol id="icon-info" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M12 8v0.01M12 12v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-disc" viewBox="0 0 24 24">
+        <circle
+          cx="12"
+          cy="12"
+          r="9"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          r="2.5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <!-- [SF-WEB-05] scan-status-badge's partial-data/scanning indicator. -->
-    <symbol id="icon-clock" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-gear" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+        <circle cx="12" cy="12" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6" />
+        <g fill="currentColor">
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" />
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" transform="rotate(45 12 12)" />
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" transform="rotate(90 12 12)" />
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" transform="rotate(135 12 12)" />
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" transform="rotate(180 12 12)" />
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" transform="rotate(225 12 12)" />
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" transform="rotate(270 12 12)" />
+          <rect x="10.9" y="2.3" width="2.2" height="3.2" rx="0.6" transform="rotate(315 12 12)" />
+        </g>
+      </symbol>
 
-    <symbol id="icon-plus" viewBox="0 0 24 24">
-      <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-info" viewBox="0 0 24 24">
+        <circle
+          cx="12"
+          cy="12"
+          r="10"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M12 8v0.01M12 12v4"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <!-- [SF-WEB-14] canvas-zoom-cluster's zoom-out. -->
-    <symbol id="icon-minus" viewBox="0 0 24 24">
-      <path d="M5 12h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24">
+        <circle
+          cx="12"
+          cy="12"
+          r="9"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M12 7v5l3.5 2"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <!-- [SF-WEB-75] Compare rail button icon — was a Venn-diagram
-         intersection (two overlapping circles), which reads as "set
-         overlap" rather than "click two graph nodes". Redrawn as two graph
-         nodes joined by a connecting line — the literal mechanic
-         (compare-mode.js::handleCompareModeNodeClick picks a first, then a
-         second node) instead of an abstract set operation. -->
-    <symbol id="icon-compare" viewBox="0 0 24 24">
-      <circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="18" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.5 2" stroke-linecap="round"/>
-    </symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24">
+        <path
+          d="M12 5v14M5 12h14"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <!-- [SF-WEB-61] BubbleSet toggle rail button — three soft overlapping
-         circles, echoing the haze-per-sector visual it turns on/off. -->
-    <symbol id="icon-haze" viewBox="0 0 24 24">
-      <circle cx="9"  cy="9"  r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="15" cy="9"  r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <circle cx="12" cy="15" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-    </symbol>
+      <symbol id="icon-minus" viewBox="0 0 24 24">
+        <path
+          d="M5 12h14"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <!-- IDEA-23: theme toggle icons — sun shown while dark (switch to
-         light), moon shown while light (switch to dark). -->
-    <symbol id="icon-sun" viewBox="0 0 24 24">
-      <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-      <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9L19 19M19 5l-2.1 2.1M7.1 16.9L5 19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-    </symbol>
+      <symbol id="icon-compare" viewBox="0 0 24 24">
+        <circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="18" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <line
+          x1="9"
+          y1="12"
+          x2="15"
+          y2="12"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-dasharray="1.5 2"
+          stroke-linecap="round"
+        />
+      </symbol>
 
-    <symbol id="icon-moon" viewBox="0 0 24 24">
-      <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+      <symbol id="icon-haze" viewBox="0 0 24 24">
+        <circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="15" cy="9" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="12" cy="15" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+      </symbol>
 
-  </svg>
+      <symbol id="icon-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <path
+          d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9L19 19M19 5l-2.1 2.1M7.1 16.9L5 19"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+        />
+      </symbol>
 
-  <main class="app-canvas" id="app-canvas">
+      <symbol id="icon-moon" viewBox="0 0 24 24">
+        <path
+          d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <div id="network" role="img" aria-label="Collaboration graph. Not fully keyboard/screen-reader accessible — use “Find on map” (⌘K) to browse the same artists as an accessible list."></div>
+      <symbol id="icon-trophy" viewBox="0 0 24 24">
+        <path
+          d="M7 4h10v5a5 5 0 0 1-10 0V4z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M7 6H4.5a2.5 2.5 0 0 0 2.5 2.7M17 6h2.5a2.5 2.5 0 0 1-2.5 2.7"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path d="M12 14v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        <path
+          d="M8.5 20.5l1-3.5h5l1 3.5z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <!-- F-43: hidden-but-accessible DOM twin of the canvas graph — a focusable
-         list of nodes plus, for whichever one is selected, its neighbours —
-         for screen-reader/keyboard users who cannot perceive the <canvas>.
-         Kept in sync with State.graphNodes/graphEdges by
-         src/ui/graph-a11y-list.js, invoked from graph.js::finalizeGraphState. -->
-    <div class="sr-only" id="graph-a11y-panel" role="region" aria-label="Accessible graph navigation">
-      <h2 id="graph-a11y-heading">Graph nodes</h2>
-      <ul id="graph-a11y-node-list" role="list" aria-label="Artists in the current graph"></ul>
-      <h3 id="graph-a11y-neighbors-heading">Connections</h3>
-      <ul id="graph-a11y-neighbor-list" role="list" aria-label="Connections of the selected artist"></ul>
-    </div>
+      <symbol id="icon-star" viewBox="0 0 24 24">
+        <path
+          d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.79L12 16.77l-5.2 2.73.99-5.79-4.21-4.1 5.82-.85z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
 
-    <div class="canvas-decorator" id="canvas-decorator" aria-hidden="true"></div>
+      <symbol id="icon-target" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      </symbol>
 
-    <div class="search-modal is-first-visit" id="search-modal">
-      <!-- [SF-WEB-31 follow-up] Референс — главные страницы Google/Yandex:
-           один крупный вордмарк по центру, сразу под ним поиск, больше
-           почти ничего. Раньше здесь были eyebrow-тег + отдельный
-           .hero-logo (градиентная точка) + трёхстрочный слоган ("Trace the
-           people behind the features.") — три разных представления бренда
-           одновременно. Теперь один элемент: САМО НАЗВАНИЕ сервиса тем же
-           шрифтом/размером, что был у слогана (font-family/font-size/
-           font-weight у h1 не менялись, только текст и вёрстка) — вордмарк
-           = логотип, отдельная иконка-точка не нужна (ни Google, ни Yandex
-           не дублируют текстовый логотип отдельной иконкой). Тот же .grad
-           градиент, что раньше подсвечивал только "features", теперь на
-           всё название — сервис становится узнаваемым по одному
-           взгляду. -->
-      <div class="hero-header">
-        <h1><span class="grad">Six Feet</span></h1>
-        <!-- [SF-WEB-50] One quiet thesis line under the wordmark — not the
-             old instructional paragraph ("Search an artist to map who
-             they've made songs with", removed in SF-WEB-31 for competing
-             with the search field itself). States what the product IS,
-             doesn't tell the user what to do; styled small/muted
-             (.hero-tagline, hero.css) so weight stays on the search field
-             below, per this ticket's own brief. -->
-        <p class="hero-tagline">Six degrees of collaboration.</p>
+      <symbol id="icon-bolt" viewBox="0 0 24 24">
+        <path
+          d="M13 3L5 13.5h5l-1 7.5 8-11h-5z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
+
+      <symbol id="icon-flame" viewBox="0 0 24 24">
+        <path
+          d="M12 2.5c3 3.5 5.5 6 5.5 10a5.5 5.5 0 0 1-11 0c0-1.8.7-3.2 1.8-4.4.3 1.2 1.2 1.8 2 1.8 1.2 0 1.6-1 .9-2.6C10.3 6.6 10.8 4.4 12 2.5z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </symbol>
+
+      <symbol id="icon-medal" viewBox="0 0 24 24">
+        <path
+          d="M8.5 3L12 9M15.5 3L12 9"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <circle cx="12" cy="15" r="6" fill="none" stroke="currentColor" stroke-width="1.5" />
+        <circle cx="12" cy="15" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5" />
+      </symbol>
+    </svg>
+
+    <main class="app-canvas" id="app-canvas">
+      <div
+        id="network"
+        role="img"
+        aria-label="Collaboration graph. Not fully keyboard/screen-reader accessible — use “Find on map” (⌘K) to browse the same artists as an accessible list."
+      ></div>
+
+      <div
+        class="sr-only"
+        id="graph-a11y-panel"
+        role="region"
+        aria-label="Accessible graph navigation"
+      >
+        <h2 id="graph-a11y-heading">Graph nodes</h2>
+        <ul id="graph-a11y-node-list" role="list" aria-label="Artists in the current graph"></ul>
+        <h3 id="graph-a11y-neighbors-heading">Connections</h3>
+        <ul
+          id="graph-a11y-neighbor-list"
+          role="list"
+          aria-label="Connections of the selected artist"
+        ></ul>
       </div>
 
-      <!-- IDEA-41: segmented Explore/Connect switch sits above the hero
-           search. "Explore" (default) is the existing single-artist graph
-           search — unchanged. "Connect" swaps in a from/to path finder,
-           replacing the old hidden find-path-toggle button + dual-input
-           panel. Only this landing presentation/trigger changes — the
-           path search call (runServerPath) and the in-graph path finder
-           (rail/⌘K) are untouched. -->
-      <div class="hero-mode-switch ui-segment" id="hero-mode-switch" role="tablist" aria-label="Search mode" data-mode="explore">
-        <button type="button" class="hero-mode-tab" id="hero-mode-tab-explore" role="tab"
-          aria-selected="true" aria-controls="hero-mode-panel-explore" tabindex="0">
-          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg>
-          <span>Explore</span>
-        </button>
-        <button type="button" class="hero-mode-tab" id="hero-mode-tab-connect" role="tab"
-          aria-selected="false" aria-controls="hero-mode-panel-connect" tabindex="-1">
-          <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
-          <span>Connect</span>
-        </button>
-        <span class="hero-mode-thumb" aria-hidden="true"></span>
-      </div>
+      <div class="canvas-decorator" id="canvas-decorator" aria-hidden="true"></div>
 
-      <div class="hero-mode-stage" id="hero-mode-stage">
-        <div class="hero-mode-panel is-active" id="hero-mode-panel-explore" role="tabpanel" aria-labelledby="hero-mode-tab-explore">
-          <div class="search-wrap">
-            <form class="search" id="hero-form">
-              <label class="sr-only" for="hero-input">Artist name</label>
-              <input id="hero-input" type="text" autocomplete="off"
-                placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
-                aria-autocomplete="list" aria-controls="hero-ac" />
-              <button type="submit" class="ui-btn ui-btn--primary">Map it</button>
-            </form>
-            <div class="ac-dropdown" id="hero-ac" role="listbox"></div>
-          </div>
+      <div class="search-modal is-first-visit" id="search-modal">
+        <div class="hero-header">
+          <h1><span class="grad">Six Feat</span></h1>
 
-          <!-- [SF-WEB-31] Redesign: roles were a permanently-visible strip
-               (see the ТЗ #2 comment this replaces) — one more block always
-               competing for attention on the first screen alongside the
-               eyebrow/h1/p/mode-switch/chips/auth-bar. Same buttons, same
-               ids, same State.activeFilters wiring (setupFilterToggles,
-               canvas-controls.js) — only the presentation is now a native
-               <details> disclosure, collapsed by default, so the first
-               screen's default view drops one whole block. Native
-               <details>/<summary> needs no JS for open/close, and keeps
-               the existing .include-roles-row class (and therefore the
-               shared .search-modal open/close opacity+transform transition
-               it was already part of, see CSS) unchanged. -->
-          <details class="include-roles-row">
-            <summary class="include-roles-summary">
-              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg>
-              <span>Filters</span>
-            </summary>
-            <div class="role-filter-group">
-              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-featured" data-role="featured">
-                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg><span>Featured</span>
-              </button>
-              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-producer" data-role="producer">
-                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg><span>Producer</span>
-              </button>
-              <button type="button" class="role-filter-btn ui-btn active" id="hero-filter-writer" data-role="writer">
-                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg><span>Writer</span>
-              </button>
-            </div>
-          </details>
-
-          <div class="chips-label" id="chips-label">Try one of these</div>
-          <div class="chips" id="chips">
-            <button class="chip ui-chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
-            <button class="chip ui-chip" data-artist="Gorillaz">Gorillaz</button>
-            <button class="chip ui-chip" data-artist="Rosalía">Rosalía</button>
-            <button class="chip ui-chip" data-artist="Calvin Harris">Calvin Harris</button>
-            <button class="chip ui-chip" data-artist="Tyler, the Creator">Tyler, the Creator</button>
-          </div>
+          <p class="hero-tagline" data-i18n="hero.tagline">Six degrees of collaboration.</p>
         </div>
 
-        <!-- [fix] Was also bento-tile bento-tile--md — the only hero-mode
-             panel wrapped in its own boxed card; Explore's panel floats
-             its fields directly on the canvas with no such box, so
-             Connect visually stuck out as a heavier, separate surface
-             next to it. Dropped so both panels read as the same kind of
-             thing (see hero.css's own comment on .hero-connect-panel). -->
-        <div class="hero-mode-panel hero-connect-panel" id="hero-mode-panel-connect" role="tabpanel" aria-labelledby="hero-mode-tab-connect">
-          <div class="hero-connect-row">
-            <div class="hero-route-rail">
-              <span class="hero-route-dot hero-route-dot--from" aria-hidden="true">●</span>
-              <span class="hero-route-track" aria-hidden="true"></span>
-              <span class="hero-route-dot hero-route-dot--to" aria-hidden="true">◎</span>
-            </div>
-            <div class="hero-connect-fields">
-              <div class="path-input-wrap">
-                <label class="sr-only" for="hero-path-from-input">From artist</label>
-                <input class="path-input" id="hero-path-from-input" type="text" autocomplete="off" placeholder="From artist…" />
-                <div class="ac-dropdown" id="hero-path-from-ac" role="listbox"></div>
-              </div>
-              <div class="path-input-wrap">
-                <label class="sr-only" for="hero-path-to-input">To artist</label>
-                <input class="path-input" id="hero-path-to-input" type="text" autocomplete="off" placeholder="To artist…" />
-                <div class="ac-dropdown" id="hero-path-to-ac" role="listbox"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="hero-connect-actions">
-            <button type="button" class="hero-connect-run ui-btn ui-btn--primary" id="btn-hero-run-path">
-              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
-              <span>Trace the path</span>
-            </button>
-            <button type="button" class="dock-btn" id="btn-hero-swap-path" title="Swap From/To" aria-label="Swap From and To artists">
-              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-swap"/></svg><span>Swap</span>
-            </button>
-            <button type="button" class="dock-btn" id="btn-hero-clear-path">Clear</button>
-          </div>
-
-          <!-- [fix] Was also a #hero-path-result div here — loading/error
-               states now go through the shared canvas-wide overlay/toast
-               (ui/loading.js, ui/toast.js), same as regular artist search,
-               instead of an element embedded in this panel. -->
-          <div class="hop-chain" id="hero-hop-chain"></div>
-        </div>
-      </div>
-
-      <div class="auth-bar" id="auth-bar">
-        <div class="auth-hint" id="auth-hint">
-          <span class="auth-hint-text">Sign in with</span>
-          <a class="auth-btn" href="/auth/login">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z"/>
+        <div
+          class="hero-mode-switch ui-segment"
+          id="hero-mode-switch"
+          role="tablist"
+          aria-label="Search mode"
+          data-i18n-attr="aria-label:hero.mode.ariaLabel"
+          data-mode="explore"
+        >
+          <button
+            type="button"
+            class="hero-mode-tab"
+            id="hero-mode-tab-explore"
+            role="tab"
+            aria-selected="true"
+            aria-controls="hero-mode-panel-explore"
+            tabindex="0"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-search" />
             </svg>
-            your Genius
-          </a>
-        </div>
-        <div class="auth-user" id="auth-user" style="display:none">
-          <span class="auth-user-name" id="auth-user-name">—</span>
-          <button type="button" class="auth-logout" id="auth-logout-btn">Sign out</button>
-        </div>
-      </div>
-    </div>
+            <span data-i18n="hero.mode.explore">Explore</span>
+          </button>
+          <button
+            type="button"
+            class="hero-mode-tab"
+            id="hero-mode-tab-connect"
+            role="tab"
+            aria-selected="false"
+            aria-controls="hero-mode-panel-connect"
+            tabindex="-1"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-shuffle" />
+            </svg>
+            <span data-i18n="hero.mode.connect">Connect</span>
+          </button>
 
-    <!-- [SF-WEB-19] Unified empty-state surface for the canvas — populated
-         by src/ui/canvas-states.js (renderEmptyState), never hand-authored
-         here beyond this empty shell. ONLY ever shown after clearCanvas()
-         (canvas-controls.js) clears an existing graph — never on first
-         visit, where the landing search modal is already the onboarding
-         surface. clearCanvas() no longer reopens that modal (stays on the
-         graph page instead), so this card is what fills the empty canvas.
-         Placed AFTER #search-modal on purpose — see the
-         #search-modal:not(.is-closed) ~ #canvas-state rule below, which
-         needs this sibling order: it hides the card while a search modal
-         (e.g. the docked one this card's own button opens) is covering the
-         same screen region. -->
-    <div class="ui-state-slot" id="canvas-state"></div>
+          <button
+            type="button"
+            class="hero-mode-tab"
+            id="hero-mode-tab-game"
+            role="tab"
+            aria-selected="false"
+            aria-controls="hero-mode-panel-game"
+            tabindex="0"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-game" />
+            </svg>
+            <span data-i18n="hero.mode.game">Game</span>
+          </button>
 
-    <section class="canvas-chrome" id="canvas-chrome">
-
-    <!-- IDEA-23: theme toggle — a direct .canvas-chrome child (not inside
-         .rail/.status/.context-panel/.actions-bar), so it stays visible on
-         both body.view-home and body.view-graph and inherits canvas-chrome's
-         pointer-events:auto + z-index above the search modal for free. -->
-    <button class="theme-toggle" id="theme-toggle" type="button"
-      aria-label="Switch to light theme" aria-pressed="false">
-      <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sun"/></svg>
-    </button>
-
-    <nav class="rail">
-      <button class="brand" id="brand" type="button" title="Six Feet — back to start">
-        <span class="dotmark"></span>
-        <span class="rl">Six Feet</span>
-      </button>
-
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-search-open" data-tip="Search artist">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-search"/></svg><span class="rl">Search</span>
-      </button>
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-node-search" data-tip="Search loaded nodes (⌘K)">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg><span class="rl">Find on map</span>
-      </button>
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-find-path" data-tip="Find path">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg><span class="rl">Find path</span>
-      </button>
-      <!-- [SF-WEB-47] Graph-native Compare mode (vis-adapter/compare-mode.js):
-           click a node to set the first pick, click another to set the
-           second — opens the Compare panel for that pair and also
-           highlights the connecting path on the canvas. Same
-           .rail-btn.active kit the role filters already use for "on" state
-           (see canvas-controls.css). Replaces the old pin-to-select
-           mechanic (object-action-bar's Pin/Unpin, removed) this used to
-           gate on. -->
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-compare-mode" data-tip="Click two nodes to compare them" aria-pressed="false">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-compare"/></svg><span class="rl">Compare 2 nodes</span>
-      </button>
-      <!-- [SF-WEB-61] BubbleSet is now a manual toggle, OFF by default — no
-           more auto show/hide by node count (see bubble-contours.js). Same
-           .rail-btn.active/aria-pressed kit as Compare mode above. -->
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-bubble-sets" data-tip="BubbleSets — soft cluster haze" aria-pressed="false">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-haze"/></svg><span class="rl">BubbleSets</span>
-      </button>
-
-      <!-- [SF-WEB-14] Role filters moved to .role-filter-segment (always
-           visible on the canvas) — this was the rail's duplicate.
-           Fit view moved to .canvas-zoom-cluster (same #btn-fit-view id,
-           same click handler in main.js) — this was the rail's duplicate. -->
-      <div class="rail-sep"></div>
-
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-copy-link" data-tip="Copy shareable link">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg><span class="rl">Share link</span>
-      </button>
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-export-png" data-tip="Download PNG" aria-label="Download graph as PNG image">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-download"/></svg><span class="rl">Download PNG</span>
-      </button>
-      <!-- [SF-WEB-04] Second rail button next to PNG export, same
-           .ui-btn/.ui-btn--ghost kit — plain second entry point rather than
-           adding a format-picker interaction to the existing PNG button. -->
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-export-json" data-tip="Download JSON" aria-label="Download graph data as JSON">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-braces"/></svg><span class="rl">Download JSON</span>
-      </button>
-
-      <div class="rail-sep"></div>
-
-      <button class="rail-btn ui-btn ui-btn--ghost" id="btn-clear-graph" data-tip="Clear graph" style="color:var(--warn);">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-close"/></svg><span class="rl">Clear</span>
-      </button>
-
-      <div class="rail-spacer"></div>
-
-      <span class="rail-btn" id="auth-status-badge" data-tip="Using your own Genius token" style="display:none">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-key"/></svg><span class="rl">Authenticated</span>
-      </span>
-    </nav>
-
-    <!-- [SF-WEB-14] Compact zoom/fit cluster — reuses fitView/zoomIn/
-         zoomOut/focusSeed from ui/canvas-controls.js (main.js wires the
-         clicks); #btn-fit-view keeps its id, moved here from the rail. -->
-    <div class="canvas-zoom-cluster ui-segment" id="canvas-zoom-cluster">
-      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-zoom-in" title="Zoom in (+)" aria-label="Zoom in">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
-      </button>
-      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-zoom-out" title="Zoom out (-)" aria-label="Zoom out">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-minus"/></svg>
-      </button>
-      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-fit-view" title="Fit view (F)" aria-label="Fit view">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-frame"/></svg>
-      </button>
-      <button class="ui-btn ui-btn--ghost ui-btn--icon" id="btn-focus-seed" title="Focus seed (Esc)" aria-label="Center the view on the seed artist">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg>
-      </button>
-    </div>
-
-    <!-- [SF-WEB-14] Always-visible role-filter segment — was the rail's
-         #filter-featured/-producer/-writer, same State.activeFilters, see
-         ui/canvas-controls.js::setupFilterToggles. -->
-    <div class="role-filter-segment ui-segment" id="role-filter-segment">
-      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-featured" data-role="featured" title="Role: featured" aria-label="Toggle featured role filter">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-mic"/></svg>
-      </button>
-      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-producer" data-role="producer" title="Role: producer" aria-label="Toggle producer role filter">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-sliders"/></svg>
-      </button>
-      <button class="ui-btn ui-btn--ghost ui-btn--icon active" id="canvas-filter-writer" data-role="writer" title="Role: writer" aria-label="Toggle writer role filter">
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-pen"/></svg>
-      </button>
-    </div>
-
-    <div class="status" id="status" hidden>
-      <button class="seed-card" id="seed-card" type="button" title="Back to seed focus">
-        <img class="seed-card-avatar" id="seed-card-avatar" src="" alt="" />
-        <div class="seed-card-text">
-          <span class="seed-card-eyebrow">Seed</span>
-          <span class="seed-card-name truncate" id="seed-card-name">—</span>
-        </div>
-      </button>
-
-      <!-- [SF-WEB-05] Inline data-completeness indicator — depth/partial/
-           background-enrichment, driven by /api/v1/status/stream events
-           (see api.js::pollEnrichment → ui/canvas-controls.js::updateScanStatus).
-           Hidden once the deep scan reaches Full depth — data is complete,
-           nothing left to explain. -->
-      <span class="scan-status-badge" id="scan-status-badge" hidden>
-        <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-clock"/></svg>
-        <span id="scan-status-text"></span>
-      </span>
-
-      <!-- [SF-WEB-48] Quiet live rate-limit indicator — was a permanently-
-           visible "N/M req/s" text pill (raw, always on-screen); now a
-           small dot, calm with headroom, that "wakes up" (see
-           .rate-limit-badge--low in canvas-controls.css) only when close
-           to the limit. The raw reading moved to the native `title`
-           tooltip (see updateRateLimitIndicator in canvas-controls.js) —
-           same idiom .scan-status-badge/.truncation-icon-btn already use
-           for their own descriptive text. -->
-      <span class="rate-limit-badge" id="rate-limit-badge" hidden>
-        <span class="rate-limit-badge-dot"></span>
-      </span>
-
-      <!-- [style pass] Collapsed to an info-btn-shaped icon (was a
-           permanently-expanded text pill). Clicking it IS "show more
-           collaborations" (same effect as the old inline action button) —
-           see canvas-controls.js::setupLoadMoreCollabs/updateTruncationBanner,
-           which keeps title/aria-label in sync with the count so the
-           descriptive text is available on hover/focus without a popover. -->
-      <button class="status-icon-btn truncation-icon-btn" id="truncation-banner" type="button" hidden>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
-      </button>
-
-      <button class="status-icon-btn" id="info-btn" type="button" aria-label="Legend">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-info"/></svg>
-        <div class="info-popover" id="info-popover">
-          <div class="bc-glow-row">
-            <span class="bc-glow-demo bc-glow-demo--seed"></span>
-            <span>Teal glow = seed artist</span>
-          </div>
-        </div>
-      </button>
-
-      <button class="status-icon-btn" id="help-btn" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
-        ⌘
-      </button>
-    </div>
-
-    <div class="help-overlay" id="help-overlay" role="dialog" aria-label="Keyboard shortcuts">
-      <div class="help-box">
-        <div class="help-box-header">
-          <span class="help-box-title">Keyboard shortcuts</span>
-          <button class="help-close" id="help-close" title="Close" aria-label="Close">×</button>
-        </div>
-        <div class="help-list">
-          <div class="help-row"><span>Search loaded nodes</span><kbd>⌘K</kbd></div>
-          <div class="help-row"><span>Fit view</span><kbd>F</kbd></div>
-          <div class="help-row"><span>Zoom in / out</span><kbd>+ / -</kbd></div>
-          <div class="help-row"><span>Inspect an artist</span><span>click node</span></div>
-          <div class="help-row"><span>Expand their world</span><span>dbl-click</span></div>
-          <div class="help-row"><span>See the tracks</span><span>click edge</span></div>
-          <div class="help-row"><span>Set artist as seed</span><span>ctrl+click</span></div>
-          <div class="help-row"><span>Back to seed / close</span><kbd>Esc</kbd></div>
-          <div class="help-row"><span>This panel</span><kbd>?</kbd></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="actions-bar"></div>
-
-    <div class="context-panel" id="context-panel">
-
-      <!-- [SF-WEB-12] One companion panel: #artist-sidebar (node/edge
-           context) and #path-panel (path context) are now plain sections
-           of this single .ui-panel card, mutually exclusive — see
-           ui/sidebar.js and ui/modals.js::openPathPanel/closePathPanel. -->
-      <div class="companion-panel ui-panel" id="companion-panel">
-
-        <!-- [SF-WEB-27] Honest one-line empty state — the previous copy
-             pointed at SF-WEB-21 (command palette), which shipped and was
-             then reverted (see SF-WEB-23); this no longer references any
-             specific future ticket. Shown/hidden via the same .show
-             classList toggle SF-WEB-12 already uses for the other two
-             sections, not a new mechanism. -->
-        <div class="companion-empty" id="companion-empty">
-          <div>Click a node or an edge on the graph to see details here.</div>
+          <span class="hero-mode-thumb" aria-hidden="true"></span>
         </div>
 
-        <div class="artist-sidebar" id="artist-sidebar">
-          <div class="sidebar-header">
-            <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
-            <div class="sidebar-info">
-              <div class="sidebar-name truncate" id="sidebar-name">—</div>
-              <div class="sidebar-meta" id="sidebar-meta">—</div>
+        <div class="hero-mode-stage" id="hero-mode-stage">
+          <div
+            class="hero-mode-panel is-active"
+            id="hero-mode-panel-explore"
+            role="tabpanel"
+            aria-labelledby="hero-mode-tab-explore"
+          >
+            <div class="search-wrap">
+              <form class="search" id="hero-form">
+                <label class="sr-only" for="hero-input" data-i18n="hero.search.ariaLabel"
+                  >Artist name</label
+                >
+                <input
+                  id="hero-input"
+                  type="text"
+                  autocomplete="off"
+                  placeholder='Try "Kendrick Lamar", "Gorillaz", "Rosalía"…'
+                  data-i18n-placeholder="hero.search.placeholder"
+                  aria-autocomplete="list"
+                  aria-controls="hero-ac"
+                />
+                <button type="submit" class="ui-btn ui-btn--primary" data-i18n="hero.search.submit">
+                  Map it
+                </button>
+              </form>
+              <div class="ac-dropdown" id="hero-ac" role="listbox"></div>
             </div>
-            <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">×</button>
+
+            <details class="include-roles-row">
+              <summary class="include-roles-summary">
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                  <use href="#icon-sliders" />
+                </svg>
+                <span data-i18n="hero.filters.summary">Filters</span>
+              </summary>
+              <div class="role-filter-group">
+                <button
+                  type="button"
+                  class="role-filter-btn ui-btn active"
+                  id="hero-filter-featured"
+                  data-role="featured"
+                >
+                  <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <use href="#icon-mic" /></svg
+                  ><span data-i18n="hero.filters.featured">Featured</span>
+                </button>
+                <button
+                  type="button"
+                  class="role-filter-btn ui-btn active"
+                  id="hero-filter-producer"
+                  data-role="producer"
+                >
+                  <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <use href="#icon-sliders" /></svg
+                  ><span data-i18n="hero.filters.producer">Producer</span>
+                </button>
+                <button
+                  type="button"
+                  class="role-filter-btn ui-btn active"
+                  id="hero-filter-writer"
+                  data-role="writer"
+                >
+                  <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <use href="#icon-pen" /></svg
+                  ><span data-i18n="hero.filters.writer">Writer</span>
+                </button>
+              </div>
+            </details>
+
+            <div class="chips-label" id="chips-label" data-i18n="hero.chips.label" hidden>
+              Try one of these
+            </div>
+            <div class="chips" id="chips" hidden>
+              <button class="chip ui-chip" data-artist="Kendrick Lamar">Kendrick Lamar</button>
+              <button class="chip ui-chip" data-artist="Gorillaz">Gorillaz</button>
+              <button class="chip ui-chip" data-artist="Rosalía">Rosalía</button>
+              <button class="chip ui-chip" data-artist="Calvin Harris">Calvin Harris</button>
+              <button class="chip ui-chip" data-artist="Tyler, the Creator">
+                Tyler, the Creator
+              </button>
+            </div>
           </div>
-          <div class="sidebar-body">
-            <!-- [SF-WEB-33] Edge-only — both ends of the selected edge,
-                 clickable → showArtistSidebar for that node (mutual
-                 exclusion with the edge selection enforced the same way
-                 as every other node-selecting entry point, see
-                 ui/sidebar.js::showArtistSidebar). Hidden for node
-                 context. -->
-            <div class="ui-tile" id="sidebar-endpoints-tile" style="display:none">
-              <div class="sidebar-section-label">Connection</div>
-              <div class="path-chain-container">
-                <div class="path-chain-fade path-chain-fade--left"></div>
-                <div class="path-chain-track" id="sidebar-endpoints-track"></div>
-                <div class="path-chain-fade path-chain-fade--right"></div>
+
+          <div
+            class="hero-mode-panel hero-connect-panel"
+            id="hero-mode-panel-connect"
+            role="tabpanel"
+            aria-labelledby="hero-mode-tab-connect"
+          >
+            <div class="hero-connect-row">
+              <div class="hero-route-rail">
+                <span class="hero-route-dot hero-route-dot--from" aria-hidden="true">●</span>
+                <span class="hero-route-track" aria-hidden="true"></span>
+                <span class="hero-route-dot hero-route-dot--to" aria-hidden="true">◎</span>
+              </div>
+              <div class="hero-connect-fields">
+                <div class="path-input-wrap">
+                  <label
+                    class="sr-only"
+                    for="hero-path-from-input"
+                    data-i18n="hero.connect.fromLabel"
+                    >From artist</label
+                  >
+                  <input
+                    class="path-input"
+                    id="hero-path-from-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="From artist…"
+                    data-i18n-placeholder="hero.connect.fromPlaceholder"
+                  />
+                  <div class="ac-dropdown" id="hero-path-from-ac" role="listbox"></div>
+                </div>
+                <div class="path-input-wrap">
+                  <label class="sr-only" for="hero-path-to-input" data-i18n="hero.connect.toLabel"
+                    >To artist</label
+                  >
+                  <input
+                    class="path-input"
+                    id="hero-path-to-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="To artist…"
+                    data-i18n-placeholder="hero.connect.toPlaceholder"
+                  />
+                  <div class="ac-dropdown" id="hero-path-to-ac" role="listbox"></div>
+                </div>
               </div>
             </div>
-            <div class="ui-tile" id="sidebar-tracks-tile">
-              <div class="sidebar-section-label">Tracks</div>
-              <div id="sidebar-tracks"></div>
+
+            <div class="hero-connect-actions">
+              <button
+                type="button"
+                class="hero-connect-run ui-btn ui-btn--primary"
+                id="btn-hero-run-path"
+              >
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                  <use href="#icon-shuffle" />
+                </svg>
+                <span data-i18n="hero.connect.run">Trace the path</span>
+              </button>
+              <button
+                type="button"
+                class="dock-btn"
+                id="btn-hero-swap-path"
+                title="Swap From/To"
+                aria-label="Swap From and To artists"
+                data-i18n-attr="title:hero.connect.swapAriaLabel,aria-label:hero.connect.swapAriaLabel"
+              >
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                  <use href="#icon-swap" /></svg
+                ><span data-i18n="hero.connect.swap">Swap</span>
+              </button>
+              <button
+                type="button"
+                class="dock-btn"
+                id="btn-hero-clear-path"
+                data-i18n="hero.connect.clear"
+              >
+                Clear
+              </button>
             </div>
-            <!-- [SF-WEB-12] Static now — sidebar.js used to create this tile
-                 on the fly via ensureTile() (the "наложение" bug from
-                 dynamic grid-tile insertion the ticket calls out). -->
-            <div class="ui-tile" id="sidebar-rolebreakdown-tile">
-              <div class="sidebar-section-label">Role breakdown</div>
-              <div class="sidebar-role-chips" id="sidebar-role-chips"></div>
+
+            <div class="hop-chain" id="hero-hop-chain"></div>
+          </div>
+
+          <div
+            class="hero-mode-panel hero-game-panel"
+            id="hero-mode-panel-game"
+            role="tabpanel"
+            aria-labelledby="hero-mode-tab-game"
+          >
+            <div class="ui-tile hero-game-daily" id="hero-game-daily">
+              <span
+                class="daily-eyebrow"
+                title="Auto-picked once a day from real, connected collaborators — a background job, not a curated/manual pick."
+                data-i18n-attr="title:hero.game.dailyEyebrowTitle"
+                data-i18n="hero.game.dailyEyebrow"
+                >Today's challenge</span
+              >
+
+              <div class="daily-pair" id="hero-game-daily-pair" hidden>
+                <span
+                  class="duel-avatar duel-avatar--sm"
+                  id="hero-game-daily-from-avatar"
+                  aria-hidden="true"
+                  >?</span
+                >
+                <span class="daily-name" id="hero-game-daily-from-name"></span>
+                <span class="daily-arrow" aria-hidden="true">→</span>
+                <span
+                  class="duel-avatar duel-avatar--sm"
+                  id="hero-game-daily-to-avatar"
+                  aria-hidden="true"
+                  >?</span
+                >
+                <span class="daily-name" id="hero-game-daily-to-name"></span>
+              </div>
+              <button
+                type="button"
+                class="daily-play ui-btn ui-btn--primary"
+                id="btn-hero-play-daily"
+                data-i18n="hero.game.play"
+                hidden
+              >
+                Play
+              </button>
+
+              <span class="daily-state" id="hero-game-daily-state" data-i18n="hero.game.loading"
+                >Loading today's challenge…</span
+              >
+              <button
+                type="button"
+                class="dock-btn daily-retry"
+                id="btn-hero-daily-retry"
+                data-i18n="hero.game.retry"
+                hidden
+              >
+                Retry
+              </button>
             </div>
-            <!-- [SF-WEB-12] Same — was ensureTile()-created; label +
-                 .path-chain-container/-fade wrapper are static, only
-                 #sidebar-path-track's contents are written by JS. -->
-            <div class="ui-tile" id="sidebar-path-tile">
-              <div class="sidebar-section-label">1 hop from seed</div>
-              <div class="path-chain-container">
-                <div class="path-chain-fade path-chain-fade--left"></div>
-                <div class="path-chain-track" id="sidebar-path-track"></div>
-                <div class="path-chain-fade path-chain-fade--right"></div>
+
+            <div class="hero-game-rivals" id="hero-game-rivals" hidden>
+              <span class="rivals-eyebrow" data-i18n="hero.game.rivalsEyebrow"
+                >or pick a rival</span
+              >
+              <div class="rivals-list" id="hero-game-rivals-list"></div>
+            </div>
+
+            <div class="hero-game-divider" id="hero-game-divider" hidden>
+              <span data-i18n="hero.game.dividerText">or set your own</span>
+            </div>
+
+            <div class="hero-connect-row">
+              <div class="hero-route-rail">
+                <span
+                  class="hero-route-dot hero-route-dot--from hero-game-dot"
+                  id="hero-game-from-avatar"
+                  aria-hidden="true"
+                  >?</span
+                >
+                <span class="hero-route-track" aria-hidden="true"></span>
+                <span
+                  class="hero-route-dot hero-route-dot--to hero-game-dot"
+                  id="hero-game-to-avatar"
+                  aria-hidden="true"
+                  >?</span
+                >
+              </div>
+              <div class="hero-connect-fields">
+                <div class="path-input-wrap">
+                  <label
+                    class="sr-only"
+                    for="hero-game-from-input"
+                    data-i18n="hero.game.startArtistLabel"
+                    >Start artist</label
+                  >
+                  <input
+                    class="path-input"
+                    id="hero-game-from-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Start artist…"
+                    data-i18n-placeholder="hero.game.startArtistPlaceholder"
+                  />
+                  <div class="ac-dropdown" id="hero-game-from-ac" role="listbox"></div>
+                </div>
+                <div class="path-input-wrap">
+                  <label
+                    class="sr-only"
+                    for="hero-game-to-input"
+                    data-i18n="hero.game.goalArtistLabel"
+                    >Goal artist</label
+                  >
+                  <input
+                    class="path-input"
+                    id="hero-game-to-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Goal artist…"
+                    data-i18n-placeholder="hero.game.goalArtistPlaceholder"
+                  />
+                  <div class="ac-dropdown" id="hero-game-to-ac" role="listbox"></div>
+                </div>
               </div>
             </div>
-            <!-- [SF-WEB-27] Mini-actions for the node currently shown in
-                 this node context — expand/focus/genius, wired per-node
-                 by ui/sidebar.js::syncObjectActionBar. Used to be a
-                 separately-floating #object-action-bar sitting above the
-                 whole companion panel PLUS a standalone .sidebar-genius-btn
-                 tile duplicating the Genius action — merged into this one
-                 row, Genius is one of the three icons now. Hidden for edge
-                 context (none of these three apply to an edge) and while
-                 nothing is selected. [SF-WEB-47] The fourth action (pin)
-                 is gone — it only ever existed to gate Compare's old
-                 pinned-pair selection; Compare now picks its pair
-                 graph-natively (see #btn-compare-mode above). -->
-            <div class="object-action-bar ui-segment" id="object-action-bar" hidden>
-              <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-expand" title="Expand" aria-label="Expand this artist's collaborators">
-                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-plus"/></svg>
+
+            <div class="hero-connect-actions">
+              <button
+                type="button"
+                class="hero-connect-run ui-btn ui-btn--primary"
+                id="btn-hero-start-challenge"
+              >
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                  <use href="#icon-game" />
+                </svg>
+                <span data-i18n="hero.game.startChallenge">Start challenge</span>
               </button>
-              <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-focus" title="Focus" aria-label="Center the view on this artist">
-                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-locate"/></svg>
+              <button
+                type="button"
+                class="dock-btn"
+                id="btn-hero-game-swap"
+                title="Swap start and goal"
+                aria-label="Swap start and goal"
+                data-i18n-attr="title:hero.game.swapAriaLabel,aria-label:hero.game.swapAriaLabel"
+              >
+                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                  <use href="#icon-swap" /></svg
+                ><span data-i18n="hero.game.swap">Swap</span>
               </button>
-              <button class="ui-btn ui-btn--ghost ui-btn--icon" id="obj-action-genius" title="Open on Genius" aria-label="Open this artist on Genius">
-                <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-link"/></svg>
-              </button>
+              <a class="dock-btn" href="#/game/challenges" data-i18n="hero.game.browse">Browse</a>
             </div>
           </div>
         </div>
 
-        <div class="path-panel" id="path-panel">
-          <div class="path-panel-header">
-            <div class="path-title">Six degrees of separation</div>
-            <button class="path-close" id="path-panel-close" title="Close" aria-label="Close">×</button>
+        <div class="auth-bar" id="auth-bar">
+          <div class="auth-hint" id="auth-hint">
+            <span class="auth-hint-text" data-i18n="auth.signInWith">Sign in with</span>
+            <a class="auth-btn" href="/auth/login">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <text x="12" y="17" font-size="15" font-weight="700" text-anchor="middle">G</text>
+              </svg>
+              Genius
+            </a>
           </div>
-          <!-- [fix] Rebuilt (variant B, picked from 5 mockups): the swap
-               button sits between the two fields and actually does
-               something (swaps From/To), instead of the two bare stacked
-               fields this used to be — no reserved space for a loading
-               state anywhere here, that's the canvas-wide overlay now
-               (see runServerPath's own comment, ui/path-result.js). -->
-          <div class="path-panel-fields">
-            <div class="path-input-wrap">
-              <label class="sr-only" for="path-from-input">From artist</label>
-              <input class="path-input" id="path-from-input" type="text"
-                placeholder="From artist…" autocomplete="off" />
-              <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
-            </div>
-            <div class="path-input-wrap">
-              <label class="sr-only" for="path-to-input">To artist</label>
-              <input class="path-input" id="path-to-input" type="text"
-                placeholder="To artist…" autocomplete="off" />
-              <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
-            </div>
-            <button type="button" class="path-swap-btn" id="btn-swap-path" title="Swap From/To" aria-label="Swap From and To artists">
-              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-swap"/></svg>
+          <div class="auth-user" id="auth-user" style="display: none">
+            <span class="auth-user-name" id="auth-user-name">—</span>
+            <button type="button" class="auth-logout" id="auth-logout-btn" data-i18n="auth.signOut">
+              Sign out
             </button>
           </div>
-          <div class="path-actions">
-            <button class="dock-btn dock-btn--primary" id="btn-run-path">
-              <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><use href="#icon-shuffle"/></svg>
-              <span>Find path</span>
+        </div>
+      </div>
+
+      <div class="ui-state-slot" id="canvas-state"></div>
+
+      <section class="canvas-chrome" id="canvas-chrome">
+        <nav class="rail rail-shell">
+          <button
+            class="brand"
+            id="brand"
+            type="button"
+            title="Six Feat — back to start"
+            data-i18n-attr="title:rail.brandTitle"
+          >
+            <span class="dotmark"></span>
+            <span class="rl">Six Feat</span>
+          </button>
+
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-search-open"
+            data-tip="Search artist"
+            data-i18n-attr="data-tip:rail.searchTip"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-search" /></svg
+            ><span class="rl" data-i18n="rail.search">Search</span>
+          </button>
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-node-search"
+            data-tip="Search loaded nodes (⌘K)"
+            data-i18n-attr="data-tip:rail.findOnMapTip"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-locate" /></svg
+            ><span class="rl" data-i18n="rail.findOnMap">Find on map</span>
+          </button>
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-find-path"
+            data-tip="Find path"
+            data-i18n-attr="data-tip:rail.findPathTip"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-shuffle" /></svg
+            ><span class="rl" data-i18n="rail.findPath">Find path</span>
+          </button>
+
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-compare-mode"
+            data-tip="Click two nodes to compare them"
+            aria-pressed="false"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-compare" /></svg
+            ><span class="rl">Compare 2 nodes</span>
+          </button>
+
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-bubble-sets"
+            data-tip="BubbleSets — soft cluster haze"
+            aria-pressed="false"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-haze" /></svg
+            ><span class="rl">BubbleSets</span>
+          </button>
+
+          <div class="rail-sep"></div>
+
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-copy-link"
+            data-tip="Copy shareable link"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-link" /></svg
+            ><span class="rl">Share link</span>
+          </button>
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-export-png"
+            data-tip="Download PNG"
+            aria-label="Download graph as PNG image"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-download" /></svg
+            ><span class="rl">Download PNG</span>
+          </button>
+
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-export-json"
+            data-tip="Download JSON"
+            aria-label="Download graph data as JSON"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-braces" /></svg
+            ><span class="rl">Download JSON</span>
+          </button>
+
+          <div class="rail-sep"></div>
+
+          <button
+            class="rail-btn ui-btn ui-btn--ghost"
+            id="btn-clear-graph"
+            data-tip="Clear graph"
+            style="color: var(--warn)"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-close" /></svg
+            ><span class="rl">Clear</span>
+          </button>
+
+          <div class="rail-spacer"></div>
+
+          <span
+            class="rail-btn"
+            id="auth-status-badge"
+            data-tip="Using your own Genius token"
+            style="display: none"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-key" /></svg
+            ><span class="rl">Authenticated</span>
+          </span>
+        </nav>
+
+        <div class="canvas-zoom-cluster ui-segment" id="canvas-zoom-cluster">
+          <button
+            class="ui-btn ui-btn--ghost ui-btn--icon"
+            id="btn-zoom-in"
+            title="Zoom in (+)"
+            aria-label="Zoom in"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-plus" />
+            </svg>
+          </button>
+          <button
+            class="ui-btn ui-btn--ghost ui-btn--icon"
+            id="btn-zoom-out"
+            title="Zoom out (-)"
+            aria-label="Zoom out"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-minus" />
+            </svg>
+          </button>
+          <button
+            class="ui-btn ui-btn--ghost ui-btn--icon"
+            id="btn-fit-view"
+            title="Fit view (F)"
+            aria-label="Fit view"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-frame" />
+            </svg>
+          </button>
+          <button
+            class="ui-btn ui-btn--ghost ui-btn--icon"
+            id="btn-focus-seed"
+            title="Focus seed (Esc)"
+            aria-label="Center the view on the seed artist"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-locate" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="role-filter-segment ui-segment" id="role-filter-segment">
+          <button
+            class="ui-btn ui-btn--ghost ui-btn--icon active"
+            id="canvas-filter-featured"
+            data-role="featured"
+            title="Role: featured"
+            aria-label="Toggle featured role filter"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-mic" />
+            </svg>
+          </button>
+          <button
+            class="ui-btn ui-btn--ghost ui-btn--icon active"
+            id="canvas-filter-producer"
+            data-role="producer"
+            title="Role: producer"
+            aria-label="Toggle producer role filter"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-sliders" />
+            </svg>
+          </button>
+          <button
+            class="ui-btn ui-btn--ghost ui-btn--icon active"
+            id="canvas-filter-writer"
+            data-role="writer"
+            title="Role: writer"
+            aria-label="Toggle writer role filter"
+          >
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-pen" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="status" id="status" hidden>
+          <button class="seed-card" id="seed-card" type="button" title="Back to seed focus">
+            <img class="seed-card-avatar" id="seed-card-avatar" src="" alt="" />
+            <div class="seed-card-text">
+              <span class="seed-card-eyebrow">Seed</span>
+              <span class="seed-card-name truncate" id="seed-card-name">—</span>
+            </div>
+          </button>
+
+          <span class="scan-status-badge" id="scan-status-badge" hidden>
+            <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-clock" />
+            </svg>
+            <span id="scan-status-text"></span>
+          </span>
+
+          <span class="rate-limit-badge" id="rate-limit-badge" hidden>
+            <span class="rate-limit-badge-dot"></span>
+          </span>
+
+          <button
+            class="status-icon-btn truncation-icon-btn"
+            id="truncation-banner"
+            type="button"
+            hidden
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-plus" />
+            </svg>
+          </button>
+
+          <button class="status-icon-btn" id="info-btn" type="button" aria-label="Legend">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <use href="#icon-info" />
+            </svg>
+            <div class="info-popover" id="info-popover">
+              <div class="bc-glow-row">
+                <span class="bc-glow-demo bc-glow-demo--seed"></span>
+                <span>Teal glow = seed artist</span>
+              </div>
+            </div>
+          </button>
+
+          <button
+            class="status-icon-btn"
+            id="help-btn"
+            type="button"
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+          >
+            ⌘
+          </button>
+        </div>
+
+        <div
+          class="help-overlay"
+          id="help-overlay"
+          role="dialog"
+          aria-label="Keyboard shortcuts"
+          data-i18n-attr="aria-label:help.title"
+        >
+          <div class="help-box">
+            <div class="help-box-header">
+              <span class="help-box-title" data-i18n="help.title">Keyboard shortcuts</span>
+              <button
+                class="help-close"
+                id="help-close"
+                title="Close"
+                aria-label="Close"
+                data-i18n-attr="title:settings.close,aria-label:settings.close"
+              >
+                ×
+              </button>
+            </div>
+            <div class="help-list">
+              <div class="help-row">
+                <span data-i18n="help.row.search">Search loaded nodes</span><kbd>⌘K</kbd>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.fitView">Fit view</span><kbd>F</kbd>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.zoom">Zoom in / out</span><kbd>+ / -</kbd>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.inspect">Inspect an artist</span>
+                <span data-i18n="help.row.clickNode">click node</span>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.expand">Expand their world</span>
+                <span data-i18n="help.row.dblClick">dbl-click</span>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.tracks">See the tracks</span>
+                <span data-i18n="help.row.clickEdge">click edge</span>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.setSeed">Set artist as seed</span>
+                <span data-i18n="help.row.ctrlClick">ctrl+click</span>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.closePanel">Back to seed / close</span><kbd>Esc</kbd>
+              </div>
+              <div class="help-row">
+                <span data-i18n="help.row.thisPanel">This panel</span><kbd>?</kbd>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-bar"></div>
+
+        <div class="context-panel" id="context-panel">
+          <div class="companion-panel ui-panel" id="companion-panel">
+            <div class="companion-empty" id="companion-empty">
+              <div>Click a node or an edge on the graph to see details here.</div>
+            </div>
+
+            <div class="artist-sidebar" id="artist-sidebar">
+              <div class="sidebar-header">
+                <img class="sidebar-avatar" id="sidebar-avatar" src="" alt="" />
+                <div class="sidebar-info">
+                  <div class="sidebar-name truncate" id="sidebar-name">—</div>
+                  <div class="sidebar-meta" id="sidebar-meta">—</div>
+                </div>
+                <button class="sidebar-close" id="sidebar-close" title="Close" aria-label="Close">
+                  ×
+                </button>
+              </div>
+              <div class="sidebar-body">
+                <div class="ui-tile" id="sidebar-endpoints-tile" style="display: none">
+                  <div class="sidebar-section-label">Connection</div>
+                  <div class="path-chain-container">
+                    <div class="path-chain-fade path-chain-fade--left"></div>
+                    <div class="path-chain-track" id="sidebar-endpoints-track"></div>
+                    <div class="path-chain-fade path-chain-fade--right"></div>
+                  </div>
+                </div>
+                <div class="ui-tile" id="sidebar-tracks-tile">
+                  <div class="sidebar-section-label">Tracks</div>
+                  <div id="sidebar-tracks"></div>
+                </div>
+
+                <div class="ui-tile" id="sidebar-rolebreakdown-tile">
+                  <div class="sidebar-section-label">Role breakdown</div>
+                  <div class="sidebar-role-chips" id="sidebar-role-chips"></div>
+                </div>
+
+                <div class="ui-tile" id="sidebar-path-tile">
+                  <div class="sidebar-section-label">1 hop from seed</div>
+                  <div class="path-chain-container">
+                    <div class="path-chain-fade path-chain-fade--left"></div>
+                    <div class="path-chain-track" id="sidebar-path-track"></div>
+                    <div class="path-chain-fade path-chain-fade--right"></div>
+                  </div>
+                </div>
+
+                <div class="object-action-bar ui-segment" id="object-action-bar" hidden>
+                  <button
+                    class="ui-btn ui-btn--ghost ui-btn--icon"
+                    id="obj-action-expand"
+                    title="Expand"
+                    aria-label="Expand this artist's collaborators"
+                  >
+                    <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                      <use href="#icon-plus" />
+                    </svg>
+                  </button>
+                  <button
+                    class="ui-btn ui-btn--ghost ui-btn--icon"
+                    id="obj-action-deepen"
+                    title="Find more connections via Genius"
+                    aria-label="Find more connections for this artist via Genius"
+                  >
+                    <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                      <use href="#icon-search" />
+                    </svg>
+                  </button>
+                  <button
+                    class="ui-btn ui-btn--ghost ui-btn--icon"
+                    id="obj-action-focus"
+                    title="Focus"
+                    aria-label="Center the view on this artist"
+                  >
+                    <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                      <use href="#icon-locate" />
+                    </svg>
+                  </button>
+                  <button
+                    class="ui-btn ui-btn--ghost ui-btn--icon"
+                    id="obj-action-genius"
+                    title="Open on Genius"
+                    aria-label="Open this artist on Genius"
+                  >
+                    <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                      <use href="#icon-link" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="path-panel" id="path-panel">
+              <div class="path-panel-header">
+                <div class="path-title" data-i18n="path.title">Six degrees of separation</div>
+                <button class="path-close" id="path-panel-close" title="Close" aria-label="Close">
+                  ×
+                </button>
+              </div>
+
+              <div class="path-panel-fields">
+                <div class="path-input-wrap">
+                  <label class="sr-only" for="path-from-input">From artist</label>
+                  <input
+                    class="path-input"
+                    id="path-from-input"
+                    type="text"
+                    placeholder="From artist…"
+                    autocomplete="off"
+                  />
+                  <div class="ac-dropdown" id="path-from-ac" role="listbox"></div>
+                </div>
+                <div class="path-input-wrap">
+                  <label class="sr-only" for="path-to-input">To artist</label>
+                  <input
+                    class="path-input"
+                    id="path-to-input"
+                    type="text"
+                    placeholder="To artist…"
+                    autocomplete="off"
+                  />
+                  <div class="ac-dropdown" id="path-to-ac" role="listbox"></div>
+                </div>
+                <button
+                  type="button"
+                  class="path-swap-btn"
+                  id="btn-swap-path"
+                  title="Swap From/To"
+                  aria-label="Swap From and To artists"
+                >
+                  <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <use href="#icon-swap" />
+                  </svg>
+                </button>
+              </div>
+              <div class="path-actions">
+                <button class="dock-btn dock-btn--primary" id="btn-run-path">
+                  <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <use href="#icon-shuffle" />
+                  </svg>
+                  <span>Find path</span>
+                </button>
+                <button class="path-clear-btn" id="btn-clear-path">Clear</button>
+              </div>
+
+              <div class="hop-chain" id="hop-chain"></div>
+            </div>
+
+            <div class="compare-panel" id="compare-panel">
+              <div class="path-panel-header">
+                <div class="path-title" id="compare-title" data-i18n="compare.title">Compare</div>
+                <button
+                  class="path-close"
+                  id="compare-panel-close"
+                  title="Close"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div class="compare-pair" id="compare-pair"></div>
+
+              <div class="sidebar-section-label" id="compare-trace-label">Connection</div>
+              <div class="hop-chain" id="compare-hop-chain"></div>
+              <div class="compare-list" id="compare-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-overlay" id="settings-panel" role="dialog" aria-label="Settings">
+          <div class="settings-box ui-panel" id="settings-box">
+            <div class="settings-panel-header">
+              <div class="settings-title" data-i18n="settings.title">Settings</div>
+              <button
+                class="settings-close"
+                id="settings-panel-close"
+                title="Close"
+                aria-label="Close"
+                data-i18n-attr="title:settings.close,aria-label:settings.close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div class="settings-section-label" data-i18n="settings.sectionPreferences">
+              Preferences
+            </div>
+            <div class="settings-prefs-row">
+              <div class="settings-card ui-tile settings-prefs-cell">
+                <div class="settings-card-title" data-i18n="settings.appearance.title">
+                  Appearance
+                </div>
+                <select class="ui-input" id="settings-theme-select">
+                  <option value="dark" data-i18n="settings.appearance.dark">Dark</option>
+                  <option value="light" data-i18n="settings.appearance.light">Light</option>
+                </select>
+              </div>
+
+              <div class="settings-card ui-tile settings-prefs-cell">
+                <div class="settings-card-title" data-i18n="settings.language.title">Language</div>
+                <select class="ui-input" id="settings-lang-select">
+                  <option value="en" data-i18n="settings.language.en">English</option>
+                  <option value="ru" data-i18n="settings.language.ru">Русский</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-signed-out-hint" id="settings-signed-out-hint" hidden>
+              <p class="settings-card-hint" data-i18n="settings.signedOutHint">
+                Sign in to manage settings.
+              </p>
+              <a
+                class="ui-btn ui-btn--primary"
+                href="/auth/login"
+                data-i18n="settings.signInWithGenius"
+                >Sign in with Genius</a
+              >
+            </div>
+
+            <div class="settings-signed-out-hint" id="settings-misconfigured-hint" hidden>
+              <p class="settings-card-hint" data-i18n="settings.misconfiguredHint">
+                Settings can't verify your sign-in right now — this looks like a server
+                configuration issue, not something signing in again will fix. Please try again later
+                or let the site operator know.
+              </p>
+            </div>
+
+            <div class="settings-cards" id="settings-cards">
+              <div class="settings-section-label" data-i18n="settings.sectionAccounts">
+                Connected accounts
+              </div>
+              <div class="settings-card ui-tile">
+                <div class="settings-card-title">
+                  <span data-i18n="settings.genius.title">Genius</span>
+                  <span class="settings-card-sub" data-i18n="settings.genius.sub"
+                    >(find more connections)</span
+                  >
+                </div>
+                <p class="settings-card-hint" data-i18n="settings.genius.hint">
+                  Optional — you're already signed in with Genius; connect a different token here
+                  only if you want deepen to use one with different scopes/quota.
+                </p>
+
+                <div class="settings-card-actions">
+                  <button
+                    type="button"
+                    class="ui-btn ui-btn--ghost"
+                    id="settings-genius-disconnect-btn"
+                    data-i18n="settings.genius.disconnect"
+                    hidden
+                  >
+                    Disconnect
+                  </button>
+                </div>
+                <div
+                  class="settings-card-status"
+                  id="settings-genius-status"
+                  data-i18n="settings.genius.notConnected"
+                >
+                  Not connected
+                </div>
+                <details class="settings-advanced">
+                  <summary data-i18n="settings.genius.pasteInstead">
+                    or paste a token manually
+                  </summary>
+                  <input
+                    class="ui-input"
+                    id="settings-genius-input"
+                    type="password"
+                    data-i18n-placeholder="settings.genius.placeholder"
+                    placeholder="Paste your Genius token…"
+                    autocomplete="off"
+                  />
+                  <button
+                    type="button"
+                    class="ui-btn ui-btn--ghost"
+                    id="settings-genius-connect-btn"
+                    data-i18n="settings.genius.connect"
+                  >
+                    Connect
+                  </button>
+                </details>
+              </div>
+
+              <div class="settings-card settings-toggle-row">
+                <div class="settings-card-title" data-i18n="settings.enrichment.title">
+                  Background enrichment
+                </div>
+                <label class="ui-switch">
+                  <input type="checkbox" id="settings-enrichment-toggle" checked />
+                  <span class="ui-switch-track"><span class="ui-switch-thumb"></span></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="overlay" id="loading">
+          <span class="spinner"></span> <span data-i18n="loading.text">Charting the network…</span>
+        </div>
+
+        <div
+          class="candidate-overlay"
+          id="candidate-overlay"
+          role="dialog"
+          aria-label="Select artist"
+        >
+          <div class="candidate-box">
+            <div class="candidate-header">
+              <div>
+                <div class="candidate-title" data-i18n="candidate.titleGeneric">
+                  A few artists match — which one?
+                </div>
+                <div class="candidate-subtitle" data-i18n="candidate.subtitle">
+                  Click one to load its graph
+                </div>
+              </div>
+              <button
+                class="candidate-close-btn"
+                id="candidate-close"
+                title="Close"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div class="candidate-list" id="candidate-list"></div>
+          </div>
+        </div>
+
+        <div
+          class="node-search-overlay"
+          id="node-search-overlay"
+          role="dialog"
+          aria-label="Search loaded nodes"
+        >
+          <div class="node-search-box">
+            <div class="node-search-hint" id="node-search-hint">
+              Jump to a loaded artist <kbd>Esc</kbd> to close
+            </div>
+            <label class="sr-only" for="node-search-input">Search loaded nodes</label>
+            <input
+              id="node-search-input"
+              class="path-input"
+              type="text"
+              autocomplete="off"
+              placeholder="Artist name…"
+              role="combobox"
+              aria-expanded="false"
+              aria-haspopup="listbox"
+              aria-autocomplete="list"
+              aria-controls="node-search-results"
+              aria-activedescendant=""
+              aria-describedby="node-search-hint"
+            />
+            <div id="node-search-status" class="sr-only" role="status" aria-live="polite"></div>
+            <div id="node-search-results" role="listbox" aria-label="Loaded artists"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section id="connect-surface" class="connect-surface" aria-label="Connect game" hidden>
+      <nav class="game-rail rail-shell" aria-label="Game navigation">
+        <a class="game-rail-brand brand" href="/" title="Six Feat — back to start"
+          ><span class="dotmark"></span><span class="rl">Six Feat</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game"
+          data-surface="game"
+          data-tip="Play"
+          data-i18n-attr="data-tip:hero.game.play"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-target"></use></svg
+          ><span class="rl" data-i18n="hero.game.play">Play</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/challenges"
+          data-surface="game/challenges"
+          data-tip="Challenges"
+          data-i18n-attr="data-tip:game.challengesTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg
+          ><span class="rl" data-i18n="game.challengesTitle">Challenges</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/leaderboard"
+          data-surface="game/leaderboard"
+          data-tip="Leaderboard"
+          data-i18n-attr="data-tip:game.leaderboardTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-trophy"></use></svg
+          ><span class="rl" data-i18n="game.leaderboardTitle">Leaderboard</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/season"
+          data-surface="game/season"
+          data-tip="Season"
+          data-i18n-attr="data-tip:game.season.label"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-flame"></use></svg
+          ><span class="rl" data-i18n="game.season.label">Season</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/profile"
+          data-surface="game/profile"
+          data-tip="Cabinet"
+          data-i18n-attr="data-tip:game.cabinetTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-medal"></use></svg
+          ><span class="rl" data-i18n="game.cabinetTitle">Cabinet</span></a
+        >
+      </nav>
+      <div class="connect-split">
+        <div class="connect-graph-col">
+          <div class="connect-stage-layer">
+            <div class="connect-hud">
+              <span class="connect-game-flag" aria-hidden="true"
+                ><svg class="cgf-ico" viewBox="0 0 24 24"><use href="#icon-game"></use></svg
+                >Game</span
+              >
+              <button
+                type="button"
+                id="connect-endpoints-summary"
+                class="connect-quest-pill"
+                title="Change start / goal"
+              >
+                <span class="cst-start" id="connect-title-start"></span>
+                <span class="cst-arrow" aria-hidden="true">→</span>
+                <span class="cst-goal" id="connect-title-goal"></span>
+              </button>
+              <span class="connect-hud-sep" aria-hidden="true"></span>
+              <span class="connect-par-pill" id="connect-par-pill" hidden
+                ><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true">
+                  <use href="#icon-locate"></use></svg
+                >PAR&nbsp;<b id="connect-par-value">—</b></span
+              >
+              <span class="connect-timer-pill" title="Time"
+                ><svg class="cp-ico" viewBox="0 0 24 24" aria-hidden="true">
+                  <use href="#icon-clock"></use></svg
+                ><b id="connect-timer-value">0:00</b></span
+              >
+            </div>
+
+            <div class="connect-endpoints" id="connect-endpoints" hidden>
+              <div class="connect-setup-head">
+                <span class="connect-setup-kicker"
+                  ><svg class="cgf-ico" viewBox="0 0 24 24" aria-hidden="true">
+                    <use href="#icon-game"></use></svg
+                  ><span data-i18n="game.connect.kicker">Connect</span></span
+                >
+                <h2 class="connect-setup-title" data-i18n="game.connect.title">
+                  Who do you want to connect?
+                </h2>
+                <p class="connect-setup-sub" data-i18n="game.connect.sub">
+                  Pick two artists — then find the shortest line of collaborations between them.
+                </p>
+              </div>
+
+              <div class="connect-setup-poles">
+                <label class="connect-field connect-field--start">
+                  <span class="connect-label" data-i18n="game.connect.fromLabel">From</span>
+                  <input
+                    id="connect-start-input"
+                    class="ui-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Start artist…"
+                    aria-label="Start artist"
+                    data-i18n-placeholder="game.connect.startPlaceholder"
+                    data-i18n-attr="aria-label:game.connect.startAriaLabel"
+                  />
+                  <div id="connect-start-ac" class="ac-dropdown" role="listbox"></div>
+                </label>
+                <span class="connect-setup-link" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><use href="#icon-arrow-left"></use></svg>
+                </span>
+                <label class="connect-field connect-field--goal">
+                  <span class="connect-label" data-i18n="game.connect.toLabel">To</span>
+                  <input
+                    id="connect-goal-input"
+                    class="ui-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Goal artist…"
+                    aria-label="Goal artist"
+                    data-i18n-placeholder="game.connect.goalPlaceholder"
+                    data-i18n-attr="aria-label:game.connect.goalAriaLabel"
+                  />
+                  <div id="connect-goal-ac" class="ac-dropdown" role="listbox"></div>
+                </label>
+              </div>
+              <div class="connect-setup-actions">
+                <button
+                  type="button"
+                  id="connect-start-btn"
+                  class="ui-btn ui-btn--primary"
+                  disabled
+                  data-i18n="game.connect.startBtn"
+                >
+                  Start
+                </button>
+                <a class="ui-btn" href="#/game/challenges" data-i18n="game.connect.browseChallenges"
+                  >Browse challenges</a
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="connect-graph-rail">
+            <button
+              type="button"
+              id="connect-zoom-in"
+              class="cgr-btn"
+              aria-label="Zoom in"
+              data-i18n-attr="aria-label:game.connect.zoomInAriaLabel"
+            >
+              <svg class="cgr-ico" viewBox="0 0 24 24" aria-hidden="true">
+                <use href="#icon-plus"></use>
+              </svg>
             </button>
-            <button class="path-clear-btn" id="btn-clear-path">Clear</button>
+            <button
+              type="button"
+              id="connect-zoom-out"
+              class="cgr-btn"
+              aria-label="Zoom out"
+              data-i18n-attr="aria-label:game.connect.zoomOutAriaLabel"
+            >
+              <svg class="cgr-ico" viewBox="0 0 24 24" aria-hidden="true">
+                <use href="#icon-minus"></use>
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="connect-fit"
+              class="cgr-btn"
+              aria-label="Fit graph"
+              data-i18n-attr="aria-label:game.connect.fitAriaLabel"
+            >
+              <svg class="cgr-ico" viewBox="0 0 24 24" aria-hidden="true">
+                <use href="#icon-frame"></use>
+              </svg>
+            </button>
           </div>
-          <!-- [fix] Was also a #path-result div here — loading/error states
-               now go through the shared canvas-wide overlay/toast
-               (ui/loading.js, ui/toast.js), same as regular artist search,
-               instead of an element embedded in this panel (reported as
-               the search process feeling "bolted into the window"). -->
-          <div class="hop-chain" id="hop-chain"></div>
+
+          <div
+            id="connect-canvas"
+            class="connect-canvas"
+            role="img"
+            aria-label="Your collaboration line and the current artist's real collaborators"
+            data-i18n-attr="aria-label:game.connect.canvasAriaLabel"
+          ></div>
+          <p
+            class="connect-stage-empty"
+            id="connect-stage-empty"
+            data-i18n="game.connect.stageEmpty"
+          >
+            Pick a start and a goal to begin.
+          </p>
         </div>
 
-        <!-- [SF-WEB-20] Compare mode — common immediate collaborators of two
-             graph-picked artists (see #btn-compare-mode above /
-             vis-adapter/compare-mode.js / ui/compare-panel.js::showComparePanel).
-             Same "one companion-panel section visible at a time" pattern as
-             #artist-sidebar/#path-panel above. -->
-        <div class="compare-panel" id="compare-panel">
-          <div class="path-panel-header">
-            <div class="path-title" id="compare-title">Compare</div>
-            <button class="path-close" id="compare-panel-close" title="Close" aria-label="Close">×</button>
+        <aside class="connect-line-panel ui-panel">
+          <header class="clp-quest">
+            <div class="clp-poles">
+              <span class="clp-pole clp-pole--start">
+                <span class="clp-pole-av" id="connect-pole-from" aria-hidden="true">?</span>
+                <span class="clp-pole-name" id="connect-pole-from-name">—</span>
+              </span>
+              <span class="clp-pole-link" aria-hidden="true"><b id="connect-hops-value">0</b></span>
+              <span class="clp-pole clp-pole--goal">
+                <span class="clp-pole-av" id="connect-pole-to" aria-hidden="true">?</span>
+                <span class="clp-pole-name" id="connect-pole-to-name">—</span>
+              </span>
+            </div>
+
+            <div class="clp-progress" id="connect-progress" hidden>
+              <div class="clp-pips" id="connect-pips" aria-hidden="true"></div>
+              <span class="clp-progress-label" id="connect-progress-label"></span>
+            </div>
+          </header>
+
+          <span class="clp-rival" id="connect-rival-pill" hidden
+            ><svg class="clp-rival-ico" viewBox="0 0 24 24" aria-hidden="true">
+              <use href="#icon-trophy"></use></svg
+            ><span id="connect-rival-text"></span
+          ></span>
+
+          <ol class="clp-line" id="connect-line-list" aria-live="polite"></ol>
+
+          <div class="clp-add">
+            <input
+              id="connect-add-input"
+              class="clp-add-input"
+              type="text"
+              autocomplete="off"
+              placeholder="Search a collaborator…"
+              aria-label="Add the next collaborator"
+              disabled
+            />
+            <div id="connect-add-ac" class="ac-dropdown" role="listbox"></div>
+            <button
+              type="button"
+              id="connect-add-btn"
+              class="clp-add-btn"
+              aria-label="Add collaborator"
+              disabled
+            >
+              <svg class="clp-add-ico" viewBox="0 0 24 24" aria-hidden="true">
+                <use href="#icon-plus"></use>
+              </svg>
+            </button>
           </div>
-          <!-- [fix] The two compared artists themselves — reported as
-               missing (only the "A × B" text title and the shared-
-               collaborators list existed, no visual trace of WHICH two
-               artists are being compared). Populated by
-               ui/compare-panel.js::showComparePanel, same click-to-focus
-               pattern as .compare-item below. -->
-          <div class="compare-pair" id="compare-pair"></div>
-          <!-- [fix] The trace between the two artists (every hop from the
-               first to the second, inclusive) — reused verbatim from the
-               six-degrees path result (ui/path-result.js::renderHopChain),
-               fed by the same client-side BFS
-               (vis-adapter/compare-mode.js) that also highlights it on the
-               canvas. Reported as confusing when only "No shared
-               collaborators" showed with no trace at all. -->
-          <div class="sidebar-section-label" id="compare-trace-label">Connection</div>
-          <div class="hop-chain" id="compare-hop-chain"></div>
-          <div class="compare-list" id="compare-list"></div>
-        </div>
 
-      </div>
+          <section class="connect-browse" id="connect-browse" hidden>
+            <span class="connect-browse-summary" id="connect-browse-label"
+              >Or browse real collaborators</span
+            >
+            <div class="connect-browse-chips" id="connect-browse-chips" aria-live="polite"></div>
+          </section>
 
-    </div>
+          <div class="connect-leaderboard" id="connect-leaderboard" aria-live="polite" hidden></div>
 
-    <div class="overlay" id="loading">
-      <span class="spinner"></span> Charting the network…
-    </div>
+          <div class="clp-status" id="connect-finish-label"></div>
+          <p class="clp-detail" id="connect-finish-detail" hidden></p>
 
-    <div class="candidate-overlay" id="candidate-overlay" role="dialog" aria-label="Select artist">
-      <div class="candidate-box">
-        <div class="candidate-header">
-          <div>
-            <div class="candidate-title">A few artists match — which one?</div>
-            <div class="candidate-subtitle">Click one to load its graph</div>
+          <footer class="clp-foot">
+            <div class="clp-score">
+              <span class="clp-score-label">Score</span>
+              <span class="clp-score-value" id="connect-finish-score">—</span>
+            </div>
+            <button type="button" id="connect-lockin" class="clp-lockin" disabled>Lock in</button>
+          </footer>
+
+          <div class="clp-actions">
+            <button id="connect-undo" class="dock-btn" type="button" disabled>
+              <span class="ri"
+                ><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <use href="#icon-arrow-left"></use></svg></span
+              >Undo
+            </button>
+            <button id="connect-reset" class="dock-btn" type="button" disabled>
+              <span class="ri"
+                ><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <use href="#icon-shuffle"></use></svg></span
+              >Reset
+            </button>
+            <button id="connect-give-up" class="dock-btn" type="button" disabled>
+              <span class="ri"
+                ><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <use href="#icon-close"></use></svg></span
+              >Give up
+            </button>
+            <button id="connect-share" class="dock-btn" type="button" disabled>
+              <span class="ri"
+                ><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <use href="#icon-link"></use></svg></span
+              >Share
+            </button>
           </div>
-          <button class="candidate-close-btn" id="candidate-close" title="Close" aria-label="Close">×</button>
-        </div>
-        <div class="candidate-list" id="candidate-list"></div>
+        </aside>
       </div>
-    </div>
-
-    <div class="node-search-overlay" id="node-search-overlay" role="dialog" aria-label="Search loaded nodes">
-      <div class="node-search-box">
-        <div class="node-search-hint" id="node-search-hint">Jump to a loaded artist <kbd>Esc</kbd> to close</div>
-        <label class="sr-only" for="node-search-input">Search loaded nodes</label>
-        <input id="node-search-input" class="path-input" type="text" autocomplete="off"
-          placeholder="Artist name…" role="combobox" aria-expanded="false" aria-haspopup="listbox"
-          aria-autocomplete="list" aria-controls="node-search-results" aria-activedescendant=""
-          aria-describedby="node-search-hint" />
-        <div id="node-search-status" class="sr-only" role="status" aria-live="polite"></div>
-        <div id="node-search-results" role="listbox" aria-label="Loaded artists"></div>
-      </div>
-    </div>
-
     </section>
 
-  </main>
+    <button
+      class="settings-toggle"
+      id="btn-settings-open"
+      type="button"
+      aria-label="Settings"
+      data-i18n-attr="aria-label:settings.toggleAriaLabel"
+    >
+      <svg class="ri" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <use href="#icon-gear" />
+      </svg>
+    </button>
 
-  <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+    <section id="game-leaderboard-surface" class="game-screen" aria-label="Leaderboard" hidden>
+      <nav class="game-rail rail-shell" aria-label="Game navigation">
+        <a class="game-rail-brand brand" href="/" title="Six Feat — back to start"
+          ><span class="dotmark"></span><span class="rl">Six Feat</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game"
+          data-surface="game"
+          data-tip="Play"
+          data-i18n-attr="data-tip:hero.game.play"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-target"></use></svg
+          ><span class="rl" data-i18n="hero.game.play">Play</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/challenges"
+          data-surface="game/challenges"
+          data-tip="Challenges"
+          data-i18n-attr="data-tip:game.challengesTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg
+          ><span class="rl" data-i18n="game.challengesTitle">Challenges</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/leaderboard"
+          data-surface="game/leaderboard"
+          data-tip="Leaderboard"
+          data-i18n-attr="data-tip:game.leaderboardTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-trophy"></use></svg
+          ><span class="rl" data-i18n="game.leaderboardTitle">Leaderboard</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/season"
+          data-surface="game/season"
+          data-tip="Season"
+          data-i18n-attr="data-tip:game.season.label"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-flame"></use></svg
+          ><span class="rl" data-i18n="game.season.label">Season</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/profile"
+          data-surface="game/profile"
+          data-tip="Cabinet"
+          data-i18n-attr="data-tip:game.cabinetTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-medal"></use></svg
+          ><span class="rl" data-i18n="game.cabinetTitle">Cabinet</span></a
+        >
+      </nav>
+      <div class="game-screen-body">
+        <header class="gs-head">
+          <h1 class="gs-title" data-i18n="game.leaderboardTitle">Leaderboard</h1>
+          <div class="gs-tabs" id="lb-tabs" role="tablist">
+            <button
+              type="button"
+              class="gs-tab is-active"
+              id="lb-tab-season"
+              role="tab"
+              data-scope="season"
+              data-i18n="game.season.label"
+            >
+              Season
+            </button>
+            <button
+              type="button"
+              class="gs-tab"
+              id="lb-tab-challenge"
+              role="tab"
+              data-scope="challenge"
+              data-i18n="game.leaderboard.tabChallenge"
+            >
+              This challenge
+            </button>
+          </div>
+        </header>
+        <p class="gs-sub" id="lb-scope-label"></p>
+        <ol class="lb-list" id="lb-list" aria-live="polite"></ol>
+        <p class="gs-empty" id="lb-empty" hidden>No scores yet.</p>
+      </div>
+    </section>
 
-  <!-- [SF-WEB-41] Portal mount for anchored floating layers — see #overlay-root
-       CSS above and ui/overlay-root.js. Must be the last child of <body> so it
-       stacks above the rest of the tree without needing an outsized z-index. -->
-  <div id="overlay-root"></div>
+    <section id="game-profile-surface" class="game-screen" aria-label="Profile" hidden>
+      <nav class="game-rail rail-shell" aria-label="Game navigation">
+        <a class="game-rail-brand brand" href="/" title="Six Feat — back to start"
+          ><span class="dotmark"></span><span class="rl">Six Feat</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game"
+          data-surface="game"
+          data-tip="Play"
+          data-i18n-attr="data-tip:hero.game.play"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-target"></use></svg
+          ><span class="rl" data-i18n="hero.game.play">Play</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/challenges"
+          data-surface="game/challenges"
+          data-tip="Challenges"
+          data-i18n-attr="data-tip:game.challengesTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg
+          ><span class="rl" data-i18n="game.challengesTitle">Challenges</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/leaderboard"
+          data-surface="game/leaderboard"
+          data-tip="Leaderboard"
+          data-i18n-attr="data-tip:game.leaderboardTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-trophy"></use></svg
+          ><span class="rl" data-i18n="game.leaderboardTitle">Leaderboard</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/season"
+          data-surface="game/season"
+          data-tip="Season"
+          data-i18n-attr="data-tip:game.season.label"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-flame"></use></svg
+          ><span class="rl" data-i18n="game.season.label">Season</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/profile"
+          data-surface="game/profile"
+          data-tip="Cabinet"
+          data-i18n-attr="data-tip:game.cabinetTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-medal"></use></svg
+          ><span class="rl" data-i18n="game.cabinetTitle">Cabinet</span></a
+        >
+      </nav>
+      <div class="game-screen-body">
+        <div id="profile-signed-out" class="gs-empty" hidden>
+          <span data-i18n="game.profile.signedOutHint"
+            >Sign in with Genius to track your Elo, rank and badges.</span
+          >
+          <a class="gs-signin" href="/auth/login" data-i18n="game.profile.signIn">Sign in</a>
+        </div>
+        <div id="profile-card" hidden>
+          <section class="ui-panel cab-hero">
+            <span class="cab-avatar-ring">
+              <span class="pf-avatar" id="pf-avatar" aria-hidden="true">?</span>
+            </span>
+            <div class="cab-id">
+              <p class="cab-eyebrow" data-i18n="game.profile.eyebrow">Your cabinet</p>
+              <div class="cab-name-row">
+                <h1 class="pf-name" id="pf-name">—</h1>
+                <button
+                  type="button"
+                  class="ui-btn ui-btn--icon cab-edit"
+                  id="pf-edit-name"
+                  title="Change display name"
+                  aria-label="Change display name"
+                  data-i18n-attr="title:game.profile.changeNameTitle,aria-label:game.profile.changeNameTitle"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-pen"></use></svg>
+                </button>
+              </div>
+              <div class="cab-chips">
+                <span class="ui-chip cab-chip cab-chip--rank" id="pf-rank"></span>
+              </div>
+            </div>
+            <div class="cab-cta">
+              <a class="ui-btn ui-btn--primary" href="#/game" data-i18n="game.profile.playDaily"
+                >Play daily</a
+              >
+              <button
+                type="button"
+                class="ui-btn"
+                id="pf-share"
+                data-i18n="game.profile.shareProfile"
+              >
+                Share profile
+              </button>
+            </div>
+          </section>
 
-  <!-- [SF-SEC-02] Self-hosted — vis-network@9.1.9/standalone/umd/vis-network.min.js,
-       vendored verbatim under front/vendor/ (see DEVELOPMENT.md for how to
-       bump the pinned version). Same-origin, so no integrity/crossorigin
-       needed — the whole point was to stop depending on unpkg.com being up
-       and byte-for-byte unchanged (see git history for the CDN+SRI version
-       this replaced). -->
-  <script src="/vendor/vis-network.min.js"></script>
-  <script src="/script.js"></script>
-</body>
+          <div class="cab-tiles">
+            <div class="ui-tile cab-tile">
+              <span class="cab-tile-v" id="pf-elo">—</span
+              ><span class="cab-tile-l" data-i18n="game.profile.eloLabel">Elo</span>
+            </div>
+            <div class="ui-tile cab-tile">
+              <span class="cab-tile-v" id="pf-games">—</span
+              ><span class="cab-tile-l" data-i18n="game.profile.gamesLabel">Games</span>
+            </div>
+            <div class="ui-tile cab-tile">
+              <span class="cab-tile-v" id="pf-badges">—</span
+              ><span class="cab-tile-l" data-i18n="game.profile.badgesLabel">Badges</span>
+            </div>
+          </div>
+
+          <section class="cab-section">
+            <h2 class="cab-sec-title" data-i18n="game.profile.achievementsTitle">Achievements</h2>
+            <div class="pf-badges" id="pf-badge-list"></div>
+            <p class="gs-empty" id="pf-badges-empty" hidden data-i18n="game.profile.noBadgesYet">
+              No badges yet — play a round.
+            </p>
+          </section>
+          <section class="cab-section">
+            <h2 class="cab-sec-title" data-i18n="game.profile.recentAttempts">Recent attempts</h2>
+            <ol class="pf-history" id="pf-history" aria-live="polite"></ol>
+            <p class="gs-empty" id="pf-history-empty" hidden data-i18n="game.profile.noAttemptsYet">
+              No attempts yet.
+            </p>
+          </section>
+        </div>
+
+        <section id="admin-panel" class="ui-panel admin-panel" hidden>
+          <header class="pf-head pf-head--admin">
+            <span class="admin-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" class="admin-ico"><use href="#icon-locate"></use></svg>
+            </span>
+            <div class="pf-id">
+              <h2 class="pf-name pf-name--sm" data-i18n="game.admin.title">Admin</h2>
+              <span class="pf-rank" data-i18n="game.admin.publishSubtitle"
+                >Publish today's challenge on demand</span
+              >
+            </div>
+          </header>
+          <div class="admin-publish">
+            <label class="admin-field">
+              <span class="admin-label" data-i18n="game.admin.fromLabel">From (optional)</span>
+              <input
+                id="admin-from-input"
+                class="ui-input"
+                type="text"
+                autocomplete="off"
+                placeholder="Pick an artist…"
+                data-i18n-placeholder="game.admin.pickArtistPlaceholder"
+              />
+              <div id="admin-from-ac" class="ac-dropdown" role="listbox"></div>
+            </label>
+            <label class="admin-field">
+              <span class="admin-label" data-i18n="game.admin.toLabel">To (optional)</span>
+              <input
+                id="admin-to-input"
+                class="ui-input"
+                type="text"
+                autocomplete="off"
+                placeholder="Pick an artist…"
+                data-i18n-placeholder="game.admin.pickArtistPlaceholder"
+              />
+              <div id="admin-to-ac" class="ac-dropdown" role="listbox"></div>
+            </label>
+            <button
+              id="admin-publish-daily"
+              class="ui-btn ui-btn--primary admin-publish-btn"
+              type="button"
+              data-i18n="game.admin.publishDaily"
+            >
+              Publish daily
+            </button>
+          </div>
+          <p id="admin-status" class="admin-status" aria-live="polite"></p>
+        </section>
+      </div>
+    </section>
+
+    <section id="game-challenges-surface" class="game-screen" aria-label="Challenges" hidden>
+      <nav class="game-rail rail-shell" aria-label="Game navigation">
+        <a class="game-rail-brand brand" href="/" title="Six Feat — back to start"
+          ><span class="dotmark"></span><span class="rl">Six Feat</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game"
+          data-surface="game"
+          data-tip="Play"
+          data-i18n-attr="data-tip:hero.game.play"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-target"></use></svg
+          ><span class="rl" data-i18n="hero.game.play">Play</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/challenges"
+          data-surface="game/challenges"
+          data-tip="Challenges"
+          data-i18n-attr="data-tip:game.challengesTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg
+          ><span class="rl" data-i18n="game.challengesTitle">Challenges</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/leaderboard"
+          data-surface="game/leaderboard"
+          data-tip="Leaderboard"
+          data-i18n-attr="data-tip:game.leaderboardTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-trophy"></use></svg
+          ><span class="rl" data-i18n="game.leaderboardTitle">Leaderboard</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/season"
+          data-surface="game/season"
+          data-tip="Season"
+          data-i18n-attr="data-tip:game.season.label"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-flame"></use></svg
+          ><span class="rl" data-i18n="game.season.label">Season</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/profile"
+          data-surface="game/profile"
+          data-tip="Cabinet"
+          data-i18n-attr="data-tip:game.cabinetTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-medal"></use></svg
+          ><span class="rl" data-i18n="game.cabinetTitle">Cabinet</span></a
+        >
+      </nav>
+      <div class="game-screen-body game-screen-body--wide">
+        <header class="gs-head">
+          <h1 class="gs-title" data-i18n="game.challengesTitle">Challenges</h1>
+          <div class="gs-tabs" id="ch-tabs" role="tablist">
+            <button
+              type="button"
+              class="gs-tab is-active"
+              id="ch-tab-all"
+              role="tab"
+              data-kind=""
+              data-i18n="game.challenges.tabAll"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              class="gs-tab"
+              id="ch-tab-daily"
+              role="tab"
+              data-kind="daily"
+              data-i18n="game.challenges.tabDaily"
+            >
+              Daily
+            </button>
+            <button
+              type="button"
+              class="gs-tab"
+              id="ch-tab-custom"
+              role="tab"
+              data-kind="custom"
+              data-i18n="game.challenges.tabCustom"
+            >
+              Custom
+            </button>
+          </div>
+        </header>
+        <p class="gs-sub" data-i18n="game.challenges.hint">
+          Pick a pair and race to connect them. PAR is the shortest possible line.
+        </p>
+
+        <div class="ch-search">
+          <svg class="ch-search-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-search"></use>
+          </svg>
+          <input
+            id="ch-search-input"
+            class="ui-input ch-search-input"
+            type="search"
+            autocomplete="off"
+            placeholder="Find a challenge by artist…"
+            aria-label="Find a challenge by artist"
+            data-i18n-placeholder="game.challenges.searchPlaceholder"
+            data-i18n-attr="aria-label:game.challenges.searchPlaceholder"
+          />
+          <button
+            type="button"
+            id="ch-search-clear"
+            class="ui-btn ui-btn--icon ch-search-clear"
+            aria-label="Clear search"
+            data-i18n-attr="aria-label:game.challenges.clearSearchAriaLabel"
+            hidden
+          >
+            <span class="ri"
+              ><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-close"></use></svg
+            ></span>
+          </button>
+        </div>
+        <div class="ch-grid" id="ch-grid" aria-live="polite"></div>
+        <p class="gs-empty" id="ch-empty" hidden>
+          No challenges yet — play the daily to seed the board.
+        </p>
+        <button
+          type="button"
+          class="ch-more ui-btn"
+          id="ch-more"
+          hidden
+          data-i18n="game.challenges.loadMore"
+        >
+          Load more
+        </button>
+      </div>
+    </section>
+
+    <section
+      id="game-season-surface"
+      class="game-screen"
+      aria-label="Season and achievements"
+      hidden
+    >
+      <nav class="game-rail rail-shell" aria-label="Game navigation">
+        <a class="game-rail-brand brand" href="/" title="Six Feat — back to start"
+          ><span class="dotmark"></span><span class="rl">Six Feat</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game"
+          data-surface="game"
+          data-tip="Play"
+          data-i18n-attr="data-tip:hero.game.play"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-target"></use></svg
+          ><span class="rl" data-i18n="hero.game.play">Play</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/challenges"
+          data-surface="game/challenges"
+          data-tip="Challenges"
+          data-i18n-attr="data-tip:game.challengesTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true"><use href="#icon-star"></use></svg
+          ><span class="rl" data-i18n="game.challengesTitle">Challenges</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/leaderboard"
+          data-surface="game/leaderboard"
+          data-tip="Leaderboard"
+          data-i18n-attr="data-tip:game.leaderboardTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-trophy"></use></svg
+          ><span class="rl" data-i18n="game.leaderboardTitle">Leaderboard</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/season"
+          data-surface="game/season"
+          data-tip="Season"
+          data-i18n-attr="data-tip:game.season.label"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-flame"></use></svg
+          ><span class="rl" data-i18n="game.season.label">Season</span></a
+        >
+        <a
+          class="game-nav-link rail-btn ui-btn ui-btn--ghost"
+          href="#/game/profile"
+          data-surface="game/profile"
+          data-tip="Cabinet"
+          data-i18n-attr="data-tip:game.cabinetTitle"
+          ><svg class="ri" viewBox="0 0 24 24" aria-hidden="true">
+            <use href="#icon-medal"></use></svg
+          ><span class="rl" data-i18n="game.cabinetTitle">Cabinet</span></a
+        >
+      </nav>
+      <div class="game-screen-body game-screen-body--wide">
+        <section class="ui-panel sn-hero">
+          <span class="sn-hero-badge" aria-hidden="true">
+            <svg class="sn-hero-ico" viewBox="0 0 24 24"><use href="#icon-trophy"></use></svg>
+          </span>
+          <div class="sn-hero-main">
+            <p class="sn-eyebrow" data-i18n="game.season.currentSeasonEyebrow">Current season</p>
+            <h1 class="sn-title" id="sn-name">—</h1>
+            <div class="sn-meta">
+              <span class="sn-countdown" id="sn-countdown"></span>
+              <span class="sn-you" id="sn-you" hidden></span>
+            </div>
+            <div
+              class="sn-progress"
+              role="progressbar"
+              aria-label="Season progress"
+              data-i18n-attr="aria-label:game.season.progressAriaLabel"
+            >
+              <span class="sn-progress-fill" id="sn-progress-fill"></span>
+            </div>
+            <p class="sn-dates" id="sn-dates"></p>
+          </div>
+        </section>
+
+        <section class="sn-section">
+          <header class="gs-head">
+            <h2 class="gs-title gs-title--sm" data-i18n="game.season.topOfSeason">
+              Top of the season
+            </h2>
+            <a
+              class="sn-link"
+              href="#/game/leaderboard"
+              data-surface="game/leaderboard"
+              data-i18n="game.season.fullLeaderboardLink"
+              >Full leaderboard →</a
+            >
+          </header>
+          <ol class="lb-list" id="sn-podium" aria-live="polite"></ol>
+          <p class="gs-empty" id="sn-podium-empty" hidden>
+            No scores yet — be the first to post one.
+          </p>
+        </section>
+
+        <section class="sn-section">
+          <header class="gs-head">
+            <h2 class="gs-title gs-title--sm" data-i18n="game.profile.achievementsTitle">
+              Achievements
+            </h2>
+            <span class="sn-ach-count" id="sn-ach-count"></span>
+          </header>
+          <p class="gs-sub sn-ach-hint" id="sn-ach-hint" hidden>
+            <span data-i18n="game.season.achievementsSignedOutHint"
+              >Sign in with Genius to start earning badges.</span
+            >
+            <a class="gs-signin" href="/auth/login" data-i18n="game.profile.signIn">Sign in</a>
+          </p>
+          <div class="ach-grid" id="sn-ach-grid" aria-live="polite"></div>
+        </section>
+      </div>
+    </section>
+
+    <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+
+    <div id="overlay-root"></div>
+
+    <script src="/vendor/vis-network.min.js"></script>
+    <script src="/script.js"></script>
+  </body>
 </html>

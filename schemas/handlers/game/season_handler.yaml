@@ -1,0 +1,4 @@
+type: object
+description: 'GET /api/v1/game/season — season, podium and achievement catalog'
+additionalProperties: false
+properties: {}

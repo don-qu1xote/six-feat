@@ -1,11 +1,4 @@
-# ════════════════════════════════════════════════════════════════════════════
-# static_config.yaml  —  iteration 8 (IDEA-26: background enrichment moved to
-# the standalone six-feat-enrichment service — see services/enrichment/)
-#
-# Two task processors:
-#   main-task-processor  — foreground requests (handlers run here)
-#   fs-task-processor    — Postgres driver blocking ops + DNS + logging I/O
-# ════════════════════════════════════════════════════════════════════════════
+
 
 components_manager:
   task_processors:
@@ -17,8 +10,6 @@ components_manager:
       worker_threads: 4
       thread_name: fs-task-processor
 
-    # [IDEA-27] Dedicated, low-concurrency TP for the internal metrics
-    # endpoint so scraping never contends with foreground request handling.
     monitor-task-processor:
       worker_threads: 1
       thread_name: monitor-worker
@@ -26,14 +17,12 @@ components_manager:
   default_task_processor: main-task-processor
 
   components:
-    # ── Userver built-ins ───────────────────────────────────────────────────
+
     server:
       listener:
         port: 8080
         task_processor: &main_tp main-task-processor
-      # [IDEA-27] Internal-only listener for handler-server-monitor below —
-      # separate port, no public exposure (not mapped in docker-compose.yml),
-      # no auth-checker configured since network isolation is the boundary.
+
       listener-monitor:
         port: 8085
         task_processor: &monitor_tp monitor-task-processor
@@ -49,37 +38,11 @@ components_manager:
         default:
           file_path: '@stdout'
           level: $logging_level
-              #fallback: info
-          # [SF-OBS-03] Structured JSON instead of userver's default tskv —
-          # same fields (trace_id/span_id already land here as their own
-          # top-level keys via the tracing middleware, and EnsureRequestId
-          # (SF-OBS-02, core/request_id.cpp) tags every span with
-          # request_id the same way — this only changes SERIALIZATION, not
-          # what's logged, so a log line's request/trace id was already a
-          # separate field, never baked into `text`), just machine-parseable
-          # for a log aggregator (Loki/ELK/CloudWatch...) without a tskv
-          # parser. This exact block (file_path/format; level stays
-          # per-service via $logging_level) must stay identical across all
-          # 4 (soon 5, see SF-GAME-10) services' static_config.yaml — a
-          # literal YAML anchor can't span separate files/documents, so
-          # "shared" here means "kept in sync by convention", the same
-          # caveat SF-SCH-02's task_processor anchors called out for the
-          # docker-compose.yml hardening block.
+
           format: json
 
     testsuite-support:
 
-    # ── Postgres cluster (backs persistent-store below) ─────────────────────
-    # sync-start: false — a synchronous start makes components::Run throw and
-    # exit the whole process if the pool can't connect within its window
-    # (crash-loop, relying on Docker's blind container restart to eventually
-    # land after Postgres catches up — not a real fix). With this off, the
-    # component starts immediately and keeps retrying the connection in the
-    # background; readiness_handler.cpp already pings the DB and reports 503
-    # "not_ready" on /readyz until the pool is actually up, so the container
-    # correctly stays un-healthy (and out of nginx's rotation) instead of the
-    # process dying outright. See docker-entrypoint.sh's pg_isready wait for
-    # the complementary first-line defense.
     postgres-db-1:
       dbconnection: $db_connection_string
       blocking_task_processor: fs-task-processor
@@ -90,119 +53,100 @@ components_manager:
       max_pool_size: 15
       max_queue_size: 200
 
-    # ── L1 persistent store ─────────────────────────────────────────────────
     persistent-store:
       dbname: postgres-db-1
 
-    # [SF-SEC-04] backend: single (default) keeps graph/path/search's per-IP
-    # rate limiting exactly as before — in-process, per-replica. Set to
-    # "shared" only once running >1 replica of this service behind a load
-    # balancer, so the configured limit means the same thing regardless of
-    # which replica a given request lands on (uses the same Postgres
-    # cluster as persistent-store above, via a separate rate_buckets table —
-    # see postgresql/migrations/V3__rate_buckets.sql).
     rate-limit-store:
       backend: single
       dbname: postgres-db-1
 
-    # ── Network layer ───────────────────────────────────────────────────────
-    # [ТЗ-6] No server-level Genius token anymore — every Genius API call is
-    # made with the requesting user's own OAuth session token (see
-    # oauth-config below). Anonymous requests are rejected by the handlers.
-    # [IDEA-46] Genius API access itself (incl. CircuitBreaker and FG/BG lane
-    # rate-limiting) has moved to the standalone six-feat-genius-gateway
-    # service — this component is now just a secret-gated HTTP client to it.
+    api-key-store:
+      dbname: postgres-db-1
+
+    idempotency-store:
+      dbname: postgres-db-1
+
+    user-provider-token-store:
+      dbname: postgres-db-1
+
     genius-gateway-client:
       genius-gateway-base-url: $genius_gateway_base_url
       timeout-ms: 5000
-      songs-limit-fg: 40       # raised from 10 — improves FG graph coverage
+      songs-limit-fg: 40
       songs-limit-bg: 80
       match-threshold: 0.75
 
-    # ── OAuth 2.0 (Genius) — session validation only ─────────────────────────
-    # [IDEA-53] The OAuth flow itself (/auth/login|callback|logout|me) now
-    # lives in the standalone six-feat-auth service (see services/auth/). This
-    # component stays here ONLY so RequireSession/ExtractToken
-    # (src/auth/token_router.hpp) can decrypt the six_feat_session cookie
-    # LOCALLY, with no HTTP call to six-feat-auth on every request — that's
-    # what keeps per-request auth latency-free. client_id/redirect_uri below
-    # are unused by this service (kept only because OAuthConfig's
-    # constructor validates them) — they must still be set to the same
-    # values as six-feat-auth's, and client_secret still comes from the same
-    # GENIUS_CLIENT_SECRET env var (both services share it), APP_SECRET too.
+    genius-music-source-provider: {}
+
     oauth-config:
       client-id: $genius_client_id
       redirect-uri: $genius_redirect_uri
       genius-base-url: https://api.genius.com
       session-ttl-days: 90
-      # cookie-secure: false в dev (HTTP localhost), true в prod (HTTPS)
+
       cookie-secure: $cookie_secure
-      # [F-38] PKCE (RFC 7636) — код готов, но выключен по умолчанию: Genius
-      # не документирует code_challenge/code_verifier, включать без
-      # подтверждённой поддержки со стороны Genius рискованно (может сломать
-      # логин всем пользователям).
+
       pkce-enabled: false
 
-    # ── APP_SECRET fail-fast parity (SF-SEC-01) ─────────────────────────────
-    # Periodically compares this process's APP_SECRET fingerprint against
-    # six-feat-auth's (GET /internal/key-fingerprint) — never the secret
-    # itself — so a rotated/misconfigured APP_SECRET on either side surfaces
-    # as an explicit /readyz degradation + log line instead of every session
-    # silently 401-ing (see ReadinessHandler's "app_secret_parity" check).
     app-secret-parity-checker:
       auth-base-url: $auth_base_url
       timeout-ms: 3000
       check-interval-ms: 30000
 
-    # ── L1 read-through repository (Postgres buffer cache + replica) ──────
     artist-repository: {}
 
-    # ── Background enrichment (IDEA-26: HTTP client to six-feat-enrichment) ──
     enrichment-client:
       enrichment-base-url: $enrichment_base_url
       timeout-ms: 3000
-      # [IDEA-43] In-memory retry queue for jobs that failed to reach
-      # six-feat-enrichment (network error / non-2xx) — best-effort, backed
-      # by durable RecoverPendingArtists() on the enrichment side.
+
       retry-queue-capacity: 256
       retry-interval-ms: 15000
       max-retry-age-seconds: 900
-      # [IDEA-49] Short shared TTL so every open SSE stream / status-handler
-      # call for the same artist_id reuses one HTTP round trip instead of
-      # polling six-feat-enrichment on every ~2s tick.
+
       enriching-cache-ttl-ms: 3000
 
-    # ── Orchestration layer ─────────────────────────────────────────────────
     collab-service:
       path-max-expand-rounds: 3
-      path-max-frontier-size: 6   # cap BFS frontier per round to limit Genius RPS
+      path-max-frontier-size: 6
 
-    # ── HTTP handlers ───────────────────────────────────────────────────────
+    # [SF-ARCH-03] Один потолок на всю foreground-полосу: его делят сборка
+    # графа (genius-music-source-provider) и проверка прямого ребра
+    # (collab-service). Держим на уровне lane-fg-max-concurrent гейтвея (8),
+    # чтобы этот сервис не топил полосу, общую с другими вызывающими.
+    fg-fanout-limiter:
+      max-concurrent: 6
+
     handler-graph:
       path: /api/v1/graph
       method: GET
       task_processor: *main_tp
-      # [IDEA-22] Upper bound for the optional ?limit= override (per-request
-      # songs-limit-fg override) — caps how much Genius quota a single
-      # "show more collaborations" request can spend.
+
       max-limit-override: 50
+
+    handler-graph-deepen:
+      path: /api/v1/graph/deepen
+      method: GET
+      task_processor: *main_tp
+
+    handler-graph-edge:
+      path: /api/v1/graph/edge
+      method: GET
+      task_processor: *main_tp
+
+    handler-graph-layout:
+      path: /api/v1/graph/layout
+      method: POST
+      task_processor: *main_tp
 
     handler-path:
       path: /api/v1/graph/path
       method: GET
       task_processor: *main_tp
 
-    # [F-10] Lightweight autocomplete: candidate resolve only, no graph build,
-    # no BG enrichment enqueue.
     handler-search:
       path: /api/v1/search
       method: GET
       task_processor: *main_tp
-
-    # ── OAuth handlers ──────────────────────────────────────────────────────
-    # [IDEA-53] Moved to the standalone six-feat-auth service — see
-    # services/auth/static_config.yaml. External routing must send /auth/*
-    # to six-feat-auth instead of this service (see docker-compose.yml).
 
     handler-index:
       path: /
@@ -210,38 +154,23 @@ components_manager:
       task_processor: *main_tp
       file-path: /usr/share/six_feat/index.html
       content-type: text/html; charset=utf-8
-      # Always revalidated so a plain refresh (no hard-refresh needed) picks
-      # up index.html's new reference to the current hashed script URL.
+
       cache-control: 'no-cache'
-      # Rewritten by the Docker build (see Dockerfile) to the actual
-      # content-hashed bundle name, e.g. /script.a1b2c3d4.js — every
-      # "/script.js" occurrence inside index.html is replaced with this
-      # value at handler startup (see static_handler.cpp TransformContent).
+
       script-url: $script_url
-      # [SF-WEB-40] Same mechanism for the design-system CSS bundle: every
-      # "/style.css" in index.html is rewritten to the hashed CSS URL.
+
       style-url: $style_url
 
     handler-script:
-      # Path is templated by the Docker build to match the hashed file name
-      # actually shipped in the image (see Dockerfile / docker-entrypoint
-      # substitution), so this route and handler-index's injected reference
-      # always agree.
+
       path: $script_path
       method: GET
       task_processor: *main_tp
       file-path: $script_file_path
       content-type: application/javascript; charset=utf-8
-      # Content-addressed filename → safe to cache "forever": if the
-      # content ever changes, the filename (and therefore the URL) changes
-      # with it.
+
       cache-control: 'public, max-age=31536000, immutable'
 
-    # [SF-WEB-40] Hashed CSS bundle (src/styles/ → esbuild → dist/style.
-    # <hash>.css). Path/file-path templated by the Docker build to the real
-    # hashed name (same scheme as handler-script), content-addressed so it's
-    # safe to cache immutably: a changed stylesheet ships as a new hash, a
-    # new URL, picked up on a normal refresh.
     handler-style:
       path: $style_path
       method: GET
@@ -250,12 +179,6 @@ components_manager:
       content-type: text/css; charset=utf-8
       cache-control: 'public, max-age=31536000, immutable'
 
-    # [SF-SEC-02] Self-hosted vis-network@9.1.9 (front/vendor/vis-network.min.js,
-    # baked into the image below — see Dockerfile), replacing the old
-    # unpkg.com CDN <script> tag. Not content-hashed like handler-script's
-    # bundle, but the version is pinned by what's actually vendored (see
-    # DEVELOPMENT.md), so caching it "forever" is still safe as long as a
-    # version bump always ships as an image rebuild.
     handler-vendor-vis-network:
       path: /vendor/vis-network.min.js
       method: GET
@@ -264,12 +187,6 @@ components_manager:
       content-type: application/javascript; charset=utf-8
       cache-control: 'public, max-age=31536000, immutable'
 
-    # [SF-API-05] Static, hand-written OpenAPI 3.1 document (schemas/openapi/
-    # openapi.json) — checked-in artifact, not generated from the running
-    # handlers at build/runtime. Not content-hashed (unlike handler-script),
-    # so no long immutable cache — a moderate revalidate-friendly max-age
-    # instead, same reasoning as handler-index's no-cache but a bit looser
-    # since this document changes far less often than index.html.
     handler-openapi:
       path: /api/v1/openapi.json
       method: GET
@@ -293,11 +210,59 @@ components_manager:
       method: GET
       task_processor: *main_tp
 
-    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — no Genius
-    # calls of its own. See artist_handler.cpp.
     handler-artist:
       path: /api/v1/artist
       method: GET
+      task_processor: *main_tp
+
+    handler-api-keys-issue:
+      path: /api/v1/api-keys
+      method: POST
+      task_processor: *main_tp
+
+    handler-api-keys-revoke:
+      path: /api/v1/api-keys/revoke
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-status:
+      path: /api/v1/settings/providers
+      method: GET
+      task_processor: *main_tp
+
+    handler-settings-genius-connect:
+      path: /api/v1/settings/genius-token
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-genius-link-start:
+      path: /api/v1/settings/genius/link/start
+      method: GET
+      task_processor: *main_tp
+
+    handler-internal-genius-link:
+      path: /internal/genius-link
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-disconnect:
+      path: /api/v1/settings/disconnect
+      method: POST
+      task_processor: *main_tp
+
+    handler-settings-enrichment-enabled:
+      path: /api/v1/settings/enrichment-enabled
+      method: PATCH
+      task_processor: *main_tp
+
+    handler-internal-neighbours:
+      path: /internal/neighbours
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-music-source-edges:
+      path: /internal/music-source/collaboration-edges
+      method: POST
       task_processor: *main_tp
 
     handler-status-stream:
@@ -306,20 +271,12 @@ components_manager:
       task_processor: *main_tp
       response-body-stream: true
 
-    # [SF-API-12] Same-origin Genius CDN image proxy — see
-    # image_proxy_handler.cpp for the allowlist/SSRF reasoning. No
-    # `allowed-hosts` override here — production always gets the
-    # compiled-in real Genius CDN hostnames.
     handler-image:
       path: /api/v1/image
       method: GET
       task_processor: *main_tp
       timeout-ms: 5000
 
-    # ── Observability (IDEA-27) ─────────────────────────────────────────────
-    # [IDEA-46] CB state / FG/BG lane token+slot metrics now live on
-    # six-feat-genius-gateway's own /metrics — nothing genius-specific to
-    # report here anymore. Never the public port/listener.
     handler-server-monitor:
       path: /metrics
       method: GET

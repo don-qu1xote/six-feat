@@ -1,15 +1,4 @@
-# observability/alertmanager/alertmanager.yml — SF-OBS-04
-#
-# Deliberately no real paging receiver (Slack/PagerDuty/email/OpsGenie) —
-# nothing in this repo/environment has credentials for one, and wiring a
-# fake-but-plausible one would be worse than being explicit about the gap.
-# The only receiver is a webhook pointed at a local stub (see
-# docker-compose.yml's alertmanager service — no such listener actually
-# exists, so a real firing alert would show up as a failed delivery in
-# alertmanager's own /#/status and logs, not silently vanish) plus
-# alertmanager's own log output, which already includes every notification
-# attempt at info level. Swap `webhook_configs` for a real receiver
-# (slack_configs/pagerduty_configs/...) once one is provisioned.
+
 route:
   receiver: webhook-stub
   group_by: ["alertname", "job"]

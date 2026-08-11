@@ -1,9 +1,7 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/candidate-picker.js — Ambiguous-artist-name disambiguation overlay
-// ════════════════════════════════════════════════════════════════════════════
 import { escapeHtml, placeholderFor } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist } from "../api/api.js";
+import { t } from "../i18n/i18n.js";
 
 export function showCandidatePicker(candidates, originalQuery) {
   if (!els.candidateOverlay || !els.candidateList) return;
@@ -11,24 +9,27 @@ export function showCandidatePicker(candidates, originalQuery) {
   const titleEl = els.candidateOverlay.querySelector(".candidate-title");
   if (titleEl) {
     titleEl.textContent = originalQuery
-      ? `A few "${originalQuery}"s exist — which one?`
-      : "A few artists match — which one?";
+      ? t("candidate.titleQuery", { query: originalQuery })
+      : t("candidate.titleGeneric");
   }
 
-  els.candidateList.innerHTML = candidates.slice(0, 6).map(c => {
-    const imgSrc = c.image || placeholderFor(c.name, false);
-    const score  = c.score != null ? Math.round(c.score * 100) : "";
-    return `<div class="candidate-item" data-name="${escapeHtml(c.name)}">
+  els.candidateList.innerHTML = candidates
+    .slice(0, 6)
+    .map((c) => {
+      const imgSrc = c.image || placeholderFor(c.name, false);
+      const score = c.score != null ? Math.round(c.score * 100) : "";
+      return `<div class="candidate-item" data-name="${escapeHtml(c.name)}">
       <img class="candidate-avatar" src="${escapeHtml(imgSrc)}"
            data-fallback="${escapeHtml(placeholderFor(c.name, false))}" alt="" />
       <div class="candidate-info">
         <div class="candidate-name">${escapeHtml(c.name)}</div>
-        ${score ? `<div class="candidate-score">${score}% match for "${escapeHtml(originalQuery)}"</div>` : ""}
+        ${score ? `<div class="candidate-score">${escapeHtml(t("candidate.scoreMatch", { score, query: originalQuery }))}</div>` : ""}
       </div>
     </div>`;
-  }).join("");
+    })
+    .join("");
 
-  els.candidateList.querySelectorAll(".candidate-item").forEach(item => {
+  els.candidateList.querySelectorAll(".candidate-item").forEach((item) => {
     item.addEventListener("click", () => {
       const name = item.getAttribute("data-name");
       hideCandidatePicker();

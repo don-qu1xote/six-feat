@@ -1,37 +1,10 @@
-"""
-test_rate_limit_store.py — SF-SEC-04: PostgresRateLimitStore (backend: shared)
-================================================================================
-
-Verifies the actual claim behind this ticket: with rate-limit-store's
-`backend: shared`, TWO SEPARATE six-feat processes (simulating two replicas
-behind a load balancer) enforce ONE combined budget for the same rate-limit
-key, instead of each independently allowing up to the configured max — the
-bug PerIpRateLimit's original in-process-only implementation had (see
-core/rate_limit_store.hpp's own module comment): with N replicas, the
-effective limit used to become (configured limit) x N.
-
-Both processes are launched from the SAME _TEST_CONFIG_TEMPLATE conftest.py
-already uses for `service_proc`, with its rate-limit-store block patched
-from "backend: single" to "backend: shared" — same Postgres cluster
-(DB_CONNECTION_STRING) every other test uses, so this exercises the real
-migration (postgresql/migrations/V3__rate_buckets.sql / kMigrationV3) end to
-end, not a mock.
-
-Scenario:
-  1. 40 concurrent anonymous requests to replica A's /api/v1/graph + 40 to
-     replica B, all landing within the same 1s fixed window (both instances
-     see the caller as 127.0.0.1 — the ticket's "two clients, one IP").
-     The handler limit is 50/window; 80 combined must produce at least one
-     429 under a truly shared budget, where none would occur if each
-     replica were still counting independently (40 < 50 on each side).
-"""
-
 from __future__ import annotations
 
 import os
 import signal
 import subprocess
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Generator, List
@@ -53,10 +26,8 @@ from conftest import (
     _wait_for_port,
 )
 
-pytestmark = pytest.mark.rate_limit_store  # custom marker; see pytest.ini
+pytestmark = pytest.mark.rate_limit_store
 
-# Dedicated ports, distinct from every other fixture's — see conftest.py's
-# own SERVICE_PORT/_BG/_BADSECRET constants for the ranges already in use.
 SERVICE_PORT_SHARED_A = 18110
 MONITOR_PORT_SHARED_A = 18111
 SERVICE_PORT_SHARED_B = 18112
@@ -77,10 +48,7 @@ def _spawn_shared_backend_instance(
         enrichment_base_url=f"http://127.0.0.1:{ENRICHMENT_PORT}",
         auth_base_url=f"http://127.0.0.1:{AUTH_PORT}",
     )
-    # Only the rate-limit-store block differs from service_proc's config —
-    # every other section (Postgres, OAuth, handlers...) stays identical, so
-    # this is genuinely the same binary/schema, just with the one knob this
-    # ticket introduces flipped.
+
     needle = "rate-limit-store:\n      backend: single"
     assert needle in cfg, (
         "_TEST_CONFIG_TEMPLATE's rate-limit-store block shape changed — "
@@ -120,17 +88,31 @@ def _stop(proc: subprocess.Popen) -> None:  # type: ignore[type-arg]
         proc.kill()
 
 
+def _warm_up(base_url: str) -> None:
+    try:
+        requests.get(
+            f"{base_url}/api/v1/graph",
+            params={"artist": "SFSEC04RateLimitStoreWarmup"},
+            timeout=5.0,
+        )
+    except requests.RequestException:
+        pass
+
+
+def _sleep_until_fresh_window(window_seconds: float = 1.0) -> None:
+    now = time.time()
+    remainder = now % window_seconds
+    if remainder < window_seconds * 0.1:
+        return
+    time.sleep(window_seconds - remainder)
+
+
 @pytest.fixture(scope="module")
 def shared_backend_replicas(
     genius_gateway_proc: subprocess.Popen,  # type: ignore[type-arg]
     auth_service_proc: subprocess.Popen,  # type: ignore[type-arg]
     mock_server,
 ) -> Generator[List[str], None, None]:
-    """Two six-feat processes ("replica A"/"replica B"), both configured
-    rate-limit-store.backend: shared and pointed at the same Postgres
-    cluster — so they share ONE rate_buckets table exactly like two real
-    replicas behind a load balancer would. Skips gracefully (matching
-    service_proc's own pattern) if the binary isn't built."""
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -146,28 +128,29 @@ def shared_backend_replicas(
             tmp_dir, SERVICE_PORT_SHARED_B, MONITOR_PORT_SHARED_B
         )
         try:
-            yield [
-                f"http://localhost:{SERVICE_PORT_SHARED_A}",
-                f"http://localhost:{SERVICE_PORT_SHARED_B}",
-            ]
+            base_a = f"http://localhost:{SERVICE_PORT_SHARED_A}"
+            base_b = f"http://localhost:{SERVICE_PORT_SHARED_B}"
+
+            _warm_up(base_a)
+            _warm_up(base_b)
+            yield [base_a, base_b]
         finally:
             _stop(proc_a)
             _stop(proc_b)
 
 
 def _fire(base_url: str, n: int) -> List[requests.Response]:
-    """Fire n anonymous requests at base_url's /api/v1/graph as fast as
-    possible. No genius_mock/auth cookie needed — rate limiting runs before
-    both the Genius call and the auth check (see graph_handler.cpp's
-    HandleRequestThrow), so a 429 (or a 401 for whichever requests stay
-    under the budget) is all this test needs to observe."""
     url = f"{base_url}/api/v1/graph"
     session = requests.Session()
+
+    adapter = requests.adapters.HTTPAdapter(pool_connections=n, pool_maxsize=n)
+    session.mount("http://", adapter)
     responses: List[requests.Response] = []
     with ThreadPoolExecutor(max_workers=n) as pool:
         futures = [
-            pool.submit(session.get, url, params={"artist": "SFSEC04RateLimitStoreTest"},
-                       timeout=5.0)
+            pool.submit(
+                session.get, url, params={"artist": "SFSEC04RateLimitStoreTest"}, timeout=5.0
+            )
             for _ in range(n)
         ]
         for f in as_completed(futures):
@@ -180,17 +163,9 @@ def _fire(base_url: str, n: int) -> List[requests.Response]:
 
 class TestSharedRateLimitStore:
     def test_two_replicas_share_one_budget(self, shared_backend_replicas: List[str]):
-        """[SF-SEC-04] The graph handler's limit is 50 req/window (window=1s,
-        both hardcoded — see GraphHandler's constructor). 40 concurrent
-        requests to replica A plus 40 to replica B (80 combined, same
-        127.0.0.1 rate-limit key on both sides) must still trigger at least
-        one 429 under a genuinely shared budget. Under the pre-SF-SEC-04
-        in-process-only limiter, each replica would count its own 40
-        independently (well under its own 50-per-window cap), so NEITHER
-        would ever return 429 for this exact traffic pattern — this is
-        precisely the bug this ticket fixes."""
         base_a, base_b = shared_backend_replicas
 
+        _sleep_until_fresh_window()
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_a = pool.submit(_fire, base_a, 40)
             fut_b = pool.submit(_fire, base_b, 40)

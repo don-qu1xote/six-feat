@@ -1,16 +1,16 @@
-// loadtest/lib/summary.js — SF-INF-05
-//
-// Hand-rolled handleSummary() formatter, used by every loadtest/scenarios/
-// *.js script instead of pulling in the jslib.k6.io/k6-summary remote
-// import — keeps the whole harness self-contained (no network fetch of a
-// third-party script at run time), matching this repo's general pinned-
-// dependency posture (SF-CI-03 SBOM/cosign, pinned Actions digests
-// elsewhere in .github/workflows/).
-//
-// Writes both the full JSON summary (data, verbatim) and a short text
-// digest to <outPrefix>-summary.{json,txt}, and echoes the text digest to
-// stdout (k6 suppresses its own default stdout summary once handleSummary
-// is defined, unless the returned object includes a "stdout" key itself).
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function formatMs(v) {
   return `${(v ?? 0).toFixed(1)}ms`;

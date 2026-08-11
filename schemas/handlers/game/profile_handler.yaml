@@ -1,0 +1,4 @@
+type: object
+description: 'GET/PATCH /api/v1/game/profile — player profile over the Genius session'
+additionalProperties: false
+properties: {}

@@ -1,14 +1,3 @@
-"""
-test_search.py — integration tests for GET /api/v1/search
-=============================================================
-
-F-10: lightweight candidate-resolve endpoint (autocomplete). Scenarios:
-  1. Successful query → candidates array, schema
-  2. Missing 'q' → 400
-  3. Upstream error → mapped error body
-  4. [SF-API-04] ETag / Cache-Control / If-None-Match
-"""
-
 from __future__ import annotations
 
 import requests
@@ -48,24 +37,15 @@ class TestSearchBasics:
     def test_successful_response_has_no_request_id_field(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """[SF-API-06] request_id is only added to error bodies — success
-        responses' shape must stay exactly as before."""
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         data = client.get(SEARCH_URL, params={"q": "Drake"}).json()
         assert "request_id" not in data
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [SF-API-06] request_id in error bodies
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestSearchRequestId:
     def test_anonymous_error_body_has_nonempty_request_id_matching_header(
         self, anon_client: requests.Session
     ):
-        """[SF-API-06] request_id in the error body must be the same id
-        EnsureRequestId already stamped on the X-Request-Id response
-        header/log tags — not a second, independently-generated value."""
         resp = anon_client.get(SEARCH_URL, params={"q": "Drake"})
         assert resp.status_code == 401
         data = resp.json()
@@ -81,10 +61,6 @@ class TestSearchRequestId:
         assert data.get("request_id")
         assert data["request_id"] == resp.headers.get("X-Request-Id")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# [SF-API-04] ETag / Cache-Control / If-None-Match on the search response
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestSearchETag:
     def test_success_response_has_etag_and_cache_control(
@@ -103,9 +79,7 @@ class TestSearchETag:
         first = client.get(SEARCH_URL, params={"q": "Drake"})
         etag = first.headers["ETag"]
 
-        second = client.get(
-            SEARCH_URL, params={"q": "Drake"}, headers={"If-None-Match": etag}
-        )
+        second = client.get(SEARCH_URL, params={"q": "Drake"}, headers={"If-None-Match": etag})
         assert second.status_code == 304
         assert not second.content
 
@@ -133,14 +107,12 @@ class TestSearchETag:
     def test_etag_stable_across_normalized_query_variance(
         self, client: requests.Session, genius_mock: GeniusMock
     ):
-        """Trimming/casing differences that resolve to the same candidate
-        set should still hit the same cache entry."""
         genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         genius_mock.resolve("drake", [{"id": 1, "name": "Drake", "score": 0.99}])
         genius_mock.resolve(" Drake ", [{"id": 1, "name": "Drake", "score": 0.99}])
 
-        resp_plain  = client.get(SEARCH_URL, params={"q": "Drake"})
-        resp_lower  = client.get(SEARCH_URL, params={"q": "drake"})
+        resp_plain = client.get(SEARCH_URL, params={"q": "Drake"})
+        resp_lower = client.get(SEARCH_URL, params={"q": "drake"})
         resp_padded = client.get(SEARCH_URL, params={"q": " Drake "})
         assert resp_plain.headers.get("ETag") == resp_lower.headers.get("ETag")
         assert resp_plain.headers.get("ETag") == resp_padded.headers.get("ETag")

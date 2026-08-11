@@ -37,7 +37,7 @@ POST /internal/genius/candidates   {query, user_token}
 rate-limiter для ВСЕГО трафика к Genius, независимо от того, какой
 внутренний сервис инициировал запрос. `six_feat` и
 `six-feat-enrichment` теперь используют `GeniusGatewayClient`
-(`libs/six-feat-common/src/genius/genius_gateway_client.hpp`) — тонкий,
+(`libs/six-feat-genius/include/six-feat-genius/genius_gateway_client.hpp`) — тонкий,
 stateless HTTP-клиент с тем же публичным интерфейсом, что был у старого
 in-process `GeniusGateway` (`FetchArtistById`, `FetchSongList`,
 `FetchSongDetail`, `ResolveCandidates`), так что `CollabService`,

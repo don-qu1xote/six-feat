@@ -1,14 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// check-bundle-size.test.js — [SF-WEB-08] unit + CLI tests for the bundle
-// size budget gate.
-//
-// Two layers: (1) checkBudget/gzipSize as pure functions, and (2) the
-// script actually invoked as a CLI (BUNDLE_DIST_DIR override) against a
-// synthetic bloated dist/ (must fail, non-zero exit) and a synthetic
-// current-sized dist/ (must pass, zero exit) — matching the ticket's own
-// test spec: "script fails on an artificially inflated bundle, passes on
-// the current one".
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -70,9 +59,6 @@ describe("check-bundle-size.mjs CLI", () => {
   }
 
   it("fails (non-zero exit) on an artificially bloated bundle", () => {
-    // Random bytes barely compress — a multi-MB blob comfortably clears the
-    // 40 KB gzip budget, standing in for "someone accidentally bundled a
-    // large dependency".
     const bloated = randomBytes(2 * 1024 * 1024);
     const dir = trackedDist({ scriptName: "script.bloated.js", content: bloated });
 
@@ -84,11 +70,7 @@ describe("check-bundle-size.mjs CLI", () => {
   });
 
   it("passes (zero exit) on a bundle representative of the current build's gzip size", () => {
-    // Repetitive JS-like text gzips down comfortably under budget, standing
-    // in for the real (currently ~29 KB gzip) dist/script.*.js.
-    const current = Buffer.from(
-      "function six_feat(){return {a:1,b:2,c:3};}\n".repeat(2000),
-    );
+    const current = Buffer.from("function six_feat(){return {a:1,b:2,c:3};}\n".repeat(2000));
     expect(gzipSize(current)).toBeLessThan(BUDGET_BYTES);
 
     const dir = trackedDist({ scriptName: "script.current.js", content: current });

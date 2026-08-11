@@ -1,13 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// path-result.test.js — unit tests for mergePathData/renderHopChain
-//                        (ui/path-result.js), driven on mock API-shaped data.
-//
-// graph.js and vis-adapter/index.js are mocked so these tests exercise only
-// path-result.js's own merge/render logic (which nodes/edges get added, seed
-// selection, network init-vs-merge branching, hop-chain HTML) rather than
-// re-testing graph.js's builders (covered separately in graph.test.js) or
-// the real vis.Network/canvas machinery.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../graph.js", () => ({
@@ -53,7 +43,6 @@ import { mergePathData, renderHopChain, runServerPath } from "./path-result.js";
 import { showToast, showRetryToast } from "./toast.js";
 import { showLoading } from "./loading.js";
 
-// ─── mock API-shaped path response, mirroring GET /api/v1/graph/path ───────
 function mockPathData(overrides = {}) {
   return {
     nodes: [
@@ -77,8 +66,6 @@ beforeEach(() => {
   State.network = null;
   State.currentSeedId = null;
   State.hasRendered = true;
-  State._bfsAdj = null;
-  State._bfsGraphHash = "";
   State.activeFilters = new Set(["featured", "producer", "writer"]);
   State.pathInFlight = false;
   State._pathAbortController = null;
@@ -96,16 +83,16 @@ function jsonResponse(body, status = 200) {
 describe("mergePathData", () => {
   it("adds all response nodes/edges to State when the graph was empty", () => {
     mergePathData(mockPathData());
-    expect(State.graphNodes.map(n => n.id)).toEqual([1, 2, 3]);
-    expect(State.graphEdges.map(e => e.id)).toEqual(["1_2", "2_3"]);
+    expect(State.graphNodes.map((n) => n.id)).toEqual([1, 2, 3]);
+    expect(State.graphEdges.map((e) => e.id)).toEqual(["1_2", "2_3"]);
   });
 
   it("picks the first path node as the pseudo-seed when there is no current seed", () => {
     mergePathData(mockPathData());
     expect(State.currentSeedId).toBe(1);
-    const seed = State.graphNodes.find(n => n.id === 1);
+    const seed = State.graphNodes.find((n) => n.id === 1);
     expect(seed.isSeed).toBe(true);
-    expect(State.graphNodes.find(n => n.id === 2).isSeed).toBe(false);
+    expect(State.graphNodes.find((n) => n.id === 2).isSeed).toBe(false);
   });
 
   it("does not duplicate nodes/edges already present in State", () => {
@@ -116,15 +103,8 @@ describe("mergePathData", () => {
 
     mergePathData(mockPathData());
 
-    expect(State.graphNodes.map(n => n.id)).toEqual([1, 2, 3]);
-    expect(State.graphEdges.map(e => e.id)).toEqual(["1_2", "2_3"]);
-  });
-
-  it("refreshes the BFS cache hash when the edge set changes", () => {
-    State._bfsGraphHash = "stale";
-    mergePathData(mockPathData());
-    expect(State._bfsAdj).toBe(null);
-    expect(State._bfsGraphHash).not.toBe("stale");
+    expect(State.graphNodes.map((n) => n.id)).toEqual([1, 2, 3]);
+    expect(State.graphEdges.map((e) => e.id)).toEqual(["1_2", "2_3"]);
   });
 });
 
@@ -132,7 +112,11 @@ describe("renderHopChain", () => {
   it("renders a hop-row per path node plus a connector between each pair", () => {
     els.hopChain = document.createElement("div");
     const data = mockPathData();
-    renderHopChain(data.path, data.edges, data.nodes, { 1: "Drake", 2: "Future", 3: "Metro Boomin" });
+    renderHopChain(data.path, data.edges, data.nodes, {
+      1: "Drake",
+      2: "Future",
+      3: "Metro Boomin",
+    });
 
     const rows = els.hopChain.querySelectorAll(".hop-row");
     const connectors = els.hopChain.querySelectorAll(".hop-connector");
@@ -158,8 +142,6 @@ describe("renderHopChain", () => {
     const pill = els.hopChain.querySelector('[data-edge-id="1_2"]');
     expect(pill).not.toBeNull();
     pill.dispatchEvent(new window.Event("click", { bubbles: true }));
-    // highlightEdgePair/showEdgeSidebarByPathEdgeId are mocked; just assert no throw
-    // and that the element is actually interactive.
     expect(pill.getAttribute("role")).toBe("button");
   });
 
@@ -171,22 +153,16 @@ describe("renderHopChain", () => {
   });
 });
 
-// [fix] runServerPath's loading/error status used to render into a
-// .path-result element embedded in the caller's own panel — reported as
-// the search process feeling "bolted into the window". It now goes
-// through the same two mechanisms regular artist search
-// (api.js::_doSearch) already uses: the canvas-wide #loading overlay
-// (ui/loading.js::showLoading) and a toast (ui/toast.js::showToast/
-// showRetryToast) — this describe block is the first coverage runServerPath
-// itself has ever had for that request/response flow (previously only
-// mergePathData/renderHopChain, its pure-data helpers, were tested).
 describe("runServerPath", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
   it("shows the canvas-wide loading overlay while the request is in flight, and hides it when done", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })),
+    );
     els.hopChain = document.createElement("div");
 
     const promise = runServerPath("Drake", "Future");
@@ -197,15 +173,23 @@ describe("runServerPath", () => {
   });
 
   it("passes opts.loadingMessage straight through to the overlay", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })),
+    );
     els.hopChain = document.createElement("div");
 
-    await runServerPath("Drake", "Future", { loadingMessage: "Tracing a path from Drake to Future…" });
+    await runServerPath("Drake", "Future", {
+      loadingMessage: "Tracing a path from Drake to Future…",
+    });
     expect(showLoading).toHaveBeenCalledWith(true, null, "Tracing a path from Drake to Future…");
   });
 
   it("shows a retry toast (not an embedded error card) when no path is found", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] })),
+    );
     els.hopChain = document.createElement("div");
 
     await runServerPath("Drake", "Future");
@@ -214,18 +198,32 @@ describe("runServerPath", () => {
   });
 
   it("shows a plain toast (not an embedded error card) for a non-transient API error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      jsonResponse({ error: "resolve_failed", message: "'from': ambiguous match" }, 400)
-    ));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ error: "resolve_failed", message: "'from': ambiguous match" }, 400),
+        ),
+    );
     els.hopChain = document.createElement("div");
 
     await runServerPath("Drke", "Future");
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("select an artist from the suggestions"));
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining("select an artist from the suggestions"),
+    );
     expect(showRetryToast).not.toHaveBeenCalled();
   });
 
   it("renders the hop chain into the given chainEl on success, and never touches an error mechanism", async () => {
-    const data = { nodes: [{ id: 1, name: "Drake" }, { id: 2, name: "Future" }], edges: [], path: [1, 2] };
+    const data = {
+      nodes: [
+        { id: 1, name: "Drake" },
+        { id: 2, name: "Future" },
+      ],
+      edges: [],
+      path: [1, 2],
+    };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(data)));
     const chainEl = document.createElement("div");
 
@@ -233,5 +231,242 @@ describe("runServerPath", () => {
     expect(chainEl.querySelectorAll(".hop-row")).toHaveLength(2);
     expect(showToast).not.toHaveBeenCalled();
     expect(showRetryToast).not.toHaveBeenCalled();
+  });
+});
+
+describe("runServerPath — error and cancellation paths", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    els.hopChain = document.createElement("div");
+  });
+
+  it("sends the active role filters with the request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ nodes: [], edges: [], path: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    State.activeFilters = new Set(["featured", "producer"]);
+
+    await runServerPath("Drake", "Future");
+
+    expect(fetchMock.mock.calls[0][0]).toContain("roles=featured%2Cproducer");
+    expect(fetchMock.mock.calls[0][0]).toContain("from=Drake");
+  });
+
+  it("clears the previous chain before searching again", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ path: [] })));
+    els.hopChain.innerHTML = "<div>old</div>";
+
+    await runServerPath("Drake", "Future");
+
+    expect(els.hopChain.innerHTML).not.toContain("old");
+  });
+
+  it("aborts a search still in flight when a new one starts", async () => {
+    const abort = vi.fn();
+    State.pathInFlight = true;
+    State._pathAbortController = { abort };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ path: [] })));
+
+    await runServerPath("Drake", "Future");
+
+    expect(abort).toHaveBeenCalled();
+  });
+
+  it("stays silent when the request is aborted", async () => {
+    const err = new Error("aborted");
+    err.name = "AbortError";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(err));
+
+    await runServerPath("Drake", "Future");
+
+    expect(showToast).not.toHaveBeenCalled();
+    expect(showRetryToast).not.toHaveBeenCalled();
+  });
+
+  // apiFetch нормализует любой отказ fetch в свою transient-ошибку, поэтому
+  // упавшая сеть всегда приводит к предложению повторить.
+  it("offers a retry when the network drops", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("socket hang up")));
+
+    await runServerPath("Drake", "Future");
+
+    expect(showRetryToast).toHaveBeenCalledWith(
+      expect.stringContaining("Network error"),
+      expect.any(Function),
+    );
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("shows a plain toast when rendering the result blows up", async () => {
+    const { highlightPath } = await import("../api/analytics-client.js");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          nodes: [{ id: 1, name: "Drake" }],
+          edges: [],
+          path: [1, 2],
+        }),
+      ),
+    );
+    highlightPath.mockImplementationOnce(() => {
+      throw new Error("render blew up");
+    });
+
+    await runServerPath("Drake", "Future");
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("render blew up"));
+    expect(showRetryToast).not.toHaveBeenCalled();
+  });
+
+  it("offers a retry when Genius is temporarily unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "upstream" }, 503)));
+
+    await runServerPath("Drake", "Future");
+
+    expect(showRetryToast).toHaveBeenCalledWith(
+      expect.stringContaining("temporarily unavailable"),
+      expect.any(Function),
+    );
+  });
+
+  it("falls back to a generic message when the backend sends none", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "nope" }, 400)));
+
+    await runServerPath("Drake", "Future");
+
+    expect(showToast).toHaveBeenCalledWith("No path found between these artists.");
+  });
+
+  it("treats an unparseable body as a failure rather than crashing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => {
+          throw new Error("not json");
+        },
+      }),
+    );
+
+    await runServerPath("Drake", "Future");
+
+    expect(showToast).toHaveBeenCalled();
+  });
+
+  it("always releases the in-flight flag, success or failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("boom")));
+
+    await runServerPath("Drake", "Future");
+
+    expect(State.pathInFlight).toBe(false);
+    expect(State._pathAbortController).toBeNull();
+  });
+});
+
+describe("renderHopChain — connectors", () => {
+  beforeEach(() => {
+    els.hopChain = document.createElement("div");
+    State.graphNodes = [];
+    State.graphEdges = [];
+  });
+
+  const nodes = [
+    { id: 1, name: "Drake" },
+    { id: 2, name: "Future" },
+  ];
+
+  it("labels the connector with the track count and role", () => {
+    renderHopChain(
+      [1, 2],
+      [{ from: 1, to: 2, weight: 3, dominant_role: "producer", songs: ["A", "B"] }],
+      nodes,
+      {},
+    );
+
+    const connector = els.hopChain.querySelector(".hop-connector");
+    expect(connector.getAttribute("title")).toContain("producer");
+    expect(connector.getAttribute("title")).toContain("3 tracks");
+  });
+
+  it("says 'collab' rather than 'primary' in the connector label", () => {
+    renderHopChain([1, 2], [{ from: 1, to: 2, weight: 1, dominant_role: "primary" }], nodes, {});
+
+    expect(els.hopChain.querySelector(".hop-connector").getAttribute("title")).toContain("collab");
+  });
+
+  it("uses the singular for a single shared track", () => {
+    renderHopChain([1, 2], [{ from: 1, to: 2, weight: 1 }], nodes, {});
+
+    const title = els.hopChain.querySelector(".hop-connector").getAttribute("title");
+    expect(title).toContain("1 track");
+    expect(title).not.toContain("1 tracks");
+  });
+
+  it("lists at most three song titles", () => {
+    renderHopChain(
+      [1, 2],
+      [{ from: 1, to: 2, weight: 5, songs: ["A", "B", "C", "D", "E"] }],
+      nodes,
+      {},
+    );
+
+    const songs = els.hopChain.querySelector(".hop-songs").textContent;
+    expect(songs).toContain("A");
+    expect(songs).not.toContain("D");
+  });
+
+  it("falls back to the id when a node has no name anywhere", () => {
+    renderHopChain([1, 9], [], nodes, {});
+    expect(els.hopChain.textContent).toContain("9");
+  });
+
+  it("prefers the supplied name map over a bare id", () => {
+    renderHopChain([1, 9], [], nodes, { 9: "Mystery" });
+    expect(els.hopChain.textContent).toContain("Mystery");
+  });
+
+  it("opens the edge sidebar from a connector, by click or Enter", async () => {
+    const { highlightEdgePair } = await import("../vis-adapter/index.js");
+    const { showEdgeSidebarByPathEdgeId } = await import("./sidebar.js");
+    renderHopChain([1, 2], [{ id: "e1", from: 1, to: 2, weight: 1 }], nodes, {});
+
+    els.hopChain.querySelector(".hop-connector").click();
+    expect(highlightEdgePair).toHaveBeenCalledWith("e1");
+    expect(showEdgeSidebarByPathEdgeId).toHaveBeenCalled();
+
+    highlightEdgePair.mockClear();
+    els.hopChain
+      .querySelector(".hop-connector")
+      .dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    expect(highlightEdgePair).toHaveBeenCalled();
+
+    highlightEdgePair.mockClear();
+    els.hopChain
+      .querySelector(".hop-connector")
+      .dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(highlightEdgePair).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a synthetic edge id when the edge has none", async () => {
+    const { highlightEdgePair } = await import("../vis-adapter/index.js");
+    renderHopChain([1, 2], [{ from: 1, to: 2, weight: 1 }], nodes, {});
+
+    els.hopChain.querySelector(".hop-connector").click();
+
+    expect(highlightEdgePair).toHaveBeenCalledWith("1_2");
+  });
+
+  it("reuses an edge already in the graph when the response omits it", async () => {
+    State.graphEdges = [{ id: "known", from: 1, to: 2, weight: 7 }];
+    renderHopChain([1, 2], [], nodes, {});
+
+    expect(els.hopChain.querySelector(".hop-connector").getAttribute("title")).toContain(
+      "7 tracks",
+    );
   });
 });

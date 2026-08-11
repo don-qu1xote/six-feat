@@ -1,0 +1,7 @@
+type: object
+description: >-
+    Coordinates for an accumulated graph (SF-API-21). The client sends the
+    structure it has — nodes, edges, expanded poles, pinned positions — and
+    gets back where to draw them. No provider data, no stored state.
+additionalProperties: false
+properties: {}

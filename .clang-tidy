@@ -1,29 +1,83 @@
 ---
-# [SF-CI-05 fix] This file's Checks/WarningsAsErrors below are NOT what CI
-# actually runs with. .github/workflows/ci.yml's clang-tidy job passes its
-# own --checks/--warnings-as-errors on the command line
-# (--checks='-*,bugprone-*,performance-*,cppcoreguidelines-*'
-# --warnings-as-errors='-*,bugprone-*,performance-*'), and a command-line
-# --checks value is appended AFTER this file's Checks list and starts with
-# its own `-*`, which resets everything before it — so CI's list fully
-# supersedes this one; the cppcoreguidelines-avoid-magic-numbers/
-# pro-bounds-pointer-arithmetic exclusions below do NOT apply to CI (CI's
-# own list re-enables all of cppcoreguidelines-*, unfiltered), and CI's
-# clang-tidy job has NOT been continue-on-error since [SF-CI-05] — a
-# bugprone-*/performance-* finding fails the build. This file only governs
-# a bare `clang-tidy some_file.cpp` invocation with no --checks flag (IDE
-# integration, a developer running it directly) — keep it roughly aligned
-# with CI's set so local runs aren't misleadingly quieter, but don't trust
-# it to predict what CI will actually flag.
-Checks: >
-  -*,
-  bugprone-*,
-  performance-*,
-  cppcoreguidelines-*,
-  -cppcoreguidelines-avoid-magic-numbers,
-  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
-  -cppcoreguidelines-non-private-member-variables-in-classes
-
-WarningsAsErrors: ''
-HeaderFilterRegex: '^(?!.*userver).*/src/.*'
-FormatStyle: none
+# Стиль именования (требуется clang-tidy >= 18, в CI и pre-commit закреплена версия 18.1.8).
+# Полный список активных проверок задаётся в CI через --checks; здесь хранятся только
+# опции readability-identifier-naming, чтобы конфиг был единым для CI и локального запуска.
+Checks: readability-identifier-naming
+CheckOptions:
+  # Типы и алиасы — PascalCase.
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.UnionCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConceptCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypeAliasCase
+    value: CamelCase
+  - key: readability-identifier-naming.TypedefCase
+    value: CamelCase
+  - key: readability-identifier-naming.TemplateParameterCase
+    value: CamelCase
+  # Пространства имён — snake_case.
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  # Функции и методы — PascalCase.
+  - key: readability-identifier-naming.FunctionCase
+    value: CamelCase
+  - key: readability-identifier-naming.MethodCase
+    value: CamelCase
+  - key: readability-identifier-naming.VirtualMethodCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstexprFunctionCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstexprMethodCase
+    value: CamelCase
+  # Константы: глобальные и статические — с префиксом k, локальные — без префикса.
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstantPrefix
+    value: k
+  - key: readability-identifier-naming.StaticConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.StaticConstantPrefix
+    value: k
+  - key: readability-identifier-naming.GlobalConstexprVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.GlobalConstexprVariablePrefix
+    value: k
+  - key: readability-identifier-naming.StaticConstexprVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.StaticConstexprVariablePrefix
+    value: k
+  - key: readability-identifier-naming.LocalConstantCase
+    value: lower_case
+  - key: readability-identifier-naming.LocalConstexprVariableCase
+    value: lower_case
+  # Переменные: глобальные и статические — snake_case.
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.StaticVariableCase
+    value: lower_case
+  - key: readability-identifier-naming.LocalVariableCase
+    value: lower_case
+  # Члены классов: приватные — snake_case с суффиксом _; публичные (агрегаты) — без суффикса.
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberSuffix
+    value: _
+  - key: readability-identifier-naming.PublicMemberCase
+    value: lower_case
+  # Параметры и константы перечислений.
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantPrefix
+    value: k
+  # Макросы — UPPER_CASE.
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+...

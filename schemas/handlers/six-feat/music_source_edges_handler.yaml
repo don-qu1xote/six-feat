@@ -1,0 +1,4 @@
+type: object
+description: Internal-mesh test/observability endpoint for GeniusMusicSourceProvider (SF-ARCH-02, SF-ARCH-07)
+additionalProperties: false
+properties: {}

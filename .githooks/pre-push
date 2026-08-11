@@ -1,0 +1,40 @@
+#!/bin/bash
+set -e
+
+echo "Checking code formatting..."
+
+changed=$(git diff --name-only --diff-filter=ACM HEAD @{u} 2>/dev/null || git diff --name-only --diff-filter=ACM HEAD~1 2>/dev/null || echo "")
+
+if [ -z "$changed" ]; then
+    exit 0
+fi
+
+cpp_files=$(echo "$changed" | grep -E '\.(cpp|hpp)$' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+if [ -n "$cpp_files" ]; then
+    command -v clang-format >/dev/null 2>&1 || { echo "clang-format not found"; exit 1; }
+    echo "$cpp_files" | xargs -r clang-format -i --style=file
+fi
+
+py_files=$(echo "$changed" | grep -E '\.py$' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+if [ -n "$py_files" ]; then
+    command -v ruff >/dev/null 2>&1 || { echo "ruff not found"; exit 1; }
+    echo "$py_files" | xargs -r ruff format --force-exclude
+fi
+
+js_files=$(echo "$changed" | grep -E '^front/.*\.js$' | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+if [ -n "$js_files" ]; then
+    command -v npx >/dev/null 2>&1 || { echo "npx not found"; exit 1; }
+    echo "$js_files" | while IFS= read -r file; do
+        (cd front && npx prettier --write "../$file" > /dev/null 2>&1)
+    done
+fi
+
+if ! git diff --quiet; then
+    echo "ERROR: Unformatted files detected. The following changes were auto-formatted:"
+    git diff --stat
+    echo ""
+    echo "Stage the formatting changes and retry the push."
+    exit 1
+fi
+
+echo "All files are formatted."

@@ -1,0 +1,6 @@
+
+logging_level: info
+
+six_feat_base_url: http://localhost:8080
+
+game_admin_genius_ids: ""

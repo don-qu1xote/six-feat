@@ -1,0 +1,4 @@
+type: object
+description: 'GET /api/v1/game/link — live per-hop connection check'
+additionalProperties: false
+properties: {}

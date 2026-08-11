@@ -1,27 +1,22 @@
-# six-feat — main service, standalone CMake project.
-# Build standalone:  cd services/six-feat && cmake -S . -B build
-# (also buildable aggregated through the repo-root thin wrapper — see its
-# own comment for why that's transitional)
-
 cmake_minimum_required(VERSION 3.22)
 project(six_feat_service CXX)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-get_filename_component(SIX_FEAT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-
-find_package(userver COMPONENTS core postgresql REQUIRED)
-find_package(OpenSSL REQUIRED)
-
-if(NOT TARGET six_feat_common)
-    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-common" "${CMAKE_BINARY_DIR}/six-feat-common")
-endif()
-
-include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/presets/service.cmake)
+six_feat_init_service()
 
 six_feat_embed_schema(handlers/six-feat/artist_handler     kArtistHandlerSchema    ARTIST_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/api_keys_issue_handler  kApiKeysIssueHandlerSchema  API_KEYS_ISSUE_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/api_keys_revoke_handler kApiKeysRevokeHandlerSchema API_KEYS_REVOKE_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_status_handler             kSettingsStatusHandlerSchema             SETTINGS_STATUS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_genius_connect_handler     kSettingsGeniusConnectHandlerSchema      SETTINGS_GENIUS_CONNECT_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/genius_link_handler             kGeniusLinkHandlerSchema             GENIUS_LINK_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_genius_link_start_handler  kSettingsGeniusLinkStartHandlerSchema  SETTINGS_GENIUS_LINK_START_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_disconnect_handler        kSettingsDisconnectHandlerSchema         SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/settings_enrichment_enabled_handler kSettingsEnrichmentEnabledHandlerSchema SETTINGS_ENRICHMENT_ENABLED_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/graph_deepen_handler kGraphDeepenHandlerSchema GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/graph_edge_handler   kGraphEdgeHandlerSchema   GRAPH_EDGE_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/graph_layout_handler kGraphLayoutHandlerSchema GRAPH_LAYOUT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/status_handler     kStatusHandlerSchema    STATUS_HANDLER_SCHEMA_HEADER)
@@ -29,6 +24,8 @@ six_feat_embed_schema(handlers/six-feat/sse_status_handler kSseStatusHandlerSche
 six_feat_embed_schema(handlers/six-feat/readiness_handler  kReadinessHandlerSchema READINESS_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/static_handler     kStaticHandlerSchema    STATIC_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/image_proxy_handler kImageProxyHandlerSchema IMAGE_PROXY_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/internal_neighbours_handler kInternalNeighboursHandlerSchema INTERNAL_NEIGHBOURS_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/music_source_edges_handler kMusicSourceEdgesHandlerSchema MUSIC_SOURCE_EDGES_HANDLER_SCHEMA_HEADER)
 
 six_feat_embed_schema(components/enrichment_client         kEnrichmentClientComponentSchema         ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER)
 six_feat_embed_schema(components/collab_service            kCollabServiceComponentSchema            COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER)
@@ -36,7 +33,18 @@ six_feat_embed_schema(components/app_secret_parity_checker kAppSecretParityCheck
 
 add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${ARTIST_HANDLER_SCHEMA_HEADER}
+    ${API_KEYS_ISSUE_HANDLER_SCHEMA_HEADER}
+    ${API_KEYS_REVOKE_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_STATUS_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_GENIUS_CONNECT_HANDLER_SCHEMA_HEADER}
+    ${GENIUS_LINK_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_GENIUS_LINK_START_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_DISCONNECT_HANDLER_SCHEMA_HEADER}
+    ${SETTINGS_ENRICHMENT_ENABLED_HANDLER_SCHEMA_HEADER}
     ${GRAPH_HANDLER_SCHEMA_HEADER}
+    ${GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER}
+    ${GRAPH_EDGE_HANDLER_SCHEMA_HEADER}
+    ${GRAPH_LAYOUT_HANDLER_SCHEMA_HEADER}
     ${PATH_HANDLER_SCHEMA_HEADER}
     ${SEARCH_HANDLER_SCHEMA_HEADER}
     ${STATUS_HANDLER_SCHEMA_HEADER}
@@ -44,6 +52,8 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${READINESS_HANDLER_SCHEMA_HEADER}
     ${STATIC_HANDLER_SCHEMA_HEADER}
     ${IMAGE_PROXY_HANDLER_SCHEMA_HEADER}
+    ${INTERNAL_NEIGHBOURS_HANDLER_SCHEMA_HEADER}
+    ${MUSIC_SOURCE_EDGES_HANDLER_SCHEMA_HEADER}
     ${ENRICHMENT_CLIENT_COMPONENT_SCHEMA_HEADER}
     ${COLLAB_SERVICE_COMPONENT_SCHEMA_HEADER}
     ${APP_SECRET_PARITY_CHECKER_COMPONENT_SCHEMA_HEADER}
@@ -51,30 +61,57 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
 
 add_executable(six_feat
     src/main.cpp
-    src/genius/genius_error_mapping.cpp
-    src/enrichment/enrichment_client.cpp
-    src/core/collab_service.cpp
+    src/infrastructure/genius_error_mapping.cpp
+    src/infrastructure/enrichment_client.cpp
+    src/application/artist_resolver.cpp
+    src/application/collab_service.cpp
+    src/application/edge_aggregation.cpp
     src/auth/app_secret_parity_checker.cpp
-    src/http/artist_handler.cpp
-    src/http/graph_handler.cpp
-    src/http/path_handler.cpp
-    src/http/search_handler.cpp
-    src/http/readiness_handler.cpp
-    src/http/status_handler.cpp
-    src/http/static_handler.cpp
-    src/http/sse_status_handler.cpp
-    src/http/image_proxy_handler.cpp
+    src/http/dto/artist_ref_dto.cpp
+    src/http/dto/candidate_dto.cpp
+    src/http/dto/graph_edge_dto.cpp
+    src/http/dto/path_edge_dto.cpp
+    src/auth/api_key_auth.cpp
+    src/api/v1/artist_handler.cpp
+    src/api/v1/api_keys_handler.cpp
+    src/api/v1/settings_handler.cpp
+    src/api/v1/graph_handler.cpp
+    src/api/v1/graph_deepen_handler.cpp
+    src/api/v1/graph_edge_handler.cpp
+    src/api/v1/graph_layout_handler.cpp
+    src/api/v1/path_handler.cpp
+    src/api/v1/search_handler.cpp
+    src/api/v1/status_handler.cpp
+    src/api/v1/static_handler.cpp
+    src/api/v1/sse_status_handler.cpp
+    src/api/v1/image_proxy_handler.cpp
+    src/internal/neighbours_handler.cpp
+    src/internal/genius_link_handler.cpp
+    src/internal/music_source_edges_handler.cpp
+    src/system/readiness_handler.cpp
 )
 
-target_include_directories(six_feat PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(six_feat PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/generated
+)
 
 target_link_libraries(six_feat
     PRIVATE
+        six_feat_domain
         six_feat_common
+        six_feat_core
+        six_feat_storage
+        six_feat_genius
+        six_feat_sources
+        six_feat_enrichment
+        six_feat_auth_lib
+        six_feat_http
+        six_feat_image
+        six_feat_layout
         OpenSSL::Crypto
 )
 
 add_dependencies(six_feat six_feat_sixfeat_schema_headers)
 
-install(TARGETS six_feat DESTINATION bin)
-install(FILES static_config.yaml DESTINATION etc/six_feat)
+six_feat_install_service(six_feat six_feat)

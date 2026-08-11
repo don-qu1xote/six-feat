@@ -1,0 +1,14 @@
+# Python-зависимости для интеграционных тестов six-feat (pip install -r requirements-test.txt)
+pytest>=9.1.1
+requests>=2.34.2
+pytest-timeout>=2.4.0
+pytest-cov>=7.1.0
+
+# session-куки AES-256-GCM для тестов с OAuth-гейтом (tests/session_crypto.py)
+cryptography>=49.0.0
+
+# Прямое подключение к Postgres из clean_db_state (tests/conftest.py)
+psycopg2-binary>=2.9.12
+
+# Contract-тесты OpenAPI через schemathesis (tests/test_contract_openapi.py)
+schemathesis>=4.24.3

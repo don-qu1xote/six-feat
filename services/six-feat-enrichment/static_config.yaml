@@ -1,0 +1,109 @@
+
+
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+
+    bg-enrichment:
+      worker_threads: 2
+      thread_name: bg-enrich
+
+    fs-task-processor:
+      worker_threads: 4
+      thread_name: fs-task-processor
+
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: 8081
+        task_processor: &main_tp main-task-processor
+
+      listener-monitor:
+        port: 8086
+        task_processor: &monitor_tp monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stdout'
+          level: $logging_level
+
+          format: json
+
+    testsuite-support:
+
+    postgres-db-1:
+      dbconnection: $db_connection_string
+      blocking_task_processor: fs-task-processor
+      dns_resolver: async
+      sync-start: false
+      connlimit_mode: manual
+      min_pool_size: 2
+      max_pool_size: 10
+      max_queue_size: 200
+
+    persistent-store:
+      dbname: postgres-db-1
+
+    genius-gateway-client:
+      genius-gateway-base-url: $genius_gateway_base_url
+      timeout-ms: 5000
+      songs-limit-fg: 40
+      songs-limit-bg: 80
+      match-threshold: 0.75
+
+    artist-repository: {}
+
+    # [SF-ARCH-03] Тот же общий потолок фан-аута, что и в six-feat: провайдер
+    # графа фанится по деталям треков и здесь, в фоновом обогащении.
+    fg-fanout-limiter:
+      max-concurrent: 6
+
+    genius-music-source-provider: {}
+
+    enrichment-worker:
+      queue-capacity: 1024
+      drain-timeout-ms: 5000
+
+    prune-task:
+      interval-seconds: 3600
+      batch-size: 500
+
+    handler-internal-enqueue:
+      path: /internal/enqueue
+      method: POST
+      task_processor: *main_tp
+
+    handler-internal-status:
+      path: /internal/status
+      method: GET
+      task_processor: *main_tp
+
+    handler-healthz:
+      path: /healthz
+      method: GET
+      task_processor: *main_tp
+
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: *main_tp
+
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: *monitor_tp

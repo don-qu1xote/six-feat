@@ -1,0 +1,13 @@
+type: object
+description: >-
+    [SF-YM-02] Per-user, per-provider connected-token store (Genius BYO
+    deepen-token) — the table is bootstrapped idempotently by
+    PersistentStore (six-feat-storage, see postgresql/schema.sql); this
+    component gets its own cluster handle and trusts the table already
+    exists.
+additionalProperties: false
+properties:
+    dbname:
+        type: string
+        description: Name of the components::Postgres component whose cluster backs this store
+        defaultDescription: postgres-db-1

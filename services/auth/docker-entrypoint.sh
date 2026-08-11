@@ -2,38 +2,23 @@
 
 set -euo pipefail
 
-# six-feat-auth owns the whole Genius OAuth 2.0 flow (IDEA-53). It needs the
-# OAuth app's own client_id/client_secret (registered once at
-# https://genius.com/api-clients) plus APP_SECRET — the SAME session-
-# encryption secret main six_feat is started with, since main decrypts the
-# six_feat_session cookie this service mints, locally, with no HTTP call
-# back here (see src/auth/token_router.hpp).
+readonly COMMON_ENTRYPOINT="/app/services/.base/docker-entrypoint-common.sh"
+if [[ ! -f "$COMMON_ENTRYPOINT" ]]; then
+  echo "[entrypoint] ERROR: ${COMMON_ENTRYPOINT} not found — check Dockerfile or volume mount" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$COMMON_ENTRYPOINT"
+
+load_env_profile
+
 : "${GENIUS_CLIENT_ID:?GENIUS_CLIENT_ID env var is required for OAuth — from https://genius.com/api-clients}"
 : "${GENIUS_CLIENT_SECRET:?GENIUS_CLIENT_SECRET env var is required for OAuth — keep it secret}"
 : "${APP_SECRET:?APP_SECRET env var is required for session encryption — generate with: openssl rand -hex 32, and MUST match the main six_feat services APP_SECRET}"
-
-# [SF-SEC-01] Gates GET /internal/key-fingerprint (KeyFingerprintHandler),
-# the same shared secret as the rest of the internal mesh (six-feat's
-# EnrichmentClient/GeniusGatewayClient). Read directly from the environment
-# by internal_api::SharedSecretFromEnv() — never written to config_vars.yaml.
 : "${ENRICHMENT_INTERNAL_SECRET:?ENRICHMENT_INTERNAL_SECRET env var is required — shared secret with six-feat/six-feat-enrichment, generate with: openssl rand -hex 32}"
 
-# Must exactly match the Redirect URI registered for GENIUS_CLIENT_ID on
-# https://genius.com/api-clients (scheme, host, port, trailing slash).
-# There is no reverse proxy in front of six-feat/six-feat-auth in this
-# repo's docker-compose.yml, so by default this points at six-feat-auth's
-# own host port, not six-feat's — see docker-compose.yml's six-feat-auth
-# service comment.
 GENIUS_REDIRECT_URI="${GENIUS_REDIRECT_URI:-http://localhost:8083/auth/callback}"
-
-# Secure-by-default: cookies get the Secure flag unless explicitly disabled.
-# Only set COOKIE_SECURE=false for local HTTP development. Must match the
-# value main six_feat is started with — cookie attributes are set here, but
-# main reads the same cookie.
 COOKIE_SECURE="${COOKIE_SECURE:-true}"
-
-# Quiet-by-default: debug is verbose enough to leak tokens/URLs-with-tokens
-# into stderr. Only set LOGGING_LEVEL=debug for local troubleshooting.
 LOGGING_LEVEL="${LOGGING_LEVEL:-info}"
 
 cat > /tmp/config_vars.yaml <<EOF

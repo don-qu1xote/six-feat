@@ -1,0 +1,930 @@
+# Руководство для разработчиков
+
+Полная техническая документация архитектуры, переменных окружения, тестирования и troubleshooting.
+
+> **[SF-DOC-08] Стадия проекта: работает локально, публичного инстанса нет.**
+> Ни прода, ни стейджинга, ни демо-адреса: единственная среда, где продукт
+> реально запущен, — машина автора (`make deploy-local`, раздел «Как поднять
+> у себя»). Это важно при чтении всего, что ниже: CD-пайплайн умеет
+> разворачивать по SSH, но хостов, на которые он ходил бы, не существует;
+> бэкапы защищают локальную базу разработчика, а не боевые данные;
+> DR-runbook описывает восстановление той же локальной базы; RPO/RTO — цели,
+> выведенные из механизма, а не замеры на реальных инцидентах; внешний
+> uptime-пробник намеренно снят с расписания, пока опрашивать нечего.
+> Механизмы рабочие и пригодятся, когда появится хост, — но сегодня они
+> обслуживают одну машину, и документ говорит об этом прямо.
+
+История задач живёт в `git log`, а не в отдельном реестре: каждый тикет
+`SF-AREA-NN` — это коммит с таким префиксом, и полный список закрытого
+получается одной командой:
+
+```bash
+git log --oneline --format='%h %ad %s' --date=short | grep -oE '^\S+ \S+ \[SF-[A-Z]+-[0-9]+'
+```
+
+Реестра в файле нет намеренно: он дублировал бы историю и расходился бы с
+ней. Цена решения — имя коммита обязано совпадать с тикетом, который в нём
+сделан, иначе работа становится ненаходимой; про это и про три известных
+расхождения — в [commits.md](./commits.md).
+
+[ROADMAP.md](./ROADMAP.md) — про то, куда продукт идёт дальше, а не про то,
+что уже сделано.
+
+Обоснование ключевых архитектурных решений (почему сервисов пять,
+почему сессия проверяется локально, почему схемы вынесены в YAML и
+т.д.) — в [docs/adr/](./adr/README.md), не здесь.
+
+C4-диаграммы контекста/контейнеров и sequence-диаграммы ключевых потоков
+(OAuth-логин, построение дефолтного графа, углубление, фоновое
+обогащение) — в [docs/architecture/](./architecture/README.md)
+(SF-DOC-04, Mermaid, рендерится нативно на GitHub).
+
+---
+
+## Архитектура
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ HTTP Handlers (graph, path, auth, status, healthz)              │
+│ Task Processor: main-task-processor (8 worker threads)          │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────────┐
+│ CollabService                                                    │
+│ • BFS поиск кратчайшего пути между артистами                    │
+│ • Path expansion limit: 3 раунда, frontier: 6 артистов/раунд   │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────────┐
+│ ArtistRepository                                                │
+│ • L2 cache: LRU на 512 артистов (TTL: 1800 сек)                │
+│ • L1 cache: persistent PostgreSQL (userver Postgres-компонент)  │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────────┐
+│ GeniusGateway + Rate Limiter (2 lanes)                          │
+│ • Foreground lane: 8 тоек/сек, макс 3 параллельных запроса     │
+│ • Background lane: 2 токена/сек, макс 1 параллельный запрос    │
+│ • Circuit breaker: 30 сек на восстановление                    │
+│ • Exponential backoff: от 200 мс до 10 сек                     │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       ▼
+              ┌─────────────────────┐
+              │  Genius API         │
+              │ (OAuth per-user)    │
+              └─────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ EnrichmentWorker (фоновый путь)                                 │
+│ Task Processor: bg-enrichment (2 worker threads)                │
+│ • Асинхронный глубокий скан коллаборативной сети                │
+│ • Заполняет L2/L1 кэши для faster FG запросов                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Сервисы (IDEA-25 / IDEA-45 / IDEA-53)
+
+Почему именно такое разбиение — в [ADR-0001](./adr/0001-split-into-four-services.md)
+(и по каждому сервису отдельно: [ADR-0002](./adr/0002-enrichment-standalone-service.md)
+для enrichment, [ADR-0003](./adr/0003-genius-gateway-centralizes-rate-limiting.md)
+для genius-gateway, [ADR-0004](./adr/0004-auth-service-local-session-verification.md)
+для auth, [ADR-0007](./adr/0007-game-mode-as-separate-service.md) для game).
+Здесь — только таблица портов/ответственности.
+
+Проект — не один процесс, а шесть независимых userver-сервисов из одного
+репозитория (`docker-compose.yml` поднимает их все, каждый — свой Dockerfile
+`target`):
+
+| Сервис | Порт | Отвечает за | Postgres |
+|---|---|---|---|
+| **six-feat** (`services/six-feat/`, бинарник `six_feat`) | 8080 | `/api/v1/graph`, `/api/v1/graph/path`, `/api/v1/search`, `/api/v1/status(/stream)`, `/`, `/healthz`, `/readyz` — и **локальную** проверку сессионной cookie на каждый запрос | да (L1 read-through) |
+| **six-feat-enrichment** (`services/six-feat-enrichment/`) | 8081 | Фоновый глубокий скан коллабораций (IDEA-25/26) | да (тот же кластер) |
+| **six-feat-genius-gateway** (`services/genius-gateway/`) | 8082 | Весь исходящий трафик к Genius API — CircuitBreaker + FG/BG rate-limiting централизованы здесь (IDEA-45/46) | нет |
+| **six-feat-auth** (`services/auth/`) | 8083 | Весь OAuth 2.0 Authorization Code Flow: `/auth/login`, `/auth/callback`, `/auth/logout`, `/auth/me` (IDEA-53) | нет |
+| **six-feat-game** (`services/game/`) | 8084 | Игровой режим «собери цепочку»: `/api/v1/game/{profile,challenge,challenges,validate,submit,leaderboard,season,link,admin}`. Сессия читается **локально** (как в six-feat), анти-чит ходит в six-feat через internal-mesh `/internal/neighbours` (ADR-0007) | да (тот же кластер, своя идемпотентная схема `postgresql/game/schema.sql`) |
+
+### Раскладка исходников сервиса
+
+Каждый сервис организован по URL-пути (см. SF-STR-10): хендлеры
+раскладываются в `api/v1/` для `/api/v1/*` роутов, `internal/` для
+`/internal/*` и `system/` для `/healthz`/`/readyz`. Не-HTTP код —
+в `core/`, `infrastructure/`, `application/` или `auth/`.
+
+### OAuth: выдача сессии (six-feat-auth) vs проверка сессии (six-feat)
+
+Обоснование того, почему проверка сессии осталась локальной, а не стала
+HTTP-вызовом к six-feat-auth — [ADR-0004](./adr/0004-auth-service-local-session-verification.md).
+
+[IDEA-53] До этой итерации OAuth-хэндлеры (`LoginHandler`/`CallbackHandler`/
+`LogoutHandler`/`MeHandler`, `src/auth/oauth_handler.cpp`) жили внутри
+`six_feat`. Теперь они вынесены в отдельный сервис **six-feat-auth**, но
+важно понимать, что вынесено, а что — нет:
+
+- **Вынесено в six-feat-auth**: сам OAuth-флоу — редирект на Genius,
+  обмен `code` на `access_token` (прямой HTTP к Genius `/oauth/token`, без
+  прохождения через six-feat-genius-gateway — это одноразовый вызов на
+  логин, а не FG/BG-трафик, которым занят gateway), шифрование сессии
+  (`src/auth/session_crypto.cpp`) и установка/сброс cookie
+  `six_feat_session`. Флаг `pkce-enabled` и вся PKCE-логика (RFC 7636)
+  переехали вместе с флоу.
+- **Осталось в six-feat**: проверка сессии на **каждый** запрос
+   (`auth::RequireSession`/`auth::ExtractToken`, `src/token_router.hpp`).
+  Это принципиально: `RequireSession` расшифровывает cookie **локально**,
+  тем же `APP_SECRET` (`session_crypto::KeyFromEnv()`), которым
+  six-feat-auth её зашифровала — six-feat **не делает HTTP-вызов** к
+  six-feat-auth на проверку сессии. Если бы каждый запрос к
+  `/api/v1/graph`/`path`/`search`/`status`/`sse` шёл за подтверждением
+  сессии в другой сервис по сети, это добавило бы латентность каждому
+  хэндлеру данных — вместо этого расшифровка cookie остаётся
+  O(1)-операцией в процессе.
+
+Отсюда следствие: **оба** сервиса должны быть запущены с одинаковым
+`APP_SECRET` (иначе six-feat не расшифрует cookie, выданную six-feat-auth)
+и одинаковыми `GENIUS_CLIENT_ID`/`GENIUS_CLIENT_SECRET` (six-feat их больше
+не использует для реального OAuth-обмена, но `OAuthConfig` всё ещё
+валидирует их при старте — см. `static_config.yaml`).
+
+### Маршрутизация `/auth/*`
+
+`docker-compose.yml` из этого репозитория ставит `nginx` единственным
+общим публичным входом перед `six-feat`/`six-feat-auth`/`six-feat-game`
+(`nginx/default.conf.template`: `/auth/*` → six-feat-auth, `/api/v1/game/*`
+→ six-feat-game, всё остальное → six-feat) — см.
+[docs/architecture/c4-container.md](./architecture/c4-container.md) и
+обоснование, почему это тонкий роутер, а не отдельный BFF, в
+[ADR-0012](./adr/0012-six-feat-as-sole-public-entry.md). Поэтому:
+
+- `GENIUS_REDIRECT_URI` должен указывать на **публичный origin `nginx`**
+  (по умолчанию `http://localhost:8080/auth/callback` — см.
+  `config/.env.example`), не на порт six-feat-auth напрямую (`8083`,
+  который тоже опубликован для отладки, но не для реального OAuth-обмена)
+  — и именно значение через `nginx` нужно зарегистрировать как Redirect
+  URI на https://genius.com/api-clients.
+- Полная последовательность запросов —
+  [docs/architecture/sequences/oauth-login.md](./architecture/sequences/oauth-login.md).
+
+### API-ключи для сторонних интеграций (`X-Api-Key`, SF-API-15)
+
+Помимо сессионной cookie, `/api/v1/graph`, `/api/v1/graph/path`,
+`/api/v1/search` и `/api/v1/artist` принимают заголовок `X-Api-Key` —
+второй, не-браузерный способ предъявить тот же самый Genius-грант, без
+прохождения OAuth-флоу заново на каждую интеграцию:
+
+- **Выпуск/отзыв** — `POST /api/v1/api-keys` и
+  `POST /api/v1/api-keys/revoke?id=<id>` (`src/api/v1/api_keys_handler.cpp`).
+  Обе ручки сами защищены **только** сессионной cookie (`RequireFullSession`),
+  никогда не `X-Api-Key` — иначе утёкший ключ мог бы сам себе выпускать новые
+  ключи. Выпущенный ключ наследует Genius access_token и его срок жизни из
+  сессии, которой он был выпущен (тот же AES-256-GCM `Encrypt`/`Decrypt` из
+  `session_crypto.hpp`, что и у cookie); истечёт грант — `Resolve()` перестанет
+  его находить, как и просроченная cookie.
+- **Хранение** — таблица `api_keys` (`ApiKeyStore`,
+  `six-feat-auth-lib/api_key_store.{hpp,cpp}`): хранится только
+  `key_hash` = `HashApiKey(raw_key)` (SHA-256 с собственной солью, тот же
+  принцип, что и `KeyFingerprint` для `APP_SECRET`) — сырой ключ показывается
+  вызывающему один раз, в ответе на выпуск, и не восстановим впоследствии.
+- **Проверка на хэндлере** — `CheckApiKeyHeader`
+  (`src/auth/api_key_auth.{hpp,cpp}`): если заголовок присутствует, но ключ
+  не резолвится (неизвестен/отозван/просрочен) — хэндлер сразу отвечает 401,
+  **не откатывается** на проверку cookie. Если заголовка нет вовсе — путь
+  ровно тот же, что и раньше (`RequireSession`/cookie).
+- **Rate-limit по тарифу** — `rate_tier` (`"default"` или `"elevated"`,
+  таблица лимитов в `ResolveRateTier`) заменяет сессионный/IP-лимит хэндлера
+  на лимит тарифа ключа; лимит считается на бакет `apikey:<id>`, отдельный
+  от IP/cookie-бакетов — см. `PerIpRateLimit::AllowWithTier` в
+  `six-feat-core/rate_limiter.hpp`.
+
+### Idempotency-Key на мутирующих ручках (SF-API-16)
+
+Заголовок `Idempotency-Key` на POST/PUT ручках публичного API защищает от
+повторного выполнения побочных эффектов при ретрае/двойном клике —
+`POST /api/v1/api-keys` и `POST /api/v1/api-keys/revoke` его уже
+поддерживают.
+
+- **Общий механизм** — `IdempotencyStore` + `RunIdempotent()`
+  (`six-feat-core/idempotency{,_store}.hpp`), используется ЛЮБЫМ сервисом,
+  линкующим `six_feat_core` (как и `RateLimitStoreComponent`). Это НЕ то же
+  самое, что точечная идемпотентность внутри GAME (уникальность пары
+  `(from_artist_id, to_artist_id, role_mask, kind)` у `game_challenges`,
+  `ON CONFLICT DO NOTHING` у `game_user_achievements`,
+  `services/game/src/core/game_store.cpp`) — те защищают доменные
+  инварианты независимо от клиентского ключа; `RunIdempotent` — это слой
+  НАД ними, кэширующий весь HTTP-ответ целиком, так что повторная доставка
+  вообще не доходит до тела хэндлера во второй раз. Механизмы дополняют
+  друг друга, не заменяют.
+- **Семантика** — заголовка нет → поведение хэндлера не меняется. Заголовок
+  есть и ключ новый → тело хэндлера выполняется как обычно, результат
+  ({status, body}) кэшируется на `kDefaultIdempotencyTtl` (24ч). Тот же
+  ключ + то же тело запроса → закэшированный ответ возвращается БЕЗ
+  повторного выполнения (заголовок ответа `Idempotent-Replay: true`). Тот
+  же ключ + ДРУГОЕ тело → 422 (переиспользование ключа для другого
+  запроса), не подмена ответа.
+- **Хранение** — таблица `idempotency_keys` (схема-бутстрап,
+  `six-feat-storage/persistent_store.cpp`): `key` (PK), `request_hash`
+  (SHA-256 от `route_id + тело запроса` — `route_id` разруливает коллизию,
+  если один и тот же ключ клиент случайно использовал на двух разных
+  ручках), `status_code`, `response_body`, `created_at`, `expires_at`.
+- **Область действия сейчас** — обе ручки `/api/v1/api-keys*` в six-feat;
+  расширение на мутирующие ручки six-feat-game (`validate`/`submit`/
+  `challenge`/`admin`) той же обёрткой `RunIdempotent` — естественное
+  дальнейшее развитие, компонент уже пригоден для этого без изменений.
+
+### Contract-тесты публичного API v1 против OpenAPI (SF-API-18)
+
+`tests/test_contract_openapi.py` — отдельный слой от `test_contract_gateway.py`
+(SF-TST-01, внутренний контракт six-feat↔gateway): здесь источник правды —
+сам документ `/api/v1/openapi.json` (SF-API-05), а не другой C++-сервис.
+
+- **Инструмент** — [schemathesis](https://schemathesis.readthedocs.io/)
+  (property-based, на базе Hypothesis; уже используемый pytest/pytest-timeout
+  стек, без dredd/newman и Node-зависимостей). Схема грузится с РЕАЛЬНОГО
+  запущенного `six_feat` (`schemathesis.openapi.from_url`), не напрямую из
+  файла — так проверяется и раздача документа, а не только его внутренняя
+  согласованность.
+- **Проверки** — только `status_code_conformance` и
+  `response_schema_conformance` (реальный статус/тело соответствуют тому,
+  что объявлено в схеме для этого статуса). Остальные встроенные проверки
+  schemathesis (`not_a_server_error` и т.п.) намеренно не используются — они
+  проверяют другое (например "хэндлер никогда не должен отвечать 5xx", что
+  неверно для `path_handler.cpp`'s легитимных 500/503 — оба теперь
+  задокументированы).
+- **Область действия** — только собственные ручки six-feat
+  (`/api/v1/graph`, `/api/v1/graph/path`, `/api/v1/search`, `/api/v1/status`,
+  `/api/v1/artist`, `/api/v1/api-keys(+/revoke)`), отфильтровано через
+  `schema.include(path_regex=...)`. В общем `openapi.json` также
+  задокументированы `/api/v1/game/*` (свой бинарник six-feat-game) — их
+  фаззинг против голого `service_proc` (без nginx) давал бы 404 не из-за
+  реального расхождения, а просто потому что этот процесс их не обслуживает.
+- **Предпосылка, без которой негативный кейс не ловится**: `ArtistRef`,
+  `GraphNode`, `GraphEdge` (и его `collaborations`-элементы), `PathNode`,
+  `PathEdge` теперь имеют `additionalProperties: false` — без этого JSON
+  Schema по умолчанию разрешает любые лишние поля, и "поле есть в коде, но
+  не описано в OpenAPI" осталось бы необнаружимым независимо от раннера.
+- **Реальный, найденный этим тикетом разрыв** — `path_handler.cpp` уже умел
+  отвечать 500 (необработанное исключение в `FindPath`) и 503 (превышен
+  `kFgPathDeadline`), но ни один из них не был объявлен в схеме для
+  `/api/v1/graph/path` — добавлено.
+
+### Настройки: свой Genius-токен (SF-YM-02)
+
+Опциональная персонализация поверх дефолтного графа: сессионный
+Genius-токен пользователя (полученный при входе) уже обслуживает и резолв
+артистов, и построение дефолтного графа — этот экран нужен только тем, кто
+хочет подключить *другой* Genius-токен (например, с другими правами/квотой)
+для углубления или фонового обогащения. Ранее здесь же жил импорт
+плейлиста через вставку текстового экспорта из Яндекс.Музыки (SF-YM-04-file)
+— он удалён целиком вместе со всей интеграцией с Яндекс.Музыкой (не
+интеграция с живым API, а ручная перекладка текста, без продуктового
+смысла отдельно от Genius-BYO-токена).
+
+- **Свой Genius-токен** (`POST /api/v1/settings/genius-token {token}`) —
+  BYO-токен для углубления графа и фонового обогащения с иным лимитом
+  запросов, чем у сессионного/сервисного токена. Подключение = согласие на
+  использование для фонового обогащения ОБЩЕЙ базы, без отдельного
+  тумблера — одна прямая строка текста рядом с полем ввода на фронте
+  (`index.html`, карточка Genius), до вставки токена.
+- **Хранение** — таблица `user_provider_tokens` (`user_id, provider,
+  encrypted_token, ts`, схема-бутстрап, six-feat-storage) через новый
+  `UserProviderTokenStore` (six-feat-auth-lib) — переиспользует тот же
+  AES-256-GCM `Encrypt`/`Decrypt`/`KeyFromEnv`, что и сессионная cookie, а
+  не новый механизм шифрования. `user_id` — детерминированный FNV-1a-хеш
+  Genius display name (`StableUserId`, `user_identity.hpp`) — тот же
+  приём, что уже используется в six-feat-game (`game_session.hpp`),
+  продублирован, а не расшарен между сервисами.
+- **Немедленная доступность для enrichment** — `graph_handler.cpp`/
+  `path_handler.cpp` теперь резолвят `user_token` через
+  `user_provider_tokens_.Get(user_id, "genius")`, предпочитая подключённый
+  токен обычному токену сессии; если ничего не подключено — поведение не
+  меняется. Никакого отдельного шага "активации" нет: то же самое чтение,
+  что видит `GET /api/v1/settings/providers`, видит и хэндлер на
+  следующий же запрос.
+- **Фронт** — `front/src/ui/settings-panel.js` + `front/src/api/settings-api.js`:
+  докнутая панель (`ui/docked-panel.js`, тот же механизм, что и
+  `.path-panel`/`.compare-panel`) с одной карточкой (`.settings-card`),
+  триггер — новая кнопка в rail (`#btn-settings-open`).
+- **Сессия без Genius-токена — это сессия, а не аноним.** `Decrypt`
+  (`session_crypto.cpp`) проверяет подпись и срок куки, но НЕ требует
+  непустой `tok`: «залогинен, токена нет» — то самое состояние, ради
+  которого в `graph`/`path`/`graph/deepen` и в выпуске API-ключей живут
+  отдельные ветки с честным 422 `no_genius_token` и текстом «подключите
+  токен в настройках». Пока пустой `tok` отбраковывался прямо в `Decrypt`,
+  такой пользователь выглядел анонимным и получал 401 вместо этих 422 —
+  ветки были недостижимы. Пустоту проверяют те, для кого она значит
+  «ходить в Genius нечем»: `RequireSession`/`ExtractToken`,
+  `UserProviderTokenStore::Get` и `ApiKeyStore::Resolve` (в двух последних
+  пустой токен в хранилище = «не подключено» / нерабочий ключ).
+
+---
+
+## Как поднять у себя (SF-INF-10)
+
+Прод-хостинга нет: единственная реальная среда — машина автора, и разворачивается
+она отсюда. Всё, что нужно, — Docker с плагином compose.
+
+```bash
+cp .env.example .env      # заполнить (см. таблицу секретов ниже)
+make deploy-local         # поднять стек и прогнать те же гейты, что CD
+```
+
+Открыть http://localhost:8080. Остановить — `docker compose down`; вместе с
+данными — `make clean`.
+
+### Что делает `make deploy-local` и чем он отличается от `make dev`
+
+Стадии те же и в том же порядке, что в `.github/workflows/cd.yml`:
+preflight → `docker compose up -d --build` → health-check (`/readyz`) → smoke.
+Health-check и smoke — это буквально `scripts/cd_health_check.py` и
+`scripts/cd_smoke_test.py`, которые вызывает CD: второй реализации нет, поэтому
+локальный деплой падает там же и по тем же причинам, что упал бы удалённый.
+
+От `make dev` отличается ровно одним — `ENV_PROFILE`. Второго compose-файла нет
+(правило SF-CFG-02), окружения различаются только профилем:
+
+| | `make dev` | `make deploy-local` |
+|---|---|---|
+| `ENV_PROFILE` | `dev` | `staging` (по умолчанию; `prod` — по желанию) |
+| `COOKIE_SECURE` | `false` | `true` |
+| `LOGGING_LEVEL` | `info` | `info` (`warning` у `prod`) |
+| Postgres | один инстанс | один инстанс (`prod` ждёт реплику, см. ниже) |
+
+`ENV_PROFILE=dev` здесь запрещён намеренно: смысл локального деплоя — прогнать
+боевую конфигурацию, а не dev-дефолты. Нужен dev — это `make dev`.
+
+`make deploy-local-check` — тот же preflight без подъёма стека: профиль, рендер
+compose со всеми обязательными переменными, проверки туннеля. Демон Docker для
+него не нужен.
+
+### Секреты: что обязательно, что нет
+
+**Обязателен ровно один внешний секрет — Genius.** (Раньше здесь стоял
+яндексовый сервисный токен; интеграция с Яндекс.Музыкой удалена целиком
+откатом SF-YM-00, никакого яндексового токена больше не существует.)
+
+| Переменная | Обязательна | Без неё |
+|---|---|---|
+| `GENIUS_CLIENT_ID` + `GENIUS_CLIENT_SECRET` | **да** | Стек поднимется, но не будет ни входа, ни поиска, ни построения графа: Genius — единственный источник данных и единственный способ войти. Регистрируется за минуту на https://genius.com/api-clients |
+| `APP_SECRET` | **да** | Compose не отрендерится. `openssl rand -hex 32`. Один и тот же у six-feat и six-feat-auth, иначе сессии одного не читаются другим (SF-SEC-01 это ловит и говорит вслух) |
+| `ENRICHMENT_INTERNAL_SECRET` | **да** | Compose не отрендерится. `openssl rand -hex 32`. Только для internal-вызовов между six-feat и six-feat-enrichment, наружу не светится |
+| `DB_NAME` / `DB_USER` / `DB_PASSWORD` | **да** | Compose не отрендерится. Это локальный Postgres в контейнере — придумываются на месте |
+| `GENIUS_REDIRECT_URI` | нет | По умолчанию `http://localhost:8080/auth/callback`. Должен **точно** совпадать с зарегистрированным на genius.com — иначе OAuth вернёт ошибку |
+| `GAME_ADMIN_GENIUS_IDS` | нет | Админ-панель игры не появится ни у кого (пустой список = админов нет) |
+| `BACKUP_*`, S3-переменные | нет | Работает всё, кроме бэкапов по расписанию (compose-профиль `backup`) |
+
+### Одна честная неприятность: Secure-кука по http
+
+Не-dev профиль ставит `COOKIE_SECURE=true`, а браузер не отправляет Secure-куку
+по `http://localhost` — то есть **вход через Genius локально не заработает**.
+Это не сломанный деплой, а ровно то поведение, ради проверки которого локальный
+деплой и существует. Скрипт предупреждает об этом явно. Варианты:
+
+- включить туннель (см. ниже) — он даёт https, вход работает;
+- либо задать `COOKIE_SECURE=false` в `.env`, понимая, что боевую посадку куки
+  вы в этот момент уже не проверяете.
+
+### Показать продукт кому-то: туннель (по умолчанию ВЫКЛЮЧЕН)
+
+```bash
+PUBLIC_TUNNEL=cloudflared make deploy-local
+```
+
+Поднимает cloudflared quick tunnel на публичный порт и печатает выданный
+https-адрес. Токен не нужен и в репозитории не хранится.
+
+Что важно понимать:
+
+- **это делает вашу машину доступной из интернета** — наружу уезжает всё, что
+  слушает на публичном порту, вместе с содержимым локальной БД. Скрипт говорит
+  об этом вслух перед стартом туннеля;
+- туннель живёт, пока запущен процесс: Ctrl-C закрывает доступ;
+- `PUBLIC_TUNNEL` читается **только** из окружения, не из `.env` — включение
+  публичного доступа должно быть осознанным действием в командной строке, а не
+  строчкой, которая когда-то попала в `.env` и забылась;
+- в CI туннель запрещён (скрипт отказывается, если видит `CI`), и dev-профиль с
+  ним невозможен по построению — наружу не уедет конфигурация с
+  `COOKIE_SECURE=false` и debug-логами.
+
+### Причём тут CD-пайплайн
+
+`.github/workflows/cd.yml` умеет разворачивать по SSH на `STAGING_HOST`/`PROD_HOST`,
+которых не существует, и поэтому всегда шёл по репетиционной ветке. Теперь у
+ручного запуска есть вход `target`: `local` пропускает все SSH-стадии и
+заканчивается стадией «Deploy: local machine (handoff)» — образы собраны,
+выкладку делает автор командой выше.
+
+Self-hosted runner на домашней машине сознательно **не** заводился: его пришлось
+бы держать включённым, регистрировать в репозитории и давать ему доступ к `.env`
+с боевыми секретами — цена несопоставима с «набрать одну команду в терминале».
+
+**Тесты**: `tests/test_deploy_local.py` — профиль, preflight, и отдельно то, что
+туннель по умолчанию выключен и не включается из `.env` (это про безопасность, а
+не про удобство).
+
+---
+
+## Переменные окружения
+
+| Переменная | Тип | Обязательная | По умолчанию | Описание |
+|---|---|---|---|---|
+| `GENIUS_CLIENT_ID` | string | ✓ | — | OAuth 2.0 Client ID из https://genius.com/api-clients |
+| `GENIUS_CLIENT_SECRET` | string | ✓ | — | OAuth 2.0 Client Secret — **никогда не коммитить в репозиторий** |
+| `APP_SECRET` | string (64 hex) | ✓ | — | AES-256 ключ шифрования сессий; генерируется: `openssl rand -hex 32` |
+| `GENIUS_REDIRECT_URI` | URL | ✗ | `http://localhost:8083/auth/callback` | Callback URI (six-feat-auth, IDEA-53), **должен точно совпадать** с зарегистрированным на genius.com |
+| `COOKIE_SECURE` | bool | ✗ | `false` | Включить Secure флаг на cookies; установить `true` для HTTPS (production) |
+| `DB_NAME` | string | ✓ | — | Имя базы PostgreSQL |
+| `DB_USER` | string | ✓ | — | Пользователь PostgreSQL |
+| `DB_PASSWORD` | string | ✓ | — | Пароль PostgreSQL — **никогда не коммитить в репозиторий** |
+| `DB_HOST` | string | ✗ | `postgres` | Хост PostgreSQL master (имя сервиса в docker-compose) |
+| `DB_PORT` | int | ✗ | `5432` | Порт PostgreSQL master |
+| `DB_REPLICA_HOST` | string | ✗ | *(пусто)* | Хост read-реплики; не задан — работаем против одного инстанса (см. "Postgres cluster topology" ниже) |
+| `DB_REPLICA_PORT` | int | ✗ | `5432` | Порт read-реплики (используется только если задан `DB_REPLICA_HOST`) |
+| `DB_REPLICATOR_USER` | string | ✗ | `replicator` | Роль для физической репликации (`prod-like` профиль, см. ниже) |
+| `DB_REPLICATOR_PASSWORD` | string | ✗ | `replicator_dev_password` | Пароль роли репликации — сменить для чего угодно за пределами local dev |
+
+**Примечание**: `GENIUS_CLIENT_ID` может храниться в конфиге (не секрет), но `GENIUS_CLIENT_SECRET` и `APP_SECRET` **всегда** передавать только через env vars.
+
+---
+
+## Env-профили: dev/staging/prod (SF-CFG-01)
+
+До этого раздела различия между dev/staging/prod (уровень логов, `COOKIE_SECURE`, `DB_REPLICA_HOST`) были просто разрозненными `${VAR:-default}`-хардкодами в каждом `docker-entrypoint.sh`. `config/profiles/{dev,staging,prod}.env` формализуют именно эти дефолты — сами файлы ничего нового не добавляют, только называют то, что уже было неявным.
+
+**Единственная команда запуска для всех трёх окружений** — `docker-compose.yml` один и тот же, различие только в `ENV_PROFILE`:
+
+```bash
+ENV_PROFILE=dev     docker compose up -d   # по умолчанию, если ENV_PROFILE не задан
+ENV_PROFILE=staging docker compose up -d
+ENV_PROFILE=prod    docker compose up -d
+```
+
+**Правило на будущее** (важно для SF-CFG-02, который проверяет это автоматически): никаких `docker-compose.staging.yml` / `docker-compose.prod.yml` с дублирующими service-блоками. Единственный источник правды — этот `docker-compose.yml`; любое различие между окружениями идёт **только** через переменные (`ENV_PROFILE` + `.env`), никогда через второй YAML.
+
+Как это работает:
+
+1. `ENV_PROFILE` (по умолчанию `dev`) — обычная переменная окружения, пробрасывается в каждый из 5 app-контейнеров через `docker-compose.yml`'s `environment:` (как и любая другая), плюс read-only bind-mount `./config/profiles:/app/config/profiles:ro` — тот же приём, что уже используется для `nginx/default.conf.template`, `observability/prometheus/rules` и т.д.
+2. Каждый `docker-entrypoint.sh` в самом начале (до секретов `${VAR:?...}`) проверяет `/app/config/profiles/${ENV_PROFILE}.env` — **fail-fast**, если файла нет (та же строгость, что уже используют `${VAR:?Set VAR}` для секретов):
+   ```
+   [entrypoint] ERROR: ENV_PROFILE=typo but /app/config/profiles/typo.env not found (expected dev, staging, or prod — see config/profiles/)
+   ```
+3. Найденный файл `source`-ится (`set -a; source ...; set +a`), а не просто читается — потому что сами профили написаны в том же идиоме `VAR="${VAR:-default}"`, что и дефолты в `docker-entrypoint.sh`. Это даёт конкретный порядок приоритета:
+
+   **явное значение в `.env`/shell → профиль → встроенный дефолт `docker-entrypoint.sh`**
+
+   Если вы вручную выставили `LOGGING_LEVEL=debug` в своём `.env` для отладки — эта переменная приходит в контейнер уже непустой (`docker-compose.yml` теперь пробрасывает `LOGGING_LEVEL: ${LOGGING_LEVEL:-}`, т.е. пусто, если не задано явно), и `${LOGGING_LEVEL:-info}` внутри профиля её не тронет. Профиль подставляет значение только там, где до него ничего не было задано.
+
+Что входит в профиль сейчас (см. сами файлы в `config/profiles/` — там же и обоснование каждого значения):
+
+| Переменная | dev | staging | prod |
+|---|---|---|---|
+| `LOGGING_LEVEL` | `info` | `info` | `warning` |
+| `COOKIE_SECURE` | `false` | `true` | `true` |
+| `DB_REPLICA_HOST` | *(пусто)* | *(пусто)* | `postgres-replica` |
+
+`dev.env` намеренно совпадает с прежними дефолтами `docker-entrypoint.sh` один в один — `ENV_PROFILE` не меняет поведение по умолчанию, только называет его. `prod.env`'s `DB_REPLICA_HOST=postgres-replica` — рабочее значение для собственного `prod-like` compose-профиля этого репозитория (SF-INF-02, `docker compose --profile prod-like up`); для реального внешнего кластера переопределяйте `DB_REPLICA_HOST` напрямую в `.env`.
+
+**Rate-limit пороги пока не входят в профиль**: на момент SF-CFG-01 они не env-конфигурируемы вообще (захардкожены как литералы прямо в конструкторах хендлеров, например `rate_limit_("graph", 50, 1, ...)` в `graph_handler.cpp`) — заводить под них переменные профиля значило бы придумывать конфигурацию, которой ничего не пользуется. Если/когда они станут env-конфигурируемыми — их место здесь, в этой же таблице.
+
+**Тест**: `scripts/verify-env-profiles.py` — проверяет, что все три файла профиля реально парсятся (`bash source` в чистом окружении) и что ни один не пытается задать одну из required-переменных `docker-compose.yml` (`${VAR:?...}`: `GENIUS_CLIENT_ID`, `GENIUS_CLIENT_SECRET`, `APP_SECRET`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `ENRICHMENT_INTERNAL_SECRET`) — профили формализуют только опциональные ручки, никогда секреты:
+
+```bash
+python3 scripts/verify-env-profiles.py
+```
+
+Гоняется в CI на каждый PR (тот же шаг `verify-env-parity`, теперь двумя запусками — `verify-env-parity.py` и `verify-env-profiles.py` — см. ниже).
+
+### Паритет docker-compose между окружениями (SF-CFG-02)
+
+Единственный источник правды — этот `docker-compose.yml`. **Правило**: никаких `docker-compose.staging.yml` / `docker-compose.prod.yml` с дублирующими service-блоками — разница между dev/staging/prod только в `ENV_PROFILE`, сам YAML не трогаем.
+
+Одна и та же команда для всех трёх окружений:
+
+```bash
+ENV_PROFILE=dev     docker compose up -d
+ENV_PROFILE=staging docker compose up -d
+ENV_PROFILE=prod    docker compose up -d
+```
+
+`scripts/verify-env-parity.py` сверяет `docker compose config` (без реального `up`) для всех трёх профилей: набор сервисов, image/build, volumes, healthcheck и т.д. должны совпадать один в один. Расхождение допускается только в переменных из allow-list (`ENV_PROFILE`, `LOGGING_LEVEL`, `COOKIE_SECURE`, `DB_REPLICA_HOST` — та же таблица, что выше) — любое другое расхождение (лишняя переменная, другой image, другой сервис) — ошибка:
+
+```bash
+python3 scripts/verify-env-parity.py
+```
+
+Гоняется в CI на каждый PR (шаг `verify-env-parity`, до интеграционных тестов) — ловит расхождение сразу, а не когда staging уже разъехался с dev.
+
+---
+
+## Postgres cluster topology
+
+`PersistentStore` (`src/storage/persistent_store.cpp`) routes every write through `storages::postgres::ClusterHostType::kMaster` — intentional isolation, not decoration. Reads route through `kSlave` **only when a replica is actually configured** (`DB_REPLICA_HOST` set — see `ReadHostType()` in that file), otherwise straight through `kMaster` too. `userver::storages::postgres::Cluster` discovers which DSN host is which **dynamically**, by running `SELECT pg_is_in_recovery()` against each host in `dbconnection` (topology refreshed every ~1s): a host that answers `false` is Master, everything else is Slave.
+
+That means `dbconnection` (`db_connection_string` → `static_config.yaml`'s `postgres-db-1.dbconnection`) has to actually be a **multi-host DSN** — `postgresql://user:pass@host1:port1,host2:port2/db` — for a Slave pool to exist at all. If it only lists one host, a `kSlave` request would find no Slave pool and log `WARNING ... FindPool ... There is no pool for slave, falling back to master` — `ReadHostType()` sidesteps this entirely in the single-host case by never issuing a `kSlave` request to begin with, so that warning no longer fires on every read in the default profile (it's still possible, briefly, right after `DB_REPLICA_HOST` is first set and Cluster hasn't finished its first `pg_is_in_recovery()` topology probe yet — that's the one case where it's still a genuinely transient, not permanent, log line).
+
+**docker-compose.yml runs a single Postgres instance by default** — `postgres-replica` exists in the file but is gated behind the `prod-like` profile, so a bare `docker compose up` never starts it. This is a deliberate trade-off for local dev on modest hardware: a real standby means a second always-on Postgres process plus continuous WAL streaming, for a benefit (read/write isolation) that only matters once you're actually testing replication-lag-sensitive behavior. `DB_REPLICA_HOST` defaults to empty, `docker-entrypoint.sh` builds a single-host DSN, and `PersistentStore` reads master directly — this is expected, not a bug, and doesn't spam the logs.
+
+To get genuine Master/Slave isolation (e.g. against a staging cluster with a real streaming standby), set `DB_REPLICA_HOST`/`DB_REPLICA_PORT` to that standby's address — `docker-entrypoint.sh` then assembles the multi-host DSN, and `PersistentStore` (seeing `DB_REPLICA_HOST` set) starts routing reads through `kSlave` again. **Do not** point `DB_REPLICA_HOST` at the same host as `DB_HOST` to "fake" a replica: both DSN entries would resolve to the same live primary, both would answer `pg_is_in_recovery() = false`, and you'd land back in the exact `no pool for slave, falling back to master` case — just with a config that looks like it should be working, which is worse than not setting it at all.
+
+### `prod-like` профиль — реальная standby-реплика (SF-INF-02)
+
+`docker-compose.yml` умеет поднять настоящую streaming-репликацию локально, без внешнего staging-кластера — профиль `prod-like`:
+
+```bash
+docker compose --profile prod-like up -d
+```
+
+Это поднимает, в дополнение к обычному дефолтному набору сервисов, ещё и `postgres-replica` (`postgres:16-alpine`, тот же образ, что и у `postgres`). `postgres-replica` **не** отдельный «postgres-primary» — существующий, всегда включённый сервис `postgres` продолжает играть роль мастера и под этим профилем тоже: это осознанное решение, а не половинчатая реализация. Compose-профили работают так, что сервис без `profiles:` активен всегда, и если он через `depends_on` жёстко зависит от сервиса из профилированной группы, Compose автоматически поднимает и этот профиль — то есть будь `postgres` тоже спрятан за `prod-like` с жёстким `depends_on` от `six-feat`, дефолтный `docker compose up` начал бы неявно поднимать `prod-like` каждый раз. Вместо этого `postgres` остаётся неизменным между профилями (мастером), а `postgres-replica` — единственный новый, действительно профилированный сервис; связь `six-feat` → `postgres-replica` остаётся мягкой, через `DB_REPLICA_HOST`, как и раньше.
+
+Как это работает изнутри:
+
+- `postgres` дополнительно монтирует `postgresql/prod-like/init-replication.sh` в `/docker-entrypoint-initdb.d/` — при первом (и только первом) старте на пустом data dir создаёт роль `DB_REPLICATOR_USER` с `REPLICATION LOGIN` и открывает `pg_hba.conf` для физических replication-подключений. Эта роль безвредна и при дефолтном профиле — раз `postgres-replica` не стартует, ей просто никто не пользуется.
+- `postgres` теперь также запускается с `wal_level=replica`, `max_wal_senders`, `max_replication_slots`, `hot_standby=on` — необходимые для streaming replication параметры, применяются всегда (снова: безвредно, если реплики нет).
+- `postgres-replica` использует кастомный entrypoint (`postgresql/prod-like/replica-entrypoint.sh`): на пустом data dir дожидается готовности `postgres`, снимает физический бэкап через `pg_basebackup -R` (флаг `-R` сам пишет `standby.signal` + `primary_conninfo` в `postgresql.auto.conf` — актуальный, PG12+, механизм вместо старого `recovery.conf`), затем передаёт управление штатному `docker-entrypoint.sh postgres` образа. При рестарте (непустой data dir) бэкап не повторяется — `standby.signal` уже на месте, Postgres просто снова стартует как standby.
+
+Чтобы `PersistentStore` реально начал разделять чтения/записи под этим профилем, задайте `DB_REPLICA_HOST=postgres-replica` (например, в `.env`):
+
+```bash
+DB_REPLICA_HOST=postgres-replica
+```
+
+**Проверка**:
+
+1. `docker compose --profile prod-like up -d` — дождаться, пока `postgres-replica` пройдёт healthcheck (`pg_isready`).
+2. `docker compose exec postgres-replica psql -U "$DB_USER" -d "$DB_NAME" -c 'SELECT pg_is_in_recovery();'` → `t` (реплика в режиме standby).
+3. `docker compose exec postgres psql -U "$DB_USER" -d "$DB_NAME" -c 'SELECT pg_is_in_recovery();'` → `f` (мастер жив и остаётся мастером).
+4. С `DB_REPLICA_HOST=postgres-replica` в окружении `six-feat` — обычные чтения графа (`GET /api/v1/graph?...`) продолжают отвечать `200`, но теперь идут через `kSlave`-пул на `postgres-replica` (`ReadHostType()` теперь возвращает `kSlave`, раз `DB_REPLICA_HOST` задан).
+
+Существующий локальный `.pgdata` (созданный до появления этого профиля) не подхватит новую replication-роль автоматически — `/docker-entrypoint-initdb.d/*.sh` выполняется только на пустом data dir. Для `prod-like` на уже существующем окружении нужен свежий volume `postgres`.
+
+### EXPLAIN-регресс по горячим запросам (SF-DB-08)
+
+Индексы уже вручную проаудированы (SF-DB-04) — этого достаточно, пока их
+кто-нибудь случайно не уронит будущим изменением схемы и никто не заметит,
+пока не станет медленно в проде. `scripts/explain-hot-queries.py` ловит
+именно это: против реального Postgres применяет `postgresql/schema.sql`
+(тот же файл, с которым SF-DB-05 держит `kSchemaStatements` в парите),
+сеет небольшой
+объём синтетических строк в выделенном id-диапазоне (`>= 900_000_000` —
+заведомо выше всего, что использует любой pytest-мок или продовый Genius
+id, поэтому не пересекается ни с чьими данными и полностью удаляется в
+конце), снимает `EXPLAIN (FORMAT JSON)` по горячим запросам
+`persistent_store.cpp` (`SongsForArtist`, `LoadNeighboursImpl`, все пять
+`UPSERT`-батчей) и сверяет план с явным списком ожидаемых индексов —
+список жёстко прописан в самом скрипте, не эвристика.
+
+```bash
+python3 scripts/explain-hot-queries.py
+```
+
+Гоняется в CI шагом `explain-hot-queries` — после `test-six-feat`
+(нужен работающий Postgres, но не собранный бинарник: схема применяется
+напрямую), `continue-on-error: true` — предупреждение, не блокирует сборку,
+пока сигнал не накопит уверенность за несколько релизов.
+
+---
+
+## Backup & restore (SF-INF-08)
+
+`scripts/backup-postgres.sh` снимает логический дамп (`pg_dump -Fc`, custom format), `scripts/restore-postgres.sh` разворачивает его обратно. Расписание — сервис `postgres-backup` в `docker-compose.yml` за профилем `backup`.
+
+Пошаговый порядок действий при потере базы — [`docs/runbooks/disaster-recovery.md`](runbooks/disaster-recovery.md) (SF-INF-09). Он же ежемесячно проверяется автоматически: `scripts/dr-drill.py` восстанавливает последний дамп в чистый Postgres и проверяет данные (`.github/workflows/dr-drill.yml`).
+
+**Реплика — это не бэкап.** `postgres-replica` (SF-INF-02, профиль `prod-like`) защищает от нагрузки и от потери хоста с мастером. От потери *данных* она не защищает вообще: любой `DELETE`, любое деструктивное изменение схемы, любой `DROP TABLE` приезжают на standby за миллисекунды. Восстановиться из такого можно только из дампа. Это две разные задачи, и нужны обе.
+
+**Два разных «профиля», не перепутайте.** `ENV_PROFILE=dev|staging|prod` (SF-CFG-01, раздел «Env-профили» выше) выбирает *значения* переменных и на состав сервисов не влияет. Compose-ключ `profiles:` решает, *запускается* ли сервис вообще. Бэкапы — второе: `postgres-backup` стоит за compose-профилем `backup` и не поднимается обычным `docker compose up`, независимо от `ENV_PROFILE`. Включать его надо там, где он нужен — на staging и prod:
+
+```bash
+ENV_PROFILE=prod docker compose --profile backup up -d
+```
+
+Разделение намеренное: `verify-env-parity.py` требует одинаковый *набор* сервисов во всех `ENV_PROFILE`, поэтому «сервис, которого нет в dev» не может быть выражен через `ENV_PROFILE` — только через `profiles:`.
+
+```bash
+# разово, вручную
+DB_NAME=six_feat DB_USER=six_feat DB_PASSWORD=... BACKUP_DIR=./.backups \
+  ./scripts/backup-postgres.sh
+
+# по расписанию (не стартует при обычном docker compose up)
+docker compose --profile backup up -d
+
+# восстановление — молча ничего не перезапишет
+./scripts/restore-postgres.sh ./.backups/six-feat-six_feat-20260728T030000Z.dump --dry-run
+./scripts/restore-postgres.sh ./.backups/six-feat-six_feat-20260728T030000Z.dump --yes-i-am-sure
+```
+
+### RPO — сколько данных теряется
+
+> **[SF-DOC-08] Это цели, а не замеры.** Прода нет, боевых данных нет, ни одного
+> реального инцидента не было — числа ниже выведены из механизма (интервал
+> бэкапа) и одного синтетического замера на тестовой базе. Считать их
+> «характеристиками сервиса» нельзя: сегодня они описывают, как быстро можно
+> восстановить **локальную базу разработчика**. Первый настоящий инцидент их
+> и уточнит.
+
+**RPO = интервал между бэкапами. Ровно он, без округления в свою пользу.**
+
+| `BACKUP_SCHEDULE` | RPO (худший случай) |
+| --- | --- |
+| `0 3 * * *` (по умолчанию, раз в сутки) | **24 часа** |
+| `0 */6 * * *` | 6 часов |
+| `0 * * * *` | 1 час |
+
+Худший случай — не средний: если база умирает в 02:59, а дамп снимается в 03:00, теряются почти полные сутки записей. Это не пессимистичная оценка, а определение.
+
+**Чего здесь нет:** WAL-архивирования и point-in-time recovery. PITR даёт RPO в секунды, но требует непрерывной выгрузки WAL и отдельного хранилища — этот тикет их не реализует. Пока RPO нельзя опустить ниже интервала, кроме как учащая сам интервал; это упирается в длительность дампа (см. ниже), а не в скрипт.
+
+### RTO — сколько занимает восстановление
+
+RTO складывается из четырёх слагаемых, и **измеримое из них — не самое большое**:
+
+| Этап | Время | Основание |
+| --- | --- | --- |
+| 1. Заметить и принять решение | **минуты–часы, не измерено** | доминирующее слагаемое; см. ниже |
+| 2. Достать дамп | секунды (локальный диск) / размер ÷ канал (S3) | — |
+| 3. `pg_restore` | **≈1 минута на 1 ГБ базы** | один замер на синтетической базе, не на боевой |
+| 4. Проверить и переключить трафик | минуты, вручную | — |
+
+Замер (`postgres:16`, локальный loopback, без конкурентной нагрузки):
+
+| | значение |
+| --- | --- |
+| размер базы | 155 МБ (1.4 млн строк: 200k artists, 500k songs, 500k credits, 200k fetch_state) |
+| `pg_dump -Fc --compress=9` | **2.9 с** → файл 8.4 МБ |
+| `pg_restore` в пустую базу | **8.9 с** |
+
+Отсюда порядок величины: дамп ≈20 с/ГБ, восстановление ≈60 с/ГБ. Восстановление примерно втрое дольше дампа — оно строит индексы и проверяет constraints заново.
+
+**Оговорки, без которых эти числа врут:**
+
+* синтетические данные с повторяющимися строками сжимаются радикально лучше настоящих — на реальной базе ждите файл заметно больше 8.4 МБ на те же 155 МБ, и дамп подольше;
+* замер на loopback, без конкурентной нагрузки и без сети между клиентом и сервером; на проде оба этапа медленнее;
+* `pg_restore` запускается однопоточно (без `-j`); на многоядерном хосте параллельный restore заметно быстрее, но скрипт этого сознательно не делает — `--exit-on-error` в паре с `-j` хуже диагностируется;
+* экстраполяция линейна, а индексы растут не линейно; для базы на порядок больше проверьте замером, а не умножением.
+
+**Этап 1 обычно и есть настоящий RTO.** Алерты (SF-OBS-04) реагируют на симптомы — сервис лёг, база недоступна, — а не на «данные удалены». Потеря данных чаще всего замечается человеком, и до этого момента таймер RTO уже идёт. Никакая скорость `pg_restore` этого не компенсирует.
+
+**Бэкап, который ни разу не восстанавливали, — не бэкап.** `tests/test_backup_restore.py` проверяет round-trip на каждом прогоне CI, но на синтетической базе. Периодический прогон `restore-postgres.sh --target-db six_feat_verify --create` на копии продовых данных — единственный способ узнать реальный RTO и то, что дамп вообще разворачивается. Ставьте это в календарь: цифры выше устареют, как только база вырастет.
+
+---
+
+## Ротация логов (SF-OBS-05)
+
+Все сервисы в `docker-compose.yml` настроены на ротацию логов через встроенный `json-file` логирующий драйвер Docker с явными лимитами:
+
+```yaml
+logging:
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+```
+
+Это значит:
+- каждый логфайл растёт до **10 МБ**, затем ротируется;
+- хранится **3 файла** (текущий + 2 архивных);
+- максимум **30 МБ на сервис** (3 файла × 10 МБ);
+- итого **~360 МБ на инстанс** (12 сервисов × 30 МБ, не все сервисы всегда активны).
+
+**Кто может отключить эту ротацию?** Только явно через `--log-opt` при ручном запуске контейнера или изменением `docker-compose.yml`. В CI и на продакшене `docker-compose.yml` — единственный источник правды конфигурации, так что ротация всегда включена.
+
+**Где хранятся логи?** По умолчанию `/var/lib/docker/containers/<container-id>/<container-id>-json.log` на хосте. Точное расположение зависит от Docker daemon-конфига (`data-root`, `storage-driver`). Для локальной разработки это не критично; для продакшена убедитесь, что раздел с `/var/lib/docker` имеет достаточно места и настроить `log-opt max-size` под объём вашего конкретного трафика.
+
+**Проверка:**
+
+```bash
+# Конфигурация всех сервисов
+docker compose config | grep -A 3 'logging:'
+
+# Размер текущих логов одного контейнера
+docker inspect six-feat | jq '.[0].LogPath' | xargs du -h
+
+# Размер всех логов
+du -sh /var/lib/docker/containers/*/
+```
+
+**Синтетический тест ротации:**
+
+```bash
+# Запустить сервис и залить его логами выше лимита
+docker compose up -d
+docker exec six-feat sh -c 'for i in {1..200}; do logger "Line $i"; done'
+
+# Проверить, что произошла ротация (должны быть .1, .2, .3 файлы)
+docker exec six-feat sh -c 'ls -lh /var/log/syslog* 2>/dev/null || echo "json-file logs are on host at $(docker inspect six-feat | jq -r .[0].LogPath)"'
+```
+
+---
+
+## Внешний uptime-мониторинг (SF-OBS-06)
+
+Prometheus (SF-OBS-01) видит метрики изнутри кластера — если упадёт nginx целиком или сеть, Prometheus может не заметить (он тоже внутри). Для независимой проверки доступности используется внешний synthetic-мониторинг.
+
+**Реализация**: GitHub Actions workflow, опрашивает публичный эндпоинт **снаружи** (не из docker-сети).
+
+> **[SF-DOC-08] Расписание выключено, и это осознанно.** Постоянного адреса у
+> продукта нет (единственная среда — машина автора, SF-INF-10), опрашивать
+> нечего: по cron пробник ходил бы в localhost раннера, где ничего не
+> запущено, и джоба честно зеленела бы, ничего не проверяя. `schedule` в
+> `.github/workflows/uptime-check.yml` закомментирован, ручной запуск остался.
+> Включать — когда появится адрес: раскомментировать `schedule` и задать
+> секрет `UPTIME_CHECK_URL`.
+>
+> Заодно исправлен путь: раньше по умолчанию опрашивался `/api/v1/health`,
+> которого нет ни в одном сервисе — пробник не заработал бы и на живом хосте.
+> Реальные эндпоинты — `/healthz` (процесс жив) и `/readyz` (готов
+> обслуживать), проверяется второй.
+
+**Конфигурация** (через `UPTIME_CHECK_*` env vars или secrets):
+
+| Переменная | Описание | По умолчанию |
+|---|---|---|
+| `UPTIME_CHECK_URL` | Endpoint для проверки | `http://localhost:8080/readyz` |
+| `UPTIME_CHECK_THRESHOLD` | Кол-во последовательных провалов перед алертом | `3` |
+| `UPTIME_CHECK_STATE_FILE` | Где хранить счётчик провалов | `/tmp/uptime-check-state.json` |
+
+**Как это работает:**
+
+1. `scripts/uptime-check.py` выполняет HTTP-запрос к эндпоинту.
+2. Если эндпоинт недоступен — увеличивает счётчик последовательных провалов (stored в state file между запусками).
+3. Если эндпоинт доступен — сбрасывает счётчик в 0.
+4. При достижении порога (по умолчанию 3) — алертит через GitHub Actions (`::error::`).
+5. **Единичный таймаут не алертит** — только цепочка из N последовательных провалов, что исключает флапинг.
+
+**Использование**:
+
+```bash
+# Локально (для тестирования логики)
+python3 scripts/uptime-check.py \
+  --url http://localhost:8080/api/v1/health \
+  --threshold 3 \
+  --state-file /tmp/uptime-check-state.json
+
+# В CI (GitHub Actions) — конфигурируется через .github/workflows/uptime-check.yml
+```
+
+**Тестирование**: `tests/test_uptime_check.py` проверяет:
+- Обнаружение down (мок недоступного URL);
+- Обнаружение up (мок 200 OK);
+- Отсутствие алерта на единичный таймаут;
+- Алерт при N последовательных провалах;
+- Сброс счётчика при успешной проверке;
+- Сохранение состояния между запусками.
+
+## Яндекс.Музыка — удалена (архивная сводка)
+
+Интеграция с Яндекс.Музыкой как источником рёбер графа коллабораций
+(отдельный сервис `six-feat-yandex-gateway`, сервисный токен,
+`YandexMusicSourceProvider`, вход через Яндекс, импорт плейлистов) была
+реализована в Release 0.8–1.2 и затем **полностью удалена** — Genius
+снова единственный источник данных и единственный способ входа.
+Подробности решения и последствий отката — в addendum к
+[ADR-0011](./adr/0011-music-source-provider-abstraction.md) (абстракция
+`MusicSourceProvider` сохранена) и в статусе (архивном) самого
+[ADR-0013](./adr/0013-two-provider-artist-identity.md) (namespaced id +
+`artist_alias`, тоже удалены). Раздел с оперативными деталями сервиса
+(эндпоинты, переменные окружения, тесты) убран отсюда как описывающий
+код, которого больше нет в дереве.
+
+---
+
+## Кэширование ответов (ETag) и `request_id` в ошибках
+
+`/api/v1/graph`, `/api/v1/graph/path` и `/api/v1/search` (`SF-API-04`)
+отвечают слабым `ETag` (RFC 7232 §2.3, `W/"..."`) и
+`Cache-Control: private, must-revalidate` на каждый успешный ответ:
+
+- **graph** — тег строится из `seed_id`, `fetch_state.depth`/`song_count`
+  (та же величина, что опрашивает `/api/v1/status`), маски ролей,
+  `truncated`/`song_limit` — то есть меняется ровно тогда, когда меняется
+  тело: либо параметрами запроса, либо фоновым сканером.
+- **path** — тег строится из `from`/`to` id (в порядке запроса — тело
+  ассиметрично помечает "from"/"to", так что перестановка параметров
+  местами валидна как отдельный кэш-ключ), маски ролей и `fetch_state`
+  обоих концов пути.
+- **search** — у эндпоинта нет персистентного состояния (Genius
+  опрашивается вживую на каждый вызов), поэтому тег строится из
+  нормализованного query и фактически вернувшегося набора id кандидатов.
+
+Повторный запрос с `If-None-Match: <тот же ETag>` получает `304 Not
+Modified` с пустым телом вместо повторной сборки JSON. Общая логика
+слабого сравнения (`ETagMatches`, разбор `If-None-Match` со списком через
+запятую и `*`) вынесена в `libs/six-feat-core/src/http_cache.{hpp,cpp}`
+и используется всеми тремя хендлерами — конкретная формула тега у каждого
+своя, потому что зависит от разных данных.
+
+Отдельно от кэширования: JSON-тела ошибок `graph`/`path`/`search`/`status`
+(`SF-API-06`) содержат поле `request_id` — тот же id, что уже уходит в
+заголовке `X-Request-Id` и в теги лога (`libs/six-feat-core/src/request_id.{hpp,cpp}
+`EnsureRequestId`/`CurrentRequestId`). Поле добавлено только к телам
+ошибок; формат успешных ответов не менялся.
+
+---
+
+## Локальная разработка (без Docker)
+
+### Требования
+
+- **OS**: Ubuntu 22.04 (или совместимая)
+- **C++ toolchain**: CMake 3.22+, GCC 11+ (или Clang 14+)
+- **System libs**: `libpq-dev`, `libssl-dev`
+- **PostgreSQL**: 14+ (локально или в Docker) — см. переменные `DB_*` выше
+- **Python**: 3.10+ (для тестов)
+- **Node.js**: 20+ (для фронта)
+
+### Первое, что стоит сделать в клоне
+
+```bash
+git config user.name "Имя" && git config user.email "почта@example.org"
+make install-hooks
+```
+
+Авторство — не формальность: заготовка `Your Name <you@example.com>` из
+дефолтного `git config` однажды уже уехала в историю, и переписать её там
+теперь можно только переписав саму историю. `pre-commit` с этого момента не
+пускает коммит с такой подписью.
+
+### Установка зависимостей
+
+#### Ubuntu/Debian:
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential cmake \
+  libpq-dev libssl-dev \
+  python3-dev python3-venv python3-pip \
+  curl
+```
+
+#### macOS (Homebrew):
+```bash
+brew install cmake libpq openssl@3
+```
+
+### Сборка C++ backend
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+cmake --install build --prefix /tmp/six_feat_install
+```
+
+Бинарник: `/tmp/six_feat_install/bin/six_feat`
+
+---
+
+## Troubleshooting
+
+### Сервис не стартует: не заданы `APP_SECRET` / `GENIUS_CLIENT_SECRET`
+
+`docker-entrypoint.sh` проверяет обязательные переменные при старте и завершает процесс с явным сообщением, если они пустые:
+
+```
+GENIUS_CLIENT_ID env var is required for OAuth — from https://genius.com/api-clients
+GENIUS_CLIENT_SECRET env var is required for OAuth — keep it secret
+APP_SECRET env var is required for session encryption — generate with: openssl rand -hex 32
+```
+
+- `GENIUS_CLIENT_ID` / `GENIUS_CLIENT_SECRET` — регистрируются один раз на https://genius.com/api-clients.
+- `APP_SECRET` — 64-символьный hex-ключ шифрования сессий: `openssl rand -hex 32`.
+
+При запуске бинарника напрямую (без Docker) те же условия проверяет `OAuthConfig` (`src/auth/oauth_handler.cpp`): пустой/placeholder `client-id`, либо `redirect-uri`, не являющийся абсолютным `http(s)://` URL, приводят к `std::runtime_error` ещё до открытия порта.
+
+### Login: Genius отвечает "Invalid Authorization"
+
+Типовая причина — `redirect_uri`, который сервис отправляет на `/oauth/authorize`, не совпадает байт-в-байт с URI, зарегистрированным на https://genius.com/api-clients (схема, хост, порт, завершающий слэш — всё должно совпадать точно).
+
+При старте сервис логирует фактически используемое значение:
+
+```
+[OAuth] redirect_uri configured as: <значение>
+```
+
+Сверьте эту строку из лога (переменная `GENIUS_REDIRECT_URI`, по умолчанию `http://localhost:8083/auth/callback` — six-feat-auth, IDEA-53) с настройками клиента на genius.com/api-clients и исправьте расхождение.
+
+### 401 `token_invalid` после успешного входа
+
+Сессионная cookie расшифровалась корректно, но access-токен Genius на момент запроса недействителен — истёк срок жизни либо пользователь отозвал доступ приложению на genius.com. Хэндлеры `graph`, `path`, `search` в этом случае возвращают `{"error": "token_invalid"}`; фронтенд (`front/src/api.js`) реагирует на этот код редиректом на `/auth/login`. Решение — перелогиниться.
+
+### 429 / rate limit
+
+- Для анонимных запросов действует пер-IP лимит с фиксированным окном (`PerIpRateLimit`, `libs/six-feat-core/include/six-feat-core/rate_limiter.hpp`); авторизованные пользователи его не задевают — они ограничены только собственной OAuth-квотой Genius.
+- При превышении хэндлеры `graph`/`path`/`search` отвечают `429 {"error": "rate_limit_exceeded"}` с заголовком `Retry-After: 1`.
+- Если 429 приходит от самого Genius API, `GeniusGateway` включает кулдаун по `Retry-After` из ответа Genius (лог `[Pipeline] 429 — activating cooldown for ...`, `libs/six-feat-core/src/resilience.{hpp,cpp}`) — на это время запросы к Genius приостанавливаются автоматически.
+
+### БД недоступна / `/readyz` не проходит
+
+- Строка подключения к PostgreSQL собирается `docker-entrypoint.sh` из `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` (и `DB_REPLICA_HOST`/`DB_REPLICA_PORT`, если заданы) в DSN и передаётся в `static_config.yaml` через `postgres-db-1.dbconnection` (`$db_connection_string`) — никогда не коммитится. Убедитесь, что сервис `postgres` из `docker-compose.yml` здоров (`depends_on: condition: service_healthy`) прежде чем разбираться с `/readyz`.
+- Если в логах видите `WARNING ... FindPool ... There is no pool for slave, falling back to master` — начиная с фикса в `persistent_store.cpp` (`ReadHostType()`) это больше НЕ должно происходить постоянно в дефолтной конфигурации (без `DB_REPLICA_HOST` чтения сразу идут в `kMaster`, `kSlave` не запрашивается вовсе). Если предупреждение всё же видно — это либо кратковременный интервал сразу после того, как `DB_REPLICA_HOST` был впервые задан (Cluster ещё не завершил первый `pg_is_in_recovery()`-проб топологии, ~1с), либо признак того, что вы **осознанно** настраивали `DB_REPLICA_HOST` на реальный standby, который не поднялся/не прошёл healthcheck, либо переменные не попали в окружение контейнера. См. "Postgres cluster topology" выше.
+- Готовность проверяется через `GET /readyz`: вызывает `PersistentStore::Ping()` и возвращает `503` с `{"status":"not_ready","checks":{"database":{"ok":false}}}`, если БД недоступна.
+
+### Граф не рендерится в браузере
+
+[SF-SEC-02] `front/index.html` больше не грузит `vis-network` с CDN (`unpkg.com`) — файл захостен локально: `front/vendor/vis-network.min.js` (пин версии `vis-network@9.1.9/standalone/umd/vis-network.min.js`), раздаётся сервисом `six-feat` по пути `/vendor/vis-network.min.js` (`handler-vendor-vis-network`, `services/six-feat/src/http/static_handler.hpp` — `StaticFileHandler`, тот же механизм, что и для `index.html`/`script.js`) и копируется в рантайм-образ отдельным `COPY` в `services/six-feat/Dockerfile`. Тег в `index.html` — простой same-origin `<script src="/vendor/vis-network.min.js"></script>`, без `integrity`/`crossorigin` (раньше — CDN с зафиксированным SRI-хешем; при расхождении версии на CDN с той, под которую посчитан хеш, браузер молча блокировал скрипт — `Failed to find a valid digest`, граф оставался пустым; теперь эта категория отказа исключена, версия зафиксирована самим содержимым файла в репозитории).
+
+Если граф всё равно не рендерится — проверьте:
+- Файл `front/vendor/vis-network.min.js` присутствует и не пуст (`git lfs`/чекаут не сломан).
+- В образе он лежит по `/usr/share/six_feat/vendor/vis-network.min.js` (см. `Dockerfile`) и путь совпадает с `file-path` в `static_config.yaml`'s `handler-vendor-vis-network`.
+- Консоль браузера не показывает 404 на `/vendor/vis-network.min.js` — значит либо `Dockerfile`'ный `COPY` не отработал, либо в `static_config.yaml` разъехались `path`.
+
+Обновление версии: заменить `front/vendor/vis-network.min.js` на новый `standalone/umd/vis-network.min.js` из релиза `vis-network`, обновить версию в комментариях (`index.html`, `static_handler.hpp`) и пересобрать образ — никакого пересчёта `integrity`/SRI больше не требуется.

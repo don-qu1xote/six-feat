@@ -1,6 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/toast.js — Toast notifications
-// ════════════════════════════════════════════════════════════════════════════
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
 
@@ -13,11 +10,6 @@ export function showToast(message, ms = 4800, isInfo = false) {
   State.toastTimer = setTimeout(hideToast, ms);
 }
 
-// IDEA-24: transient (502/503/network) failures get an unobtrusive "Retry"
-// action instead of just an error message — clicking it re-runs `retry`
-// (the caller's own request function, so it goes through the same
-// in-flight/AbortController guards as any other call, and can't fire a
-// duplicate request).
 export function showRetryToast(message, retry, ms = 8000) {
   els.toast.textContent = "";
   els.toast.append(message + " ");
@@ -38,5 +30,8 @@ export function showRetryToast(message, retry, ms = 8000) {
 
 export function hideToast() {
   els.toast.classList.remove("show", "toast--info", "has-action");
-  if (State.toastTimer) { clearTimeout(State.toastTimer); State.toastTimer = null; }
+  if (State.toastTimer) {
+    clearTimeout(State.toastTimer);
+    State.toastTimer = null;
+  }
 }

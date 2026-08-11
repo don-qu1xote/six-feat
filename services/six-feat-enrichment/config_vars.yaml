@@ -1,0 +1,3 @@
+
+logging_level: info
+db_connection_string: postgresql://CHANGEME_user:CHANGEME_password@localhost:5432/CHANGEME_db

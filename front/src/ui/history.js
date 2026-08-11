@@ -1,71 +1,121 @@
-// ════════════════════════════════════════════════════════════════════════════
-// ui/history.js — Search history (localStorage), recent-search chips,
-//                 shareable URL query-string sync
-// ════════════════════════════════════════════════════════════════════════════
 import { State, MAX_HISTORY, GRAPH_DEFAULT_LIMIT } from "../state/state.js";
 import { escapeHtml } from "../state/helpers.js";
 import { els } from "../dom/dom.js";
 import { searchArtist } from "../api/api.js";
 import { showToast } from "./toast.js";
+import { t } from "../i18n/i18n.js";
 
 export function loadHistory() {
   try {
     const raw = localStorage.getItem("feat-atlas-history");
     State.history = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(State.history)) State.history = [];
-  } catch { State.history = []; }
+  } catch {
+    State.history = [];
+  }
 }
 
 export function saveHistory() {
-  try { localStorage.setItem("feat-atlas-history", JSON.stringify(State.history)); } catch {}
+  try {
+    localStorage.setItem("feat-atlas-history", JSON.stringify(State.history));
+  } catch {}
 }
 
 export function pushHistory(name) {
-  State.history = [name, ...State.history.filter(h => h !== name)].slice(0, MAX_HISTORY);
+  State.history = [name, ...State.history.filter((h) => h !== name)].slice(0, MAX_HISTORY);
   saveHistory();
   renderChips();
 }
 
-// Баг: статичные примеры (Kendrick Lamar / Gorillaz / Rosalía / Calvin
-// Harris / Tyler, the Creator) были захардкожены в разметке и никогда не
-// менялись — как только у пользователя появляется история поиска, чипы под
-// полем ввода должны показывать её вместо вечно одних и тех же примеров.
-// Примеры остаются только как fallback до первого успешного поиска.
-const DEFAULT_CHIPS = ["Kendrick Lamar", "Gorillaz", "Rosalía", "Calvin Harris", "Tyler, the Creator"];
+const DEFAULT_CHIPS = [
+  "Kendrick Lamar",
+  "Gorillaz",
+  "Rosalía",
+  "Calvin Harris",
+  "Tyler, the Creator",
+];
 
 export function renderChips() {
   if (!els.chips) return;
   const hasHistory = State.history.length > 0;
   const names = hasHistory ? State.history.slice(0, 5) : DEFAULT_CHIPS;
 
-  if (els.chipsLabel) els.chipsLabel.textContent = hasHistory ? "Recent searches" : "Try one of these";
+  if (els.chipsLabel)
+    els.chipsLabel.textContent = hasHistory ? t("hero.chips.labelRecent") : t("hero.chips.label");
 
-  els.chips.innerHTML = names.map(name =>
-    `<button class="chip" data-artist="${escapeHtml(name)}">${escapeHtml(name)}</button>`
-  ).join("");
+  els.chips.innerHTML = names
+    .map(
+      (name) =>
+        `<button class="chip" data-artist="${escapeHtml(name)}">${escapeHtml(name)}</button>`,
+    )
+    .join("");
 }
 
+window.addEventListener("six-feat-langchange", renderChips);
 
-// ════════════════════════════════════════════════════════════════════════════
-// SF-WEB-02: shareable URL — encodes the FULL explored state (seed artist,
-// role filters, expanded nodes, collab limit), not just the seed name, so a
-// shared link reproduces the exact graph the sharer was looking at, not just
-// its starting point.
-// ════════════════════════════════════════════════════════════════════════════
+// [SF-WEB-78] Chips (recent searches or, for a first-time visitor, curated
+// examples) used to render permanently under the search bar — on every
+// landing, whether or not the user asked to see anything. Now hidden until
+// the search field is actually focused, matching how a real search box's
+// suggestions behave, and re-hidden once something is picked. blur uses a
+// short delay: it fires (moving focus off the input) before the chip's own
+// click handler runs, so hiding immediately would remove the chip before
+// its click could register.
+let _chipsHideTimer = null;
 
-// Compact id serialization: ids are already the smallest stable identifier
-// we have, so a sorted (numeric, not lexicographic) comma-join is enough —
-// no need for base36/delta-encoding at the node counts this app deals with.
+function showChips() {
+  clearTimeout(_chipsHideTimer);
+  if (els.chipsLabel) els.chipsLabel.hidden = false;
+  if (els.chips) els.chips.hidden = false;
+}
+
+function hideChips() {
+  if (els.chipsLabel) els.chipsLabel.hidden = true;
+  if (els.chips) els.chips.hidden = true;
+}
+
+// [SF-WEB-93] Реальные недавние запросы показываем сразу при загрузке —
+// скрытие-до-фокуса ниже остаётся для дефолтных примеров первого визита.
+export function showChipsIfHistory() {
+  if (State.history.length > 0) showChips();
+}
+
+export function setupChipsVisibility() {
+  if (!els.heroInput) return;
+  els.heroInput.addEventListener("focus", showChips);
+  // [SF-WEB-89] A non-empty query hides chips — the floating results dropdown would cover them otherwise.
+  els.heroInput.addEventListener("input", () => {
+    if (els.heroInput.value.trim()) hideChips();
+    else showChips();
+  });
+  els.heroInput.addEventListener("blur", () => {
+    _chipsHideTimer = setTimeout(hideChips, 150);
+  });
+  if (els.chips) {
+    els.chips.addEventListener("click", () => {
+      clearTimeout(_chipsHideTimer);
+      hideChips();
+    });
+  }
+}
+
 function encodeIds(ids) {
-  return [...ids].map(Number).filter(Number.isFinite).sort((a, b) => a - b).join(",");
+  return [...ids]
+    .map(Number)
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)
+    .join(",");
 }
 function decodeIds(raw) {
   if (!raw) return new Set();
-  return new Set(raw.split(",").map(s => parseInt(s.trim(), 10)).filter(Number.isFinite));
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => parseInt(s.trim(), 10))
+      .filter(Number.isFinite),
+  );
 }
 
-// Pure state → URLSearchParams. Exported so the round-trip can be unit
-// tested without touching window.location/history.
 export function serializeGraphState({ artist, seedId, roles, expandedIds, limit } = {}) {
   const params = new URLSearchParams();
   if (artist) params.set("artist", artist);
@@ -76,18 +126,22 @@ export function serializeGraphState({ artist, seedId, roles, expandedIds, limit 
   return params;
 }
 
-// Pure URLSearchParams-like input → plain state object. Never throws —
-// anything missing/unparsable quietly falls back to the "no state" default
-// (null artist/seed/limit, empty roles/expandedIds), same as a fresh visit.
 export function parseGraphState(search) {
   const params = new URLSearchParams(search || "");
   const artist = params.get("artist") || null;
 
   const rolesRaw = params.get("roles");
-  const roles = rolesRaw ? new Set(rolesRaw.split(",").map(r => r.trim()).filter(Boolean)) : new Set();
+  const roles = rolesRaw
+    ? new Set(
+        rolesRaw
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean),
+      )
+    : new Set();
 
   const seedRaw = params.get("seed");
-  const seedId  = seedRaw != null && /^\d+$/.test(seedRaw) ? Number(seedRaw) : null;
+  const seedId = seedRaw != null && /^\d+$/.test(seedRaw) ? Number(seedRaw) : null;
 
   const expandedIds = decodeIds(params.get("exp"));
 
@@ -98,15 +152,15 @@ export function parseGraphState(search) {
 }
 
 export function updateShareableUrl(artistName) {
-  const name = artistName || State.graphNodes.find(n => n.id === State.currentSeedId)?.name;
+  const name = artistName || State.graphNodes.find((n) => n.id === State.currentSeedId)?.name;
   if (!name) return;
   const url = new URL(window.location.href);
   url.search = serializeGraphState({
-    artist:      name,
-    seedId:      State.currentSeedId,
-    roles:       State.activeFilters,
+    artist: name,
+    seedId: State.currentSeedId,
+    roles: State.activeFilters,
     expandedIds: State.expandedNodes,
-    limit:       State.collabLimit || State.songLimit,
+    limit: State.collabLimit || State.songLimit,
   }).toString();
   history.replaceState(null, "", url.toString());
 }
@@ -116,16 +170,14 @@ export function loadArtistFromUrl() {
 
   if (roles.size) {
     State.activeFilters = roles;
-    // [SF-WEB-61] Was still referencing els.filterFeatured/-Producer/-Writer
-    // — the rail's OLD role-filter buttons, removed back in SF-WEB-14 (see
-    // canvas-controls.js's own comment on this). Those keys don't exist in
-    // dom.js at all anymore, so this loop silently synced nothing for the
-    // buttons that are actually visible post-load — the always-visible
-    // .role-filter-segment (canvasFilter*) — leaving them stuck on their
-    // hardcoded-in-HTML "active" default regardless of the roles a shared
-    // URL actually restored.
-    [els.canvasFilterFeatured, els.canvasFilterProducer, els.canvasFilterWriter,
-     els.heroFilterFeatured, els.heroFilterProducer, els.heroFilterWriter].forEach(btn => {
+    [
+      els.canvasFilterFeatured,
+      els.canvasFilterProducer,
+      els.canvasFilterWriter,
+      els.heroFilterFeatured,
+      els.heroFilterProducer,
+      els.heroFilterWriter,
+    ].forEach((btn) => {
       if (!btn?.dataset.role) return;
       btn.classList.toggle("active", State.activeFilters.has(btn.dataset.role));
     });
@@ -138,20 +190,15 @@ export function loadArtistFromUrl() {
   if (expandedIds.size) _restoreExpandedNodes([...expandedIds]);
 }
 
-// Re-expands previously-expanded nodes, reusing the exact same expand path a
-// user dbl-click drives (searchArtist(name, true, true) → mergeGraph, see
-// vis-adapter/events.js). searchArtist()/mergeGraph() aren't awaitable, so we
-// poll State.inFlight as the "safe to fire the next one" signal — same
-// pattern State.pendingExpand already relies on elsewhere in api.js.
 function _restoreExpandedNodes(ids, attempt = 0) {
   if (!ids.length) return;
-  if (attempt > 200) return; // ~10s ceiling — give up quietly, not an error.
+  if (attempt > 200) return;
   if (State.inFlight || State.pendingExpand) {
     setTimeout(() => _restoreExpandedNodes(ids, attempt + 1), 50);
     return;
   }
   const [id, ...rest] = ids;
-  const node = State.graphNodes.find(n => n.id === id);
+  const node = State.graphNodes.find((n) => n.id === id);
   if (node && !State.expandedNodes.has(id)) {
     searchArtist(node.name, true, true);
   }
@@ -160,7 +207,8 @@ function _restoreExpandedNodes(ids, attempt = 0) {
 
 export function copyShareableLink() {
   const url = window.location.href;
-  navigator.clipboard.writeText(url)
-    .then(() => showToast("🔗 Link copied!", 2000, true))
-    .catch(() => showToast(`Copy: ${url}`, 5000));
+  navigator.clipboard
+    .writeText(url)
+    .then(() => showToast(t("game.toast.linkCopied"), 2000, true))
+    .catch(() => showToast(t("toast.copyFallback", { link: url }), 5000));
 }

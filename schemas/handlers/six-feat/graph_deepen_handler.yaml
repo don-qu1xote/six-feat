@@ -1,0 +1,6 @@
+type: object
+description: >-
+    "Find more connections via Genius" (SF-YM-03) — on-demand deepen action
+    for one artist already shown in the graph.
+additionalProperties: false
+properties: {}

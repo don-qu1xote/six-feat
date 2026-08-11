@@ -7,7 +7,7 @@
 ## Контекст
 
 Все четыре application-сервиса (`six-feat`, `six-feat-enrichment`,
-`six-feat-genius-gateway`, `six-feat-auth`) — стейтлес userver-бинарники:
+`six-feat-genius-gateway`, `six-feat-auth`, `six-feat-game`) — стейтлес userver-бинарники:
 единственное, во что они пишут на диск в рантайме, это
 `/tmp/config_vars.yaml` (см. `docker-entrypoint.sh` каждого сервиса),
 всё остальное под `/app`/`/usr/share/six_feat` запечено в образ и не

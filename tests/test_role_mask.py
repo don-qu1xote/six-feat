@@ -1,23 +1,3 @@
-"""
-test_role_mask.py — unit tests for src/domain/role_mask.cpp logic
-=============================================================
-
-role_mask.cpp has no I/O and no userver dependencies — every function is a
-pure transformation of strings/structs. This file is a faithful Python
-re-implementation of that logic (mirroring the C++ source line-for-line)
-so the contract has direct unit-test coverage without needing the compiled
-binary or going through an HTTP round-trip via test_graph.py/test_path.py's
-?roles= query param (which only exercises a handful of role combinations
-indirectly).
-
-Functions covered (mirrored 1:1 from role_mask.cpp):
-  ParseRoleMask    — "primary,producer,featured" → mask dict
-  RoleAllowed      — single-role membership check against a mask
-  RoleRank         — numeric dominance: producer(4) > writer(3) > featured(2) > primary(1)
-  EdgeStyleForRole — frontend CSS hint
-  NormalizeStr     — lower-case + collapse whitespace + trim
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,9 +12,8 @@ class RoleMask:
 
 
 def parse_role_mask(spec: str) -> RoleMask:
-    """Mirror of ParseRoleMask(const std::string& spec)."""
     if spec == "":
-        return RoleMask()  # all roles enabled by default
+        return RoleMask()
     mask = RoleMask(primary=False, producer=False, writer=False, featured=False)
     for tok in spec.split(","):
         tok = tok.lower()
@@ -46,12 +25,11 @@ def parse_role_mask(spec: str) -> RoleMask:
             mask.writer = True
         elif tok == "featured":
             mask.featured = True
-        # unrecognised tokens are silently ignored, matching the C++ if/elif chain
+
     return mask
 
 
 def role_allowed(role: str, mask: RoleMask) -> bool:
-    """Mirror of RoleAllowed(const std::string& role, const RoleMask& mask)."""
     if role == "featured":
         return mask.featured
     if role == "producer":
@@ -64,7 +42,6 @@ def role_allowed(role: str, mask: RoleMask) -> bool:
 
 
 def role_rank(role: str) -> int:
-    """Mirror of RoleRank(std::string_view role)."""
     if role == "producer":
         return 4
     if role == "writer":
@@ -77,7 +54,6 @@ def role_rank(role: str) -> int:
 
 
 def edge_style_for_role(role: str) -> str:
-    """Mirror of EdgeStyleForRole(std::string_view role)."""
     if role == "featured":
         return "solid"
     if role == "producer":
@@ -86,7 +62,6 @@ def edge_style_for_role(role: str) -> str:
 
 
 def normalize_str(value: str) -> str:
-    """Mirror of NormalizeStr(std::string_view value)."""
     out_chars: list[str] = []
     prev_space = False
     for c in value:
@@ -100,10 +75,6 @@ def normalize_str(value: str) -> str:
     out = "".join(out_chars)
     return out.rstrip(" ")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ParseRoleMask
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestParseRoleMask:
     def test_empty_spec_enables_all_roles(self):
@@ -134,9 +105,6 @@ class TestParseRoleMask:
         assert mask.featured is True
 
     def test_unknown_token_is_ignored(self):
-        """An unrecognised role token contributes nothing — it's not an
-        error and doesn't enable anything (mirrors the C++ if/elif chain
-        having no else branch)."""
         mask = parse_role_mask("bogus")
         assert mask == RoleMask(False, False, False, False)
 
@@ -154,47 +122,27 @@ class TestParseRoleMask:
         assert mask.primary is True
         assert mask.producer is False
 
-    # [SF-PERF-02] ToLower() gained an ASCII-only fast path (byte-wise
-    # A-Z->a-z, no UTF-8 decode) that falls back to the codepoint-aware path
-    # the moment it sees a byte >=0x80. These tokens are pure ASCII, so they
-    # must still behave exactly as before through the fast path.
     def test_ascii_only_role_spec_still_case_insensitive(self):
         mask = parse_role_mask("PRIMARY,PRODUCER,WRITER,FEATURED")
         assert mask == RoleMask(True, True, True, True)
 
-    # A non-ASCII token (e.g. a Cyrillic homoglyph typed by mistake) forces
-    # ToLower()'s fallback path — it must still lower-case correctly and,
-    # since it never matches a known role name, be silently ignored exactly
-    # like any other unrecognised token (no crash, no partial match).
     def test_non_ascii_token_falls_back_and_is_ignored(self):
-        mask = parse_role_mask("продюсер")  # Cyrillic "producer" — not a real role token
+        mask = parse_role_mask("продюсер")
         assert mask == RoleMask(False, False, False, False)
 
     def test_ascii_role_after_non_ascii_token_still_matches(self):
-        """The fallback triggered by an earlier non-ASCII token must not
-        corrupt tokenisation of a later, purely-ASCII token in the same spec."""
         mask = parse_role_mask("продюсер,producer")
         assert mask.producer is True
         assert mask == RoleMask(False, True, False, False)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [SF-PERF-03] Golden regression: ParseRoleMask (and, transitively, ToLower)
-# must give IDENTICAL results for a pure-ASCII spec and its ASCII+Cyrillic
-# counterpart — the ASCII fast path (SF-PERF-02) and the codepoint-aware
-# fallback are two different code paths for the same contract, and this
-# table is what would catch them silently diverging. Do not delete these
-# cases when touching role_mask.cpp/ToLower again — extend the table instead.
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestToLowerGolden:
-    # (spec, expected mask as (primary, producer, writer, featured))
     ASCII_CASES = [
-        ("primary",                        (True,  False, False, False)),
-        ("PRODUCER",                        (False, True,  False, False)),
-        ("Writer,Featured",                 (False, False, True,  True)),
-        ("PRIMARY,PRODUCER,WRITER,FEATURED", (True,  True,  True,  True)),
-        ("",                                 (True,  True,  True,  True)),  # empty -> all roles
+        ("primary", (True, False, False, False)),
+        ("PRODUCER", (False, True, False, False)),
+        ("Writer,Featured", (False, False, True, True)),
+        ("PRIMARY,PRODUCER,WRITER,FEATURED", (True, True, True, True)),
+        ("", (True, True, True, True)),
     ]
 
     def test_pure_ascii_specs_match_golden_masks(self):
@@ -202,17 +150,9 @@ class TestToLowerGolden:
             assert parse_role_mask(spec) == RoleMask(*expected), spec
 
     def test_ascii_plus_cyrillic_specs_give_identical_results_to_their_ascii_form(self):
-        """Each spec here is the ASCII form from ASCII_CASES with a bogus
-        Cyrillic token appended — a real ?roles= value would never contain
-        one, but it forces ToLower()'s fallback path mid-parse. The bogus
-        token must never match a real role (so it contributes nothing), and
-        the ASCII tokens around it must resolve to the exact same mask as
-        their pure-ASCII counterpart above — same golden result via either
-        code path.
-        """
         for spec, expected in self.ASCII_CASES:
             if spec == "":
-                continue  # nothing to append a token to for the empty-spec case
+                continue
             spiced = spec + ",продюсер"
             assert parse_role_mask(spiced) == RoleMask(*expected), spiced
 
@@ -220,10 +160,6 @@ class TestToLowerGolden:
         mask = parse_role_mask("primary,продюсер,featured")
         assert mask == RoleMask(True, False, False, True)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# RoleAllowed
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestRoleAllowed:
     def test_default_mask_allows_all_known_roles(self):
@@ -239,16 +175,14 @@ class TestRoleAllowed:
         assert role_allowed("featured", mask) is False
 
     def test_unknown_role_string_is_never_allowed(self):
-        """An unrecognised role always returns False, even against a mask
-        that enables everything else — mirrors the final `return false`."""
         mask = RoleMask(True, True, True, True)
         assert role_allowed("composer", mask) is False
         assert role_allowed("", mask) is False
 
+    def test_feature_typo_is_not_a_recognised_role(self):
+        mask = RoleMask(True, True, True, True)
+        assert role_allowed("feature", mask) is False
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RoleRank
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestRoleRank:
     def test_dominance_ordering(self):
@@ -266,10 +200,9 @@ class TestRoleRank:
         assert role_rank("unknown") == 0
         assert role_rank("") == 0
 
+    def test_feature_typo_ranks_as_unknown(self):
+        assert role_rank("feature") == 0
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EdgeStyleForRole
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestEdgeStyleForRole:
     def test_featured_is_solid(self):
@@ -288,10 +221,6 @@ class TestEdgeStyleForRole:
         assert edge_style_for_role("anything-else") == "dotted"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# NormalizeStr
-# ─────────────────────────────────────────────────────────────────────────────
-
 class TestNormalizeStr:
     def test_lowercases(self):
         assert normalize_str("DRAKE") == "drake"
@@ -306,8 +235,6 @@ class TestNormalizeStr:
         assert normalize_str("Drake   ") == "drake"
 
     def test_trims_leading_whitespace_via_collapse(self):
-        """Leading whitespace before any non-space char is swallowed because
-        `out.empty()` is checked before pushing a collapsed space."""
         assert normalize_str("   Drake") == "drake"
 
     def test_empty_string(self):

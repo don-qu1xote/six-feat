@@ -1,0 +1,4 @@
+type: object
+description: 'GET/POST /api/v1/game/challenge — challenge creation and lookup'
+additionalProperties: false
+properties: {}

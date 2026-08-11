@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""
-scripts/verify-yaml-anchors.py — SF-SCH-03: verify that the YAML-anchor
-deduplication of task_processor in services/*/static_config.yaml
-(SF-SCH-02) left the effective config unchanged, and that
-docker-compose.yml's hardening block (SF-INF-01) — once it exists — is
-applied identically across six-feat/six-feat-enrichment/
-six-feat-genius-gateway/six-feat-auth and absent from postgres/nginx.
 
-Exits non-zero if any check fails.
-"""
 from __future__ import annotations
 
 import sys
@@ -26,7 +17,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MAIN_TP = "main-task-processor"
 MONITOR_TP = "monitor-task-processor"
 
-# rel path -> {"components.<dotted section>": expected task_processor value}
 EXPECTED: dict[str, dict[str, str]] = {
     "services/six-feat/static_config.yaml": {
         "server.listener": MAIN_TP,
@@ -45,15 +35,11 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-status-stream": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
-    "services/enrichment/static_config.yaml": {
+    "services/six-feat-enrichment/static_config.yaml": {
         "server.listener": MAIN_TP,
         "server.listener-monitor": MONITOR_TP,
         "handler-internal-enqueue": MAIN_TP,
         "handler-internal-status": MAIN_TP,
-        # [SF-INF-03] Was handler-internal-healthz — now the shared
-        # six_feat::HealthHandler (kName "handler-healthz"), same as every
-        # other service. handler-readyz is new (enrichment-specific
-        # database check).
         "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
@@ -65,8 +51,6 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-internal-genius-song-list": MAIN_TP,
         "handler-internal-genius-song": MAIN_TP,
         "handler-internal-genius-candidates": MAIN_TP,
-        # [SF-INF-03] Was handler-internal-healthz — see the matching
-        # comment in the enrichment block above.
         "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
@@ -79,13 +63,23 @@ EXPECTED: dict[str, dict[str, str]] = {
         "handler-auth-logout": MAIN_TP,
         "handler-auth-me": MAIN_TP,
         "handler-healthz": MAIN_TP,
-        # [SF-INF-03] New — auth-specific (always-empty-checks) readiness.
+        "handler-readyz": MAIN_TP,
+        "handler-server-monitor": MONITOR_TP,
+    },
+    "services/game/static_config.yaml": {
+        "server.listener": MAIN_TP,
+        "server.listener-monitor": MONITOR_TP,
+        "handler-game-profile": MAIN_TP,
+        "handler-game-validate": MAIN_TP,
+        "handler-game-submit": MAIN_TP,
+        "handler-game-challenge": MAIN_TP,
+        "handler-game-leaderboard": MAIN_TP,
+        "handler-healthz": MAIN_TP,
         "handler-readyz": MAIN_TP,
         "handler-server-monitor": MONITOR_TP,
     },
 }
 
-# All four services default to main-task-processor.
 EXPECTED_DEFAULT_TP = {rel_path: MAIN_TP for rel_path in EXPECTED}
 
 HARDENING_KEYS = ("read_only", "cap_drop", "security_opt", "tmpfs")
@@ -94,6 +88,7 @@ HARDENED_SERVICES = (
     "six-feat-enrichment",
     "six-feat-genius-gateway",
     "six-feat-auth",
+    "six-feat-game",
 )
 UNHARDENED_SERVICES = ("postgres", "nginx")
 

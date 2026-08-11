@@ -1,59 +1,3 @@
-"""
-conftest.py — pytest fixtures for six-feat integration tests
-=============================================================
-
-Architecture:
-  • The service is a compiled userver binary that speaks HTTP.
-  • We can't inject Python mocks into it at runtime, so our strategy is:
-
-    1.  A *surrogate server* (MockGeniusServer, a tiny HTTP server in-process)
-        listens on a configurable port and serves canned Genius-API responses.
-        The service binary is started with a test config that points
-        genius-base-url at this surrogate.
-
-    2.  The persistent store runs against a real PostgreSQL instance (see
-        postgres-db-1 in the test config template below), pointed at via the
-        DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD env vars — same scheme
-        docker-entrypoint.sh uses in prod/CI. Schema migrations run
-        automatically on service startup (see persistent_store.cpp).
-
-    3.  Background enrichment now lives in the standalone six-feat-enrichment
-        service (IDEA-25/26); the default profile's six_feat instance points
-        its enrichment-client at a port with nothing listening, so
-        EnqueueIfNeeded()/IsEnriching() degrade to false/no-op without
-        adding noise. service_proc_bg / enrichment_proc_bg run a real
-        six-feat-enrichment instance for the tests that need it (see
-        tests/test_bg_resilience.py).
-
-    4.  [ТЗ-6] Every /api/v1/graph* request now requires a valid OAuth
-        session cookie (see auth::ExtractToken / oauth_handler.cpp). Rather
-        than driving a real Genius OAuth authorize/token round-trip, the
-        test binary is launched with a fixed, known APP_SECRET
-        (TEST_APP_SECRET) and tests/session_crypto.py — a faithful Python
-        port of src/auth/session_crypto.cpp's AES-256-GCM cookie format —
-        mints a valid `six_feat_session` cookie directly. This is the
-        documented test-only auth bypass referenced in the CI comment: it
-        does not touch service code, only how the test client authenticates.
-
-  This file exposes:
-    • genius_mock   — fixture that controls what the surrogate returns
-    • client        — requests.Session pointed at the running service,
-                       pre-authenticated with a valid session cookie
-    • anon_client   — like `client` but with NO session cookie, for
-                       asserting 401 behaviour on protected endpoints
-    • auth_cookie   — the raw valid `six_feat_session` cookie value
-    • service_proc  — the managed subprocess (rarely needed directly)
-
-Environment knobs (override via env or pytest.ini):
-    SIX_FEAT_BINARY             path to the built six_feat binary
-                                (default: ../build/six_feat)
-    SIX_FEAT_ENRICHMENT_BINARY  path to the built six_feat_enrichment binary,
-                                only used by the BG profile
-                                (default: ../build/services/enrichment/six_feat_enrichment)
-    SIX_FEAT_PORT               service HTTP port           (default: 18080)
-    MOCK_PORT                   surrogate Genius API port   (default: 18081)
-"""
-
 from __future__ import annotations
 
 import os
@@ -81,55 +25,26 @@ from requests.adapters import HTTPAdapter
 sys.path.insert(0, str(Path(__file__).parent))
 import session_crypto  # noqa: E402  (path must be set up first)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Configuration constants
-# ─────────────────────────────────────────────────────────────────────────────
-
 SRC_ROOT = Path(__file__).parent.parent
 BINARY = Path(os.environ.get("SIX_FEAT_BINARY", SRC_ROOT / "build" / "six_feat"))
-# [SF-API-05] Real (not /dev/null-stubbed) file — test_openapi.py fetches
-# and parses this handler's actual response body, unlike handler-index/
-# handler-script/handler-vendor-vis-network above whose content nothing in
-# this suite reads.
+
 OPENAPI_JSON_PATH = SRC_ROOT / "schemas" / "openapi" / "openapi.json"
 SERVICE_PORT = int(os.environ.get("SIX_FEAT_PORT", "18080"))
 MOCK_PORT = int(os.environ.get("MOCK_PORT", "18081"))
 SERVICE_BASE = f"http://localhost:{SERVICE_PORT}"
 MOCK_BASE = f"http://localhost:{MOCK_PORT}"
 
-# [IDEA-27] Every six_feat/six_feat_enrichment binary unconditionally appends
-# server::handlers::ServerMonitor (src/main.cpp, services/enrichment/main.cpp),
-# so the static config MUST provide a listener-monitor + handler-server-monitor
-# or the component system fails to start. Nothing in the suite talks to this
-# port; it just needs to exist.
 MONITOR_PORT = int(os.environ.get("SIX_FEAT_MONITOR_PORT", "18085"))
 
-# [IDEA-25/26] Background enrichment moved out of six_feat into the standalone
-# six-feat-enrichment service; six_feat now only holds an HTTP EnrichmentClient
-# (see src/enrichment/enrichment_client.hpp) pointed at it via enrichment-base-url.
-# ENRICHMENT_PORT has nothing listening on it for the default profile — that
-# is intentional: EnqueueIfNeeded()/IsEnriching() degrade to false on any
-# network error (never throw), which reproduces the old "queue-capacity: 0"
-# disabled behaviour without a live enrichment service or a shared secret
-# that has to match anything real. See service_proc_bg / enrichment_proc_bg
-# below for the profile that runs a real six-feat-enrichment instance.
 ENRICHMENT_PORT = int(os.environ.get("SIX_FEAT_ENRICHMENT_PORT", "18082"))
 ENRICHMENT_BINARY = Path(
     os.environ.get(
         "SIX_FEAT_ENRICHMENT_BINARY",
-        SRC_ROOT / "build" / "services" / "enrichment" / "six_feat_enrichment",
+        SRC_ROOT / "build" / "services" / "six-feat-enrichment" / "six_feat_enrichment",
     )
 )
 TEST_ENRICHMENT_INTERNAL_SECRET = "test-enrichment-internal-secret"
 
-# [IDEA-46] Genius API access (incl. CircuitBreaker and FG/BG lane
-# rate-limiting) moved out of six_feat/six_feat_enrichment into the
-# standalone six-feat-genius-gateway service — both binaries now only hold
-# an HTTP GeniusGatewayClient (see src/genius/genius_gateway_client.hpp) pointed at
-# it. This is the process that is actually configured with genius-base-url
-# pointed at the surrogate mock_server; it shares the same
-# ENRICHMENT_INTERNAL_SECRET as the enrichment internal API (see
-# internal_auth.hpp — one shared secret for the whole internal mesh).
 GENIUS_GATEWAY_PORT = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_PORT", "18083"))
 GENIUS_GATEWAY_MONITOR_PORT = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_MONITOR_PORT", "18086"))
 GENIUS_GATEWAY_BASE = f"http://localhost:{GENIUS_GATEWAY_PORT}"
@@ -140,13 +55,6 @@ GENIUS_GATEWAY_BINARY = Path(
     )
 )
 
-# [IDEA-53] The whole Genius OAuth 2.0 flow (/auth/login|callback|logout|me)
-# moved out of six_feat into the standalone six-feat-auth service —
-# tests/test_auth.py now drives a real instance of it instead of the
-# six_feat test binary (which only keeps OAuthConfig for LOCAL session
-# validation — see oauth-config in _TEST_CONFIG_TEMPLATE above). Both
-# instances share TEST_APP_SECRET so a cookie minted by this one is exactly
-# what the six_feat instance's RequireSession/ExtractToken accept.
 AUTH_PORT = int(os.environ.get("SIX_FEAT_AUTH_PORT", "18084"))
 AUTH_MONITOR_PORT = int(os.environ.get("SIX_FEAT_AUTH_MONITOR_PORT", "18087"))
 AUTH_SERVICE_BASE = f"http://localhost:{AUTH_PORT}"
@@ -157,12 +65,6 @@ AUTH_BINARY = Path(
     )
 )
 
-# PostgreSQL connection for the test binary's postgres-db-1 component — same
-# DB_* scheme docker-entrypoint.sh assembles db_connection_string from (see
-# ci.yml's postgres service / .env.example for the matching local values).
-# Both service_proc and service_proc_bg share this one DB: existing tests
-# already avoid artist-id collisions between the default and BG profiles
-# (see test_bg_resilience.py's 90000+ range), so no per-fixture DB is needed.
 DB_CONN_PARAMS = dict(
     host=os.environ.get("DB_HOST", "localhost"),
     port=os.environ.get("DB_PORT", "5432"),
@@ -176,21 +78,13 @@ DB_CONNECTION_STRING = "postgresql://{user}:{password}@{host}:{port}/{dbname}".f
 )
 
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Mock Genius HTTP server
-# ─────────────────────────────────────────────────────────────────────────────
-
 class _MockState:
-    """Thread-safe store for canned responses and call tracking."""
-
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._handlers: Dict[str, Callable] = {}
         self.calls: List[Dict[str, Any]] = []
 
     def register(self, path_prefix: str, handler: Callable) -> None:
-        """Register a callable(path, query_params) → (status_int, body_dict)."""
         with self._lock:
             self._handlers[path_prefix] = handler
 
@@ -223,21 +117,15 @@ _mock_state = _MockState()
 
 
 class _GeniusRequestHandler(BaseHTTPRequestHandler):
-    """Minimal HTTP/1.1 handler that delegates to _mock_state."""
-
-    def log_message(self, fmt: str, *args: Any) -> None:  # silence access log
+    def log_message(self, fmt: str, *args: Any) -> None:
         pass
 
-    def do_GET(self) -> None:
+    def _respond(self, params: Dict[str, List[str]]) -> None:
         try:
             parsed = urlparse(self.path)
-            params = parse_qs(parsed.query)
-            # [SF-OBS-02] Forwarded by GeniusGateway::GeniusGet as
-            # X-Request-Id on every outbound call to Genius — recorded per
-            # call so tests can assert the same id survives the
-            # six-feat -> genius-gateway -> Genius hop (see test_trace_id.py).
             status, body = _mock_state.dispatch(
-                parsed.path, params, self.headers.get("X-Request-Id"))
+                parsed.path, params, self.headers.get("X-Request-Id")
+            )
             payload = json.dumps(body).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -245,12 +133,9 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
         except Exception as e:
-            # If anything goes wrong, return 500 — keeps the mock server alive
             import traceback
-            error_body = json.dumps({
-                "error": str(e),
-                "traceback": traceback.format_exc()
-            }).encode()
+
+            error_body = json.dumps({"error": str(e), "traceback": traceback.format_exc()}).encode()
             try:
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
@@ -258,7 +143,16 @@ class _GeniusRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(error_body)
             except:
-                pass  # if even error response fails, give up
+                pass
+
+    def do_GET(self) -> None:
+        parsed = urlparse(self.path)
+        self._respond(parse_qs(parsed.query))
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", 0))
+        raw_body = self.rfile.read(length) if length else b""
+        self._respond(parse_qs(raw_body.decode(errors="replace")))
 
 
 def _start_mock_server() -> HTTPServer:
@@ -268,22 +162,6 @@ def _start_mock_server() -> HTTPServer:
     thread.start()
     return server
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Test config writer
-#
-# [F-34] backoff_max_attempts / cb_failure_threshold are format placeholders
-# (not hardcoded) so two independent profiles can be rendered from the same
-# template:
-#   * service_proc (default): backoff-max-attempts=1, cb-failure-threshold=100
-#     — CB/retry code paths never fire, keeping the bulk of the suite fast
-#     and deterministic. enrichment_base_url points at nothing listening, so
-#     background enrichment is a no-op too (see ENRICHMENT_PORT above).
-#   * service_proc_bg: real, low thresholds so CB open/half-open and retry
-#     backoff actually execute (see tests/test_bg_resilience.py), and
-#     enrichment_base_url points at a real six-feat-enrichment instance
-#     (enrichment_proc_bg fixture) so BG deep-scan actually runs.
-# ─────────────────────────────────────────────────────────────────────────────
 
 _TEST_CONFIG_TEMPLATE = """\
 components_manager:
@@ -308,9 +186,7 @@ components_manager:
       listener:
         port: {service_port}
         task_processor: main-task-processor
-      # [IDEA-27] server::handlers::ServerMonitor is unconditionally appended
-      # in src/main.cpp — this listener + handler-server-monitor below must
-      # exist or component-system startup fails.
+
       listener-monitor:
         port: {monitor_port}
         task_processor: monitor-task-processor
@@ -326,9 +202,7 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
-          # [SF-OBS-03] Matches the production static_config.yaml templates'
-          # own logging block (format: json) so a locally-run pytest
-          # session's stderr output looks like what CI/prod actually emits.
+
           format: json
 
     testsuite-support:
@@ -346,10 +220,6 @@ components_manager:
     persistent-store:
       dbname: postgres-db-1
 
-    # [IDEA-46] HTTP client for the standalone six-feat-genius-gateway
-    # service — see GENIUS_GATEWAY_PORT / genius_gateway_proc above. The
-    # surrogate mock_server is configured directly on that process now, not
-    # here.
     genius-gateway-client:
       genius-gateway-base-url: http://127.0.0.1:{genius_gateway_port}
       timeout-ms: 5000
@@ -357,19 +227,15 @@ components_manager:
       songs-limit-bg: 20
       match-threshold: 0.75
 
+    genius-music-source-provider: {{}}
+
     artist-repository: {{}}
 
-    # [SF-SEC-01] Compares this process's APP_SECRET fingerprint against
-    # six-feat-auth's (auth_service_proc) — see test_app_secret_parity.py.
-    # Short timeout/interval so the suite doesn't wait on the default
-    # production values.
     app-secret-parity-checker:
       auth-base-url: {auth_base_url}
       timeout-ms: 2000
       check-interval-ms: 500
 
-    # [IDEA-25/26] HTTP client for the standalone six-feat-enrichment
-    # service — see ENRICHMENT_PORT / enrichment_proc_bg above.
     enrichment-client:
       enrichment-base-url: {enrichment_base_url}
       timeout-ms: 2000
@@ -378,22 +244,22 @@ components_manager:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
 
-    # [SF-SEC-04] backend: single — same default production uses; tests
-    # exercising the shared/Postgres backend build their own config with
-    # backend: shared instead (see test_rate_limit_store.py).
+    fg-fanout-limiter:
+      max-concurrent: 6
+
     rate-limit-store:
       backend: single
       dbname: postgres-db-1
 
-    # [IDEA-53] The OAuth flow itself (/auth/*) now lives in the standalone
-    # six-feat-auth service (see auth_service_proc / _AUTH_TEST_CONFIG_TEMPLATE
-    # below) — this six_feat test instance only needs OAuthConfig for LOCAL
-    # session validation (FindComponent<OAuthConfig>() in GraphHandler/
-    # PathHandler/SearchHandler/StatusHandler/SseStatusHandler via
-    # src/auth/token_router.hpp). client-id/redirect-uri are dummy values,
-    # unused by this service now. GENIUS_CLIENT_SECRET and APP_SECRET come
-    # from the environment the binary is launched with (see service_proc
-    # fixture) — never written into this YAML.
+    api-key-store:
+      dbname: postgres-db-1
+
+    idempotency-store:
+      dbname: postgres-db-1
+
+    user-provider-token-store:
+      dbname: postgres-db-1
+
     oauth-config:
       client-id: test-client-id
       redirect-uri: http://127.0.0.1:{service_port}/auth/callback
@@ -404,6 +270,21 @@ components_manager:
     handler-graph:
       path: /api/v1/graph
       method: GET
+      task_processor: main-task-processor
+
+    handler-graph-deepen:
+      path: /api/v1/graph/deepen
+      method: GET
+      task_processor: main-task-processor
+
+    handler-graph-edge:
+      path: /api/v1/graph/edge
+      method: GET
+      task_processor: main-task-processor
+
+    handler-graph-layout:
+      path: /api/v1/graph/layout
+      method: POST
       task_processor: main-task-processor
 
     handler-path:
@@ -430,10 +311,6 @@ components_manager:
       file-path: /dev/null
       content-type: application/javascript; charset=utf-8
 
-    # [SF-WEB-40] handler-style is unconditionally registered by main.cpp
-    # (StyleHandler), so — like handler-script above — every static config
-    # that boots this binary needs a matching section. The API integration
-    # suite never loads a real page, so /dev/null is fine.
     handler-style:
       path: /style.css
       method: GET
@@ -441,11 +318,6 @@ components_manager:
       file-path: /dev/null
       content-type: text/css; charset=utf-8
 
-    # [SF-SEC-02] Self-hosted vis-network vendor bundle — unconditionally
-    # registered by main.cpp, so every static config that boots this binary
-    # needs a matching section, same as every other handler here. The API
-    # integration suite never loads a real page, so /dev/null is fine (same
-    # stub pattern as handler-index/handler-script above).
     handler-vendor-vis-network:
       path: /vendor/vis-network.min.js
       method: GET
@@ -453,15 +325,6 @@ components_manager:
       file-path: /dev/null
       content-type: application/javascript; charset=utf-8
 
-    # [SF-API-05] Unlike the /dev/null-stubbed handlers above, this one
-    # points at the real checked-in schemas/openapi/openapi.json —
-    # test_openapi.py actually fetches and parses this response body.
-    # __OPENAPI_JSON_PATH__ is a literal sentinel substituted via a plain
-    # .replace() call right after this template's definition below, not a
-    # str-dot-format placeholder — this comment must stay brace-free itself
-    # (the whole template is passed through str.format() at every one of
-    # its several call sites), or a stray pair of curly braces here gets
-    # parsed as a positional format field and breaks every one of them.
     handler-openapi:
       path: /api/v1/openapi.json
       method: GET
@@ -484,13 +347,59 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — see
-    # services/six-feat/src/http/artist_handler.hpp. Every static config
-    # that boots this binary needs a matching section, same as every other
-    # handler here.
     handler-artist:
       path: /api/v1/artist
       method: GET
+      task_processor: main-task-processor
+
+    handler-api-keys-issue:
+      path: /api/v1/api-keys
+      method: POST
+      task_processor: main-task-processor
+
+    handler-api-keys-revoke:
+      path: /api/v1/api-keys/revoke
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-status:
+      path: /api/v1/settings/providers
+      method: GET
+      task_processor: main-task-processor
+
+    handler-settings-genius-connect:
+      path: /api/v1/settings/genius-token
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-disconnect:
+      path: /api/v1/settings/disconnect
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-enrichment-enabled:
+      path: /api/v1/settings/enrichment-enabled
+      method: PATCH
+      task_processor: main-task-processor
+
+    handler-settings-genius-link-start:
+      path: /api/v1/settings/genius/link/start
+      method: GET
+      task_processor: main-task-processor
+
+    handler-internal-neighbours:
+      path: /internal/neighbours
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-genius-link:
+      path: /internal/genius-link
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-music-source-edges:
+      path: /internal/music-source/collaboration-edges
+      method: POST
       task_processor: main-task-processor
 
     handler-status-stream:
@@ -499,16 +408,6 @@ components_manager:
       task_processor: main-task-processor
       response-body-stream: true
 
-    # [SF-API-12] `allowed-hosts` overrides the compiled-in real Genius CDN
-    # hostnames (image_proxy_handler.cpp's kDefaultAllowedImageHosts) so
-    # tests can point this handler at a local stub instead of the real
-    # internet — same testability pattern genius-gateway-base-url/
-    # enrichment-base-url/auth-base-url above already use. "127.0.0.1" is
-    # ONLY ever allowlisted here, in the test binary's own config — real
-    # image_cdn_mock.py URLs are http://127.0.0.1:<port>/... (see
-    # test_image_proxy.py); the port is stripped for host comparison (see
-    # ParseUrl in image_proxy_handler.cpp), so the mock's actual port
-    # doesn't need to be templated into this config at all.
     handler-image:
       path: /api/v1/image
       method: GET
@@ -522,19 +421,10 @@ components_manager:
       task_processor: monitor-task-processor
 """
 
-# [SF-API-05] Splice in the real openapi.json path — see the sentinel's own
-# comment above. Done once, at import time, so every one of this template's
-# .format() call sites is unaffected (no new required kwarg).
 _TEST_CONFIG_TEMPLATE = _TEST_CONFIG_TEMPLATE.replace(
     "__OPENAPI_JSON_PATH__", str(OPENAPI_JSON_PATH)
 )
 
-# [IDEA-53] Standalone six-feat-auth static config (auth_service_proc below)
-# — same shape as services/auth/static_config.yaml, minus the $var
-# indirection (rendered directly, like _TEST_CONFIG_TEMPLATE above).
-# genius-base-url points at the surrogate mock_server, same as the main
-# six_feat test config used to before this split, so
-# CallbackHandler.ExchangeCode's token-exchange call target is unchanged.
 _AUTH_TEST_CONFIG_TEMPLATE = """\
 components_manager:
   task_processors:
@@ -570,9 +460,7 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
-          # [SF-OBS-03] Matches the production static_config.yaml templates'
-          # own logging block (format: json) so a locally-run pytest
-          # session's stderr output looks like what CI/prod actually emits.
+
           format: json
 
     testsuite-support:
@@ -609,20 +497,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # [SF-INF-03] Unified readiness contract — always ready with an empty
-    # checks map for this service (no runtime-degradable dependency), see
-    # services/auth/internal_handlers.hpp's ReadinessHandler doc-comment.
-    # [fix] Keep this comment brace-free: the whole template is passed
-    # through str.format() below (auth_service_proc), so any unescaped
-    # curly brace here is parsed as a format field, not literal text, and
-    # breaks every auth-backed test with a KeyError.
     handler-readyz:
       path: /readyz
       method: GET
       task_processor: main-task-processor
 
-    # [SF-SEC-01] Publishes this process's APP_SECRET fingerprint — see
-    # test_app_secret_parity.py.
     handler-internal-key-fingerprint:
       path: /internal/key-fingerprint
       method: GET
@@ -634,11 +513,6 @@ components_manager:
       task_processor: monitor-task-processor
 """
 
-# [IDEA-46] Standalone six-feat-genius-gateway static config used by both
-# profiles (genius_gateway_proc / genius_gateway_proc_bg below) — same shape
-# as services/genius-gateway/static_config.yaml, minus the $var indirection
-# (rendered directly, like _TEST_CONFIG_TEMPLATE above). This is the only
-# process in either profile actually pointed at the surrogate Genius server.
 _GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE = """\
 components_manager:
   task_processors:
@@ -674,9 +548,7 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
-          # [SF-OBS-03] Matches the production static_config.yaml templates'
-          # own logging block (format: json) so a locally-run pytest
-          # session's stderr output looks like what CI/prod actually emits.
+
           format: json
 
     testsuite-support:
@@ -723,9 +595,6 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # [SF-INF-03] Unified readiness contract — gates on the shared
-    # CircuitBreaker's state, see services/genius-gateway/
-    # internal_handlers.hpp's ReadinessHandler doc-comment.
     handler-readyz:
       path: /readyz
       method: GET
@@ -737,14 +606,7 @@ components_manager:
       task_processor: monitor-task-processor
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth / session config used to launch the test binary
-# ─────────────────────────────────────────────────────────────────────────────
-# These must match what the test static_config.yaml's oauth-config implies
-# and are consumed by auth::KeyFromEnv() / OAuthConfig's GENIUS_CLIENT_SECRET
-# check at process startup. Fixed (not random) so that tests/session_crypto.py
-# can mint cookies the running binary will actually accept.
-TEST_APP_SECRET = "f" * 64  # 64 hex chars -> used as the raw 32-byte AES key
+TEST_APP_SECRET = "f" * 64
 TEST_GENIUS_CLIENT_SECRET = "test-genius-client-secret"
 
 
@@ -759,6 +621,30 @@ def _wait_for_port(port: int, timeout: float = 15.0) -> bool:
     return False
 
 
+def _wait_for_schema(table: str, timeout: float = 15.0) -> bool:
+    """[SF-WEB-76] PersistentStore::OnAllComponentsLoaded() applies the schema
+    bootstrap (postgresql/schema.sql mirror, idempotent) as a fire-and-forget
+    async task — the port accepting connections (see _wait_for_port) does not
+    mean bootstrap has finished, and /readyz's own DB check is a plain Ping(),
+    not a schema check. Poll for the table directly so tests don't race the
+    bootstrap task."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            conn = psycopg2.connect(**DB_CONN_PARAMS)
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT 1 FROM {table} LIMIT 1")
+                return True
+            finally:
+                conn.close()
+        except psycopg2.errors.UndefinedTable:
+            time.sleep(0.2)
+        except psycopg2.OperationalError:
+            time.sleep(0.2)
+    return False
+
+
 def wait_for_status_ready(
     client: requests.Session,
     status_url: str,
@@ -768,15 +654,6 @@ def wait_for_status_ready(
     timeout: float = 5.0,
     poll_interval: float = 0.05,
 ) -> Dict[str, Any]:
-    """
-    Poll GET {status_url}?id=<artist_id> until `depth` reaches at least
-    `min_depth` (i.e. the async L1 write triggered by a preceding graph
-    request has settled) or `timeout` elapses.
-
-    Replaces fixed `time.sleep(0.5)` calls that guessed how long persistence
-    would take — those are flaky under load (too short) and always waste
-    time otherwise (too long).
-    """
     deadline = time.monotonic() + timeout
     last: Optional[Dict[str, Any]] = None
     while time.monotonic() < deadline:
@@ -792,13 +669,8 @@ def wait_for_status_ready(
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Session-scoped fixtures
-# ─────────────────────────────────────────────────────────────────────────────
-
 @pytest.fixture(scope="session")
 def mock_server() -> Generator[_MockState, None, None]:
-    """Start the surrogate Genius server once for the whole session."""
     srv = _start_mock_server()
     yield _mock_state
     srv.shutdown()
@@ -814,13 +686,6 @@ def tmp_db_dir() -> Generator[Path, None, None]:
 def genius_gateway_proc(
     tmp_db_dir: Path, mock_server: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    [IDEA-46] Real six-feat-genius-gateway instance backing the default
-    profile — service_proc's GeniusGatewayClient talks to this process
-    instead of the Genius API directly; this is the process actually
-    pointed at the surrogate mock_server. Skips gracefully (same pattern as
-    service_proc) if the binary isn't built.
-    """
     if not GENIUS_GATEWAY_BINARY.exists():
         pytest.skip(
             f"Genius-gateway service binary not found at {GENIUS_GATEWAY_BINARY}. "
@@ -833,9 +698,6 @@ def genius_gateway_proc(
             gateway_port=GENIUS_GATEWAY_PORT,
             gateway_monitor_port=GENIUS_GATEWAY_MONITOR_PORT,
             mock_port=MOCK_PORT,
-            # [F-34] CB/retries deliberately disabled for this default
-            # profile — see genius_gateway_proc_bg below for the profile
-            # that turns them on.
             backoff_max_attempts=1,
             cb_failure_threshold=100,
         )
@@ -847,8 +709,6 @@ def genius_gateway_proc(
         stderr=subprocess.PIPE,
         env={
             **os.environ,
-            # [IDEA-46] Shared secret gating /internal/genius/* — same
-            # variable GeniusGatewayClient reads on the six_feat side.
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
         },
     )
@@ -874,17 +734,6 @@ def service_proc(
     genius_gateway_proc: subprocess.Popen,
     auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Start the service binary with a test config.
-    Skip the whole session gracefully if the binary is not present.
-
-    [SF-SEC-01] Now also depends on auth_service_proc — AppSecretParityChecker
-    checks against it at startup, and both are launched with the same
-    TEST_APP_SECRET (see auth_service_proc below), so the parity check
-    passes deterministically for every test that doesn't deliberately use
-    a mismatched secret (see service_proc_badsecret / auth_service_proc_badsecret
-    in test_app_secret_parity.py).
-    """
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -910,16 +759,8 @@ def service_proc(
         stderr=subprocess.PIPE,
         env={
             **os.environ,
-            # [ТЗ-6] OAuthConfig's constructor throws at startup if either
-            # of these is missing — see auth::KeyFromEnv() and the
-            # GENIUS_CLIENT_SECRET check in OAuthConfig::OAuthConfig().
-            # TEST_APP_SECRET is fixed so tests/session_crypto.py mints
-            # cookies this exact process instance will accept.
             "APP_SECRET": TEST_APP_SECRET,
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
-            # [IDEA-25/26] EnrichmentClient::SharedSecretFromEnv() throws at
-            # startup if unset, even though nothing is listening on
-            # ENRICHMENT_PORT to actually authenticate against.
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
         },
     )
@@ -928,6 +769,11 @@ def service_proc(
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(f"Service did not start within timeout.\nstderr:\n{stderr}")
+
+    if not _wait_for_schema("artists"):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Schema bootstrap did not finish within timeout.\nstderr:\n{stderr}")
 
     yield proc
 
@@ -943,12 +789,6 @@ def auth_service_proc(
     tmp_db_dir: Path,
     mock_server: _MockState,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    [IDEA-53] Start the standalone six-feat-auth binary with a test config —
-    tests/test_auth.py drives /auth/* against this process, not the six_feat
-    test binary (service_proc), which no longer registers those handlers.
-    Skip the whole session gracefully if the binary is not present.
-    """
     if not AUTH_BINARY.exists():
         pytest.skip(
             f"Auth service binary not found at {AUTH_BINARY}. "
@@ -970,15 +810,10 @@ def auth_service_proc(
         stderr=subprocess.PIPE,
         env={
             **os.environ,
-            # Same TEST_APP_SECRET as service_proc — a cookie minted by this
-            # process is exactly what the six_feat instance's
-            # RequireSession/ExtractToken decrypt successfully, and its
-            # AppSecretParityChecker (SF-SEC-01) reports "ok" against it.
             "APP_SECRET": TEST_APP_SECRET,
             "GENIUS_CLIENT_SECRET": TEST_GENIUS_CLIENT_SECRET,
-            # [SF-SEC-01] Gates GET /internal/key-fingerprint — same shared
-            # secret as the rest of the internal mesh.
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
+            "SIX_FEAT_BASE_URL": SERVICE_BASE,
         },
     )
 
@@ -996,20 +831,12 @@ def auth_service_proc(
         proc.kill()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [SF-SEC-01] Third, independent six-feat + six-feat-auth pair, deliberately
-# started with MISMATCHED APP_SECRET values — see test_app_secret_parity.py.
-# Reuses the session-scoped mock_server/genius_gateway_proc (never actually
-# exercised by these tests) so only two new processes are spun up.
-# ─────────────────────────────────────────────────────────────────────────────
-
 AUTH_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_AUTH_PORT_BADSECRET", "18098"))
 AUTH_MONITOR_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_AUTH_MONITOR_PORT_BADSECRET", "18099"))
 SERVICE_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_PORT_BADSECRET", "18100"))
 MONITOR_PORT_BADSECRET = int(os.environ.get("SIX_FEAT_MONITOR_PORT_BADSECRET", "18101"))
 SERVICE_BASE_BADSECRET = f"http://localhost:{SERVICE_PORT_BADSECRET}"
 
-# Any value that differs from TEST_APP_SECRET — deliberately mismatched.
 TEST_APP_SECRET_WRONG = "e" * 64
 
 
@@ -1017,12 +844,6 @@ TEST_APP_SECRET_WRONG = "e" * 64
 def auth_service_proc_badsecret(
     tmp_db_dir: Path, mock_server: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    [SF-SEC-01] A second six-feat-auth instance started with a deliberately
-    different APP_SECRET than service_proc_badsecret below — proves
-    AppSecretParityChecker actually detects the mismatch instead of
-    six-feat silently 401-ing every session.
-    """
     if not AUTH_BINARY.exists():
         pytest.skip(
             f"Auth service binary not found at {AUTH_BINARY}. "
@@ -1071,12 +892,6 @@ def service_proc_badsecret(
     genius_gateway_proc: subprocess.Popen,
     auth_service_proc_badsecret: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    [SF-SEC-01] A six-feat instance using the SAME TEST_APP_SECRET as
-    service_proc, but pointed at auth_service_proc_badsecret (a DIFFERENT
-    APP_SECRET) — its AppSecretParityChecker must observe and report the
-    mismatch via /readyz instead of silently 401-ing sessions.
-    """
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -1122,61 +937,33 @@ def service_proc_badsecret(
         proc.kill()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [F-34] Second, independent service instance with BG-enrichment / CB /
-# retry-backoff actually enabled.
-#
-# The default service_proc/client/mock_server fixtures above are untouched —
-# this is a fully separate binary process, surrogate Genius server and
-# sqlite db, on its own ports, so existing tests keep their fast/deterministic
-# behaviour. Only tests that explicitly depend on service_proc_bg (or the
-# client_bg/genius_mock_bg fixtures built on top of it) pay for spinning up
-# the second instance.
-# ─────────────────────────────────────────────────────────────────────────────
-
 SERVICE_PORT_BG = int(os.environ.get("SIX_FEAT_PORT_BG", "18090"))
 MOCK_PORT_BG = int(os.environ.get("MOCK_PORT_BG", "18091"))
 SERVICE_BASE_BG = f"http://localhost:{SERVICE_PORT_BG}"
 MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_MONITOR_PORT_BG", "18095"))
 
-# [IDEA-25/26] A real six-feat-enrichment instance backing this profile, so
-# TestBackgroundEnrichmentRaisesDepth actually observes depth going from
-# Foreground to Full (see enrichment_proc_bg below) instead of the
-# always-false EnqueueIfNeeded()/IsEnriching() degradation used by the
-# default profile.
 ENRICHMENT_SERVICE_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_PORT_BG", "18092"))
 ENRICHMENT_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_BG", "18096"))
 ENRICHMENT_BASE_BG = f"http://localhost:{ENRICHMENT_SERVICE_PORT_BG}"
 
-# [IDEA-46] Real six-feat-genius-gateway instance backing the BG profile —
-# both service_proc_bg and enrichment_proc_bg point their GeniusGatewayClient
-# at this process instead of mock_server_bg directly; this is the one
-# actually configured with real backoff/CB thresholds, so
-# tests/test_bg_resilience.py observes genuine CircuitBreaker/retry-backoff
-# behaviour.
 GENIUS_GATEWAY_PORT_BG = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_PORT_BG", "18093"))
-GENIUS_GATEWAY_MONITOR_PORT_BG = int(os.environ.get("SIX_FEAT_GENIUS_GATEWAY_MONITOR_PORT_BG", "18097"))
+GENIUS_GATEWAY_MONITOR_PORT_BG = int(
+    os.environ.get("SIX_FEAT_GENIUS_GATEWAY_MONITOR_PORT_BG", "18097")
+)
 GENIUS_GATEWAY_BASE_BG = f"http://localhost:{GENIUS_GATEWAY_PORT_BG}"
 
 
 def _make_mock_handler(state: _MockState):
-    """Build a BaseHTTPRequestHandler class bound to `state` via closure.
-
-    Needed because _GeniusRequestHandler above is hardwired to the single
-    module-level `_mock_state` singleton — the BG profile needs a second,
-    independent mock server/state pair without touching that singleton.
-    """
 
     class _BoundGeniusRequestHandler(BaseHTTPRequestHandler):
-        def log_message(self, fmt: str, *args: Any) -> None:  # silence access log
+        def log_message(self, fmt: str, *args: Any) -> None:
             pass
 
         def do_GET(self) -> None:
             try:
                 parsed = urlparse(self.path)
                 params = parse_qs(parsed.query)
-                status, body = state.dispatch(
-                    parsed.path, params, self.headers.get("X-Request-Id"))
+                status, body = state.dispatch(parsed.path, params, self.headers.get("X-Request-Id"))
                 payload = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -1185,10 +972,10 @@ def _make_mock_handler(state: _MockState):
                 self.wfile.write(payload)
             except Exception as e:
                 import traceback
-                error_body = json.dumps({
-                    "error": str(e),
-                    "traceback": traceback.format_exc()
-                }).encode()
+
+                error_body = json.dumps(
+                    {"error": str(e), "traceback": traceback.format_exc()}
+                ).encode()
                 try:
                     self.send_response(500)
                     self.send_header("Content-Type", "application/json")
@@ -1196,14 +983,14 @@ def _make_mock_handler(state: _MockState):
                     self.end_headers()
                     self.wfile.write(error_body)
                 except Exception:
-                    pass  # if even error response fails, give up
+                    pass
 
     return _BoundGeniusRequestHandler
 
 
 def _start_mock_server_on(port: int, state: _MockState) -> HTTPServer:
     server = HTTPServer(("127.0.0.1", port), _make_mock_handler(state))
-    server.daemon_threads = True  # don't block process exit on an in-flight request
+    server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server
@@ -1211,7 +998,6 @@ def _start_mock_server_on(port: int, state: _MockState) -> HTTPServer:
 
 @pytest.fixture(scope="session")
 def mock_server_bg() -> Generator[_MockState, None, None]:
-    """Independent surrogate Genius server for the BG-profile instance."""
     state = _MockState()
     srv = _start_mock_server_on(MOCK_PORT_BG, state)
     yield state
@@ -1224,9 +1010,6 @@ def tmp_db_dir_bg() -> Generator[Path, None, None]:
         yield Path(d)
 
 
-# [IDEA-25/26] Standalone six-feat-enrichment static config for the BG
-# profile — same shape as services/enrichment/static_config.yaml, minus the
-# $var indirection (rendered directly, like _TEST_CONFIG_TEMPLATE above).
 _ENRICHMENT_TEST_CONFIG_TEMPLATE = """\
 components_manager:
   task_processors:
@@ -1265,9 +1048,7 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
-          # [SF-OBS-03] Matches the production static_config.yaml templates'
-          # own logging block (format: json) so a locally-run pytest
-          # session's stderr output looks like what CI/prod actually emits.
+
           format: json
 
     testsuite-support:
@@ -1276,14 +1057,7 @@ components_manager:
       dbconnection: {db_connection_string}
       blocking_task_processor: fs-task-processor
       dns_resolver: async
-      # [SF-INF-03] Parameterized (was hardcoded "true") so
-      # enrichment_proc_baddb below can boot with sync-start: false against
-      # a deliberately unreachable DB (matching production's own
-      # sync-start: false — see services/enrichment/static_config.yaml) to
-      # exercise /readyz's database check actually reporting not_ready,
-      # instead of the whole process failing to start. Every existing
-      # caller (enrichment_proc_bg) still passes "true" explicitly, so this
-      # is purely additive.
+
       sync-start: {sync_start}
       connlimit_mode: manual
       min_pool_size: 1
@@ -1293,8 +1067,6 @@ components_manager:
     persistent-store:
       dbname: postgres-db-1
 
-    # [IDEA-46] HTTP client for the standalone six-feat-genius-gateway
-    # service — see GENIUS_GATEWAY_PORT_BG / genius_gateway_proc_bg above.
     genius-gateway-client:
       genius-gateway-base-url: http://127.0.0.1:{genius_gateway_port}
       timeout-ms: 5000
@@ -1304,12 +1076,15 @@ components_manager:
 
     artist-repository: {{}}
 
+    fg-fanout-limiter:
+      max-concurrent: 6
+
+    genius-music-source-provider: {{}}
+
     enrichment-worker:
       queue-capacity: {queue_capacity}
       drain-timeout-ms: {drain_timeout_ms}
 
-    # [SF-DB-06] Off by default (see PRUNE_TTL_DAYS env var, 0 = off) —
-    # interval-seconds/batch-size only matter once a caller sets that > 0.
     prune-task:
       interval-seconds: {prune_interval_seconds}
       batch-size: {prune_batch_size}
@@ -1329,9 +1104,6 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # [SF-INF-03] Unified readiness contract — pings postgres-db-1, see
-    # services/enrichment/internal_handlers.hpp's ReadinessHandler
-    # doc-comment.
     handler-readyz:
       path: /readyz
       method: GET
@@ -1348,15 +1120,6 @@ components_manager:
 def genius_gateway_proc_bg(
     tmp_db_dir_bg: Path, mock_server_bg: _MockState
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    [IDEA-46] Real six-feat-genius-gateway instance backing the BG profile —
-    same surrogate Genius server as service_proc_bg/enrichment_proc_bg
-    (mock_server_bg), with backoff/CB thresholds actually enabled (unlike
-    genius_gateway_proc's disabled defaults) so
-    tests/test_bg_resilience.py observes genuine CircuitBreaker/retry-backoff
-    behaviour. Skips gracefully (same pattern as service_proc_bg) if the
-    binary isn't built.
-    """
     if not GENIUS_GATEWAY_BINARY.exists():
         pytest.skip(
             f"Genius-gateway service binary not found at {GENIUS_GATEWAY_BINARY}. "
@@ -1406,13 +1169,6 @@ def enrichment_proc_bg(
     mock_server_bg: _MockState,
     genius_gateway_proc_bg: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Real six-feat-enrichment instance backing the BG profile — same DB and
-    surrogate Genius server (via genius_gateway_proc_bg) as service_proc_bg,
-    with queue-capacity=8 so background deep-scan jobs actually run. Skips
-    gracefully (same pattern as service_proc/service_proc_bg) if the
-    binary isn't built.
-    """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
             f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
@@ -1429,9 +1185,6 @@ def enrichment_proc_bg(
             queue_capacity=8,
             drain_timeout_ms=5000,
             sync_start="true",
-            # [SF-DB-06] PRUNE_TTL_DAYS isn't set on this fixture's process
-            # env (see below) — prune-task never starts regardless of these
-            # values, so plain production-like defaults are fine here.
             prune_interval_seconds=3600,
             prune_batch_size=500,
         )
@@ -1463,17 +1216,12 @@ def enrichment_proc_bg(
         proc.kill()
 
 
-ENRICHMENT_SERVICE_PORT_BADDB = int(
-    os.environ.get("SIX_FEAT_ENRICHMENT_PORT_BADDB", "18088")
-)
+ENRICHMENT_SERVICE_PORT_BADDB = int(os.environ.get("SIX_FEAT_ENRICHMENT_PORT_BADDB", "18088"))
 ENRICHMENT_MONITOR_PORT_BADDB = int(
     os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_BADDB", "18089")
 )
 ENRICHMENT_BASE_BADDB = f"http://localhost:{ENRICHMENT_SERVICE_PORT_BADDB}"
 
-# [SF-INF-03] Deliberately unreachable: port 1 is a privileged port no
-# Postgres ever listens on in this test environment, so every connection
-# attempt fails immediately (connection refused) rather than timing out.
 _BAD_DB_CONNECTION_STRING = "postgresql://{user}:{password}@127.0.0.1:1/{dbname}".format(
     user=DB_CONN_PARAMS["user"],
     password=DB_CONN_PARAMS["password"],
@@ -1485,19 +1233,6 @@ _BAD_DB_CONNECTION_STRING = "postgresql://{user}:{password}@127.0.0.1:1/{dbname}
 def enrichment_proc_baddb(
     tmp_db_dir_bg: Path,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    [SF-INF-03] Dedicated six-feat-enrichment instance pointed at an
-    unreachable Postgres (see _BAD_DB_CONNECTION_STRING), isolated from
-    enrichment_proc_bg (own port, own process) so it can't affect any other
-    test's DB access. sync-start: false (unlike enrichment_proc_bg's
-    "true") means the process still comes up and starts serving HTTP —
-    matching production's own sync-start: false — instead of
-    components::Run throwing at boot, so GET /readyz can be observed
-    reporting the database check as not_ready/503 instead of the container
-    just failing to start. No genius-gateway dependency needed — this
-    fixture only exercises /readyz, never enrichment's actual enqueue/status
-    endpoints.
-    """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
             f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
@@ -1509,9 +1244,6 @@ def enrichment_proc_baddb(
         _ENRICHMENT_TEST_CONFIG_TEMPLATE.format(
             enrichment_port=ENRICHMENT_SERVICE_PORT_BADDB,
             enrichment_monitor_port=ENRICHMENT_MONITOR_PORT_BADDB,
-            # No real genius-gateway backing this instance — fine, since
-            # nothing in this fixture's tests ever calls a handler that
-            # would need it.
             genius_gateway_port=GENIUS_GATEWAY_PORT_BG,
             db_connection_string=_BAD_DB_CONNECTION_STRING,
             queue_capacity=8,
@@ -1535,9 +1267,7 @@ def enrichment_proc_baddb(
     if not _wait_for_port(ENRICHMENT_SERVICE_PORT_BADDB):
         proc.terminate()
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
-        pytest.fail(
-            f"bad-DB enrichment service did not start within timeout.\nstderr:\n{stderr}"
-        )
+        pytest.fail(f"bad-DB enrichment service did not start within timeout.\nstderr:\n{stderr}")
 
     yield proc
 
@@ -1548,9 +1278,7 @@ def enrichment_proc_baddb(
         proc.kill()
 
 
-ENRICHMENT_SERVICE_PORT_PRUNE = int(
-    os.environ.get("SIX_FEAT_ENRICHMENT_PORT_PRUNE", "18102")
-)
+ENRICHMENT_SERVICE_PORT_PRUNE = int(os.environ.get("SIX_FEAT_ENRICHMENT_PORT_PRUNE", "18102"))
 ENRICHMENT_MONITOR_PORT_PRUNE = int(
     os.environ.get("SIX_FEAT_ENRICHMENT_MONITOR_PORT_PRUNE", "18103")
 )
@@ -1560,35 +1288,6 @@ ENRICHMENT_MONITOR_PORT_PRUNE = int(
 def enrichment_proc_prune(
     tmp_db_dir_bg: Path,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    [SF-DB-06] Dedicated six-feat-enrichment instance with the prune task
-    actually enabled (PRUNE_TTL_DAYS set on this process's env only — see
-    prune_task.cpp's PruneTtlDaysFromEnv, read once at startup, so toggling
-    it requires a separate process rather than a per-request switch), and a
-    short interval-seconds so tests/test_prune.py doesn't need to wait a
-    full hour for a pass to run. Isolated from enrichment_proc_bg (own
-    port, own process) so this doesn't affect any other test's enrichment
-    behavior. Points at the SAME real Postgres test DB as every other
-    fixture (DB_CONNECTION_STRING) — tests/test_prune.py seeds/inspects
-    rows directly via psycopg2 rather than through the HTTP API, and cleans
-    up its own rows (real deletion is the thing under test, so relying on
-    clean_db_state's TRUNCATE — which isn't even gated on this fixture,
-    only on service_proc/service_proc_bg — would be the wrong tool here).
-    No genius-gateway dependency needed, same reasoning as
-    enrichment_proc_baddb above: nothing in test_prune.py calls a handler
-    that would need one.
-
-    scope="module" (not "session", unlike every other proc fixture here) is
-    deliberate: this is a REAL background process that actively deletes
-    stale rows from the whole shared test Postgres on a 1s tick the moment
-    it starts, for as long as it's alive. Session scope would keep it
-    running for the rest of the entire pytest session after
-    tests/test_prune.py finishes, silently pruning any old-timestamped row
-    ANY later test file happens to leave lying around — module scope tears
-    it down (SIGTERM) as soon as test_prune.py's own tests are done, same
-    as the ordering discipline test_prune.py's own docstrings document for
-    its two test classes.
-    """
     if not ENRICHMENT_BINARY.exists():
         pytest.skip(
             f"Enrichment service binary not found at {ENRICHMENT_BINARY}. "
@@ -1617,9 +1316,6 @@ def enrichment_proc_prune(
         env={
             **os.environ,
             "ENRICHMENT_INTERNAL_SECRET": TEST_ENRICHMENT_INTERNAL_SECRET,
-            # [SF-DB-06] The one on/off switch — see prune_task.cpp. 1 day
-            # is short enough that any last_fetch_ts a test seeds "in the
-            # past" (even a few minutes back) is comfortably past cutoff.
             "PRUNE_TTL_DAYS": "1",
         },
     )
@@ -1648,18 +1344,6 @@ def service_proc_bg(
     enrichment_proc_bg: subprocess.Popen,
     auth_service_proc: subprocess.Popen,
 ) -> Generator[subprocess.Popen, None, None]:
-    """
-    Second service binary instance, config'd with:
-      * enrichment-base-url pointed at the real enrichment_proc_bg instance
-        (queue-capacity 8 there)         -> BG deep-scan actually runs.
-      * genius-gateway-client pointed at genius_gateway_proc_bg, which has
-        cb-failure-threshold low (3) and backoff-max-attempts > 1 so the
-        CircuitBreaker/retry-backoff paths actually execute there.
-      * [SF-SEC-01] auth-base-url pointed at the same session-scoped
-        auth_service_proc as service_proc — this instance is also launched
-        with TEST_APP_SECRET below, so parity holds.
-    Skips gracefully (same as service_proc) if the binary isn't built.
-    """
     if not BINARY.exists():
         pytest.skip(
             f"Service binary not found at {BINARY}. "
@@ -1696,6 +1380,11 @@ def service_proc_bg(
         stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
         pytest.fail(f"BG-profile service did not start within timeout.\nstderr:\n{stderr}")
 
+    if not _wait_for_schema("artists"):
+        proc.terminate()
+        stderr = proc.stderr.read().decode(errors="replace")  # type: ignore[union-attr]
+        pytest.fail(f"Schema bootstrap did not finish within timeout.\nstderr:\n{stderr}")
+
     yield proc
 
     proc.send_signal(signal.SIGTERM)
@@ -1707,37 +1396,17 @@ def service_proc_bg(
 
 @pytest.fixture()
 def client_bg(service_proc_bg: subprocess.Popen, auth_cookie: str) -> requests.Session:  # type: ignore[type-arg]
-    """Like `client`, but talks to the BG-profile service instance."""
     return _make_session_with_cookie(auth_cookie)
 
 
 @pytest.fixture()
 def genius_mock_bg(mock_server_bg: _MockState) -> Generator[GeniusMock, None, None]:
-    """Like `genius_mock`, but programs the BG-profile's surrogate server.
-
-    Resets the mock state before each test (mirroring the autouse
-    `reset_mock` fixture for the default profile) without adding an autouse
-    fixture that would start the second service instance for every test in
-    the suite.
-    """
     mock_server_bg.reset()
     yield GeniusMock(mock_server_bg)
 
 
 @pytest.fixture(scope="session")
 def auth_cookie() -> str:
-    """
-    A valid `six_feat_session` cookie value, encrypted with TEST_APP_SECRET —
-    the same secret the service_proc fixture launches the binary with.
-
-    [ТЗ-6] graph/path handlers call auth::ExtractToken() and reject any
-    request without a valid session cookie (401 not_authenticated). This
-    fixture is the test-side equivalent of completing a real Genius OAuth
-    login: it produces a cookie the running binary will decrypt successfully,
-    carrying an opaque access token that the mock Genius surrogate server
-    doesn't validate (it dispatches purely on path/query params — see
-    GeniusMock below), so any non-empty token value works end-to-end.
-    """
     return session_crypto.make_cookie(
         TEST_APP_SECRET,
         access_token="test-genius-access-token",
@@ -1748,68 +1417,33 @@ def auth_cookie() -> str:
 
 def _make_session_with_cookie(cookie_value: Optional[str]) -> requests.Session:
     sess = requests.Session()
-    # test_rate_limit.py fires BURST_COUNT (70) concurrent requests through
-    # this single session to reliably trip the server's 50 req/s limiter.
-    # The default HTTPAdapter pool (10 connections) can't hold that many
-    # in flight at once — urllib3 discards the overflow instead of queuing
-    # it, which serialises the burst enough that it spreads past the 1s
-    # rate-limit window and never trips 429. Size the pool for the burst.
+
     adapter = HTTPAdapter(pool_connections=100, pool_maxsize=100)
     sess.mount("http://", adapter)
     sess.mount("https://", adapter)
     sess.headers["Accept"] = "application/json"
     if cookie_value is not None:
-        # NOTE: deliberately NOT using cookies.set(..., domain="localhost"):
-        # http.cookiejar's domain-matching rules do not treat bare
-        # "localhost" as matching itself the way a real public suffix would,
-        # so a cookie scoped that way is silently dropped from outgoing
-        # requests. cookies.update() creates a domain-less cookie that
-        # requests/cookiejar attaches to every request regardless of host,
-        # which is exactly what we want for a single-host test client.
         sess.cookies.update({"six_feat_session": cookie_value})
     return sess
 
 
 @pytest.fixture(scope="session")
 def client(service_proc: subprocess.Popen, auth_cookie: str) -> requests.Session:  # type: ignore[type-arg]
-    """
-    A requests.Session pre-configured to talk to the test service, carrying
-    a valid session cookie. [ТЗ-6] Without this, every /api/v1/graph* and
-    /api/v1/graph/path request gets 401 — see auth_cookie fixture above and
-    the CI comment this addresses.
-    """
     return _make_session_with_cookie(auth_cookie)
 
 
 @pytest.fixture()
 def anon_client(service_proc: subprocess.Popen) -> requests.Session:  # type: ignore[type-arg]
-    """
-    A requests.Session with NO session cookie — used to assert that
-    protected endpoints correctly reject anonymous requests with 401.
-    Function-scoped (not session-scoped) so each test gets a clean cookie
-    jar with no chance of leaking a cookie from another fixture.
-    """
     return _make_session_with_cookie(None)
 
 
 @pytest.fixture(scope="session")
 def auth_client(auth_service_proc: subprocess.Popen, auth_cookie: str) -> requests.Session:  # type: ignore[type-arg]
-    """
-    [IDEA-53] Like `client`, but talks to the standalone six-feat-auth
-    service (AUTH_SERVICE_BASE) instead of six_feat — used by
-    tests/test_auth.py's /auth/me assertions for an authenticated caller.
-    """
     return _make_session_with_cookie(auth_cookie)
 
 
 @pytest.fixture()
 def auth_anon_client(auth_service_proc: subprocess.Popen) -> requests.Session:  # type: ignore[type-arg]
-    """
-    [IDEA-53] Like `anon_client`, but talks to the standalone six-feat-auth
-    service (AUTH_SERVICE_BASE) instead of six_feat — used by
-    tests/test_auth.py for /auth/login, /auth/callback and /auth/logout,
-    which no longer exist on the six_feat test binary.
-    """
     return _make_session_with_cookie(None)
 
 
@@ -1818,32 +1452,12 @@ _isolated_rl_session: Optional[requests.Session] = None
 
 @pytest.fixture()
 def isolated_client(service_proc: subprocess.Popen) -> requests.Session:  # type: ignore[type-arg]
-    """
-    Like `client`, but with a never-before-used access token — and therefore
-    its own PerIpRateLimit bucket (graph_handler.cpp/path_handler.cpp key
-    rate limiting off the caller's token). Burst tests that expect to see a
-    429 need this instead of the shared, session-scoped `client`: that
-    bucket persists for the whole test session, so whichever burst runs
-    first leaves the fixed window either recently reset or already past its
-    cap, and the next burst test's outcome ends up depending on inter-test
-    timing rather than its own request rate.
-
-    Reuses one module-level Session (and its connection pool) across every
-    call instead of building a fresh one per test: a brand new pool has no
-    established connections, and opening ~BURST_COUNT concurrent new TCP
-    connections to satisfy a single burst is slow enough on its own to
-    spread that burst past the 1s rate-limit window (observed: the first
-    burst against a cold isolated_client got zero 429s). Pre-warm the pool
-    once, against the unthrottled /healthz endpoint, so the timed burst
-    itself only ever pays for request handling, not connection setup.
-    """
     global _isolated_rl_session
     if _isolated_rl_session is None:
         _isolated_rl_session = _make_session_with_cookie(None)
         with ThreadPoolExecutor(max_workers=100) as pool:
             futures = [
-                pool.submit(_isolated_rl_session.get, f"{SERVICE_BASE}/healthz")
-                for _ in range(100)
+                pool.submit(_isolated_rl_session.get, f"{SERVICE_BASE}/healthz") for _ in range(100)
             ]
             for f in futures:
                 try:
@@ -1862,36 +1476,14 @@ def isolated_client(service_proc: subprocess.Popen) -> requests.Session:  # type
     return _isolated_rl_session
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Per-test fixture: reset mock and seed helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 @pytest.fixture(autouse=True)
 def reset_mock(mock_server: _MockState) -> Generator[None, None, None]:
-    """Clear all mock registrations before each test."""
     mock_server.reset()
     yield
-    # No teardown needed; next test will reset again.
 
 
-# [F-35] service_proc/service_proc_bg (and the shared Postgres DB they both
-# point at — see DB_CONN_PARAMS above) are session-scoped: restarting the
-# binary per test would be far too slow, so one process/DB pair is reused
-# across the whole run. That means rows a test writes (via a real graph/path
-# request) stay in the DB and are visible to every later test, making
-# outcomes depend on run order. Truncate the data tables before each
-# integration test so it always starts from an empty DB, without paying for
-# a binary restart.
-#
-# Gated on `service_proc`/`service_proc_bg` actually being in the requesting
-# test's fixture graph (pulled in transitively by client/anon_client/
-# isolated_client/client_bg/etc.) so pure-unit tests (test_analytics.py,
-# test_role_mask.py, test_session_crypto.py, tests/mocks/*) — which don't
-# start the binary and may run in environments with no Postgres reachable
-# at all — never open a DB connection.
 @pytest.fixture(autouse=True, scope="class")
 def clean_db_state(request: pytest.FixtureRequest) -> None:
-    """Truncate data tables before each integration test for a clean slate."""
     if "service_proc" not in request.fixturenames and "service_proc_bg" not in request.fixturenames:
         return
 
@@ -1900,73 +1492,29 @@ def clean_db_state(request: pytest.FixtureRequest) -> None:
         conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(
-                "TRUNCATE TABLE artists, songs, credits, fetch_state "
-                "RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE artists, songs, credits, fetch_state RESTART IDENTITY CASCADE"
             )
     finally:
         conn.close()
 
 
-# Seeded from wall-clock time (microseconds) rather than a fixed literal:
-# docker-compose's postgres service persists across separate local test
-# runs (unlike CI's ephemeral service container), so a fixed starting point
-# would collide with ids this same fixture already wrote to L1 on a prior
-# run — silently serving stale data instead of the fresh network fetch
-# these tests are meant to exercise.
-_unique_artist_id_counter = itertools.count(int(time.time() * 1_000_000))
+_UNIQUE_ARTIST_ID_STRIDE = 1000
+_unique_artist_id_counter = itertools.count(int(time.time() * 1_000_000), _UNIQUE_ARTIST_ID_STRIDE)
 
 
 @pytest.fixture()
 def unique_artist_id() -> int:
-    """
-    A fresh, process-wide-unique synthetic artist id, for tests that need a
-    guarantee that no other test (in this file or any other) has ever
-    touched this id in the current session.
-
-    [IDEA-42] ArtistRepository no longer layers an L2 cache in front of
-    Postgres (L1), so this is purely about isolating fixtures from data
-    left behind by prior runs of a long-lived postgres service, not about
-    any cache desync. Picking a never-before-used id per test sidesteps
-    that instead of truncating tables between tests.
-    """
     return next(_unique_artist_id_counter)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# High-level mock helpers used by tests
-# ─────────────────────────────────────────────────────────────────────────────
-
 class GeniusMock:
-    """
-    Fluent helper to program the surrogate Genius server.
-
-    Typical usage::
-
-        genius_mock.resolve("Drake", [{"id": 1, "name": "Drake", "score": 0.99}])
-        genius_mock.artist(1, {"id": 1, "name": "Drake"})
-        genius_mock.songs(1, [101, 102])
-        genius_mock.song_detail(101, {...})
-    """
-
     def __init__(self, state: _MockState) -> None:
         self._state = state
-        # NOTE: every call to resolve()/resolve_empty() must accumulate into
-        # this single dict and re-register ONE handler for "/search" — see
-        # _register_search_handler(). A previous version called
-        # self._state.register("/search", _handler) fresh on every resolve()
-        # call; since _MockState.register() does a plain dict assignment
-        # (last write wins, no merging — see _MockState.register), any test
-        # that resolved two different artist names (the common from/to path
-        # pattern, e.g. `resolve("ArtistA", ...); resolve("ArtistB", ...)`)
-        # silently lost the first registration and got a 404 → 502
-        # genius_error for it. This dict + single shared handler fixes that.
-        # See tests/test_genius_http_mock.py for regression coverage.
-        self._search_responses: Dict[str, tuple] = {}  # query -> (status, body)
 
-    # ── /search?q=<name> ──────────────────────────────────────────────────────
+        self._search_responses: Dict[str, tuple] = {}
 
     def _register_search_handler(self) -> None:
-        responses = self._search_responses  # captured by reference, mutated in place
+        responses = self._search_responses
 
         def _handler(path: str, params: Dict) -> tuple:
             q = (params.get("q") or [""])[0]
@@ -1977,13 +1525,6 @@ class GeniusMock:
         self._state.register("/search", _handler)
 
     def resolve(self, query: str, candidates: List[Dict[str, Any]]) -> "GeniusMock":
-        """Teach the mock what to return for a name-search query.
-
-        Safe to call multiple times with different `query` values in the
-        same test (e.g. resolving both a `from` and a `to` artist) — each
-        query's response is stored independently rather than overwriting
-        the previous one.
-        """
         hits = [
             {
                 "result": {
@@ -2004,8 +1545,6 @@ class GeniusMock:
     def resolve_empty(self, query: str) -> "GeniusMock":
         return self.resolve(query, [])
 
-    # ── /artists/<id> ─────────────────────────────────────────────────────────
-
     def artist(self, artist_id: int, info: Dict[str, Any]) -> "GeniusMock":
         def _handler(path: str, params: Dict) -> tuple:
             if path == f"/artists/{artist_id}":
@@ -2024,8 +1563,6 @@ class GeniusMock:
         self._state.register(f"/artists/{artist_id}", _handler)
         return self
 
-    # ── /artists/<id>/songs ───────────────────────────────────────────────────
-
     def songs(self, artist_id: int, song_ids: List[int]) -> "GeniusMock":
         def _handler(path: str, params: Dict) -> tuple:
             songs_payload = [{"id": sid} for sid in song_ids]
@@ -2034,14 +1571,8 @@ class GeniusMock:
         self._state.register(f"/artists/{artist_id}/songs", _handler)
         return self
 
-    # ── /songs/<id> ───────────────────────────────────────────────────────────
-
     def song_detail(self, song_id: int, detail: Dict[str, Any]) -> "GeniusMock":
-        """
-        detail keys:
-          id, title, primary_artist (dict with id/name/...),
-          featured_artists (list), producer_artists (list), writer_artists (list)
-        """
+
         def _handler(path: str, params: Dict) -> tuple:
             if path == f"/songs/{song_id}":
                 return 200, {"response": {"song": detail}}
@@ -2060,11 +1591,7 @@ class GeniusMock:
     def song_detail_slow(
         self, song_id: int, detail: Dict[str, Any], delay_seconds: float
     ) -> "GeniusMock":
-        """
-        Like song_detail(), but sleeps before responding. Used to widen the
-        window during which a queued BG-enrichment job is observably
-        in-flight (see TestStatusEnrichingArtist in tests/test_status.py).
-        """
+
         def _handler(path: str, params: Dict) -> tuple:
             if path == f"/songs/{song_id}":
                 time.sleep(delay_seconds)
@@ -2081,16 +1608,23 @@ class GeniusMock:
         self._state.register("/search", _handler)
         return self
 
+    def token_exchange(self, access_token: str, name: str = "") -> "GeniusMock":
+        def _handler(path: str, params: Dict) -> tuple:
+            return 200, {"access_token": access_token}
+
+        self._state.register("/oauth/token", _handler)
+
+        def _account_handler(path: str, params: Dict) -> tuple:
+            return 200, {"response": {"user": {"name": name}}}
+
+        self._state.register("/account", _account_handler)
+        return self
+
 
 @pytest.fixture()
 def genius_mock(mock_server: _MockState) -> GeniusMock:
     return GeniusMock(mock_server)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SQLite in-memory helpers (for pre-seeding L1 data without going through the
-# service's network layer at all — used by status and path tests)
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _build_song_detail(
     song_id: int,
@@ -2100,16 +1634,6 @@ def _build_song_detail(
     collaborators: Optional[List[Dict]] = None,
     popularity: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """
-    Build a Genius-style song detail payload for use with genius_mock.song_detail().
-
-    collaborators: list of dicts with keys id, name, role
-                   (role in primary|featured|producer|writer)
-    popularity: if given, embedded as stats.pageviews — the field
-                GeniusGateway::FetchSongDetail reads into SongRecord.popularity
-                (IDEA-17). Omitted entirely when None, to also cover the
-                "upstream doesn't carry this stat" case.
-    """
     detail: Dict[str, Any] = {
         "id": song_id,
         "title": title,

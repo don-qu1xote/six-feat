@@ -1,0 +1,151 @@
+.settings-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--blur-scrim));
+  align-items: center;
+  justify-content: center;
+}
+.settings-overlay.show {
+  display: flex;
+}
+
+.settings-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(520px, 92vw);
+  max-height: min(80vh, 100%);
+  overflow-y: auto;
+}
+
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--mist);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.settings-close {
+  border: 0;
+  background: transparent;
+  color: var(--mist);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color var(--duration-base) var(--ease-standard);
+}
+.settings-close:hover {
+  color: var(--paper);
+}
+
+.settings-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-signed-out-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.settings-cards[hidden],
+.settings-signed-out-hint[hidden] {
+  display: none;
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-card-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--paper);
+}
+.settings-card-sub {
+  font-weight: 400;
+  color: var(--mist);
+  font-size: var(--text-xs);
+}
+
+.settings-card-hint {
+  font-size: var(--text-xs);
+  color: var(--mist);
+  line-height: 1.4;
+  margin: 0;
+}
+.settings-card-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.settings-card-status {
+  font-size: var(--text-xs);
+  color: var(--mist);
+}
+
+.settings-toggle-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-prefs-row {
+  display: flex;
+  gap: var(--space-3);
+}
+.settings-prefs-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-section-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--mist);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.settings-advanced summary {
+  color: var(--mist);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: color var(--duration-base) var(--ease-standard);
+}
+.settings-advanced summary:hover,
+.settings-advanced summary:focus-visible {
+  color: var(--paper);
+}
+.settings-advanced summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+.settings-advanced input {
+  margin-top: var(--space-2);
+}
+
+.settings-card-status.is-connected {
+  color: var(--signal);
+  font-weight: 600;
+}

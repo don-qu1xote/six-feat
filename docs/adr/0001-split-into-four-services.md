@@ -2,7 +2,8 @@
 
 ## Статус
 
-Принято (IDEA-25, IDEA-45, IDEA-53).
+Принято (IDEA-25, IDEA-45, IDEA-53). Позднее дополнено ADR-0007 (six-feat-game, 5-й сервис)
+и ADR-0010 (разделение библиотек).
 
 ## Контекст
 
@@ -42,11 +43,15 @@ Dockerfile `target`):
 | `six-feat-enrichment` | 8081 | Фоновый глубокий скан (IDEA-25) |
 | `six-feat-genius-gateway` | 8082 | Весь исходящий трафик к Genius API (IDEA-45/46) |
 | `six-feat-auth` | 8083 | OAuth 2.0 Authorization Code Flow (IDEA-53) |
+| `six-feat-game` | 8084 | Игровой режим (ADR-0007, IDEA-54) |
 
 Общий код (домен, resilience-примитивы, Postgres-слой, инфраструктура
-схем) вынесен в `libs/six-feat-common`, подключаемую через
+схем) был вынесен в `libs/six-feat-common`, подключаемую через
 `add_subdirectory()` — не отдельно собираемую библиотеку, а общий
-исходник для всех четырёх `CMakeLists.txt`.
+исходник для всех `CMakeLists.txt`. Позднее (ADR-0010) `libs/six-feat-common`
+разделён на 7 независимых STATIC-библиотек: `six-feat-domain`, `six-feat-core`,
+`six-feat-storage`, `six-feat-genius`, `six-feat-http`, `six-feat-auth-lib`,
+`six-feat-enrichment`.
 
 Конкретное обоснование каждого отдельного разреза — в ADR-0002
 (enrichment), ADR-0003 (genius-gateway) и ADR-0004 (auth).

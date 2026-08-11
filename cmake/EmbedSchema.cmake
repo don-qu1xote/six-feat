@@ -1,32 +1,34 @@
-# six_feat_embed_schema(<schema-path> <const-name> <out-var>)
+# Сигнатура: six_feat_embed_schema(<schema-path> <const-name> <out-var>)
 #
-# Embeds schemas/<schema-path>.yaml (relative to the repo root, e.g.
-# "handlers/six-feat/graph_handler" or "components/persistent_store") as a
-# generated C++ header at build time:
+# Встраивает schemas/<schema-path>.yaml (относительно корня репозитория,
+# например "handlers/six-feat/graph_handler" или "components/persistent_store")
+# в генерируемый C++-заголовок на этапе сборки, например:
 #
-#   generated/schemas/<schema-path>_schema.hpp
-#   constexpr const char* <const-name> = R"(...)";
+#   путь заголовка: generated/schemas/<schema-path>_schema.hpp
+#   содержимое:     constexpr const char* <const-name> = R"(...)";
 #
-# so GetStaticConfigSchema() implementations can #include the header instead
-# of carrying the YAML inline. The generated header path is written into
-# <out-var> in the caller's scope. Regenerates automatically whenever the
-# source .yaml file changes (see cmake/GenerateSchemaHeader.cmake).
+# чтобы реализации GetStaticConfigSchema() делали #include заголовка, а не
+# носили YAML инлайном. Путь к сгенерированному заголовку пишется в <out-var>
+# в scope вызывающего. Перегенерируется автоматически при изменении исходного
+# .yaml-файла (см. cmake/GenerateSchemaHeader.cmake).
 function(six_feat_embed_schema HANDLER_NAME CONST_NAME OUT_VAR)
     set(schema_yaml "${SIX_FEAT_ROOT}/schemas/${HANDLER_NAME}.yaml")
     set(output_header "${CMAKE_BINARY_DIR}/generated/schemas/${HANDLER_NAME}_schema.hpp")
 
-    # Generate the header eagerly at configure time as well, not only at build
-    # time. Tooling that only *configures* the project without building it —
-    # notably the CI clang-tidy job, which runs `cmake -S ... -B build` purely
-    # to emit compile_commands.json and then parses the sources directly, never
-    # running `cmake --build` — needs these generated headers to already exist
-    # on disk. Otherwise every handler translation unit that #includes one
-    # fails to parse with "'schemas/.../<name>_schema.hpp' file not found", a
-    # clang-diagnostic error that makes the whole clang-tidy run exit non-zero.
-    # GenerateSchemaHeader.cmake uses configure_file(), which only rewrites the
-    # output when the embedded YAML actually changed, so re-running it here is
-    # idempotent and introduces no spurious rebuilds. The add_custom_command
-    # below still owns dependency-tracked regeneration during a normal build.
+    # Генерируем заголовок сразу и на этапе конфигурации, а не только при
+    # сборке. Инструменты, которые проект только *конфигурируют*, но не
+    # собирают — в первую очередь CI-джоба clang-tidy, которая запускает
+    # `cmake -S ... -B build` лишь ради compile_commands.json и потом читает
+    # сорцы напрямую, не выполняя `cmake --build` — требуют, чтобы
+    # сгенерированные заголовки уже лежали на диске. Иначе каждая единица
+    # трансляции хендлера с #include падает с "'schemas/.../<name>_schema.hpp'
+    # file not found" — clang-diagnostic ошибкой, из-за которой весь прогон
+    # clang-tidy уходит в ненулевой код.
+    # GenerateSchemaHeader.cmake использует configure_file(), который
+    # переписывает вывод только когда встроенный YAML реально изменился,
+    # так что повторный запуск идемпотентен и не плодит ложных пересборок.
+    # add_custom_command ниже по-прежнему владеет перегенерацией с трекингом
+    # зависимостей во время обычной сборки.
     execute_process(
         COMMAND "${CMAKE_COMMAND}"
                 "-DSCHEMA_YAML=${schema_yaml}"

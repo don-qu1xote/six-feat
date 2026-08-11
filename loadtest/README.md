@@ -1,16 +1,27 @@
 # loadtest/ — k6 load harness (SF-INF-05)
 
-Three [k6](https://k6.io/) scenarios against the running six-feat API:
+Three [k6](https://k6.io/) scenarios against the running six-feat API, plus
+one against the game service (SF-GAME-20):
 
 | Script                          | Exercises                          | "Temperature"                                                          |
 |----------------------------------|-------------------------------------|-------------------------------------------------------------------------|
 | `scenarios/graph_warm.js`        | `GET /api/v1/graph?artist=...`      | Warm — same seed artist every iteration, hits the ETag/DB-read fast path (SF-API-04) after the first request |
 | `scenarios/path_cold.js`         | `GET /api/v1/graph/path?from=..&to=..` | Cold — path search has no persistent cache; random from/to pair each iteration |
 | `scenarios/search.js`            | `GET /api/v1/search?q=...`          | Live — no cache at all, every call is a real Genius API round-trip     |
+| `scenarios/game.js`              | search → `POST/GET /api/v1/game/challenge` → `GET /api/v1/game/leaderboard` → `GET /api/v1/game/profile` | Mixed — challenge create/get is cold (BFS on a new pair), leaderboard page 1 is [SF-PERF-06]-cached, profile is a plain indexed read |
 
-All three ramp up/down (`lib/config.js`'s `stages`), check response status,
+All four ramp up/down (`lib/config.js`'s `stages`), check response status,
 and enforce **advisory** p95-latency / error-rate thresholds — see
 "Thresholds are advisory, not gates" below.
+
+[SF-GAME-20 scoping note] `game.js` is runnable standalone (see its own
+header) and via `run-all.sh GAME_SCENARIO=1` (below), but is deliberately
+**not** part of `run-all.sh`'s default set or the blocking `load-test` CI
+job — `scripts/e2e_env.py` only boots six-feat + genius-gateway today, not
+six-feat-game, so running it there would just fail on connection-refused,
+not measure anything real. Run it locally against a real `docker compose
+up` stack (or extend `e2e_env.py` to also boot six-feat-game, at which
+point folding it into the default set is the natural next step).
 
 ## Prerequisites
 
@@ -93,7 +104,7 @@ SEARCH_QUERIES="Drake,Kendrick,SZA,Travis Scott" \
 
 ## Output
 
-Every scenario writes `loadtest/.output/<scenario>-summary.{json,txt}`
+Every scenario writes `loadtest/output/<scenario>-summary.{json,txt}`
 (gitignored) via a shared `handleSummary()` (`lib/summary.js`) — the
 `.txt` is a short human-readable digest (iteration count, avg/p95
 duration, error rate, threshold pass/fail); the `.json` is k6's full
@@ -135,6 +146,6 @@ Two separate CI consumers of this harness, deliberately not merged (see
   never-blocking check outside the PR path — useful if load-test above
   ever gets flipped to advisory, or just as a second nightly data point.
 
-Both upload `loadtest/.output/` as a build artifact regardless of outcome
+Both upload `loadtest/output/` as a build artifact regardless of outcome
 (`k6-loadtest-ci-summary` from ci.yml, `k6-loadtest-summary` from
 loadtest.yml) and publish the same summary to the job's step summary.

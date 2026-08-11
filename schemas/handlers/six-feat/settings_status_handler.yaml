@@ -1,0 +1,4 @@
+type: object
+description: Provider connection status handler configuration (SF-YM-02). Session-authenticated only.
+additionalProperties: false
+properties: {}

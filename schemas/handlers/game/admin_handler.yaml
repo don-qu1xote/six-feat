@@ -1,0 +1,11 @@
+type: object
+description: 'GET/POST /api/v1/game/admin — owner-gated admin actions'
+additionalProperties: false
+properties:
+    admin-user-ids:
+        type: string
+        description: >-
+            Comma-separated allowlist of admins — each entry matched against a
+            player's Genius username (case-insensitive) or derived user_id.
+            Empty means nobody is an admin (the panel never appears).
+        defaultDescription: "''"

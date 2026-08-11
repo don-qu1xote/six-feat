@@ -1,0 +1,4 @@
+type: object
+description: 'POST /api/v1/game/validate — server-side anti-cheat chain check'
+additionalProperties: false
+properties: {}

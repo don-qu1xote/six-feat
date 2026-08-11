@@ -1,0 +1,21 @@
+type: object
+description: >-
+    [SF-GAME-16] Once-a-day publisher for kind="daily" challenges — picks a
+    candidate artist pair from six-feat's own credits and upserts a challenge
+    for it. The minimum acceptable path length is not configured here — it is
+    shared with the admin and user creation paths via the challenge-rules
+    component (SF-GAME-22).
+additionalProperties: false
+properties:
+    interval-seconds:
+        type: integer
+        description: How often the task runs
+        defaultDescription: '86400'
+    max-attempts:
+        type: integer
+        description: Candidate pairs tried before giving up on a given run
+        defaultDescription: '20'
+    candidate-pool-size:
+        type: integer
+        description: Size of the random-artist-id pool a candidate pair is drawn from
+        defaultDescription: '50'

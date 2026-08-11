@@ -1,0 +1,4 @@
+type: object
+description: BYO Genius token connect handler configuration (SF-YM-02). Session-authenticated only.
+additionalProperties: false
+properties: {}

@@ -1,0 +1,247 @@
+from __future__ import annotations
+
+import uuid
+
+import psycopg2
+import requests
+
+import session_crypto
+from conftest import AUTH_SERVICE_BASE, DB_CONN_PARAMS, SERVICE_BASE, TEST_APP_SECRET, GeniusMock
+
+SETTINGS_STATUS_URL = f"{SERVICE_BASE}/api/v1/settings/providers"
+SETTINGS_GENIUS_CONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/genius-token"
+SETTINGS_DISCONNECT_URL = f"{SERVICE_BASE}/api/v1/settings/disconnect"
+SETTINGS_ENRICHMENT_ENABLED_URL = f"{SERVICE_BASE}/api/v1/settings/enrichment-enabled"
+SETTINGS_GENIUS_LINK_START_URL = f"{SERVICE_BASE}/api/v1/settings/genius/link/start"
+AUTH_CALLBACK_URL = f"{AUTH_SERVICE_BASE}/auth/callback"
+GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
+
+
+def _stable_user_id(name: str) -> int:
+    h = 1469598103934665603
+    for byte in name.encode("utf-8"):
+        h ^= byte
+        h = (h * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return h & 0x7FFFFFFFFFFFFFFF
+
+
+def _fetch_encrypted_token(user_id: int, provider: str):
+    conn = psycopg2.connect(**DB_CONN_PARAMS)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT encrypted_token FROM user_provider_tokens "
+                "WHERE user_id = %s AND provider = %s",
+                (user_id, provider),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def _session_for(name: str) -> requests.Session:
+    sess = requests.Session()
+    sess.headers["Accept"] = "application/json"
+    cookie = session_crypto.make_cookie(TEST_APP_SECRET, access_token=f"tok-{name}", name=name)
+    sess.cookies.update({"six_feat_session": cookie})
+    return sess
+
+
+class TestBothProviderTokensEncryptAndDecryptCorrectly:
+    def test_genius_token_round_trips(self, client: requests.Session):
+        raw_token = f"genius-byo-{uuid.uuid4().hex}"
+        resp = client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": raw_token})
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"provider": "genius", "connected": True}
+
+        encrypted = _fetch_encrypted_token(_stable_user_id("Test User"), "genius")
+        assert encrypted is not None
+
+        key = session_crypto.key_from_secret(TEST_APP_SECRET)
+        decrypted = session_crypto.decrypt(encrypted, key)
+        assert decrypted is not None
+        assert decrypted.access_token == raw_token
+
+
+class TestGeniusTokenAvailableImmediatelyNoExtraFlag:
+    def test_status_reflects_connection_right_after_connect(self, client: requests.Session):
+        raw_token = f"genius-byo-{uuid.uuid4().hex}"
+        connect_resp = client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": raw_token})
+        assert connect_resp.status_code == 200
+
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.status_code == 200
+        assert status_resp.json()["genius"]["connected"] is True
+
+    def test_graph_request_still_works_right_after_connecting(
+        self, client: requests.Session, genius_mock: GeniusMock, unique_artist_id: int
+    ):
+
+        client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": f"genius-byo-{uuid.uuid4().hex}"})
+
+        name = f"SettingsGraphArtist{unique_artist_id}"
+        genius_mock.resolve(name, [{"id": unique_artist_id, "name": name, "score": 0.99}])
+        genius_mock.songs(unique_artist_id, [])
+
+        resp = client.get(GRAPH_URL, params={"artist": name})
+        assert resp.status_code == 200
+        assert resp.json()["type"] == "graph"
+
+    def test_disconnect_then_status_shows_not_connected(self, client: requests.Session):
+        client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": f"genius-byo-{uuid.uuid4().hex}"})
+        disconnect_resp = client.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
+        assert disconnect_resp.status_code == 200
+        assert disconnect_resp.json() == {"provider": "genius", "connected": False}
+
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.json()["genius"]["connected"] is False
+
+    def test_second_disconnect_in_a_row_is_404(self, client: requests.Session):
+        client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": f"genius-byo-{uuid.uuid4().hex}"})
+        first = client.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
+        assert first.status_code == 200
+
+        second = client.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
+        assert second.status_code == 404
+
+
+class TestSettingsRequireSession:
+    def test_status_requires_session(self, anon_client: requests.Session):
+        resp = anon_client.get(SETTINGS_STATUS_URL)
+        assert resp.status_code == 401
+
+    def test_genius_connect_requires_session(self, anon_client: requests.Session):
+        resp = anon_client.post(SETTINGS_GENIUS_CONNECT_URL, json={"token": "whatever"})
+        assert resp.status_code == 401
+
+
+class TestGeniusAccountLinkFlow:
+    def test_link_start_requires_session(self, anon_client: requests.Session):
+        resp = anon_client.get(SETTINGS_GENIUS_LINK_START_URL, allow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers.get("Location") == "/"
+
+    def test_link_start_redirects_to_genius_authorize_with_link_prefixed_state(
+        self, client: requests.Session
+    ):
+        resp = client.get(SETTINGS_GENIUS_LINK_START_URL, allow_redirects=False)
+        assert resp.status_code == 302
+        location = resp.headers.get("Location", "")
+        assert "/oauth/authorize" in location
+        assert "state=link%3A" in location
+
+        state = resp.cookies.get("six_feat_oauth_state")
+        assert state and state.startswith("link:")
+
+    def test_full_link_flow_attaches_genius_token_to_existing_user(
+        self, client: requests.Session, auth_cookie: str, genius_mock: GeniusMock
+    ):
+        start_resp = client.get(SETTINGS_GENIUS_LINK_START_URL, allow_redirects=False)
+        state = start_resp.cookies.get("six_feat_oauth_state")
+        assert state and state.startswith("link:")
+
+        raw_token = f"genius-linked-{uuid.uuid4().hex}"
+        genius_mock.token_exchange(raw_token, name="Linked Name")
+
+        relay_sess = requests.Session()
+        relay_sess.cookies.update({"six_feat_session": auth_cookie, "six_feat_oauth_state": state})
+        callback_resp = relay_sess.get(
+            AUTH_CALLBACK_URL,
+            params={"state": state, "code": "test-code"},
+            allow_redirects=False,
+        )
+        assert callback_resp.status_code == 302
+        assert callback_resp.headers.get("Location") == "/?genius_link=connected"
+        assert "six_feat_session" not in callback_resp.cookies
+
+        encrypted = _fetch_encrypted_token(_stable_user_id("Test User"), "genius")
+        assert encrypted is not None
+        key = session_crypto.key_from_secret(TEST_APP_SECRET)
+        decrypted = session_crypto.decrypt(encrypted, key)
+        assert decrypted is not None
+        assert decrypted.access_token == raw_token
+
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.json()["genius"]["connected"] is True
+
+    def test_link_denied_redirects_with_genius_link_denied(
+        self, client: requests.Session, auth_cookie: str
+    ):
+        start_resp = client.get(SETTINGS_GENIUS_LINK_START_URL, allow_redirects=False)
+        state = start_resp.cookies.get("six_feat_oauth_state")
+
+        relay_sess = requests.Session()
+        relay_sess.cookies.update({"six_feat_session": auth_cookie, "six_feat_oauth_state": state})
+        resp = relay_sess.get(
+            AUTH_CALLBACK_URL,
+            params={"state": state, "error": "access_denied"},
+            allow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert resp.headers.get("Location") == "/?genius_link=denied"
+
+    def test_link_without_a_session_redirects_with_error(
+        self, auth_anon_client: requests.Session, genius_mock: GeniusMock
+    ):
+        genius_mock.token_exchange("some-token")
+        state = "link:" + uuid.uuid4().hex
+
+        anon_relay = requests.Session()
+        anon_relay.cookies.update({"six_feat_oauth_state": state})
+        resp = anon_relay.get(
+            AUTH_CALLBACK_URL,
+            params={"state": state, "code": "whatever"},
+            allow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert resp.headers.get("Location") == "/?genius_link=error"
+
+
+class TestEnrichmentEnabledToggle:
+    """[SF-WEB-81] Simplified Settings replaces the yandex/genius provider
+    order with a single on/off switch, default on, for whether background
+    enrichment happens for this user's requests at all."""
+
+    def test_default_is_enabled_without_ever_setting_it(self, client: requests.Session):
+        resp = client.get(SETTINGS_STATUS_URL)
+        assert resp.status_code == 200
+        assert resp.json()["enrichment_enabled"] is True
+
+    def test_patch_to_false_then_status_reflects_it(self, client: requests.Session):
+        patch_resp = client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={"enabled": False})
+        assert patch_resp.status_code == 200, patch_resp.text
+        assert patch_resp.json()["enrichment_enabled"] is False
+
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.json()["enrichment_enabled"] is False
+
+    def test_patch_back_to_true_overwrites_a_previous_false(self, client: requests.Session):
+        client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={"enabled": False})
+        patch_resp = client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={"enabled": True})
+        assert patch_resp.status_code == 200
+        assert patch_resp.json()["enrichment_enabled"] is True
+
+        status_resp = client.get(SETTINGS_STATUS_URL)
+        assert status_resp.json()["enrichment_enabled"] is True
+
+    def test_patch_rejects_a_missing_enabled_field(self, client: requests.Session):
+        resp = client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={})
+        assert resp.status_code == 400
+
+    def test_patch_rejects_a_non_boolean_enabled_field(self, client: requests.Session):
+        resp = client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={"enabled": "yes"})
+        assert resp.status_code == 400
+
+    def test_flag_is_per_user_not_global(self, client: requests.Session):
+        other = _session_for(f"Other Enrichment User {uuid.uuid4().hex}")
+
+        patch_resp = client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={"enabled": False})
+        assert patch_resp.status_code == 200
+
+        assert client.get(SETTINGS_STATUS_URL).json()["enrichment_enabled"] is False
+        assert other.get(SETTINGS_STATUS_URL).json()["enrichment_enabled"] is True
+
+    def test_anonymous_is_unauthorized(self, anon_client: requests.Session):
+        resp = anon_client.patch(SETTINGS_ENRICHMENT_ENABLED_URL, json={"enabled": False})
+        assert resp.status_code == 401

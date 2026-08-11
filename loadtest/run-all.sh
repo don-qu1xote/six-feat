@@ -1,27 +1,14 @@
 #!/usr/bin/env bash
-# loadtest/run-all.sh — SF-INF-05
-#
-# Runs all three k6 scenarios (graph_warm, path_cold, search) back to back
-# against a single running six-feat stack, writing JSON+text summaries to
-# loadtest/.output/. Used both for local dev (see README.md) and the
-# k6-smoke-load CI workflow (.github/workflows/loadtest.yml).
-#
-# Connection info comes from the environment (BASE_URL, SESSION_COOKIE,
-# ...) — or, if E2E_ENV_FILE points at a JSON file written by
-# `scripts/e2e_env.py up` (base_url/session_cookie/seed_artist/
-# target_artist), those fill in whichever of BASE_URL/SESSION_COOKIE/
-# SEED_ARTIST/FROM_ARTIST/TO_ARTIST aren't already set — explicit env vars
-# always win.
-#
-# Exits non-zero if any scenario's thresholds were breached or the run
-# itself failed — informational for a human running this locally; the
-# k6-smoke-load CI job wraps the whole job in continue-on-error so this
-# never blocks anything (SF-INF-05: "пороги — предупреждающие, не
-# блокирующие").
+# Прогоняет все k6-сценарии подряд на одном поднятом стеке, результаты — в loadtest/output/.
+# Каталог намеренно НЕ скрытый: actions/upload-artifact пропускает файлы,
+# начинающиеся с точки, и раньше эта джоба каждый раз заканчивалась ошибкой
+# upload-artifact «No files were found with the provided path: loadtest/.output/»
+# BASE_URL/SESSION_COOKIE берутся из окружения, либо из JSON-файла scripts/e2e_env.py up.
+# Ненулевой код выхода — пороги нарушены; CI-джоба оборачивается в continue-on-error.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT_DIR="${REPO_ROOT}/loadtest/.output"
+OUT_DIR="${REPO_ROOT}/loadtest/output"
 mkdir -p "$OUT_DIR"
 
 if [ -n "${E2E_ENV_FILE:-}" ] && [ -f "${E2E_ENV_FILE}" ]; then
@@ -43,21 +30,33 @@ export BASE_URL SESSION_COOKIE
 export SEED_ARTIST="${SEED_ARTIST:-Aurora Vale}"
 export FROM_ARTIST="${FROM_ARTIST:-Aurora Vale}"
 export TO_ARTIST="${TO_ARTIST:-Kessler Vane}"
-# [fix] Deliberately NOT set here (was "${SEARCH_QUERY:-Aurora}" — a
-# substring of the seeded artist name, not the name itself, which 404'd
-# against scripts/e2e_env.py's mock Genius on every single search
-# request). Left unset so lib/config.js's own default (both exact seeded
-# names, "Aurora Vale"/"Kessler Vane") applies unless the caller sets
-# SEARCH_QUERY/SEARCH_QUERIES explicitly.
+# НЕ задаём SEARCH_QUERY: умолчание в lib/config.js (точные имена сидов) бьётся
+# о mock-Genius, а подстрока имени давала 404
 export PROFILE="${PROFILE:-full}"
 
+SCENARIOS=(graph_warm path_cold search)
+# Опционально: scripts/e2e_env.py не поднимает six-feat-game, поэтому CI сценарий game не запускает
+if [ "${GAME_SCENARIO:-0}" = "1" ]; then
+  SCENARIOS+=(game)
+fi
+
 status=0
-for scenario in graph_warm path_cold search; do
+for scenario in "${SCENARIOS[@]}"; do
   echo "── k6 run loadtest/scenarios/${scenario}.js (PROFILE=${PROFILE}) ──"
   if ! k6 run "${REPO_ROOT}/loadtest/scenarios/${scenario}.js"; then
-    echo "── ${scenario}: thresholds breached or run failed (advisory — see loadtest/.output/) ──"
+    echo "── ${scenario}: thresholds breached or run failed (advisory — see loadtest/output/) ──"
     status=1
   fi
 done
+
+# Сводки — единственное, что джоба выкладывает артефактом. Если их вдруг нет,
+# пусть это будет видно здесь и сразу, а не превратится в невнятное «No files
+# were found» на шаге выгрузки через полминуты.
+summaries=("$OUT_DIR"/*-summary.txt)
+if [ -e "${summaries[0]}" ]; then
+  echo "── сводок в ${OUT_DIR}: ${#summaries[@]} ──"
+else
+  echo "── ВНИМАНИЕ: в ${OUT_DIR} нет ни одной сводки, артефакт будет пустым ──" >&2
+fi
 
 exit "$status"

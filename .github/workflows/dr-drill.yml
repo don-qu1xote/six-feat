@@ -1,0 +1,95 @@
+name: DR drill
+
+on:
+  schedule:
+    - cron: "0 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    name: "Restore last backup into a clean Postgres"
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/userver-framework/ubuntu-22.04-userver:v3.0@sha256:f376113b11931e838b1e32ccf9d8ea30f061d4fecfaeb8d435fc3460337d8bc0
+      options: --user root
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:fd1e8d0274f13f5a03a2673a207b28e14823c2f2efc3ca4bb4197c8a9f841bdc
+        env:
+          POSTGRES_DB: six_feat_drill
+          POSTGRES_USER: six_feat
+          POSTGRES_PASSWORD: six_feat_drill_password
+        options: >-
+          --health-cmd "pg_isready -U six_feat -d six_feat_drill"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: six_feat_drill
+      DB_USER: six_feat
+      DB_PASSWORD: six_feat_drill_password
+      BACKUP_S3_URL: ${{ secrets.BACKUP_S3_URL }}
+      BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: ./.github/actions/setup
+        with:
+          apt-packages: libssl-dev python3 python3-pip python3-venv curl
+          python-testenv: "true"
+
+      # pg_restore обязан быть не старше сервера — см. тот же шаг в ci.yml.
+      - name: Install postgresql-client matching the server major
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          if command -v pg_dump >/dev/null && [ "$(pg_dump --version | sed -E 's/.* ([0-9]+).*/\1/')" -ge 16 ]; then
+            echo "pg_dump $(pg_dump --version) already sufficient"; exit 0
+          fi
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates gnupg
+          install -d /usr/share/keyrings
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" \
+            > /etc/apt/sources.list.d/pgdg.list
+          apt-get update
+          apt-get install -y --no-install-recommends postgresql-client-16
+          pg_dump --version
+
+      - name: Seed a stand-in baseline (no BACKUP_S3_URL configured)
+        if: env.BACKUP_S3_URL == ''
+        run: |
+          set -euo pipefail
+          echo "::warning title=Реальный бэкап не проверялся::BACKUP_S3_URL не задан — drill гоняется на дампе своей тестовой базы и проверяет только механизм restore."
+          export PGPASSWORD="$DB_PASSWORD"
+          psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -q -f postgresql/schema.sql
+          psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -q <<'SQL'
+          INSERT INTO artists SELECT g, 'Artist ' || g, NULL, NULL FROM generate_series(1, 100) g;
+          INSERT INTO songs   SELECT g, 'Song ' || g FROM generate_series(1, 100) g;
+          INSERT INTO credits SELECT g, ((g * 7) % 100) + 1, g % 3 FROM generate_series(1, 100) g;
+          SQL
+          BACKUP_DIR=./.drill-backups ./scripts/backup-postgres.sh
+
+      - name: Run the drill
+        run: |
+          set -euo pipefail
+          if [ -n "${BACKUP_S3_URL:-}" ]; then
+            python3 scripts/dr-drill.py --report drill-report.json
+          else
+            python3 scripts/dr-drill.py --backup-dir ./.drill-backups --report drill-report.json
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: dr-drill-report
+          path: drill-report.json
+          retention-days: 90

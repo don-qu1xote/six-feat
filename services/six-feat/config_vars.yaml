@@ -1,22 +1,10 @@
-# OAuth 2.0 — client_id не секрет, можно держать здесь.
-# client_secret и APP_SECRET — только env vars (GENIUS_CLIENT_SECRET / APP_SECRET).
-# genius_client_id задаётся через ENV/entrypoint (GENIUS_CLIENT_ID), а не в этом файле —
-# см. docker-entrypoint.sh. Прямой запуск бинарника без этой переменной должен падать при старте,
-# а не выглядеть "готовым к работе" с чужим/пустым client_id.
+
 genius_redirect_uri: http://localhost:8080/auth/callback
-# Безопасные дефолты для прямого (не-Docker) запуска. Для локального HTTP-dev
-# переопределяйте через ENV/docker-entrypoint.sh (COOKIE_SECURE / LOGGING_LEVEL),
-# а не меняя эти значения здесь.
+
 cookie_secure: true
-# Плейсхолдер для прямого (не-Docker) запуска — подставьте свою локальную
-# PostgreSQL. В контейнере эта строка целиком перезаписывается
-# docker-entrypoint.sh из ENV (DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD) и
-# нигде в отслеживаемых файлах не оседает.
+
 db_connection_string: postgresql://CHANGEME_user:CHANGEME_password@localhost:5432/CHANGEME_db
-# Base URL of the six-feat-enrichment service (see services/enrichment/).
-# In Docker this is overwritten by docker-entrypoint.sh from ENRICHMENT_BASE_URL.
+
 enrichment_base_url: http://localhost:8081
-# [SF-SEC-01] Base URL of the six-feat-auth service, used only by
-# AppSecretParityChecker's GET /internal/key-fingerprint call. In Docker
-# this is overwritten by docker-entrypoint.sh from AUTH_BASE_URL.
+
 auth_base_url: http://localhost:8083

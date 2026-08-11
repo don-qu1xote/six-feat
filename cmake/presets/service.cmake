@@ -1,0 +1,84 @@
+include_guard(GLOBAL)
+
+# ── Макрос six_feat_init_service ─────────────────────────────────────────────
+# Инкапсулирует boilerplate, общий для всех сервисов:
+#   - стандарт языка — CMAKE_CXX_STANDARD 20;
+#   - SIX_FEAT_ROOT (относительно services/<name>/);
+#   - зависимости — find_package(userver / OpenSSL);
+#   - add_subdirectory для всех libs/six-feat-* (10 библиотек);
+#   - встраивание схем — include(cmake/EmbedSchema.cmake).
+#
+# Вызывается ПОСЛЕ project() в каждом services/<name>/CMakeLists.txt.
+# Устанавливает переменную SIX_FEAT_ROOT в вызывающей области видимости.
+macro(six_feat_init_service)
+  set(CMAKE_CXX_STANDARD 20)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+  get_filename_component(SIX_FEAT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+
+  find_package(userver COMPONENTS core postgresql REQUIRED)
+  find_package(OpenSSL REQUIRED)
+
+  if(NOT TARGET six_feat_domain)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-domain"
+                     "${CMAKE_BINARY_DIR}/six-feat-domain")
+  endif()
+  if(NOT TARGET six_feat_common)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-common"
+                     "${CMAKE_BINARY_DIR}/six-feat-common")
+  endif()
+  if(NOT TARGET six_feat_core)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-core"
+                     "${CMAKE_BINARY_DIR}/six-feat-core")
+  endif()
+  if(NOT TARGET six_feat_storage)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-storage"
+                     "${CMAKE_BINARY_DIR}/six-feat-storage")
+  endif()
+  if(NOT TARGET six_feat_genius)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-genius"
+                     "${CMAKE_BINARY_DIR}/six-feat-genius")
+  endif()
+  # Источники графа (провайдеры + цепочка) — общая библиотека: фоновое
+  # обогащение использует тот же набор провайдеров, что и foreground-граф.
+  if(NOT TARGET six_feat_sources)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-sources"
+                     "${CMAKE_BINARY_DIR}/six-feat-sources")
+  endif()
+  if(NOT TARGET six_feat_enrichment)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-enrichment"
+                     "${CMAKE_BINARY_DIR}/six-feat-enrichment")
+  endif()
+  if(NOT TARGET six_feat_auth_lib)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-auth-lib"
+                     "${CMAKE_BINARY_DIR}/six-feat-auth-lib")
+  endif()
+  if(NOT TARGET six_feat_http)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-http"
+                     "${CMAKE_BINARY_DIR}/six-feat-http")
+  endif()
+  # [SF-API-20] Декодер картинок: нужен только image-proxy, но подключается
+  # здесь же — список библиотек в этом макросе один на все сервисы.
+  if(NOT TARGET six_feat_image)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-image"
+                     "${CMAKE_BINARY_DIR}/six-feat-image")
+  endif()
+
+  # [SF-API-21] Геометрия раскладки: нужна только six-feat, но подключается
+  # здесь же — список библиотек в этом макросе один на все сервисы.
+  if(NOT TARGET six_feat_layout)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-layout"
+                     "${CMAKE_BINARY_DIR}/six-feat-layout")
+  endif()
+
+  include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
+endmacro()
+
+# ── Макрос six_feat_install_service ──────────────────────────────────────────
+# Единообразные install-правила для сервиса:
+#   - бинарь — install(TARGETS <target> DESTINATION bin);
+#   - конфиг — install(FILES static_config.yaml DESTINATION etc/<config_dir>).
+macro(six_feat_install_service TARGET CONFIG_DIR)
+  install(TARGETS ${TARGET} DESTINATION bin)
+  install(FILES static_config.yaml DESTINATION etc/${CONFIG_DIR})
+endmacro()

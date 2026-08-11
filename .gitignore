@@ -10,8 +10,24 @@ __pycache__/
 coverage.xml
 htmlcov/
 front/coverage/
-front/node_modules/
+# Кэш vitest пишется в node_modules/.vite и однажды уже уехал в индекс:
+# правило было привязано к front/, а корневой каталог остался открытым.
+node_modules/
 front/dist/
-/loadtest/.output/
+/loadtest/output/
 .DS_Store
-*.orig
+# [SF-CI-07] Оверрайд docker-compose, генерируемый scripts/cd_deploy.sh при деплое —
+# всегда результат генерации, никогда не авторский файл.
+/docker-compose.images.yml
+# [SF-INF-08] Каталог по умолчанию из BACKUP_HOST_DIR — дампы БД не коммитим.
+/.backups/
+# [SF-INF-09] Baseline-дампы, которые drill снимает сам.
+/.drill-backups/
+/build-test
+/build-unit
+# Сломанный сабмодуль (gitlink в индексе без .gitmodules): его содержимое —
+# чужой checkout, родительскому репозиторию не принадлежит. Игнор нужен, чтобы
+# инструменты (ruff, grep, find) не заходили внутрь при работе со всем деревом.
+rufh/
+build-*/
+CMakeFiles/

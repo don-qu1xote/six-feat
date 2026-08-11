@@ -1,28 +1,3 @@
-"""
-mock_persistent_store.py
-========================
-
-InMemoryStore — SQLite :memory: backed mock for PersistentStore.
-
-Implements the same read/write API as PersistentStore so algorithm-level
-unit tests can pre-seed data and verify reads without a running service.
-
-Schema mirrors persistent_store.cpp exactly so query logic is validated
-against the real schema.
-
-Public API (mirrors PersistentStore):
-  LoadArtistSongs(artist_id, want_depth) → Optional[ArtistSongs]
-  LoadArtistRef(artist_id)              → Optional[ArtistRef]
-  LoadNeighbours(artist_id, mask)       → List[CollabEdge]
-  GetFetchDepth(artist_id)              → Depth
-  UpsertArtistSongs(data, new_depth)    → None
-
-Additional test helpers:
-  seed_artist(...)     — directly insert an artist row
-  seed_song(...)       — directly insert a song + credits
-  seed_fetch_state(...)— directly set fetch_state
-"""
-
 from __future__ import annotations
 
 import sqlite3
@@ -31,10 +6,6 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Dict, List, Optional, Tuple
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Domain types (mirrors domain_types.hpp)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class Depth(IntEnum):
     NONE = 0
@@ -60,6 +31,7 @@ class TrackCredit:
 class SongRecord:
     id: int
     title: str
+    popularity: int = 0
     credits: List[TrackCredit] = field(default_factory=list)
 
 
@@ -74,10 +46,6 @@ class CollabEdge:
     neighbour: int
     weight: int
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Role encoding — mirrors persistent_store.cpp
-# ─────────────────────────────────────────────────────────────────────────────
 
 _ROLE_TO_INT: Dict[str, int] = {
     "primary": 1,
@@ -96,10 +64,6 @@ def _int_to_role(n: int) -> str:
     return _INT_TO_ROLE.get(n, "unknown")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Schema DDL — matches persistent_store.cpp kSchema
-# ─────────────────────────────────────────────────────────────────────────────
-
 _SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -111,8 +75,9 @@ CREATE TABLE IF NOT EXISTS artists (
 );
 
 CREATE TABLE IF NOT EXISTS songs (
-    id    INTEGER PRIMARY KEY,
-    title TEXT NOT NULL
+    id         INTEGER PRIMARY KEY,
+    title      TEXT NOT NULL,
+    popularity INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS credits (
@@ -134,10 +99,6 @@ CREATE INDEX IF NOT EXISTS idx_credits_song   ON credits(song_id);
 """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RoleMask helper
-# ─────────────────────────────────────────────────────────────────────────────
-
 @dataclass
 class RoleMask:
     primary: bool = True
@@ -155,24 +116,18 @@ class RoleMask:
 
     def allowed_ints(self) -> List[int]:
         allowed = []
-        if self.primary:  allowed.append(1)
-        if self.featured: allowed.append(2)
-        if self.writer:   allowed.append(3)
-        if self.producer: allowed.append(4)
+        if self.primary:
+            allowed.append(1)
+        if self.featured:
+            allowed.append(2)
+        if self.writer:
+            allowed.append(3)
+        if self.producer:
+            allowed.append(4)
         return allowed
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# InMemoryStore
-# ─────────────────────────────────────────────────────────────────────────────
-
 class InMemoryStore:
-    """
-    SQLite :memory: backed persistent store mock.
-
-    Each instance gets its own in-memory database so tests are fully isolated.
-    """
-
     def __init__(self) -> None:
         self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._conn.executescript(_SCHEMA)
@@ -180,8 +135,6 @@ class InMemoryStore:
 
     def close(self) -> None:
         self._conn.close()
-
-    # ── Test helpers ──────────────────────────────────────────────────────────
 
     def seed_artist(
         self,
@@ -200,9 +153,8 @@ class InMemoryStore:
         self,
         song_id: int,
         title: str,
-        credits: List[Tuple[int, str]],  # list of (artist_id, role)
+        credits: List[Tuple[int, str]],
     ) -> None:
-        """Insert a song and its credits.  Artists must exist first."""
         self._conn.execute(
             "INSERT OR IGNORE INTO songs(id, title) VALUES (?,?)",
             (song_id, title),
@@ -230,18 +182,14 @@ class InMemoryStore:
         )
         self._conn.commit()
 
-    # ── PersistentStore public API ────────────────────────────────────────────
-
-    def GetFetchDepth(self, artist_id: int) -> Depth:
-        cur = self._conn.execute(
-            "SELECT depth FROM fetch_state WHERE artist_id = ?", (artist_id,)
-        )
+    def GetFetchDepth(self, artist_id: int) -> Depth:  # noqa: N802
+        cur = self._conn.execute("SELECT depth FROM fetch_state WHERE artist_id = ?", (artist_id,))
         row = cur.fetchone()
         if row is None:
             return Depth.NONE
         return Depth(row[0])
 
-    def LoadArtistRef(self, artist_id: int) -> Optional[ArtistRef]:
+    def LoadArtistRef(self, artist_id: int) -> Optional[ArtistRef]:  # noqa: N802
         cur = self._conn.execute(
             "SELECT id, name, image_url, url FROM artists WHERE id = ?",
             (artist_id,),
@@ -251,7 +199,7 @@ class InMemoryStore:
             return None
         return ArtistRef(id=row[0], name=row[1], image=row[2] or "", url=row[3] or "")
 
-    def LoadArtistSongs(self, artist_id: int, want: Depth) -> Optional[ArtistSongs]:
+    def LoadArtistSongs(self, artist_id: int, want: Depth) -> Optional[ArtistSongs]:  # noqa: N802
         have = self.GetFetchDepth(artist_id)
         if have < want:
             return None
@@ -260,9 +208,8 @@ class InMemoryStore:
         if ref is None:
             return None
 
-        # Load songs that have a credit for this artist
         cur = self._conn.execute(
-            """SELECT DISTINCT s.id, s.title
+            """SELECT DISTINCT s.id, s.title, s.popularity
                FROM songs s
                JOIN credits c ON c.song_id = s.id
                WHERE c.artist_id = ?""",
@@ -270,8 +217,7 @@ class InMemoryStore:
         )
         song_rows = cur.fetchall()
         songs = []
-        for song_id, title in song_rows:
-            # Load all credits for this song
+        for song_id, title, popularity in song_rows:
             ccur = self._conn.execute(
                 """SELECT a.id, a.name, a.image_url, a.url, c.role
                    FROM credits c
@@ -281,16 +227,19 @@ class InMemoryStore:
             )
             credits = []
             for aid, aname, aimage, aurl, role_int in ccur.fetchall():
-                credits.append(TrackCredit(
-                    artist=ArtistRef(id=aid, name=aname, image=aimage or "", url=aurl or ""),
-                    role=_int_to_role(role_int),
-                ))
-            songs.append(SongRecord(id=song_id, title=title, credits=credits))
+                credits.append(
+                    TrackCredit(
+                        artist=ArtistRef(id=aid, name=aname, image=aimage or "", url=aurl or ""),
+                        role=_int_to_role(role_int),
+                    )
+                )
+            songs.append(
+                SongRecord(id=song_id, title=title, popularity=popularity, credits=credits)
+            )
 
         return ArtistSongs(seed=ref, songs=songs)
 
-    def LoadNeighbours(self, artist_id: int, mask: RoleMask) -> List[CollabEdge]:
-        """Return one-hop neighbours filtered by role mask, with collaboration weight."""
+    def LoadNeighbours(self, artist_id: int, mask: RoleMask) -> List[CollabEdge]:  # noqa: N802
         allowed = mask.allowed_ints()
         if not allowed:
             return []
@@ -308,7 +257,7 @@ class InMemoryStore:
         )
         return [CollabEdge(neighbour=row[0], weight=row[1]) for row in cur.fetchall()]
 
-    def UpsertArtistSongs(self, data: ArtistSongs, new_depth: Depth) -> None:
+    def UpsertArtistSongs(self, data: ArtistSongs, new_depth: Depth) -> None:  # noqa: N802
         seed = data.seed
         self._conn.execute(
             "INSERT OR REPLACE INTO artists(id, name, image_url, url) VALUES (?,?,?,?)",
@@ -317,8 +266,10 @@ class InMemoryStore:
 
         for song in data.songs:
             self._conn.execute(
-                "INSERT OR IGNORE INTO songs(id, title) VALUES (?,?)",
-                (song.id, song.title),
+                """INSERT INTO songs(id, title, popularity) VALUES (?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       popularity = MAX(songs.popularity, excluded.popularity)""",
+                (song.id, song.title, song.popularity),
             )
             for credit in song.credits:
                 self._conn.execute(
@@ -330,7 +281,6 @@ class InMemoryStore:
                     (song.id, credit.artist.id, _role_to_int(credit.role)),
                 )
 
-        # Advance fetch_state monotonically
         existing_depth = self.GetFetchDepth(seed.id)
         if new_depth > existing_depth:
             self._conn.execute(

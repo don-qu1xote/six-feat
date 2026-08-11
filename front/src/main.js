@@ -1,54 +1,77 @@
-// ════════════════════════════════════════════════════════════════════════════
-// main.js — Entry point: DOMContentLoaded → init()
-// ════════════════════════════════════════════════════════════════════════════
 import { els, $ } from "./dom/dom.js";
 import { searchArtist } from "./api/api.js";
 import {
-  loadHistory, setupFilterToggles, setupNodeSearch, setupPathPanel,
-  setupHeroPathFinder, setupHeroModeSwitch,
-  createGeniusAc, attachGeniusAutocomplete, closeDropdown,
-  loadArtistFromUrl, copyShareableLink, openNodeSearch, clearCanvas, goHome,
-  hideArtistSidebar, hideCandidatePicker, setupKeyboard, fitView,
-  zoomIn, zoomOut, focusSeed,
-  setupSearchModal, setupSeedCard, setupHelpOverlay, setupLoadMoreCollabs,
-  renderChips, exportGraphPng, exportGraphJson, setupThemeToggle, setupDockedPanels,
-  restoreSurfaceFromUrl, setupBubbleSetsToggle
+  loadHistory,
+  setupFilterToggles,
+  setupNodeSearch,
+  setupPathPanel,
+  setupHeroPathFinder,
+  setupHeroModeSwitch,
+  createGeniusAc,
+  attachGeniusAutocomplete,
+  closeDropdown,
+  loadArtistFromUrl,
+  copyShareableLink,
+  openNodeSearch,
+  clearCanvas,
+  goHome,
+  hideArtistSidebar,
+  hideCandidatePicker,
+  setupKeyboard,
+  fitView,
+  zoomIn,
+  zoomOut,
+  focusSeed,
+  setupSearchModal,
+  setupSeedCard,
+  setupHelpOverlay,
+  setupLoadMoreCollabs,
+  renderChips,
+  showChipsIfHistory,
+  setupChipsVisibility,
+  exportGraphPng,
+  exportGraphJson,
+  initTheme,
+  setupSettingsPanel,
+  setupDockedPanels,
+  restoreSurfaceFromUrl,
+  setupBubbleSetsToggle,
+  getCurrentSurface,
+  isGameSurface,
+  closeAllDropdowns,
+  onSurfaceChange,
 } from "./ui/index.js";
 import { clearFocus, setupCompareModeToggle } from "./vis-adapter/index.js";
 import { checkAuth, initLogout } from "./api/auth.js";
+import { initI18n } from "./i18n/i18n.js";
 import { setupCanvasDecorator, startCanvasDecorator } from "./dom/canvas-decorator.js";
-
+import { setupConnectMode, setupGameLandingPanel } from "./game/connect.js";
+import { setupGameWindows } from "./game/game-windows.js";
 
 export function init() {
   const missingCritical = [];
   if (!els.heroForm) missingCritical.push("heroForm");
   if (!els.heroInput) missingCritical.push("heroInput");
   if (missingCritical.length) {
-    throw new Error(`[init] Missing required DOM element(s): ${missingCritical.join(", ")}. App cannot start.`);
+    throw new Error(
+      `[init] Missing required DOM element(s): ${missingCritical.join(", ")}. App cannot start.`,
+    );
   }
 
-  // IDEA-23: applies prefers-color-scheme before anything else paints — the
-  // page's CSP has no 'unsafe-inline' for scripts, so this can't run any
-  // earlier than the bundle itself (see ui/theme.js for why there's no
-  // inline pre-paint script).
-  setupThemeToggle();
+  initTheme();
+  initI18n();
 
-  // [SF-WEB-25] Restores the active surface (#/graph, #/game — game not
-  // built yet) from the URL hash before anything else touches routing/
-  // history state below. Current graph behavior is unchanged: a missing or
-  // unrecognized hash resolves to the "graph" default, same as before this
-  // ticket existed.
   restoreSurfaceFromUrl();
+
+  onSurfaceChange(closeAllDropdowns);
 
   loadHistory();
   renderChips();
+  showChipsIfHistory();
   setupFilterToggles();
   setupKeyboard();
-  // [SF-WEB-24] Registers the three docked-panel surfaces (docked search-
-  // modal, node-search overlay, find-path panel) with the shared shell —
-  // mutual exclusivity/outside-click — before wiring each one's own
-  // content-specific behaviour below.
   setupDockedPanels();
+  setupSettingsPanel();
   setupNodeSearch();
   setupPathPanel();
   setupHeroPathFinder();
@@ -57,44 +80,39 @@ export function init() {
   setupSeedCard();
   setupHelpOverlay();
   setupLoadMoreCollabs();
-  // [SF-WEB-47] Compare's graph-native rail toggle — click two nodes to
-  // open the Compare panel for that pair.
   setupCompareModeToggle();
-  // [SF-WEB-61] Manual BubbleSet toggle — off by default, user-controlled.
   setupBubbleSetsToggle();
+  setupConnectMode();
+  setupGameLandingPanel();
+  setupGameWindows();
 
-  // ТЗ-D8: idle starfield shown while #network is empty (first visit /
-  // after clearCanvas). Mounted once, then just toggled via opacity.
-  // [SF-WEB-19] The onboarding card (canvas-controls.js::clearCanvas) is
-  // NOT shown here on first visit — only after the user explicitly clears
-  // an existing graph. The landing hero modal already is the first-visit
-  // onboarding; showing a second one behind it would be redundant (and,
-  // before this ticket's own fix, was actually unreachable — the modal
-  // has no dismiss path pre-search).
   setupCanvasDecorator();
   startCanvasDecorator();
 
-  // ТЗ-D8: a single search field now serves both the first-visit modal and
-  // the ⌘K/rail-icon search over an already-loaded graph — one input, one
-  // autocomplete instance (the old hero+dock duplication is gone).
-  const heroAc    = $("hero-ac");
+  const heroAc = $("hero-ac");
   const heroGacFn = createGeniusAc();
 
   if (heroAc) {
-    attachGeniusAutocomplete(els.heroInput, heroAc, name => {
-      els.heroInput.value = name;
-      searchArtist(name, false, true);
-    }, heroGacFn);
+    attachGeniusAutocomplete(
+      els.heroInput,
+      heroAc,
+      (name) => {
+        els.heroInput.value = name;
+        searchArtist(name, false, true);
+      },
+      heroGacFn,
+      { showHistory: false },
+    );
   }
 
-  els.heroForm.addEventListener("submit", e => {
+  els.heroForm.addEventListener("submit", (e) => {
     e.preventDefault();
     if (heroAc) closeDropdown(heroAc);
     searchArtist(els.heroInput.value, false, true);
   });
 
   if (els.chips) {
-    els.chips.addEventListener("click", e => {
+    els.chips.addEventListener("click", (e) => {
       const chip = e.target.closest(".chip");
       if (!chip) return;
       const name = chip.getAttribute("data-artist");
@@ -106,43 +124,46 @@ export function init() {
   }
 
   if (els.brand) {
-    // [fix] Was clearCanvas() — the same handler as the rail's dedicated
-    // "Clear graph" button — which (SF-WEB-19) deliberately stays on the
-    // graph page with an empty-state card. The logo is expected to behave
-    // like an actual "back to home" action instead, landing straight on
-    // the full-screen search experience. See goHome()'s own comment.
     els.brand.addEventListener("click", goHome);
   } else {
     console.warn("[init] .brand element not found; brand-click-to-home disabled.");
   }
 
   if (els.sidebarClose) {
-    els.sidebarClose.addEventListener("click", () => { hideArtistSidebar(); clearFocus(); });
+    els.sidebarClose.addEventListener("click", () => {
+      hideArtistSidebar();
+      clearFocus();
+    });
   } else {
     console.warn("[init] sidebarClose element not found; sidebar close button disabled.");
   }
 
   els.candidateClose?.addEventListener("click", hideCandidatePicker);
-  els.candidateOverlay?.addEventListener("click", e => {
+  els.candidateOverlay?.addEventListener("click", (e) => {
     if (e.target === els.candidateOverlay) hideCandidatePicker();
   });
 
-  els.btnClearGraph ?.addEventListener("click", clearCanvas);
-  els.btnCopyLink   ?.addEventListener("click", copyShareableLink);
-  els.btnExportPng  ?.addEventListener("click", exportGraphPng);
-  els.btnExportJson ?.addEventListener("click", exportGraphJson);
-  els.btnFitView    ?.addEventListener("click", fitView);
-  // [SF-WEB-14] Compact zoom/fit cluster.
-  els.btnZoomIn     ?.addEventListener("click", zoomIn);
-  els.btnZoomOut    ?.addEventListener("click", zoomOut);
-  els.btnFocusSeed  ?.addEventListener("click", focusSeed);
+  els.btnClearGraph?.addEventListener("click", clearCanvas);
+  els.btnCopyLink?.addEventListener("click", copyShareableLink);
+  els.btnExportPng?.addEventListener("click", exportGraphPng);
+  els.btnExportJson?.addEventListener("click", exportGraphJson);
+  els.btnFitView?.addEventListener("click", fitView);
+  els.btnZoomIn?.addEventListener("click", zoomIn);
+  els.btnZoomOut?.addEventListener("click", zoomOut);
+  els.btnFocusSeed?.addEventListener("click", focusSeed);
 
   $("btn-node-search")?.addEventListener("click", openNodeSearch);
 
   loadArtistFromUrl();
   checkAuth();
   initLogout();
-  els.heroInput.focus();
+  if (!isGameSurface(getCurrentSurface())) els.heroInput.focus();
+
+  // [SF-WEB-78] After the auto-focus above, not before — a listener
+  // attached first would treat that programmatic focus like a real one
+  // and pop the chips open on every landing, exactly the "shows by
+  // default" behavior this was meant to fix.
+  setupChipsVisibility();
 }
 
 window.addEventListener("DOMContentLoaded", init);

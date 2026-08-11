@@ -1,20 +1,3 @@
-"""
-test_openapi.py — integration tests for GET /api/v1/openapi.json (SF-API-05)
-
-The document itself (schemas/openapi/openapi.json) is a checked-in, static
-artifact — this handler just serves it verbatim (six_feat::OpenApiHandler,
-a StaticFileHandler like handler-index/handler-script). Not behind auth
-(same as every other static-file handler): no session cookie needed.
-
-Scenarios covered:
-  1. GET /api/v1/openapi.json -> 200, application/json
-  2. Body parses as JSON and is a plausible OpenAPI 3.1 document
-     (openapi/info/paths present)
-  3. Every publicly documented path from SF-API-03..-11's scope
-     (/api/v1/graph, /api/v1/graph/path, /api/v1/search, /api/v1/status,
-     /api/v1/artist) is listed, each with a GET operation
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -24,7 +7,7 @@ from conftest import SERVICE_BASE
 
 OPENAPI_URL = f"{SERVICE_BASE}/api/v1/openapi.json"
 
-pytestmark = pytest.mark.openapi_endpoint  # custom marker; see pytest.ini
+pytestmark = pytest.mark.openapi_endpoint
 
 EXPECTED_PATHS = {
     "/api/v1/graph",
@@ -47,7 +30,7 @@ class TestOpenApiDocument:
 
     def test_body_parses_as_json(self, anon_client: requests.Session):
         resp = anon_client.get(OPENAPI_URL)
-        data = resp.json()  # raises if not valid JSON
+        data = resp.json()
         assert isinstance(data, dict)
 
     def test_is_openapi_3_1(self, anon_client: requests.Session):
@@ -66,19 +49,48 @@ class TestOpenApiDocument:
         assert EXPECTED_PATHS <= paths
 
     @pytest.mark.parametrize("path", sorted(EXPECTED_PATHS))
-    def test_expected_path_has_get_operation(
-        self, anon_client: requests.Session, path: str
-    ):
+    def test_expected_path_has_get_operation(self, anon_client: requests.Session, path: str):
         data = anon_client.get(OPENAPI_URL).json()
         assert "get" in data["paths"][path]
 
-    def test_artist_path_documents_problem_json_errors(
-        self, anon_client: requests.Session
-    ):
-        """[SF-API-11] The one handler that actually uses the new envelope
-        should document it, not the legacy {"error":...} shape."""
+    def test_artist_path_documents_problem_json_errors(self, anon_client: requests.Session):
         data = anon_client.get(OPENAPI_URL).json()
         responses = data["paths"]["/api/v1/artist"]["get"]["responses"]
         not_found = responses["404"]
         content_types = not_found.get("content", {})
         assert "application/problem+json" in content_types
+
+    @pytest.mark.parametrize("schema_name", ["GraphEdge", "PathEdge"])
+    def test_edge_schema_documents_source_field(
+        self, anon_client: requests.Session, schema_name: str
+    ):
+        data = anon_client.get(OPENAPI_URL).json()
+        schema = data["components"]["schemas"][schema_name]
+        assert "source" in schema["required"]
+        source_prop = schema["properties"]["source"]
+        assert set(source_prop["enum"]) == {"genius_credit"}
+
+    @pytest.mark.parametrize(
+        ("path", "node_schema", "edge_schema"),
+        [
+            ("/api/v1/graph", "GraphNode", "GraphEdge"),
+            ("/api/v1/graph/path", "PathNode", "PathEdge"),
+        ],
+    )
+    def test_nodes_and_edges_are_typed_not_opaque(
+        self,
+        anon_client: requests.Session,
+        path: str,
+        node_schema: str,
+        edge_schema: str,
+    ):
+        data = anon_client.get(OPENAPI_URL).json()
+        schema = data["paths"][path]["get"]["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]
+        assert schema["properties"]["nodes"]["items"] == {
+            "$ref": f"#/components/schemas/{node_schema}"
+        }
+        assert schema["properties"]["edges"]["items"] == {
+            "$ref": f"#/components/schemas/{edge_schema}"
+        }

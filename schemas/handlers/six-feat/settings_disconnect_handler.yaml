@@ -1,0 +1,4 @@
+type: object
+description: Provider disconnect handler configuration (SF-YM-02). Session-authenticated only.
+additionalProperties: false
+properties: {}

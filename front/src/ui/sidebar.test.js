@@ -1,36 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// sidebar.test.js — unit tests for the companion panel's node/edge context
-//                    (ui/sidebar.js): SF-WEB-12's static tiles and the
-//                    object action bar (SF-WEB-14, merged into the sidebar
-//                    body's own grid by SF-WEB-27).
-//
-// Asserts the things these tickets care about: (1) node vs edge context
-// render into the right static tiles with the right content, (2) doing so
-// never creates new DOM elements (the ensureTile()-style dynamic grid-tile
-// insertion SF-WEB-12 removes) — every tile referenced here is assigned
-// once in beforeEach, exactly like the real static markup in index.html,
-// and a document.createElement spy proves sidebar.js never reaches for a
-// fresh one — and (3) the object action bar is visible only for node
-// context, contains Genius as one of its own three buttons (no separate
-// Genius element anymore — see [SF-WEB-27] below), and wires all three
-// buttons to the node it's currently showing. [SF-WEB-47] The bar's old
-// fourth button (pin) is gone — it only ever existed to gate Compare's old
-// pinned-pair selection, which compare-mode.js's Compare mode replaced.
-//
-// [SF-WEB-27] Genius used to be a standalone .sidebar-genius-btn wired
-// independently of the object action bar (els.sidebarGenius, since
-// removed); it's now exclusively els.objActionGenius, one of the three
-// buttons syncObjectActionBar wires together. The markup-level assertions
-// ("exactly one action row in the page, no leftover .sidebar-genius-btn, no
-// floating #object-action-bar above the panel") live in
-// canvas-declutter.test.js instead, since they're statements about
-// index.html itself, not about this module's logic — same split the file
-// header there documents.
-//
-// Path context (openPathPanel/closePathPanel mutual exclusivity with node/
-// edge context) is covered separately in modals.test.js, since that's where
-// the actual show/hide logic for the path section lives.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../vis-adapter/index.js", () => ({
@@ -41,27 +8,40 @@ vi.mock("../vis-adapter/index.js", () => ({
   clearSelectedNode: vi.fn(),
   clearSelectedEdge: vi.fn(),
 }));
-vi.mock("../api/analytics-client.js", () => ({ bfsPath: vi.fn(() => null) }));
 vi.mock("./modals.js", () => ({
   isSearchModalOpen: vi.fn(() => false),
   closeSearchModal: vi.fn(),
   closeNodeSearch: vi.fn(),
   closePathPanel: vi.fn(),
 }));
-vi.mock("../api/api.js", () => ({ searchArtist: vi.fn() }));
+vi.mock("../api/api.js", () => ({ searchArtist: vi.fn(), deepenArtistConnections: vi.fn() }));
 vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
+
+const fetchEdgeDetails = vi.fn();
+vi.mock("../api/analytics-client.js", () => ({
+  fetchEdgeDetails: (...args) => fetchEdgeDetails(...args),
+}));
 
 import { State } from "../state/state.js";
 import { els } from "../dom/dom.js";
-import { showArtistSidebar, showEdgeSidebar, hideArtistSidebar } from "./sidebar.js";
+import {
+  showArtistSidebar,
+  showEdgeSidebar,
+  showEdgeSidebarByPathEdgeId,
+  hideArtistSidebar,
+} from "./sidebar.js";
 import { closePathPanel } from "./modals.js";
 import {
-  selectNode, selectEdge,
-  clearSelectedNode, clearSelectedEdge,
+  selectNode,
+  selectEdge,
+  clearSelectedNode,
+  clearSelectedEdge,
 } from "../vis-adapter/index.js";
-import { searchArtist } from "../api/api.js";
+import { searchArtist, deepenArtistConnections } from "../api/api.js";
 
-function freshEl(tag = "div") { return document.createElement(tag); }
+function freshEl(tag = "div") {
+  return document.createElement(tag);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,34 +51,36 @@ beforeEach(() => {
   State.expandedNodes = new Set();
 
   els.companionPanel = freshEl();
-  els.artistSidebar   = freshEl();
-  els.pathPanel        = freshEl();
-  els.searchModal      = freshEl();
-  els.sidebarAvatar    = freshEl("img");
-  els.sidebarName      = freshEl();
-  els.sidebarMeta      = freshEl();
-  els.sidebarTracks    = freshEl();
+  els.artistSidebar = freshEl();
+  els.pathPanel = freshEl();
+  els.searchModal = freshEl();
+  els.sidebarAvatar = freshEl("img");
+  els.sidebarName = freshEl();
+  els.sidebarMeta = freshEl();
+  els.sidebarTracks = freshEl();
   els.sidebarRoleBreakdownTile = freshEl();
-  els.sidebarRoleChips         = freshEl();
-  els.sidebarPathTile          = freshEl();
-  els.sidebarPathTrack         = freshEl();
-  // [SF-WEB-33] Edge-only endpoints tile.
-  els.sidebarEndpointsTile  = freshEl();
+  els.sidebarRoleChips = freshEl();
+  els.sidebarPathTile = freshEl();
+  els.sidebarPathTrack = freshEl();
+  els.sidebarEndpointsTile = freshEl();
   els.sidebarEndpointsTrack = freshEl();
 
-  // [SF-WEB-14/SF-WEB-27] Object action bar — Genius lives here now, no
-  // separate els.sidebarGenius any more.
   els.objectActionBar = freshEl();
   els.objectActionBar.hidden = true;
   els.objActionExpand = freshEl("button");
-  els.objActionFocus  = freshEl("button");
+  els.objActionDeepen = freshEl("button");
+  els.objActionFocus = freshEl("button");
   els.objActionGenius = freshEl("button");
 });
 
 function mockNode(overrides = {}) {
   return {
-    id: 1, name: "Drake", imageUrl: "", isSeed: false,
-    _totalCollabs: 5, _topTracks: [{ song: "God's Plan", roles: ["featured"] }],
+    id: 1,
+    name: "Drake",
+    imageUrl: "",
+    isSeed: false,
+    _totalCollabs: 5,
+    _topTracks: [{ song: "God's Plan", roles: ["featured"] }],
     ...overrides,
   };
 }
@@ -122,7 +104,6 @@ describe("showArtistSidebar (node context)", () => {
 
     expect(els.sidebarRoleBreakdownTile.style.display).toBe("");
     expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer");
-    // No current seed → getPathToSeed() is null → tile stays hidden.
     expect(els.sidebarPathTile.style.display).toBe("none");
   });
 
@@ -155,8 +136,6 @@ describe("showArtistSidebar (node context)", () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  // [SF-WEB-44] .sidebar-avatar.is-seed — purely visual hook for the
-  // Observatory accent-glow ring (companion.css).
   it("marks the avatar .is-seed when showing the seed node", () => {
     State.graphNodes = [mockNode({ isSeed: true })];
     showArtistSidebar(1);
@@ -185,6 +164,29 @@ describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
     expect(State._clickedNodeId).toBe(1);
   });
 
+  it("[SF-YM-03] wires the deepen button to deepenArtistConnections(nodeId)", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+    els.objActionDeepen.onclick();
+    expect(deepenArtistConnections).toHaveBeenCalledWith(1);
+  });
+
+  it("[SF-YM-09] disables the deepen button for a node with no Genius link, without calling it", () => {
+    State.graphNodes = [mockNode({ deepenAvailable: false })];
+    showArtistSidebar(1);
+    expect(els.objActionDeepen.disabled).toBe(true);
+    expect(els.objActionDeepen.onclick).toBeNull();
+    expect(deepenArtistConnections).not.toHaveBeenCalled();
+  });
+
+  it("[SF-YM-09] keeps the deepen button enabled for a node with a Genius link", () => {
+    State.graphNodes = [mockNode({ deepenAvailable: true })];
+    showArtistSidebar(1);
+    expect(els.objActionDeepen.disabled).toBe(false);
+    els.objActionDeepen.onclick();
+    expect(deepenArtistConnections).toHaveBeenCalledWith(1);
+  });
+
   it("wires Focus to center the camera on the node", () => {
     State.network = { focus: vi.fn() };
     State.graphNodes = [mockNode()];
@@ -205,20 +207,94 @@ describe("[SF-WEB-14/SF-WEB-27] object action bar — node context", () => {
 describe("showEdgeSidebar (edge context)", () => {
   function mockEdge(overrides = {}) {
     return {
-      id: "1_2", from: 1, to: 2, weight: 3, dominantRole: "featured",
-      collaborations: [{ song: "Jumpman", roles: ["featured"] }],
+      id: "1_2",
+      from: 1,
+      to: 2,
+      weight: 3,
+      collaboration_count: 3,
+      dominantRole: "featured",
       ...overrides,
     };
   }
 
-  it("renders the shared header/tracks section reused from node context, without duplicating it", () => {
+  const detailsWith = (collaborations) => ({ collaborations, error: null });
+
+  beforeEach(() => {
+    State.selectedEdgeId = "1_2";
+    fetchEdgeDetails.mockResolvedValue(detailsWith([{ song: "Jumpman", roles: ["featured"] }]));
+  });
+
+  it("renders the shared header, then fills the tracks section once the details arrive", async () => {
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", { 1: "Drake", 2: "Future" });
 
     expect(els.sidebarName.textContent).toBe("Drake × Future");
-    expect(els.sidebarTracks.innerHTML).toContain("Jumpman");
     expect(els.artistSidebar.classList.contains("show")).toBe(true);
     expect(els.companionPanel.classList.contains("show")).toBe(true);
+
+    expect(els.sidebarTracks.classList.contains("ui-state--loading")).toBe(true);
+
+    expect(fetchEdgeDetails).toHaveBeenCalledWith(1, 2);
+    await vi.waitFor(() => expect(els.sidebarTracks.innerHTML).toContain("Jumpman"));
+  });
+
+  it("shows a retryable error instead of claiming the pair has no tracks", async () => {
+    fetchEdgeDetails.mockResolvedValue({ collaborations: [], error: "http_500" });
+    State.graphEdges = [mockEdge()];
+
+    showEdgeSidebar("1_2", {});
+
+    await vi.waitFor(() =>
+      expect(els.sidebarTracks.classList.contains("ui-state--error")).toBe(true),
+    );
+    expect(els.sidebarTracks.querySelector(".ui-state-action")).toBeTruthy();
+  });
+
+  it("shows the retryable error when the request itself rejects", async () => {
+    fetchEdgeDetails.mockRejectedValue(new Error("network"));
+    State.graphEdges = [mockEdge()];
+
+    showEdgeSidebar("1_2", {});
+
+    await vi.waitFor(() =>
+      expect(els.sidebarTracks.classList.contains("ui-state--error")).toBe(true),
+    );
+  });
+
+  it("drops a rejection that arrived after the user opened another edge", async () => {
+    let reject;
+    fetchEdgeDetails.mockReturnValue(
+      new Promise((_, r) => {
+        reject = r;
+      }),
+    );
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", {});
+
+    State.selectedEdgeId = "9_9";
+    reject(new Error("too late"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.sidebarTracks.classList.contains("ui-state--error")).toBe(false);
+  });
+
+  it("drops an answer that arrived after the user opened another edge", async () => {
+    let resolve;
+    fetchEdgeDetails.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    State.graphEdges = [mockEdge()];
+    showEdgeSidebar("1_2", {});
+
+    State.selectedEdgeId = "9_9";
+    resolve(detailsWith([{ song: "Stale", roles: ["featured"] }]));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(els.sidebarTracks.innerHTML).not.toContain("Stale");
   });
 
   it("hides the path-to-seed tile — it only makes sense for a single artist", () => {
@@ -228,8 +304,6 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.sidebarPathTile.style.display).toBe("none");
   });
 
-  // [SF-WEB-44] A combined two-artist avatar is never "the seed" — clears
-  // any glow left over from a previous node context.
   it("clears .is-seed on the avatar — a combined edge avatar is never the seed", () => {
     els.sidebarAvatar.classList.add("is-seed");
     State.graphEdges = [mockEdge()];
@@ -238,18 +312,21 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.sidebarAvatar.classList.contains("is-seed")).toBe(false);
   });
 
-  // [SF-WEB-33] Edge-context parity: both endpoints, edge-scoped role
-  // breakdown — previously this tile was hidden entirely for edges.
-  it("[SF-WEB-33] shows and populates the role-breakdown tile with THIS edge's roles, not a per-node breakdown", () => {
-    State.graphEdges = [mockEdge({ collaborations: [
-      { song: "Jumpman", roles: ["featured"] },
-      { song: "Life Is Good", roles: ["producer", "featured"] },
-    ] })];
+  it("[SF-WEB-33] fills the role-breakdown tile from THIS edge, refining it once the tracks land", async () => {
+    fetchEdgeDetails.mockResolvedValue(
+      detailsWith([
+        { song: "Jumpman", roles: ["featured"] },
+        { song: "Life Is Good", roles: ["producer", "featured"] },
+      ]),
+    );
+    State.graphEdges = [mockEdge()];
+
     showEdgeSidebar("1_2", {});
 
     expect(els.sidebarRoleBreakdownTile.style.display).toBe("");
-    expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer");
     expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--featured");
+
+    await vi.waitFor(() => expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--producer"));
   });
 
   it("[SF-WEB-33] shows both endpoints as clickable cards, and hides the tile for node context", () => {
@@ -301,33 +378,16 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.artistSidebar.classList.contains("show")).toBe(false);
   });
 
-  // [SF-WEB-03] Six-degrees path edges (SF-API-08) carry songs[] instead of
-  // collaborations[] — the companion panel must still show the connecting
-  // tracks/role for them, not fall through to "No track data.".
-  it("falls back to songs[] + the edge's dominant role when collaborations[] is empty", () => {
-    State.graphEdges = [mockEdge({
-      collaborations: [],
-      songs: ["A-B Track", "B-C Track"],
-      dominantRole: "producer",
-    })];
+  it("uses the songs a path answer already carried, without asking the server again", () => {
+    State.graphEdges = [mockEdge({ songs: ["A-B Track", "B-C Track"], dominantRole: "producer" })];
+
     showEdgeSidebar("1_2", {});
 
     const tracks = els.sidebarTracks.querySelectorAll(".sidebar-track");
     expect(tracks).toHaveLength(2);
     expect(els.sidebarTracks.innerHTML).toContain("A-B Track");
-    expect(els.sidebarTracks.innerHTML).toContain("B-C Track");
     expect(els.sidebarTracks.innerHTML).toContain("role-chip--producer");
-  });
-
-  it("prefers collaborations[] (per-song roles) over songs[] when both are present", () => {
-    State.graphEdges = [mockEdge({
-      collaborations: [{ song: "Regular Graph Track", roles: ["producer"] }],
-      songs: ["Path Track"],
-    })];
-    showEdgeSidebar("1_2", {});
-
-    expect(els.sidebarTracks.innerHTML).toContain("Regular Graph Track");
-    expect(els.sidebarTracks.innerHTML).not.toContain("Path Track");
+    expect(fetchEdgeDetails).not.toHaveBeenCalled();
   });
 });
 
@@ -353,15 +413,6 @@ describe("hideArtistSidebar", () => {
   });
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// [SF-WEB-28] Node and edge selection are equivalent, symmetric operations:
-// showArtistSidebar/showEdgeSidebar are the single downstream entry point
-// selectObject (vis-adapter/events.js) funnels both through, and each one
-// applies its own persistent marker (selectNode/selectEdge) itself — so
-// every caller (canvas click, node-search, the a11y node list, a
-// path-chain-card click) gets the same marker + mutual exclusion, not just
-// the canvas click path.
-// ════════════════════════════════════════════════════════════════════════════
 describe("[SF-WEB-28] node and edge selection go through equivalent marker calls", () => {
   it("showArtistSidebar calls selectNode(nodeId) — the single place mutual exclusion with an edge is enforced", () => {
     State.graphNodes = [mockNode()];
@@ -371,15 +422,445 @@ describe("[SF-WEB-28] node and edge selection go through equivalent marker calls
 
   function mockEdge(overrides = {}) {
     return {
-      id: "1_2", from: 1, to: 2, weight: 3, dominantRole: "featured",
-      collaborations: [{ song: "Jumpman", roles: ["featured"] }],
+      id: "1_2",
+      from: 1,
+      to: 2,
+      weight: 3,
+      collaboration_count: 3,
+      dominantRole: "featured",
       ...overrides,
     };
   }
+
+  const detailsWith = (collaborations) => ({ collaborations, error: null });
+
+  beforeEach(() => {
+    State.selectedEdgeId = "1_2";
+    fetchEdgeDetails.mockResolvedValue(detailsWith([{ song: "Jumpman", roles: ["featured"] }]));
+  });
 
   it("showEdgeSidebar calls selectEdge(edgeId) — the single place mutual exclusion with a node is enforced", () => {
     State.graphEdges = [mockEdge()];
     showEdgeSidebar("1_2", {});
     expect(selectEdge).toHaveBeenCalledWith("1_2");
+  });
+});
+
+describe("role breakdown chips", () => {
+  it("shows a dash when the artist has no edges at all", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+
+    expect(els.sidebarRoleChips.textContent).toContain("—");
+  });
+
+  it("counts edges per role, from either direction", () => {
+    State.graphNodes = [mockNode()];
+    State.graphEdges = [
+      { id: "a", from: 1, to: 2, dominantRole: "featured" },
+      { id: "b", from: 3, to: 1, dominantRole: "featured" },
+      { id: "c", from: 1, to: 4, dominantRole: "producer" },
+      { id: "d", from: 5, to: 6, dominantRole: "writer" },
+    ];
+    showArtistSidebar(1);
+
+    const counts = [...els.sidebarRoleChips.querySelectorAll(".rbc-count")].map(
+      (n) => n.textContent,
+    );
+    expect(counts).toEqual(["2", "1"]);
+  });
+
+  it("treats an edge with no role as featured", () => {
+    State.graphNodes = [mockNode()];
+    State.graphEdges = [{ id: "a", from: 1, to: 2 }];
+    showArtistSidebar(1);
+
+    expect(els.sidebarRoleChips.querySelector(".role-chip--featured")).not.toBeNull();
+  });
+});
+
+describe("showArtistSidebar — tracks and avatar", () => {
+  it("says so when the artist has no known tracks", () => {
+    State.graphNodes = [mockNode({ _topTracks: [] })];
+    showArtistSidebar(1);
+
+    expect(els.sidebarTracks.textContent.toLowerCase()).toContain("no");
+  });
+
+  it("labels an untitled track rather than leaving it blank", () => {
+    State.graphNodes = [mockNode({ _topTracks: [{ roles: ["featured"] }] })];
+    showArtistSidebar(1);
+
+    expect(els.sidebarTracks.querySelector(".sidebar-track-name").textContent.trim()).not.toBe("");
+  });
+
+  it("defaults a track with no roles to primary", () => {
+    State.graphNodes = [mockNode({ _topTracks: [{ song: "X", roles: [] }] })];
+    showArtistSidebar(1);
+
+    expect(els.sidebarTracks.querySelector(".role-chip--primary")).not.toBeNull();
+  });
+
+  it("uses the artist's own image when there is one", () => {
+    State.graphNodes = [mockNode({ imageUrl: "http://img/d.jpg" })];
+    showArtistSidebar(1);
+
+    expect(els.sidebarAvatar.src).toContain("http://img/d.jpg");
+  });
+
+  it("marks the seed artist's avatar", () => {
+    State.graphNodes = [mockNode({ isSeed: true })];
+    showArtistSidebar(1);
+
+    expect(els.sidebarAvatar.classList.contains("is-seed")).toBe(true);
+  });
+
+  it("notes in the meta line that this node was already expanded", () => {
+    State.graphNodes = [mockNode()];
+    State.expandedNodes = new Set([1]);
+    showArtistSidebar(1);
+
+    expect(els.sidebarMeta.textContent.toLowerCase()).toContain("expanded");
+  });
+
+  it("falls back to totalWeight when the detailed count is missing", () => {
+    State.graphNodes = [mockNode({ _totalCollabs: undefined, totalWeight: 9 })];
+    showArtistSidebar(1);
+
+    expect(els.sidebarMeta.textContent).toContain("9");
+  });
+
+  it("ignores a node that is not in the graph", () => {
+    showArtistSidebar(404);
+    expect(els.artistSidebar.classList.contains("show")).toBe(false);
+  });
+});
+
+describe("object action bar", () => {
+  it("expands the artist's neighbourhood from the action bar", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+
+    els.objActionExpand.onclick();
+
+    expect(searchArtist).toHaveBeenCalledWith("Drake", true, true);
+    expect(State._clickedNodeId).toBe(1);
+  });
+
+  it("offers deepen for a node the backend says is deepenable", () => {
+    State.graphNodes = [mockNode({ deepenAvailable: true })];
+    showArtistSidebar(1);
+
+    expect(els.objActionDeepen.disabled).toBe(false);
+    els.objActionDeepen.onclick();
+    expect(deepenArtistConnections).toHaveBeenCalledWith(1);
+  });
+
+  it("treats a node with no deepen flag as deepenable", () => {
+    State.graphNodes = [mockNode()];
+    showArtistSidebar(1);
+
+    expect(els.objActionDeepen.disabled).toBe(false);
+  });
+
+  it("disables deepen, with an explanation, when the backend says it cannot work", () => {
+    State.graphNodes = [mockNode({ deepenAvailable: false })];
+    showArtistSidebar(1);
+
+    expect(els.objActionDeepen.disabled).toBe(true);
+    expect(els.objActionDeepen.onclick).toBeNull();
+    expect(els.objActionDeepen.title.toLowerCase()).toContain("genius");
+  });
+
+  it("focuses the node on the canvas from the action bar", () => {
+    State.graphNodes = [mockNode()];
+    State.network = { focus: vi.fn() };
+    showArtistSidebar(1);
+
+    els.objActionFocus.onclick();
+
+    expect(State.network.focus).toHaveBeenCalledWith(1, expect.objectContaining({ scale: 1.2 }));
+    State.network = null;
+  });
+
+  it("does not blow up focusing when the canvas is not rendered", () => {
+    State.graphNodes = [mockNode()];
+    State.network = null;
+    showArtistSidebar(1);
+
+    expect(() => els.objActionFocus.onclick()).not.toThrow();
+  });
+
+  it("stays hidden on a page with no action bar", () => {
+    State.graphNodes = [mockNode()];
+    els.objectActionBar = null;
+
+    expect(() => showArtistSidebar(1)).not.toThrow();
+  });
+});
+
+describe("path-to-seed track", () => {
+  beforeEach(() => {
+    State.currentSeedId = 2;
+    State.graphNodes = [
+      mockNode({ id: 1, name: "Drake" }),
+      mockNode({ id: 2, name: "Future", isSeed: true }),
+    ];
+    State.graphEdges = [{ id: "e1", from: 1, to: 2, dominantRole: "producer", weight: 3 }];
+  });
+
+  it("shows the hop from this artist to the seed", () => {
+    showArtistSidebar(1);
+
+    expect(els.sidebarPathTile.style.display).toBe("");
+    expect(els.sidebarPathTrack.querySelectorAll(".path-node-card")).toHaveLength(2);
+    expect(els.sidebarPathTrack.querySelector(".path-edge-connector")).not.toBeNull();
+  });
+
+  it("hides the tile for the seed artist itself", () => {
+    showArtistSidebar(2);
+    expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  it("hides the tile when there is no seed yet", () => {
+    State.currentSeedId = null;
+    showArtistSidebar(1);
+    expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  it("hides the tile when the artist is more than one hop away", () => {
+    State.graphNodes.push(mockNode({ id: 3, name: "Metro" }));
+    State.graphEdges = [
+      { id: "e1", from: 1, to: 3, dominantRole: "producer", weight: 3 },
+      { id: "e2", from: 3, to: 2, dominantRole: "producer", weight: 2 },
+    ];
+
+    showArtistSidebar(1);
+
+    expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  it("hides the tile when there is no path at all", () => {
+    State.graphEdges = [];
+
+    showArtistSidebar(1);
+
+    expect(els.sidebarPathTile.style.display).toBe("none");
+  });
+
+  it("shows the hop no matter which way round the edge is stored", () => {
+    State.graphEdges = [{ id: "e1", from: 2, to: 1, dominantRole: "producer", weight: 3 }];
+
+    showArtistSidebar(1);
+
+    expect(els.sidebarPathTile.style.display).toBe("");
+  });
+
+  it("jumps to the other artist when their card is clicked", () => {
+    State.network = { focus: vi.fn() };
+    showArtistSidebar(1);
+
+    const other = [...els.sidebarPathTrack.querySelectorAll(".path-node-card")].find(
+      (c) => c.getAttribute("data-node-id") === "2",
+    );
+    other.click();
+
+    expect(State.network.focus).toHaveBeenCalled();
+    State.network = null;
+  });
+
+  it("does not make the current artist's own card clickable", () => {
+    showArtistSidebar(1);
+
+    const self = [...els.sidebarPathTrack.querySelectorAll(".path-node-card")].find(
+      (c) => c.getAttribute("data-node-id") === "1",
+    );
+    expect(self.getAttribute("style")).toContain("cursor:default");
+  });
+
+  it("opens the edge sidebar from the connector, by click or keyboard", async () => {
+    const { highlightEdgePair } = await import("../vis-adapter/index.js");
+    showArtistSidebar(1);
+
+    const connector = els.sidebarPathTrack.querySelector(".path-edge-connector");
+    connector.click();
+    expect(highlightEdgePair).toHaveBeenCalled();
+
+    highlightEdgePair.mockClear();
+    connector.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(highlightEdgePair).toHaveBeenCalled();
+
+    highlightEdgePair.mockClear();
+    connector.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(highlightEdgePair).not.toHaveBeenCalled();
+  });
+});
+
+describe("showEdgeSidebar", () => {
+  const names = { 1: "Drake", 2: "Future" };
+  const edge = (over = {}) => ({ id: "e1", from: 1, to: 2, weight: 3, ...over });
+
+  beforeEach(() => {
+    State.graphNodes = [mockNode({ id: 1, name: "Drake" }), mockNode({ id: 2, name: "Future" })];
+    State.selectedEdgeId = "e1";
+    fetchEdgeDetails.mockResolvedValue({ collaborations: [], error: null });
+  });
+
+  it("titles the sidebar with both artists", () => {
+    State.graphEdges = [edge()];
+    showEdgeSidebar("e1", names);
+
+    expect(els.sidebarName.textContent).toBe("Drake × Future");
+    expect(els.artistSidebar.classList.contains("show")).toBe(true);
+  });
+
+  it("ignores an edge id that is not in the graph", () => {
+    State.graphEdges = [];
+    showEdgeSidebar("nope", names);
+    expect(els.artistSidebar.classList.contains("show")).toBe(false);
+  });
+
+  it("falls back to the node list, then a placeholder, for a missing name", () => {
+    State.graphEdges = [edge({ from: 1, to: 99 })];
+    showEdgeSidebar("e1", {});
+
+    expect(els.sidebarName.textContent).toBe("Drake × ?");
+  });
+
+  it("lists each fetched collaboration with a chip per credited role", async () => {
+    fetchEdgeDetails.mockResolvedValue({
+      collaborations: [{ song: "Life Is Good", roles: ["featured", "writer"] }],
+      error: null,
+    });
+    State.graphEdges = [edge()];
+
+    showEdgeSidebar("e1", names);
+
+    await vi.waitFor(() =>
+      expect(els.sidebarTracks.querySelectorAll(".sidebar-track")).toHaveLength(1),
+    );
+    expect(els.sidebarTracks.querySelectorAll(".sidebar-track-role")).toHaveLength(2);
+  });
+
+  it("falls back to a plain song list when there are no role credits", () => {
+    State.graphEdges = [edge({ songs: ["Way 2 Sexy", { song: "Wants and Needs" }, {}] })];
+    showEdgeSidebar("e1", names);
+
+    const names_ = [...els.sidebarTracks.querySelectorAll(".sidebar-track-name")].map(
+      (n) => n.textContent,
+    );
+    expect(names_[0]).toBe("Way 2 Sexy");
+    expect(names_[1]).toBe("Wants and Needs");
+    expect(names_[2].trim()).not.toBe("");
+  });
+
+  it("says so when the server answers that the pair has no known tracks", async () => {
+    State.graphEdges = [edge()];
+
+    showEdgeSidebar("e1", names);
+
+    await vi.waitFor(() => expect(els.sidebarTracks.textContent.toLowerCase()).toContain("no"));
+  });
+
+  it("counts roles across the fetched collaborations for the breakdown", async () => {
+    fetchEdgeDetails.mockResolvedValue({
+      collaborations: [
+        { song: "A", roles: ["featured"] },
+        { song: "B", roles: ["featured", "writer"] },
+      ],
+      error: null,
+    });
+    State.graphEdges = [edge()];
+
+    showEdgeSidebar("e1", names);
+
+    await vi.waitFor(() => {
+      const counts = [...els.sidebarRoleChips.querySelectorAll(".rbc-count")].map(
+        (n) => n.textContent,
+      );
+      expect(counts).toEqual(["2", "1"]);
+    });
+  });
+
+  it("falls back to the shared-track count when there are no role credits", () => {
+    State.graphEdges = [edge({ weight: 4, dominantRole: "producer" })];
+    showEdgeSidebar("e1", names);
+
+    expect(els.sidebarRoleChips.querySelector(".rbc-count").textContent).toBe("4");
+  });
+
+  it("shows both endpoints and jumps to one when clicked", () => {
+    State.graphEdges = [edge()];
+    State.network = { focus: vi.fn() };
+    showEdgeSidebar("e1", names);
+
+    expect(els.sidebarEndpointsTile.style.display).toBe("");
+    const cards = els.sidebarEndpointsTrack.querySelectorAll(".path-node-card");
+    expect(cards).toHaveLength(2);
+
+    cards[1].click();
+    expect(State.network.focus).toHaveBeenCalledWith(2, expect.anything());
+    State.network = null;
+  });
+
+  it("hides the object action bar, which only makes sense for a node", () => {
+    State.graphEdges = [edge()];
+    showEdgeSidebar("e1", names);
+
+    expect(els.objectActionBar.hidden).toBe(true);
+    expect(selectEdge).toHaveBeenCalledWith("e1");
+  });
+
+  it("works on a page without the endpoints tile", () => {
+    State.graphEdges = [edge()];
+    els.sidebarEndpointsTile = null;
+
+    expect(() => showEdgeSidebar("e1", names)).not.toThrow();
+  });
+});
+
+describe("showEdgeSidebarByPathEdgeId", () => {
+  const names = { 1: "Drake", 2: "Future" };
+
+  beforeEach(() => {
+    State.graphNodes = [mockNode({ id: 1, name: "Drake" }), mockNode({ id: 2, name: "Future" })];
+    State.graphEdges = [{ id: "e1", from: 2, to: 1, weight: 1 }];
+  });
+
+  it("resolves a synthetic lo_hi id back to the real edge", () => {
+    showEdgeSidebarByPathEdgeId("1_2", names);
+    expect(selectEdge).toHaveBeenCalledWith("e1");
+  });
+
+  it("passes a real edge id straight through", () => {
+    showEdgeSidebarByPathEdgeId("e1", names);
+    expect(selectEdge).toHaveBeenCalledWith("e1");
+  });
+
+  it("does nothing for an id that matches no edge either way", () => {
+    showEdgeSidebarByPathEdgeId("7_8", names);
+    expect(selectEdge).not.toHaveBeenCalled();
+  });
+});
+
+describe("hideArtistSidebar", () => {
+  it("clears the selection and hides the panels", () => {
+    els.artistSidebar.classList.add("show");
+    els.companionPanel.classList.add("show");
+
+    hideArtistSidebar();
+
+    expect(els.artistSidebar.classList.contains("show")).toBe(false);
+    expect(els.companionPanel.classList.contains("show")).toBe(false);
+    expect(els.objectActionBar.hidden).toBe(true);
+    expect(clearSelectedEdge).toHaveBeenCalled();
+    expect(clearSelectedNode).toHaveBeenCalled();
+  });
+
+  it("works on a page without the companion panel or action bar", () => {
+    els.companionPanel = null;
+    els.objectActionBar = null;
+
+    expect(() => hideArtistSidebar()).not.toThrow();
   });
 });

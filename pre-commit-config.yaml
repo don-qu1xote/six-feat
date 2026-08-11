@@ -1,7 +1,5 @@
 repos:
-  # Blocks accidental commits of .env / secret-like files before they
-  # ever reach history (see scripts/scrub-env-history.sh for the cleanup
-  # of secrets that were already committed in the past).
+
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
     hooks:
@@ -22,12 +20,10 @@ repos:
       - id: no-commit-to-branch
         args: ["--branch", "main"]
 
-  # Explicit belt-and-suspenders block on the literal ".env" filename,
-  # even if someone force-adds it or edits .gitignore locally.
   - repo: local
     hooks:
       - id: forbid-dotenv-file
         name: forbid committing .env
-        entry: bash -c 'echo "ERROR: refusing to commit .env — use .env.example with placeholders instead." >&2; exit 1'
+        entry: "bash -c 'echo \"ERROR: refusing to commit .env — use .env.example with placeholders instead.\" >&2; exit 1'"
         language: system
         files: '(^|/)\.env$'

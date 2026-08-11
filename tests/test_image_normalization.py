@@ -1,27 +1,3 @@
-"""
-test_image_normalization.py — SF-API-07 regression.
-
-Genius's own fallback avatar for an artist with no uploaded photo is a
-real, resolvable image URL (not a 404 or empty string) — confirmed against
-a live response: https://assets.genius.com/images/default_cover_image.png
-?1783625229 (filename is `default_cover_image.png` with a cache-busting
-query string, NOT `default_avatar_*.png`) — so it can't be told apart
-from a real photo by validity alone. Before this fix,
-GeniusGateway (libs/six-feat-common/src/genius/genius_gateway.cpp) passed
-that URL straight through into ArtistRef::image, so the front end rendered
-Genius's grey placeholder instead of its own themed one (front/src/state/
-helpers.js placeholderFor, used everywhere as `imageUrl ||
-placeholderFor(...)`, which only kicks in on an empty string).
-
-These tests exercise the real six-feat -> six-feat-genius-gateway chain
-(via the surrogate Genius server, same as test_graph.py) and assert:
-  - a default-avatar image_url is normalized away — the response node
-    carries no "image" field at all (graph_handler.cpp omits the key
-    entirely when ArtistRef::image is empty — see nb["image"] = ... only
-    inside `if (!data.seed.image.empty())`).
-  - a real photo URL survives untouched.
-"""
-
 from __future__ import annotations
 
 import requests
@@ -30,13 +6,8 @@ from conftest import SERVICE_BASE, GeniusMock, _build_song_detail
 
 GRAPH_URL = f"{SERVICE_BASE}/api/v1/graph"
 
-# A real, resolvable Genius URL — not the pattern under test.
 REAL_PHOTO_URL = "https://images.genius.com/1234567890abcdef.1000x1000x1.jpg"
 
-# Genius's actual fallback avatar for artists with no photo — matches
-# GeniusGateway's kGeniusDefaultAvatarMarker ("default_cover_image")
-# regardless of host/query-string. This is the real filename Genius serves,
-# confirmed against a live response — NOT "default_avatar_*.png".
 DEFAULT_AVATAR_URL = "https://assets.genius.com/images/default_cover_image.png?1783625229"
 
 
@@ -47,24 +18,25 @@ class TestDefaultAvatarNormalization:
         genius_mock: GeniusMock,
         unique_artist_id: int,
     ) -> None:
-        genius_mock.artist(unique_artist_id, {
-            "id": unique_artist_id, "name": "No Photo Artist",
-            "image": DEFAULT_AVATAR_URL,
-        })
-        # GraphHandler::BuildGraphJson (graph_handler.cpp) builds `order`
-        # only from the OTHER artists credited on each song — the seed's own
-        # credit entries are explicitly skipped — and returns EmptyGraph()
-        # outright when `order` ends up empty. A song crediting only the
-        # seed (no collaborators) therefore never produces a seed node
-        # either, same as a seed with zero songs; give it one collaborator,
-        # purely so the seed node actually appears for the assertions below.
+        genius_mock.artist(
+            unique_artist_id,
+            {
+                "id": unique_artist_id,
+                "name": "No Photo Artist",
+                "image": DEFAULT_AVATAR_URL,
+            },
+        )
+
         song_id = unique_artist_id * 10 + 1
         collab_id = unique_artist_id * 10 + 2
         genius_mock.songs(unique_artist_id, [song_id])
         genius_mock.song_detail(
             song_id,
             _build_song_detail(
-                song_id, "Solo Track", unique_artist_id, "No Photo Artist",
+                song_id,
+                "Solo Track",
+                unique_artist_id,
+                "No Photo Artist",
                 collaborators=[{"id": collab_id, "name": "Featured Guest", "role": "featured"}],
             ),
         )
@@ -85,20 +57,25 @@ class TestDefaultAvatarNormalization:
         genius_mock: GeniusMock,
         unique_artist_id: int,
     ) -> None:
-        genius_mock.artist(unique_artist_id, {
-            "id": unique_artist_id, "name": "Real Photo Artist",
-            "image": REAL_PHOTO_URL,
-        })
-        # See the matching comment in test_default_avatar_yields_empty_image
-        # above — a seed with a song credited to nobody but itself still
-        # yields EmptyGraph(), so it needs a collaborator to appear as a node.
+        genius_mock.artist(
+            unique_artist_id,
+            {
+                "id": unique_artist_id,
+                "name": "Real Photo Artist",
+                "image": REAL_PHOTO_URL,
+            },
+        )
+
         song_id = unique_artist_id * 10 + 1
         collab_id = unique_artist_id * 10 + 2
         genius_mock.songs(unique_artist_id, [song_id])
         genius_mock.song_detail(
             song_id,
             _build_song_detail(
-                song_id, "Solo Track", unique_artist_id, "Real Photo Artist",
+                song_id,
+                "Solo Track",
+                unique_artist_id,
+                "Real Photo Artist",
                 collaborators=[{"id": collab_id, "name": "Featured Guest", "role": "featured"}],
             ),
         )

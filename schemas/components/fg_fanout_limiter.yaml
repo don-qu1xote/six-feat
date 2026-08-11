@@ -1,0 +1,17 @@
+type: object
+description: >-
+    Shared foreground fan-out limiter. Caps how many song-detail requests this
+    service keeps in flight to six-feat-genius-gateway at once, across every
+    consumer that fans out (graph assembly in genius-music-source-provider and
+    direct-edge probing in collab-service).
+additionalProperties: false
+properties:
+    max-concurrent:
+        type: integer
+        description: >-
+            Maximum concurrent upstream song-detail requests in flight, summed
+            over all consumers. Must stay at or under the gateway's own
+            lane-fg-max-concurrent so this service never floods a lane shared
+            with other callers. One limiter rather than one per consumer:
+            per-consumer semaphores silently added up and broke that invariant.
+        defaultDescription: '6'

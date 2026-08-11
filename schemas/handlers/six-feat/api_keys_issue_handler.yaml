@@ -1,0 +1,4 @@
+type: object
+description: API key issuance handler configuration (SF-API-15). Session-authenticated only.
+additionalProperties: false
+properties: {}

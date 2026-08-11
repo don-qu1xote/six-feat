@@ -1,25 +1,5 @@
 #!/usr/bin/env python3
-"""
-scripts/e2e_env.py — IDEA-33: environment for the Playwright browser smoke
-test (front/e2e/smoke.spec.js).
 
-Unlike tests/conftest.py's `service_proc` fixture (which points
-handler-index/handler-script at /dev/null since the API-only integration
-suite never loads a page), this starts the compiled six_feat binary
-serving the *real* built front-end (front/index.html + front/dist's hashed
-JS bundle) so a real browser can load it — plus the same in-process mock
-Genius HTTP server machinery from tests/conftest.py, reused rather than
-reimplemented, programmed with two artists that share one song (so both a
-graph search and a from/to path search have something to show).
-
-Usage:
-    python3 scripts/e2e_env.py up      # start everything, write ENV_FILE, block
-    python3 scripts/e2e_env.py down    # stop a previously-started `up`
-
-`up` blocks in the foreground until it receives SIGTERM/SIGINT — run it
-backgrounded (`python3 scripts/e2e_env.py up &`) and poll for ENV_FILE to
-appear, then run the Playwright suite, then `python3 scripts/e2e_env.py down`.
-"""
 from __future__ import annotations
 
 import json
@@ -40,46 +20,30 @@ import session_crypto  # noqa: E402
 
 ENV_FILE = Path(os.environ.get("E2E_ENV_FILE", "/tmp/six_feat_e2e_env.json"))
 
-SERVICE_PORT    = int(os.environ.get("E2E_SERVICE_PORT", "18180"))
-MOCK_PORT       = int(os.environ.get("E2E_MOCK_PORT", "18181"))
-MONITOR_PORT    = int(os.environ.get("E2E_MONITOR_PORT", "18185"))
+SERVICE_PORT = int(os.environ.get("E2E_SERVICE_PORT", "18180"))
+MOCK_PORT = int(os.environ.get("E2E_MOCK_PORT", "18181"))
+MONITOR_PORT = int(os.environ.get("E2E_MONITOR_PORT", "18185"))
 ENRICHMENT_PORT = int(os.environ.get("E2E_ENRICHMENT_PORT", "18182"))
-# [IDEA-46] Genius API access moved out of six_feat into the standalone
-# six-feat-genius-gateway service — this is the process actually pointed at
-# the surrogate mock Genius server below; six_feat's GeniusGatewayClient
-# talks to it instead.
-GATEWAY_PORT         = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
+GATEWAY_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_PORT", "18183"))
 GATEWAY_MONITOR_PORT = int(os.environ.get("E2E_GENIUS_GATEWAY_MONITOR_PORT", "18186"))
-# [SF-SEC-01] AppSecretParityChecker's target. Like ENRICHMENT_PORT above,
-# nothing actually listens here for this smoke test — the checker degrades
-# to "unreachable" (a soft dependency, never fails /readyz on its own) and
-# just logs a warning, same as EnqueueIfNeeded()/IsEnriching() degrade when
-# nothing listens on ENRICHMENT_PORT.
 AUTH_PORT = int(os.environ.get("E2E_AUTH_PORT", "18184"))
 
-APP_SECRET                  = "e" * 64
-GENIUS_CLIENT_SECRET        = "e2e-genius-client-secret"
-ENRICHMENT_INTERNAL_SECRET  = "e2e-enrichment-internal-secret"
+APP_SECRET = "e" * 64
+GENIUS_CLIENT_SECRET = "e2e-genius-client-secret"
+ENRICHMENT_INTERNAL_SECRET = "e2e-enrichment-internal-secret"
 
-# Two artists sharing exactly one song — enough for a graph with 2 nodes
-# and a 1-hop from/to path (the two scenarios the smoke test exercises).
-SEED_ARTIST_ID      = 90101
-SEED_ARTIST_NAME    = "Aurora Vale"
-TARGET_ARTIST_ID    = 90102
-TARGET_ARTIST_NAME  = "Kessler Vane"
-SHARED_SONG_ID      = 70001
+SEED_ARTIST_ID = 90101
+SEED_ARTIST_NAME = "Aurora Vale"
+TARGET_ARTIST_ID = 90102
+TARGET_ARTIST_NAME = "Kessler Vane"
+SHARED_SONG_ID = 70001
 
-BINARY      = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
-FRONT_DIST  = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
+BINARY = Path(os.environ.get("SIX_FEAT_BINARY", REPO_ROOT / "build" / "six_feat"))
+FRONT_DIST = Path(os.environ.get("E2E_FRONT_DIST", REPO_ROOT / "front" / "dist"))
 FRONT_INDEX = Path(os.environ.get("E2E_FRONT_INDEX", REPO_ROOT / "front" / "index.html"))
-# [SF-SEC-02] The real vendored vis-network bundle — this env serves the
-# actual built front-end to a real browser, so (unlike tests/conftest.py's
-# /dev/null stub) it must be the genuine file or the graph never renders.
 VENDOR_VIS_NETWORK = Path(
     os.environ.get("E2E_VENDOR_VIS_NETWORK", REPO_ROOT / "front" / "vendor" / "vis-network.min.js")
 )
-# [SF-API-05] Checked-in static OpenAPI 3.1 document — same file
-# static_handler.hpp's OpenApiHandler serves in the real image.
 OPENAPI_JSON = Path(
     os.environ.get("E2E_OPENAPI_JSON", REPO_ROOT / "schemas" / "openapi" / "openapi.json")
 )
@@ -122,8 +86,6 @@ components_manager:
         default:
           file_path: '@stderr'
           level: warning
-          # [SF-OBS-03] Matches the production static_config.yaml templates'
-          # own logging block (format: json).
           format: json
 
     testsuite-support:
@@ -141,10 +103,6 @@ components_manager:
     persistent-store:
       dbname: postgres-db-1
 
-    # [IDEA-46] HTTP client for the standalone six-feat-genius-gateway
-    # service — see GATEWAY_PORT / the genius_gateway_proc started in
-    # cmd_up() below. The surrogate mock Genius server is configured
-    # directly on that process now, not here.
     genius-gateway-client:
       genius-gateway-base-url: http://127.0.0.1:{gateway_port}
       timeout-ms: 5000
@@ -154,14 +112,12 @@ components_manager:
 
     artist-repository: {{}}
 
-    # [SF-SEC-01] Nothing listens on {auth_port} in this smoke-test env —
-    # AppSecretParityChecker degrades to "unreachable" (soft dependency,
-    # never fails /readyz on its own), same posture as enrichment-client
-    # below with nothing on enrichment_port.
     app-secret-parity-checker:
       auth-base-url: http://127.0.0.1:{auth_port}
       timeout-ms: 2000
       check-interval-ms: 30000
+
+    genius-music-source-provider: {{}}
 
     enrichment-client:
       enrichment-base-url: http://127.0.0.1:{enrichment_port}
@@ -171,10 +127,20 @@ components_manager:
       path-max-expand-rounds: 2
       path-max-frontier-size: 10
 
-    # [SF-SEC-04] backend: single — e2e doesn't exercise the shared/
-    # Postgres backend, only the default production shape.
+    fg-fanout-limiter:
+      max-concurrent: 6
+
     rate-limit-store:
       backend: single
+      dbname: postgres-db-1
+
+    api-key-store:
+      dbname: postgres-db-1
+
+    idempotency-store:
+      dbname: postgres-db-1
+
+    user-provider-token-store:
       dbname: postgres-db-1
 
     oauth-config:
@@ -189,6 +155,21 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-graph-deepen:
+      path: /api/v1/graph/deepen
+      method: GET
+      task_processor: main-task-processor
+
+    handler-graph-edge:
+      path: /api/v1/graph/edge
+      method: GET
+      task_processor: main-task-processor
+
+    handler-graph-layout:
+      path: /api/v1/graph/layout
+      method: POST
+      task_processor: main-task-processor
+
     handler-path:
       path: /api/v1/graph/path
       method: GET
@@ -199,8 +180,6 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # Real static assets (unlike tests/conftest.py's /dev/null stubs) so a
-    # headless browser has an actual page + JS bundle to load.
     handler-index:
       path: /
       method: GET
@@ -218,9 +197,6 @@ components_manager:
       file-path: {script_file_path}
       content-type: application/javascript; charset=utf-8
 
-    # [SF-WEB-40] Real hashed CSS bundle — a real browser loads this page, so
-    # the design system must be served (unlike tests/conftest.py's /dev/null
-    # stub) or the page renders unstyled.
     handler-style:
       path: {style_url_path}
       method: GET
@@ -228,9 +204,6 @@ components_manager:
       file-path: {style_file_path}
       content-type: text/css; charset=utf-8
 
-    # [SF-SEC-02] Real vendored vis-network bundle (see VENDOR_VIS_NETWORK
-    # above) — a real browser loads this page, so unlike tests/conftest.py's
-    # /dev/null stub, this must be the genuine file or the graph never draws.
     handler-vendor-vis-network:
       path: /vendor/vis-network.min.js
       method: GET
@@ -253,14 +226,59 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
-    # [SF-API-03] Artist metadata + fetch_state, L1/L2 only — see
-    # services/six-feat/src/http/artist_handler.hpp. Every static config
-    # that boots this binary needs a matching section, same as every other
-    # handler here (see the handler-image comment below for the same
-    # failure mode this fixes).
     handler-artist:
       path: /api/v1/artist
       method: GET
+      task_processor: main-task-processor
+
+    handler-api-keys-issue:
+      path: /api/v1/api-keys
+      method: POST
+      task_processor: main-task-processor
+
+    handler-api-keys-revoke:
+      path: /api/v1/api-keys/revoke
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-status:
+      path: /api/v1/settings/providers
+      method: GET
+      task_processor: main-task-processor
+
+    handler-settings-genius-connect:
+      path: /api/v1/settings/genius-token
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-genius-link-start:
+      path: /api/v1/settings/genius/link/start
+      method: GET
+      task_processor: main-task-processor
+
+    handler-internal-genius-link:
+      path: /internal/genius-link
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-disconnect:
+      path: /api/v1/settings/disconnect
+      method: POST
+      task_processor: main-task-processor
+
+    handler-settings-enrichment-enabled:
+      path: /api/v1/settings/enrichment-enabled
+      method: PATCH
+      task_processor: main-task-processor
+
+    handler-internal-music-source-edges:
+      path: /internal/music-source/collaboration-edges
+      method: POST
+      task_processor: main-task-processor
+
+    handler-internal-neighbours:
+      path: /internal/neighbours
+      method: POST
       task_processor: main-task-processor
 
     handler-status-stream:
@@ -269,24 +287,12 @@ components_manager:
       task_processor: main-task-processor
       response-body-stream: true
 
-    # [SF-API-12] main.cpp unconditionally registers ImageProxyHandler, so
-    # every static config that boots the six_feat binary needs a matching
-    # handler-image block or components::Run fails outright at startup
-    # (InvariantError: "registered, but not present in
-    # components_manager.components section") — same reason every other
-    # handler block above exists here. No allowed-hosts override — e2e
-    # doesn't exercise /api/v1/image directly, so the compiled-in default
-    # (images.genius.com, assets.genius.com) is fine.
     handler-image:
       path: /api/v1/image
       method: GET
       task_processor: main-task-processor
       timeout-ms: 5000
 
-    # [SF-API-05] Same reasoning as handler-image above: main.cpp
-    # unconditionally registers OpenApiHandler, so this config needs a
-    # matching block too. Real file (not a stub) since it costs nothing to
-    # serve correctly here.
     handler-openapi:
       path: /api/v1/openapi.json
       method: GET
@@ -319,23 +325,34 @@ def _resolve_script_bundle() -> tuple[str, Path]:
     return _resolve_bundle("script")
 
 
-# [SF-WEB-40] The hashed CSS bundle, resolved the same way as the JS bundle.
 def _resolve_style_bundle() -> tuple[str, Path]:
     return _resolve_bundle("style")
 
 
 def _program_mock(mock_state: "it_conftest._MockState") -> None:
     mock = it_conftest.GeniusMock(mock_state)
-    mock.resolve(SEED_ARTIST_NAME, [{"id": SEED_ARTIST_ID, "name": SEED_ARTIST_NAME, "score": 0.99}])
-    mock.resolve(TARGET_ARTIST_NAME, [{"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "score": 0.99}])
+    mock.resolve(
+        SEED_ARTIST_NAME, [{"id": SEED_ARTIST_ID, "name": SEED_ARTIST_NAME, "score": 0.99}]
+    )
+    mock.resolve(
+        TARGET_ARTIST_NAME, [{"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "score": 0.99}]
+    )
     mock.artist(SEED_ARTIST_ID, {"id": SEED_ARTIST_ID, "name": SEED_ARTIST_NAME})
     mock.artist(TARGET_ARTIST_ID, {"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME})
     mock.songs(SEED_ARTIST_ID, [SHARED_SONG_ID])
     mock.songs(TARGET_ARTIST_ID, [SHARED_SONG_ID])
-    mock.song_detail(SHARED_SONG_ID, it_conftest._build_song_detail(
-        SHARED_SONG_ID, "Neon Static", SEED_ARTIST_ID, SEED_ARTIST_NAME,
-        collaborators=[{"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "role": "featured"}],
-    ))
+    mock.song_detail(
+        SHARED_SONG_ID,
+        it_conftest._build_song_detail(
+            SHARED_SONG_ID,
+            "Neon Static",
+            SEED_ARTIST_ID,
+            SEED_ARTIST_NAME,
+            collaborators=[
+                {"id": TARGET_ARTIST_ID, "name": TARGET_ARTIST_NAME, "role": "featured"}
+            ],
+        ),
+    )
 
 
 def cmd_up() -> None:
@@ -349,7 +366,7 @@ def cmd_up() -> None:
     if not VENDOR_VIS_NETWORK.exists():
         sys.exit(
             f"[e2e_env] {VENDOR_VIS_NETWORK} not found — vis-network vendor "
-            f"bundle is missing (see DEVELOPMENT.md / front/vendor/)."
+            f"bundle is missing (see docs/DEVELOPMENT.md / front/vendor/)."
         )
     script_name, script_path = _resolve_script_bundle()
     style_name, style_path = _resolve_style_bundle()
@@ -368,17 +385,16 @@ def cmd_up() -> None:
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="six_feat_e2e_"))
 
-    # [IDEA-46] Real six-feat-genius-gateway instance fronting the surrogate
-    # mock Genius server — six_feat's GeniusGatewayClient talks to this
-    # process instead of Genius (or the mock) directly.
     gateway_cfg_path = tmp_dir / "genius_gateway_static_config.yaml"
-    gateway_cfg_path.write_text(it_conftest._GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE.format(
-        gateway_port=GATEWAY_PORT,
-        gateway_monitor_port=GATEWAY_MONITOR_PORT,
-        mock_port=MOCK_PORT,
-        backoff_max_attempts=1,
-        cb_failure_threshold=100,
-    ))
+    gateway_cfg_path.write_text(
+        it_conftest._GENIUS_GATEWAY_TEST_CONFIG_TEMPLATE.format(
+            gateway_port=GATEWAY_PORT,
+            gateway_monitor_port=GATEWAY_MONITOR_PORT,
+            mock_port=MOCK_PORT,
+            backoff_max_attempts=1,
+            cb_failure_threshold=100,
+        )
+    )
 
     gateway_proc = subprocess.Popen(
         [str(it_conftest.GENIUS_GATEWAY_BINARY), "--config", str(gateway_cfg_path)],
@@ -391,25 +407,29 @@ def cmd_up() -> None:
         gateway_proc.terminate()
         stderr = gateway_proc.stderr.read().decode(errors="replace") if gateway_proc.stderr else ""
         mock_srv.shutdown()
-        sys.exit(f"[e2e_env] genius-gateway service did not start within timeout.\nstderr:\n{stderr}")
+        sys.exit(
+            f"[e2e_env] genius-gateway service did not start within timeout.\nstderr:\n{stderr}"
+        )
 
     cfg_path = tmp_dir / "static_config.yaml"
-    cfg_path.write_text(_STATIC_CONFIG_TEMPLATE.format(
-        service_port=SERVICE_PORT,
-        monitor_port=MONITOR_PORT,
-        mock_port=MOCK_PORT,
-        gateway_port=GATEWAY_PORT,
-        enrichment_port=ENRICHMENT_PORT,
-        auth_port=AUTH_PORT,
-        db_connection_string=it_conftest.DB_CONNECTION_STRING,
-        front_index_path=str(FRONT_INDEX),
-        script_url_path=f"/{script_name}",
-        script_file_path=str(script_path),
-        style_url_path=f"/{style_name}",
-        style_file_path=str(style_path),
-        vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
-        openapi_json_path=str(OPENAPI_JSON),
-    ))
+    cfg_path.write_text(
+        _STATIC_CONFIG_TEMPLATE.format(
+            service_port=SERVICE_PORT,
+            monitor_port=MONITOR_PORT,
+            mock_port=MOCK_PORT,
+            gateway_port=GATEWAY_PORT,
+            enrichment_port=ENRICHMENT_PORT,
+            auth_port=AUTH_PORT,
+            db_connection_string=it_conftest.DB_CONNECTION_STRING,
+            front_index_path=str(FRONT_INDEX),
+            script_url_path=f"/{script_name}",
+            script_file_path=str(script_path),
+            style_url_path=f"/{style_name}",
+            style_file_path=str(style_path),
+            vendor_vis_network_path=str(VENDOR_VIS_NETWORK),
+            openapi_json_path=str(OPENAPI_JSON),
+        )
+    )
 
     proc = subprocess.Popen(
         [str(BINARY), "--config", str(cfg_path)],
@@ -437,14 +457,20 @@ def cmd_up() -> None:
         name="E2E Smoke User",
     )
 
-    ENV_FILE.write_text(json.dumps({
-        "pid": os.getpid(),
-        "base_url": f"http://127.0.0.1:{SERVICE_PORT}",
-        "session_cookie": cookie,
-        "seed_artist": SEED_ARTIST_NAME,
-        "target_artist": TARGET_ARTIST_NAME,
-    }))
-    print(f"[e2e_env] up — {ENV_FILE} written, service on :{SERVICE_PORT}, mock genius on :{MOCK_PORT}")
+    ENV_FILE.write_text(
+        json.dumps(
+            {
+                "pid": os.getpid(),
+                "base_url": f"http://127.0.0.1:{SERVICE_PORT}",
+                "session_cookie": cookie,
+                "seed_artist": SEED_ARTIST_NAME,
+                "target_artist": TARGET_ARTIST_NAME,
+            }
+        )
+    )
+    print(
+        f"[e2e_env] up — {ENV_FILE} written, service on :{SERVICE_PORT}, mock genius on :{MOCK_PORT}"
+    )
 
     stop_event = threading.Event()
 
@@ -487,8 +513,6 @@ def cmd_down() -> None:
     except ProcessLookupError:
         print(f"[e2e_env] process {pid} already gone.")
         return
-    # Give the `up` process's own signal handler time to clean up (six_feat
-    # subprocess + mock server + ENV_FILE) before returning.
     for _ in range(20):
         if not ENV_FILE.exists():
             return

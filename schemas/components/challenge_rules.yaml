@@ -1,0 +1,15 @@
+type: object
+description: >-
+    [SF-GAME-22] Shared challenge-creation rules. min-path-len lives here and
+    only here: the scheduler, the admin publish handler and the user-facing
+    POST /challenge all read it from this component, so the three paths cannot
+    drift apart.
+additionalProperties: false
+properties:
+    min-path-len:
+        type: integer
+        description: >-
+            Minimum BFS ideal length a pair must have to become a challenge.
+            The scheduler resamples a pair below it; admin/user requests are
+            rejected explicitly.
+        defaultDescription: '2'

@@ -1,0 +1,10 @@
+type: object
+description: >-
+    [SF-GAME-11] Durable store for the game_* schema — attaches to the shared
+    Postgres cluster and owns its own forward-only migration registry.
+additionalProperties: false
+properties:
+    dbname:
+        type: string
+        description: Name of the components::Postgres component whose cluster backs this store
+        defaultDescription: postgres-db-1

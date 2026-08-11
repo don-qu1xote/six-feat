@@ -1,0 +1,202 @@
+#!/bin/bash
+set -u
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+# [SF-WEB-77] Kept in sync with .github/workflows/ci.yml's CLANG_FORMAT_VERSION/
+# RUFF_VERSION env vars — these are the two versions lint-format actually runs.
+# A dev with a *different* installed version can format cleanly here and
+# still fail CI, because clang-format/ruff aren't guaranteed byte-stable
+# across versions. Checking the exact version (not just "is it installed")
+# turns that mismatch into a loud local failure instead of a red CI run.
+EXPECTED_CLANG_FORMAT_VERSION="18.1.8"
+EXPECTED_RUFF_VERSION="0.16.0"
+
+missing() {
+    echo "pre-commit: $1 не найден. Установи его:"
+    echo "  macOS:   brew install clang-format && pipx install ruff && cd front && npm ci"
+    echo "  Linux:   pip install clang-format==${EXPECTED_CLANG_FORMAT_VERSION} ruff==${EXPECTED_RUFF_VERSION} && cd front && npm ci"
+    exit 1
+}
+
+wrong_version() {
+    local tool="$1" expected="$2" actual="$3"
+    echo "pre-commit: $tool версии $actual, а CI (lint-format) закреплён на $expected."
+    echo "  Разное форматирование между версиями — то, что здесь пройдёт, может не пройти в CI."
+    echo "  Установи закреплённую версию: pip install --user \"$tool==$expected\""
+    exit 1
+}
+
+# Подпись автора проверяется до всего остального и независимо от того, какие
+# файлы в коммите: заготовка из `git config --global` по умолчанию
+# ("Your Name <you@example.com>") молча уезжает в историю, а переписать её
+# задним числом можно только переписав саму историю. Дешевле не пустить.
+author_name=$(git config user.name || true)
+author_email=$(git config user.email || true)
+
+if [ -z "$author_name" ] || [ -z "$author_email" ]; then
+    echo "pre-commit: не задано авторство коммитов."
+    echo "  git config user.name \"Имя\" && git config user.email \"почта@example.org\""
+    exit 1
+fi
+
+case "$author_name/$author_email" in
+    "Your Name/"* | */"you@example.com" | */"you@example.org")
+        echo "pre-commit: авторство осталось заготовкой — $author_name <$author_email>."
+        echo "  Задай своё: git config user.name \"Имя\" && git config user.email \"почта@example.org\""
+        echo "  В истории уже есть коммиты с этой подписью; исправить их можно только переписав историю."
+        exit 1
+        ;;
+esac
+
+staged=$(git diff --cached --name-only --diff-filter=ACM || true)
+
+if [ -z "$staged" ]; then
+    exit 0
+fi
+
+fail=0
+
+cpp_files=$(echo "$staged" | grep -E '\.(cpp|hpp)$' || true)
+py_files=$(echo "$staged" | grep -E '\.py$' || true)
+js_files=$(echo "$staged" | grep -E '^front/.*\.js$' || true)
+css_html_files=$(echo "$staged" | grep -E '\.(css|html)$' || true)
+
+# [SF-WEB-77] Format/check the SAME whole-tree file sets CI's lint-format job
+# uses (see Makefile's fmt/fmt-check, which this now literally reuses),
+# not just the files staged in this commit. lint-format's clang-format/ruff
+# format --check/prettier --check steps sweep the entire repo regardless of
+# what a given PR touched — so a pre-existing drift in a file this commit
+# never touches still fails CI. Formatting exhaustively here, every time any
+# file of that language is staged, means a commit that passes locally is
+# guaranteed clean against that same exhaustive check, not just clean on the
+# files this commit happens to touch.
+if [ -n "$cpp_files" ]; then
+    command -v clang-format >/dev/null 2>&1 || missing clang-format
+    actual_cf_version=$(clang-format --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    [ "$actual_cf_version" = "$EXPECTED_CLANG_FORMAT_VERSION" ] || wrong_version clang-format "$EXPECTED_CLANG_FORMAT_VERSION" "$actual_cf_version"
+    echo "pre-commit: форматирую все .cpp/.hpp (libs, services) — clang-format $actual_cf_version"
+    find libs services -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 | xargs -0 clang-format -i --style=file
+fi
+
+if [ -n "$py_files" ]; then
+    command -v ruff >/dev/null 2>&1 || missing ruff
+    actual_ruff_version=$(ruff --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    [ "$actual_ruff_version" = "$EXPECTED_RUFF_VERSION" ] || wrong_version ruff "$EXPECTED_RUFF_VERSION" "$actual_ruff_version"
+    echo "pre-commit: форматирую весь репозиторий (Python) — ruff $actual_ruff_version"
+    ruff format .
+fi
+
+if [ -n "$js_files" ]; then
+    command -v npx >/dev/null 2>&1 || missing npx
+    echo "pre-commit: форматирую весь front/**/*.js — prettier"
+    (cd front && npx prettier --write "**/*.js" >/dev/null 2>&1)
+fi
+
+# CSS/HTML has no CI counterpart (lint-format only checks *.js) — stays
+# scoped to what's staged, same as before.
+if [ -n "$css_html_files" ]; then
+    command -v npx >/dev/null 2>&1 || missing npx
+    for f in $css_html_files; do
+        echo "pre-commit: форматирую $f"
+        (cd front && npx prettier --write "../$f" >/dev/null 2>&1)
+    done
+fi
+
+# check_comments.py --fix over the exact same whole-tree scope CI's own
+# invocation uses (see lint-format's "Check comments" step) — not just staged
+# files, for the same whole-tree-vs-this-commit reason as above.
+if [ -n "$cpp_files$py_files$js_files$css_html_files" ]; then
+    echo "pre-commit: удаляю комментарии, не нужные для сборки (весь репозиторий)"
+    python3 scripts/check_comments.py --fix >/tmp/precommit-comments-fix.log 2>&1
+    cat /tmp/precommit-comments-fix.log
+
+    # Comment removal can leave lines needing a reflow — reformat once more.
+    if [ -n "$cpp_files" ]; then
+        find libs services -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 | xargs -0 clang-format -i --style=file
+    fi
+    if [ -n "$py_files" ]; then
+        ruff format . >/dev/null
+    fi
+    if [ -n "$js_files$css_html_files" ]; then
+        (cd front && npx prettier --write "**/*.{js,css,html}" >/dev/null 2>&1)
+    fi
+fi
+
+# Stage every modification these tools made anywhere in the tree — not just
+# to the files originally staged. `-u` only touches already-tracked paths
+# (never picks up new untracked files), so this can't accidentally stage
+# something unrelated the developer hasn't added yet.
+git add -u
+
+if [ -n "$cpp_files" ]; then
+    if ! find libs services -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
+            | xargs -0 clang-format --dry-run --Werror --style=file >/tmp/precommit-clang-format.log 2>&1; then
+        echo "pre-commit: C++ не отформатирован (clang-format --dry-run --Werror):"
+        cat /tmp/precommit-clang-format.log
+        fail=1
+    fi
+fi
+
+if [ -n "$py_files" ]; then
+    if ! ruff format --check . >/tmp/precommit-ruff.log 2>&1; then
+        echo "pre-commit: Python не отформатирован (ruff format --check .):"
+        tail -20 /tmp/precommit-ruff.log
+        fail=1
+    fi
+fi
+
+if [ -n "$js_files" ] && [ -d front/node_modules ]; then
+    if ! (cd front && npx prettier --check "**/*.js" >/tmp/precommit-prettier.log 2>&1); then
+        echo "pre-commit: JS не отформатирован (prettier --check \"**/*.js\"):"
+        tail -20 /tmp/precommit-prettier.log
+        fail=1
+    fi
+fi
+
+if [ -n "$css_html_files" ] && [ -d front/node_modules ]; then
+    : >/tmp/precommit-prettier-css.log
+    css_html_prettier_fail=0
+    while IFS= read -r file; do
+        (cd front && npx prettier --check "../$file" >>/tmp/precommit-prettier-css.log 2>&1) || css_html_prettier_fail=1
+    done <<<"$css_html_files"
+    if [ "$css_html_prettier_fail" -ne 0 ]; then
+        echo "pre-commit: CSS/HTML не отформатирован (prettier --check):"
+        tail -20 /tmp/precommit-prettier-css.log
+        fail=1
+    fi
+fi
+
+if [ -n "$cpp_files$py_files$js_files$css_html_files" ]; then
+    if ! python3 scripts/check_comments.py >/tmp/precommit-comments-check.log 2>&1; then
+        echo "pre-commit: остались комментарии, не нужные для сборки:"
+        cat /tmp/precommit-comments-check.log
+        fail=1
+    fi
+fi
+
+if [ -n "$py_files" ]; then
+    command -v ruff >/dev/null 2>&1 || missing ruff
+    if ! ruff check . --select N >/tmp/precommit-ruff-naming.log 2>&1; then
+        echo "pre-commit: нарушения правил именования Python (ruff N):"
+        cat /tmp/precommit-ruff-naming.log
+        fail=1
+    fi
+fi
+
+if [ -n "$js_files" ] && [ -d front/node_modules ] && command -v npx >/dev/null 2>&1; then
+    if ! (cd front && npm run lint >/tmp/precommit-eslint.log 2>&1); then
+        echo "pre-commit: JS не проходит eslint:"
+        tail -20 /tmp/precommit-eslint.log
+        fail=1
+    fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+    echo
+    echo "Запусти 'make fmt' (форматирует всё) и закоммить результат."
+    exit 1
+fi
+
+exit 0

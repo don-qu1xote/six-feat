@@ -1,0 +1,8 @@
+type: object
+description: >-
+  Starts linking a Genius account to the current session's user_id (not a
+  session login) — 302s to Genius's OAuth authorize URL using the same
+  registered redirect_uri as ordinary login, disambiguated via a "link:"
+  prefixed state. Session-authenticated only.
+additionalProperties: false
+properties: {}

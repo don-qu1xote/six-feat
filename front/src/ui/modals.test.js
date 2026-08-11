@@ -1,22 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════════
-// modals.test.js — [SF-WEB-12] unit tests for the companion panel's path
-//                   context (ui/modals.js::isPathPanelOpen/openPathPanel/
-//                   closePathPanel). [SF-WEB-24] also covers setupDockedPanels
-//                   and the shared-registry exclusivity it gives openPathPanel/
-//                   openSearchModal/openNodeSearch — ui/docked-panel.js's own
-//                   generic mechanics (single document listener, outside-
-//                   click, trigger exemption) are covered in
-//                   docked-panel.test.js; this file only checks that the real
-//                   three surfaces are actually wired to it correctly.
-//
-// Node/edge context is covered in sidebar.test.js; this file covers the
-// other half of the companion panel's mutual exclusivity — opening the
-// path section must close whatever node/edge context was showing, and vice
-// versa (see sidebar.js's own tests for that direction). docked-panel.js
-// itself is used for real (unmocked) here — it's a small, dependency-free
-// module, so an integration-style test against the real registry is more
-// useful than mocking it away.
-// ════════════════════════════════════════════════════════════════════════════
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 
 vi.mock("./sidebar.js", () => ({
@@ -24,11 +5,11 @@ vi.mock("./sidebar.js", () => ({
   showArtistSidebar: vi.fn(),
 }));
 vi.mock("./candidate-picker.js", () => ({ hideCandidatePicker: vi.fn() }));
-const highlightPath        = vi.fn();
+const highlightPath = vi.fn();
 const restoreDefaultColors = vi.fn();
 vi.mock("../vis-adapter/index.js", () => ({
   setFocus: vi.fn(),
-  highlightPath:        (...a) => highlightPath(...a),
+  highlightPath: (...a) => highlightPath(...a),
   restoreDefaultColors: (...a) => restoreDefaultColors(...a),
 }));
 
@@ -37,59 +18,55 @@ import { els } from "../dom/dom.js";
 import { hideArtistSidebar } from "./sidebar.js";
 import { hideCandidatePicker } from "./candidate-picker.js";
 import {
-  isPathPanelOpen, openPathPanel, closePathPanel,
-  isSearchModalOpen, openSearchModal,
-  openNodeSearch, closeNodeSearch, renderNodeSearchResults,
+  isPathPanelOpen,
+  openPathPanel,
+  closePathPanel,
+  isSearchModalOpen,
+  openSearchModal,
+  openNodeSearch,
+  closeNodeSearch,
+  renderNodeSearchResults,
+  updateNodeSearchResults,
   setupDockedPanels,
+  closeSearchModal,
+  forceCloseSearchModal,
+  setupSearchModal,
+  setupNodeSearch,
 } from "./modals.js";
 
-function freshEl(tag = "div") { return document.createElement(tag); }
+function freshEl(tag = "div") {
+  return document.createElement(tag);
+}
 
-// [SF-WEB-24] setupDockedPanels() registers each surface's el/trigger ONCE,
-// by reference — creating fresh els.pathPanel/els.searchModal/
-// els.nodeSearchOverlay per-test (the old pattern) would leave the
-// registry holding stale references to a PREVIOUS test's elements, since
-// registration only happens once here (see below for why). So this file
-// creates every docked-panel-relevant element exactly once in beforeAll,
-// and beforeEach only resets their state (classes/values), never their
-// identity.
 beforeAll(() => {
-  els.companionPanel    = freshEl();
-  els.pathPanel         = freshEl();
-  els.pathFromInput     = freshEl("input");
-  els.searchModal       = freshEl();
+  els.companionPanel = freshEl();
+  els.pathPanel = freshEl();
+  els.pathFromInput = freshEl("input");
+  els.searchModal = freshEl();
   els.nodeSearchOverlay = freshEl();
-  els.nodeSearchInput   = freshEl("input");
+  els.nodeSearchInput = freshEl("input");
   els.nodeSearchResults = freshEl();
-  els.nodeSearchStatus  = freshEl();
-  els.btnSearchOpen     = freshEl("button");
-  els.btnNodeSearch     = freshEl("button");
-  els.btnFindPath       = freshEl("button");
-  // [SF-WEB-30] Docked search forces Explore mode on open — see
-  // openSearchModal's docked branch — so these need real elements too.
-  els.heroInput             = freshEl("input");
-  els.heroModeSwitch        = freshEl();
-  els.heroModeTabExplore    = freshEl("button");
-  els.heroModeTabConnect    = freshEl("button");
-  els.heroModePanelExplore  = freshEl();
-  els.heroModePanelConnect  = freshEl();
-  // Detached elements can't become document.activeElement in jsdom, NOR do
-  // clicks on them bubble anywhere (a detached node has no parent to
-  // bubble into, so they'd never reach the shared document click listener
-  // at all) — attach everything the outside-click tests below click on,
-  // matching how these elements are always actually in the page.
+  els.nodeSearchStatus = freshEl();
+  els.btnSearchOpen = freshEl("button");
+  els.btnNodeSearch = freshEl("button");
+  els.btnFindPath = freshEl("button");
+  els.heroInput = freshEl("input");
+  els.heroModeSwitch = freshEl();
+  els.heroModeTabExplore = freshEl("button");
+  els.heroModeTabConnect = freshEl("button");
+  els.heroModePanelExplore = freshEl();
+  els.heroModePanelConnect = freshEl();
   document.body.append(
-    els.pathFromInput, els.pathPanel, els.searchModal, els.nodeSearchOverlay,
-    els.btnSearchOpen, els.btnNodeSearch, els.btnFindPath, els.heroInput,
+    els.pathFromInput,
+    els.pathPanel,
+    els.searchModal,
+    els.nodeSearchOverlay,
+    els.btnSearchOpen,
+    els.btnNodeSearch,
+    els.btnFindPath,
+    els.heroInput,
   );
 
-  // [SF-WEB-24] Registers all three surfaces with the shared ui/docked-
-  // panel.js registry, which binds its one document click listener at
-  // most once ever, module-wide — called here in beforeAll (not per-`it`),
-  // same reasoning as docked-panel.test.js's own beforeAll. Every panel's
-  // isOpen()/close() re-reads the current els.* state live, so this single
-  // registration stays correct across every test below even though
-  // beforeEach resets that state each time.
   setupDockedPanels();
 });
 
@@ -100,9 +77,6 @@ beforeEach(() => {
   els.searchModal.className = "";
   els.nodeSearchOverlay.className = "";
   els.pathFromInput.value = "";
-  // [SF-WEB-30] Simulate a Connect-mode selection left over from a previous
-  // full-screen landing visit — openSearchModal({docked:true}) must reset
-  // this every time, not just on first open.
   els.heroModeSwitch.dataset.mode = "connect";
   els.heroModeTabExplore.setAttribute("aria-selected", "false");
   els.heroModeTabExplore.tabIndex = -1;
@@ -144,9 +118,6 @@ describe("openPathPanel", () => {
     expect(document.activeElement).toBe(els.pathFromInput);
   });
 
-  // [SF-WEB-24] Was two explicit calls (closeSearchModal()/closeNodeSearch())
-  // inside openPathPanel() — now the shared docked-panel registry. These
-  // assert the OBSERVABLE behaviour is unchanged, not the mechanism.
   it("[SF-WEB-24] closes an already-open docked search-modal", () => {
     openSearchModal({ docked: true });
     expect(isSearchModalOpen()).toBe(true);
@@ -188,13 +159,6 @@ describe("[SF-WEB-24] openSearchModal(docked) closes the other two docked panels
   });
 });
 
-// [SF-WEB-30] Docked search (.search-modal.docked) shows only the Explore
-// (new-seed) search box — the Explore/Connect switch, Connect panel, and
-// role-filter row are hidden entirely (CSS, not asserted here — jsdom
-// doesn't load index.html's stylesheet). What IS testable here: the
-// `.docked` class itself gets applied, and that opening docked mode always
-// resets any leftover Connect-mode selection back to Explore, so the
-// (now-hidden) Connect panel can never be the one left active underneath.
 describe("[SF-WEB-30] openSearchModal(docked) shows only the Explore box", () => {
   it("adds the .docked class", () => {
     openSearchModal({ docked: true });
@@ -202,8 +166,6 @@ describe("[SF-WEB-30] openSearchModal(docked) shows only the Explore box", () =>
   });
 
   it("resets a leftover Connect-mode selection back to Explore", () => {
-    // beforeEach above leaves heroModeSwitch/panels in Connect mode,
-    // simulating a prior full-screen landing visit.
     expect(State.heroMode).toBe("connect");
     openSearchModal({ docked: true });
     expect(State.heroMode).toBe("explore");
@@ -222,7 +184,7 @@ describe("[SF-WEB-30] openSearchModal(docked) shows only the Explore box", () =>
 
 describe("[SF-WEB-30] openSearchModal without docked (landing/is-first-visit) leaves Explore/Connect untouched", () => {
   it("does not force Explore mode when opened full-screen", () => {
-    expect(State.heroMode).toBe("connect"); // set by beforeEach
+    expect(State.heroMode).toBe("connect");
     openSearchModal({ docked: false });
     expect(State.heroMode).toBe("connect");
     expect(els.heroModePanelConnect.classList.contains("is-active")).toBe(true);
@@ -278,11 +240,6 @@ describe("[SF-WEB-24] outside-click-to-close, wired through the real registry", 
   });
 });
 
-// [SF-WEB-75] "подсвечивай ноды как при выборе после поиска на графе" —
-// matching nodes now light up live on the canvas as you type, using the
-// same onPath/selected look highlightPath already gives regular path
-// nodes (dim:false, same reasoning Compare mode already uses — see
-// highlight.js::_applyPath's own comment).
 describe("renderNodeSearchResults — live canvas highlight (SF-WEB-75)", () => {
   beforeEach(() => {
     State.graphNodes = [
@@ -318,5 +275,312 @@ describe("renderNodeSearchResults — live canvas highlight (SF-WEB-75)", () => 
     highlightPath.mockClear();
     closeNodeSearch();
     expect(restoreDefaultColors).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("search modal — docked vs full", () => {
+  it("docks over the graph and forces explore mode", () => {
+    State.heroMode = "connect";
+    openSearchModal({ docked: true });
+
+    expect(isSearchModalOpen()).toBe(true);
+    expect(els.searchModal.classList.contains("docked")).toBe(true);
+    expect(State.heroMode).toBe("explore");
+    expect(els.heroModeSwitch.dataset.mode).toBe("explore");
+    expect(els.heroModeTabExplore.getAttribute("aria-selected")).toBe("true");
+    expect(els.heroModeTabConnect.getAttribute("aria-selected")).toBe("false");
+    expect(els.heroModePanelExplore.classList.contains("is-active")).toBe(true);
+  });
+
+  it("hides the node sidebar when docking, which would otherwise overlap", () => {
+    openSearchModal({ docked: true });
+    expect(hideArtistSidebar).toHaveBeenCalled();
+  });
+
+  it("opens full-screen by default and switches the page to the home view", () => {
+    openSearchModal();
+
+    expect(els.searchModal.classList.contains("docked")).toBe(false);
+    expect(document.body.classList.contains("view-home")).toBe(true);
+    expect(document.body.classList.contains("view-graph")).toBe(false);
+  });
+
+  it("drops the first-visit styling once a graph has been drawn", () => {
+    els.appCanvas = freshEl();
+    els.searchModal.classList.add("is-first-visit");
+    State.hasRendered = true;
+
+    openSearchModal();
+
+    expect(els.searchModal.classList.contains("is-first-visit")).toBe(false);
+    expect(els.appCanvas.classList.contains("search-open")).toBe(true);
+    State.hasRendered = false;
+    els.appCanvas = null;
+  });
+
+  it("keeps the first-visit styling for a visitor who has not searched yet", () => {
+    els.searchModal.classList.add("is-first-visit");
+    State.hasRendered = false;
+
+    openSearchModal();
+
+    expect(els.searchModal.classList.contains("is-first-visit")).toBe(true);
+  });
+
+  it("returns the page to the graph view on close, once something is drawn", () => {
+    State.hasRendered = true;
+    openSearchModal();
+    closeSearchModal();
+
+    expect(isSearchModalOpen()).toBe(false);
+    expect(els.searchModal.classList.contains("is-closed")).toBe(true);
+    expect(document.body.classList.contains("view-graph")).toBe(true);
+    State.hasRendered = false;
+  });
+
+  it("leaves the view classes alone on close when nothing has been drawn", () => {
+    document.body.classList.remove("view-graph", "view-home");
+    State.hasRendered = false;
+
+    openSearchModal();
+    closeSearchModal();
+
+    expect(document.body.classList.contains("view-graph")).toBe(false);
+  });
+
+  it("does nothing on a page with no search modal", () => {
+    const modal = els.searchModal;
+    els.searchModal = null;
+
+    expect(() => openSearchModal()).not.toThrow();
+    expect(() => closeSearchModal()).not.toThrow();
+
+    els.searchModal = modal;
+  });
+
+  it("forceCloseSearchModal closes it like the ordinary path", () => {
+    openSearchModal();
+    forceCloseSearchModal();
+    expect(isSearchModalOpen()).toBe(false);
+  });
+});
+
+describe("setupSearchModal button", () => {
+  it("toggles the docked modal from the toolbar button", () => {
+    setupSearchModal();
+
+    els.btnSearchOpen.click();
+    expect(isSearchModalOpen()).toBe(true);
+    expect(els.searchModal.classList.contains("docked")).toBe(true);
+
+    els.btnSearchOpen.click();
+    expect(isSearchModalOpen()).toBe(false);
+  });
+});
+
+describe("node search results", () => {
+  beforeEach(() => {
+    State.hasRendered = true;
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set();
+    State.graphNodes = [
+      { id: 1, name: "Drake", _totalCollabs: 10 },
+      { id: 2, name: "Future", _totalCollabs: 1 },
+      { id: 3, name: "Drizzy Drake", totalWeight: 4 },
+    ];
+    State.network = { focus: vi.fn() };
+  });
+
+  const items = () => [...els.nodeSearchResults.querySelectorAll(".ns-item")];
+
+  it("lists every node except the seed when the query is empty", () => {
+    renderNodeSearchResults("");
+    expect(items().map((i) => i.getAttribute("data-id"))).toEqual(["2", "3"]);
+  });
+
+  it("filters by name, still excluding the seed", () => {
+    renderNodeSearchResults("drake");
+    expect(items().map((i) => i.getAttribute("data-id"))).toEqual(["3"]);
+  });
+
+  it("caps the list at twelve", () => {
+    State.graphNodes = Array.from({ length: 30 }, (_, i) => ({
+      id: i + 100,
+      name: `A${i}`,
+      totalWeight: 1,
+    }));
+    renderNodeSearchResults("");
+    expect(items()).toHaveLength(12);
+  });
+
+  it("says so when nothing matches", () => {
+    renderNodeSearchResults("zzzz");
+
+    expect(els.nodeSearchResults.querySelector(".ns-empty")).not.toBeNull();
+    expect(els.nodeSearchStatus.textContent).toBe("No nodes match");
+  });
+
+  it("pluralises the found-count for screen readers", () => {
+    renderNodeSearchResults("future");
+    expect(els.nodeSearchStatus.textContent).toBe("1 artist found");
+
+    renderNodeSearchResults("");
+    expect(els.nodeSearchStatus.textContent).toBe("2 artists found");
+  });
+
+  it("pluralises each row's collaboration count", () => {
+    renderNodeSearchResults("");
+    const weights = items().map((i) => i.querySelector(".ns-weight").textContent);
+    expect(weights[0]).toBe("1 collab");
+    expect(weights[1]).toBe("4 collabs");
+  });
+
+  it("ticks nodes the user already expanded", () => {
+    State.expandedNodes = new Set([2]);
+    renderNodeSearchResults("");
+
+    expect(items()[0].querySelector(".ns-name").textContent).toContain("✓");
+  });
+
+  it("highlights the matches on the canvas, and restores colours for an empty query", () => {
+    renderNodeSearchResults("drake");
+    expect(highlightPath).toHaveBeenCalledWith([3], { dim: false });
+
+    restoreDefaultColors.mockClear();
+    renderNodeSearchResults("");
+    expect(restoreDefaultColors).toHaveBeenCalled();
+  });
+
+  it("focuses the picked node and opens its sidebar", async () => {
+    const { showArtistSidebar } = await import("./sidebar.js");
+    renderNodeSearchResults("");
+
+    items()[0].click();
+
+    expect(State.network.focus).toHaveBeenCalledWith("2", expect.objectContaining({ scale: 1.5 }));
+    expect(showArtistSidebar).toHaveBeenCalledWith("2");
+  });
+
+  it("still closes the overlay when picking with no rendered network", async () => {
+    const { showArtistSidebar } = await import("./sidebar.js");
+    State.network = null;
+    renderNodeSearchResults("");
+
+    items()[0].click();
+
+    expect(els.nodeSearchOverlay.classList.contains("show")).toBe(false);
+    expect(showArtistSidebar).not.toHaveBeenCalled();
+  });
+
+  it("updateNodeSearchResults is the same render under another name", () => {
+    updateNodeSearchResults("future");
+    expect(items()).toHaveLength(1);
+  });
+});
+
+describe("node search open/close", () => {
+  beforeEach(() => {
+    State.graphNodes = [{ id: 2, name: "Future", totalWeight: 1 }];
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set();
+  });
+
+  it("refuses to open before anything has been drawn", () => {
+    State.hasRendered = false;
+    openNodeSearch();
+    expect(els.nodeSearchOverlay.classList.contains("show")).toBe(false);
+  });
+
+  it("opens with an empty field and a full list", () => {
+    State.hasRendered = true;
+    els.nodeSearchInput.value = "stale";
+
+    openNodeSearch();
+
+    expect(els.nodeSearchOverlay.classList.contains("show")).toBe(true);
+    expect(els.nodeSearchInput.value).toBe("");
+    expect(els.nodeSearchInput.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("resets its a11y state on close", () => {
+    State.hasRendered = true;
+    openNodeSearch();
+    closeNodeSearch();
+
+    expect(els.nodeSearchOverlay.classList.contains("show")).toBe(false);
+    expect(els.nodeSearchInput.getAttribute("aria-expanded")).toBe("false");
+    expect(els.nodeSearchInput.getAttribute("aria-activedescendant")).toBe("");
+  });
+});
+
+describe("node search keyboard", () => {
+  const key = (k) =>
+    els.nodeSearchInput.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
+
+  beforeEach(() => {
+    // jsdom не реализует scrollIntoView, а подсветка активной строки его зовёт.
+    Element.prototype.scrollIntoView = vi.fn();
+    State.hasRendered = true;
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set();
+    State.network = { focus: vi.fn() };
+    State.graphNodes = [
+      { id: 1, name: "Drake", totalWeight: 1 },
+      { id: 2, name: "Future", totalWeight: 1 },
+      { id: 3, name: "Sia", totalWeight: 1 },
+    ];
+    setupNodeSearch();
+    renderNodeSearchResults("");
+  });
+
+  const items = () => [...els.nodeSearchResults.querySelectorAll(".ns-item")];
+
+  it("walks down the list and stops at the bottom", () => {
+    key("ArrowDown");
+    expect(items()[0].classList.contains("ns-active")).toBe(true);
+
+    key("ArrowDown");
+    key("ArrowDown");
+    expect(items()[1].classList.contains("ns-active")).toBe(true);
+    expect(els.nodeSearchInput.getAttribute("aria-activedescendant")).toBe(items()[1].id);
+  });
+
+  it("walks back up and stops at the top", () => {
+    key("ArrowDown");
+    key("ArrowDown");
+    key("ArrowUp");
+    key("ArrowUp");
+
+    expect(items()[0].classList.contains("ns-active")).toBe(true);
+  });
+
+  it("marks only one row as selected at a time", () => {
+    key("ArrowDown");
+    key("ArrowDown");
+
+    expect(els.nodeSearchResults.querySelectorAll('[aria-selected="true"]')).toHaveLength(1);
+  });
+
+  it("picks the highlighted row on Enter", () => {
+    key("ArrowDown");
+    key("Enter");
+
+    expect(State.network.focus).toHaveBeenCalled();
+  });
+
+  it("ignores Enter when nothing is highlighted", () => {
+    key("Enter");
+    expect(State.network.focus).not.toHaveBeenCalled();
+  });
+
+  it("closes on Escape", () => {
+    els.nodeSearchOverlay.classList.add("show");
+    key("Escape");
+    expect(els.nodeSearchOverlay.classList.contains("show")).toBe(false);
+  });
+
+  it("ignores arrow keys when the list is empty", () => {
+    renderNodeSearchResults("zzzz");
+    expect(() => key("ArrowDown")).not.toThrow();
   });
 });

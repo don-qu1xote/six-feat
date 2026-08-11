@@ -1,0 +1,134 @@
+
+
+components_manager:
+  task_processors:
+    main-task-processor:
+      worker_threads: 4
+      thread_name: main-worker
+
+    fs-task-processor:
+      worker_threads: 4
+      thread_name: fs-task-processor
+
+    monitor-task-processor:
+      worker_threads: 1
+      thread_name: monitor-worker
+
+  default_task_processor: main-task-processor
+
+  components:
+    server:
+      listener:
+        port: 8084
+        task_processor: &main_tp main-task-processor
+
+      listener-monitor:
+        port: 8089
+        task_processor: &monitor_tp monitor-task-processor
+
+    dns-client:
+      fs-task-processor: fs-task-processor
+
+    http-client:
+
+    logging:
+      fs-task-processor: fs-task-processor
+      loggers:
+        default:
+          file_path: '@stdout'
+          level: $logging_level
+
+          format: json
+
+    testsuite-support:
+
+    postgres-db-1:
+      dbconnection: $db_connection_string
+      blocking_task_processor: fs-task-processor
+      dns_resolver: async
+      sync-start: false
+      connlimit_mode: manual
+      min_pool_size: 4
+      max_pool_size: 15
+      max_queue_size: 200
+
+    game-store:
+      dbname: postgres-db-1
+
+    neighbours-client:
+      six-feat-base-url: $six_feat_base_url
+      timeout-ms: 2000
+
+    rate-limit-store:
+      backend: shared
+      dbname: postgres-db-1
+
+    challenge-rules:
+      min-path-len: 2
+
+    daily-challenge-task:
+      interval-seconds: 86400
+      max-attempts: 20
+      candidate-pool-size: 50
+
+    handler-healthz:
+      path: /healthz
+      method: GET
+      task_processor: *main_tp
+
+    handler-readyz:
+      path: /readyz
+      method: GET
+      task_processor: *main_tp
+
+    handler-game-profile:
+      path: /api/v1/game/profile
+      method: GET,PATCH
+      task_processor: *main_tp
+
+    handler-game-validate:
+      path: /api/v1/game/validate
+      method: POST
+      task_processor: *main_tp
+
+    handler-game-submit:
+      path: /api/v1/game/submit
+      method: POST
+      task_processor: *main_tp
+
+    handler-game-challenge:
+      path: /api/v1/game/challenge
+      method: GET,POST
+      task_processor: *main_tp
+
+    handler-game-leaderboard:
+      path: /api/v1/game/leaderboard
+      method: GET
+      task_processor: *main_tp
+      cache-ttl-ms: 15000
+
+    handler-game-link:
+      path: /api/v1/game/link
+      method: GET
+      task_processor: *main_tp
+
+    handler-game-challenges:
+      path: /api/v1/game/challenges
+      method: GET
+      task_processor: *main_tp
+
+    handler-game-season:
+      path: /api/v1/game/season
+      method: GET
+      task_processor: *main_tp
+
+    handler-game-admin:
+      path: /api/v1/game/admin
+      method: GET,POST
+      task_processor: *main_tp
+      admin-user-ids: $game_admin_genius_ids
+
+    handler-server-monitor:
+      path: /metrics
+      method: GET
+      task_processor: *monitor_tp
