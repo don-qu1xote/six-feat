@@ -3,7 +3,10 @@ import {
   placePathNodes,
   classifyGraph,
   buildLayoutRequest,
-  markPolesSettled,
+  markEntrancePending,
+  markLayoutSettled,
+  beginLayout,
+  isCurrentLayout,
   entranceFrom,
   resolveCollisions,
   NODE_W,
@@ -485,6 +488,19 @@ describe("buildLayoutRequest — structure, not data", () => {
     expect(req.pinned).toEqual({ [g.seedLeaf]: { x: 7, y: 8 } });
   });
 
+  it("never pins a node still parked at its entrance, however finite that position looks", () => {
+    const g = buildTwoPoleGraph();
+    const leaf = State.graphNodes.find((n) => n.id === g.seedLeaf);
+    markEntrancePending([leaf]);
+
+    expect(buildLayoutRequest({ [g.seedLeaf]: { x: 0, y: 0 } }).pinned).toEqual({});
+
+    markLayoutSettled(new Map([[g.seedLeaf, { x: 7, y: 8 }]]));
+    expect(buildLayoutRequest({ [g.seedLeaf]: { x: 7, y: 8 } }).pinned).toEqual({
+      [g.seedLeaf]: { x: 7, y: 8 },
+    });
+  });
+
   it("never pins the seed: it is always the origin, and saying so twice invites disagreement", () => {
     const g = buildTwoPoleGraph();
     const req = buildLayoutRequest({ [g.seedId]: { x: 500, y: 500 } });
@@ -511,17 +527,26 @@ describe("buildLayoutRequest — structure, not data", () => {
   });
 });
 
-describe("markPolesSettled / entranceFrom — applying the answer", () => {
+describe("markLayoutSettled / entranceFrom — applying the answer", () => {
   it("marks exactly the poles the layout answered for", () => {
     const g = buildTwoPoleGraph();
-    markPolesSettled(new Map([[g.poleA, { x: 1, y: 2 }]]));
+    markLayoutSettled(new Map([[g.poleA, { x: 1, y: 2 }]]));
     expect(State.graphNodes.find((n) => n.id === g.poleA)._poleSettled).toBe(true);
     expect(State.graphNodes.find((n) => n.id === g.poleB)._poleSettled).toBeUndefined();
   });
 
+  it("leaves a node the layout did not answer for parked, rather than trusting its position", () => {
+    const g = buildTwoPoleGraph();
+    markEntrancePending(State.graphNodes);
+    markLayoutSettled(new Map([[g.poleA, { x: 1, y: 2 }]]));
+    expect(State.graphNodes.find((n) => n.id === g.poleA)._entrancePending).toBe(false);
+    expect(State.graphNodes.find((n) => n.id === g.poleB)._entrancePending).toBe(true);
+  });
+
   it("survives being handed nothing at all", () => {
     buildTwoPoleGraph();
-    expect(() => markPolesSettled(null)).not.toThrow();
+    expect(() => markLayoutSettled(null)).not.toThrow();
+    expect(() => markEntrancePending(null)).not.toThrow();
   });
 
   it("starts everything at the origin when there is nothing saved", () => {
@@ -536,5 +561,26 @@ describe("markPolesSettled / entranceFrom — applying the answer", () => {
     const from = entranceFrom({ [g.poleA]: { x: 40, y: 50 } }, [g.poleA, g.poleB]);
     expect(from.get(g.poleA)).toEqual({ x: 40, y: 50 });
     expect(from.get(g.poleB)).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe("beginLayout — whose answer is still wanted", () => {
+  it("keeps the generation it handed out current until the next one starts", () => {
+    const { generation } = beginLayout();
+    expect(isCurrentLayout(generation)).toBe(true);
+  });
+
+  it("retires the previous generation the moment a newer layout begins", () => {
+    const stale = beginLayout().generation;
+    const fresh = beginLayout().generation;
+    expect(isCurrentLayout(stale)).toBe(false);
+    expect(isCurrentLayout(fresh)).toBe(true);
+  });
+
+  it("aborts the request the retired generation was waiting on", () => {
+    const { signal } = beginLayout();
+    expect(signal.aborted).toBe(false);
+    beginLayout();
+    expect(signal.aborted).toBe(true);
   });
 });

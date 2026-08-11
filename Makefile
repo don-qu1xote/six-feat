@@ -12,10 +12,12 @@ docker-build:
 	docker run --rm -v $(shell pwd):/workspace -w /workspace $(USERVER_IMAGE) \
 		bash -c 'cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && cmake --build build -j$(JOBS)'
 
-.PHONY: docker-test
-docker-test:
-	docker run --rm -v $(shell pwd):/workspace -w /workspace $(USERVER_IMAGE) \
-		bash -c 'cd services/six-feat/tests/unit && cmake -S . -B build-unit-tests -DCMAKE_BUILD_TYPE=Debug && cmake --build build-unit-tests -j$(JOBS) && ctest --test-dir build-unit-tests --output-on-failure'
+# Чистые библиотеки (layout, image) собираются в .so прямо из pytest и оттуда же
+# меряются gcov: ни userver, ни docker для этого не нужны, хватает g++.
+.PHONY: test-cpp
+test-cpp:
+	pytest tests/test_layout_geometry.py tests/test_dominant_color.py
+	python3 scripts/check-cpp-coverage.py build-native-tests --min 80
 
 .PHONY: test
 test:

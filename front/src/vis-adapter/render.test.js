@@ -21,6 +21,7 @@ import { isGameModeActive } from "./game-mode.js";
 import { updateEdgeRenderMode, runFlyoutAnimation, pokeFastRenderMode } from "./physics.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
 import { cachedLayout } from "../api/analytics-client.js";
+import { markEntrancePending } from "./layout.js";
 import { setEdgeCache, clearEdgeCache } from "./edge-render.js";
 import { setContourData, clearContourData } from "./bubble-contours.js";
 
@@ -49,7 +50,10 @@ vi.mock("./tooltips.js", () => ({ ensureTooltipCollisionGuard: vi.fn() }));
 vi.mock("./layout.js", () => ({
   classifyGraph: vi.fn(() => ({ edgeClass: new Map(), sectorMembers: new Map() })),
   buildLayoutRequest: vi.fn(() => ({ seed_id: 1 })),
-  markPolesSettled: vi.fn(),
+  markEntrancePending: vi.fn(),
+  markLayoutSettled: vi.fn(),
+  beginLayout: vi.fn(() => ({ generation: 1, signal: undefined })),
+  isCurrentLayout: vi.fn(() => true),
   LEAF_R: 30,
 }));
 
@@ -168,6 +172,23 @@ describe("initNetwork", () => {
     expect(State.nodesDS.items).toHaveLength(2);
     expect(State.edgesDS.items).toHaveLength(1);
     expect(State.network.container).toBe(els.network);
+  });
+
+  it("marks every node vis had to place itself, so its guess is never pinned later", () => {
+    markEntrancePending.mockClear();
+    initNetwork(1, nameById);
+
+    const marked = markEntrancePending.mock.calls.flatMap(([nodes]) => nodes.map((n) => n.id));
+    expect(marked).toEqual([2]);
+  });
+
+  it("leaves a node with a saved position alone — that position is a real answer", () => {
+    initNetwork(1, nameById);
+    markEntrancePending.mockClear();
+    refreshNetwork(1, nameById, { 2: { x: 40, y: 50 } });
+
+    const marked = markEntrancePending.mock.calls.flatMap(([nodes]) => nodes.map((n) => n.id));
+    expect(marked).toEqual([]);
   });
 
   it("pins the seed at the origin so the graph is centred on it", () => {

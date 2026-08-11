@@ -84,7 +84,7 @@ jobs:
           apt-packages: libssl-dev
 
       - name: Install clang-tidy 18
-        run: pip install --root-user-action=ignore clang-tidy==18.1.8
+        run: pip install clang-tidy==18.1.8
 
       - name: Configure CMake (six-feat)
         run: |
@@ -258,25 +258,28 @@ jobs:
             -v --tb=short
 
   unit-tests-cpp:
-    name: "Unit tests (C++)"
+    name: "Unit tests (C++ через pytest)"
     runs-on: ubuntu-22.04
     needs: detect-changes
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/setup
         with:
-          apt-packages: build-essential cmake
+          apt-packages: build-essential python3 python3-pip python3-venv
+          python-testenv: "true"
 
-      - name: Configure
-        run: |
-          cmake -S services/six-feat/tests/unit -B build-unit-tests \
-            -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: cmake --build build-unit-tests -j"$(nproc)"
-
+      # tests/native собирает libs/six-feat-layout и libs/six-feat-image в .so с
+      # --coverage и зовёт их через ctypes: тесты на бэкенд остаются на Python,
+      # а gcov меряет C++ по .gcda, которые оставляет тот же прогон pytest.
       - name: Run
-        run: ctest --test-dir build-unit-tests --output-on-failure
+        run: |
+          /opt/testenv/bin/pytest \
+            tests/test_layout_geometry.py \
+            tests/test_dominant_color.py \
+            -v --tb=short
+
+      - name: Coverage (80%)
+        run: python3 scripts/check-cpp-coverage.py build-native-tests --min 80
 
   test-backup:
     name: "Test — backup/restore"

@@ -46,7 +46,6 @@ const std::vector<const char*> kSchemaStatements = {
         popularity BIGINT NOT NULL DEFAULT 0
     ))SQL",
 
-    R"SQL(ALTER TABLE songs ADD COLUMN IF NOT EXISTS popularity BIGINT NOT NULL DEFAULT 0)SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS credits (
         song_id   BIGINT NOT NULL REFERENCES songs(id),
         artist_id BIGINT NOT NULL REFERENCES artists(id),

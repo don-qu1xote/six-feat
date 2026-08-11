@@ -264,6 +264,13 @@ export function buildLayoutRequest(savedPositions) {
     if (n.id === seedId) continue;
     const sp = saved[n.id];
     if (!sp || !isFinite(sp.x) || !isFinite(sp.y)) continue;
+    // Узел, который ещё не долетел до места, закреплять нельзя: mergeNetwork
+    // ставит свежие узлы в точку входа (обычно в сид, 0,0) и держит их там до
+    // ответа раскладки. Если следующее раскрытие начнётся раньше ответа —
+    // а при восстановлении из ссылки они идут через 50 мс, — их «сохранённые»
+    // координаты окажутся точкой входа, и сервер честно склеит весь выводок
+    // в одну кучу поверх сида: закреплённые узлы солвер не разводит.
+    if (n._entrancePending) continue;
     // Полюс закрепляется только после того, как хоть раз встал на место.
     // До этого его текущая позиция — не решение раскладки, а то, где он
     // висел листом; держаться за неё значило бы запомнить случайность.
@@ -285,13 +292,42 @@ export function buildLayoutRequest(savedPositions) {
   };
 }
 
-// Позиции сервера — единственный источник координат, и «полюс осел» теперь
-// значит «сервер вернул для него позицию».
-export function markPolesSettled(targets) {
+// Свежие узлы стоят в точке входа, а не там, где им место: до ответа
+// раскладки их координаты никому нельзя показывать как решение.
+export function markEntrancePending(nodes) {
+  for (const n of nodes || []) n._entrancePending = true;
+}
+
+// Зовётся не когда ответ пришёл, а когда узлы на местах: между этими двумя
+// моментами идёт анимация вылета, и промежуточный кадр — такая же не-позиция,
+// как и точка входа.
+export function markLayoutSettled(targets) {
   if (!targets) return;
   for (const n of State.graphNodes) {
-    if (State.expandedNodes.has(n.id) && targets.has(n.id)) n._poleSettled = true;
+    if (!targets.has(n.id)) continue;
+    n._entrancePending = false;
+    if (State.expandedNodes.has(n.id)) n._poleSettled = true;
   }
+}
+
+// Раскладок в воздухе может быть несколько: раскрытия при восстановлении из
+// ссылки идут через 50 мс, а ответ приходит когда придёт. Поколение решает,
+// чей ответ ещё нужен, а signal — чтобы не ждать ответа, который уже не нужен.
+let _layoutGeneration = 0;
+let _layoutInFlight = null;
+
+export function beginLayout() {
+  _layoutGeneration += 1;
+  if (_layoutInFlight) _layoutInFlight.abort();
+  _layoutInFlight = typeof AbortController === "function" ? new AbortController() : null;
+  return {
+    generation: _layoutGeneration,
+    signal: _layoutInFlight ? _layoutInFlight.signal : undefined,
+  };
+}
+
+export function isCurrentLayout(generation) {
+  return generation === _layoutGeneration;
 }
 
 // fromPos — откуда узел вылетает. Это не раскладка, а начало анимации, и

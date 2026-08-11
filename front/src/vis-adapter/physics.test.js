@@ -11,6 +11,7 @@ import {
   _fitToExpandedCluster,
 } from "./physics.js";
 import { LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
+import { buildLayoutRequest } from "./layout.js";
 
 vi.mock("../api/analytics-client.js", () => ({
   cachedLayout: vi.fn(() => null),
@@ -368,9 +369,10 @@ describe("mergeNetwork — expand lands nodes exactly on targets, no live physic
     // полупрозрачными огрызками входной анимации.
     const restored = State.nodesDS.update.mock.calls
       .map(([batch]) => batch)
-      .find(
+      .filter(
         (batch) => Array.isArray(batch) && batch.every((u) => u.size != null && u.opacity != null),
-      );
+      )
+      .find((batch) => batch.some((u) => u.id === 100));
     expect(restored).toBeTruthy();
     expect(restored.map((u) => u.id).sort((a, b) => a - b)).toEqual([100, 101]);
   });
@@ -795,5 +797,131 @@ describe("_fitToExpandedCluster", () => {
     };
 
     expect(() => _fitToExpandedCluster()).not.toThrow();
+  });
+});
+
+// Восстановление графа из ссылки проигрывает раскрытия через 50 мс, не дожидаясь
+// раскладки: между «граф пришёл» и «узлы встали» помещается следующее раскрытие.
+describe("mergeNetwork — раскрытие поверх неотвеченной раскладки (перезагрузка страницы)", () => {
+  function seedGraph() {
+    const positions = { 1: { x: 0, y: 0 }, 2: { x: 150, y: 0 } };
+    State.currentSeedId = 1;
+    State.expandedNodes = new Set([1, 2]);
+    State.graphNodes = [
+      { id: 1, isSeed: true, _isNew: false },
+      { id: 2, isSeed: false, _isNew: false },
+      { id: 100, isSeed: false, _isNew: true },
+      { id: 101, isSeed: false, _isNew: true },
+    ];
+    State.graphEdges = [
+      { id: "1_2", from: 1, to: 2 },
+      { id: "2_100", from: 2, to: 100 },
+      { id: "2_101", from: 2, to: 101 },
+    ];
+    State.nodesDS = {
+      getIds: () => [1, 2],
+      add: vi.fn((items) => {
+        for (const i of items) positions[i.id] = { x: i.x, y: i.y };
+      }),
+      update: vi.fn(),
+      get: () => ({}),
+    };
+    State.edgesDS = { getIds: () => [], add: vi.fn(), update: vi.fn() };
+    State.network = {
+      body: { nodes: {} },
+      setOptions: vi.fn(),
+      moveNode: vi.fn(),
+      moveTo: vi.fn(),
+      redraw: vi.fn(),
+      getPositions: () => positions,
+    };
+    return positions;
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    cachedLayout.mockReset();
+    fetchLayout.mockReset();
+    cachedLayout.mockReturnValue(null);
+    State._layoutCache = new Map();
+    State._expandAnimId = null;
+    State.physicsTimer = null;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("не закрепляет узлы, которые ещё стоят в точке входа поверх сида", () => {
+    fetchLayout.mockReturnValue(new Promise(() => {}));
+    seedGraph();
+
+    mergeNetwork({}, { 1: { x: 0, y: 0 }, 2: { x: 150, y: 0 } });
+
+    const saved = State.network.getPositions();
+    expect(saved[100]).toEqual({ x: 0, y: 0 });
+    expect(buildLayoutRequest(saved).pinned).toEqual({});
+  });
+
+  it("закрепляет их, как только раскладка ответила и узлы встали", async () => {
+    fetchLayout.mockResolvedValue(
+      new Map([
+        [100, { x: 300, y: 40 }],
+        [101, { x: 300, y: -40 }],
+      ]),
+    );
+    const positions = seedGraph();
+
+    mergeNetwork({}, { 1: { x: 0, y: 0 }, 2: { x: 150, y: 0 } });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    positions[100] = { x: 300, y: 40 };
+    positions[101] = { x: 300, y: -40 };
+    expect(buildLayoutRequest(State.network.getPositions()).pinned).toEqual({
+      100: { x: 300, y: 40 },
+      101: { x: 300, y: -40 },
+    });
+  });
+
+  it("возвращает узлам полную непрозрачность, если их вылет оборвался на полпути", () => {
+    fetchLayout.mockReturnValue(new Promise(() => {}));
+    seedGraph();
+
+    mergeNetwork({}, {});
+    const entered = State.nodesDS.add.mock.calls[0][0].find((i) => i.id === 100);
+    expect(entered.opacity).toBeLessThan(1);
+
+    State.graphNodes.push({ id: 102, isSeed: false, _isNew: true });
+    State.nodesDS.getIds = () => [1, 2, 100, 101];
+    State.nodesDS.update.mockClear();
+    mergeNetwork({}, {});
+
+    const restored = State.nodesDS.update.mock.calls
+      .map(([batch]) => (Array.isArray(batch) ? batch : [batch]))
+      .flat()
+      .find((i) => i.id === 100 && i.opacity !== undefined);
+    expect(restored).toBeDefined();
+    expect(restored.opacity).toBe(1);
+  });
+
+  it("не применяет ответ раскладки, устаревший к моменту прихода", async () => {
+    let resolveStale;
+    fetchLayout.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveStale = resolve;
+      }),
+    );
+    fetchLayout.mockReturnValue(new Promise(() => {}));
+    seedGraph();
+
+    mergeNetwork({}, {});
+    mergeNetwork({}, {});
+
+    resolveStale(new Map([[100, { x: 9999, y: 9999 }]]));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(State.network.moveNode).not.toHaveBeenCalledWith(100, 9999, 9999);
   });
 });

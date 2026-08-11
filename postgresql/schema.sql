@@ -28,10 +28,6 @@ CREATE TABLE IF NOT EXISTS songs (
     popularity BIGINT NOT NULL DEFAULT 0
 );
 
--- CREATE TABLE IF NOT EXISTS не добавит колонку к уже существующей таблице,
--- поэтому для базы от прошлой версии приложения — отдельный идемпотентный шаг.
-ALTER TABLE songs ADD COLUMN IF NOT EXISTS popularity BIGINT NOT NULL DEFAULT 0;
-
 CREATE TABLE IF NOT EXISTS credits (
     song_id   BIGINT NOT NULL REFERENCES songs(id),
     artist_id BIGINT NOT NULL REFERENCES artists(id),

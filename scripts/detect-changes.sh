@@ -34,7 +34,7 @@ if echo "$CHANGED_FILES" | grep -q "^libs/"; then
   SERVICES="six-feat enrichment auth game genius-gateway"
 fi
 
-if echo "$CHANGED_FILES" | grep -qE "^services/six-feat/(src|tests/unit)/"; then
+if echo "$CHANGED_FILES" | grep -qE "^services/six-feat/src/"; then
   SERVICES="$SERVICES six-feat"
 fi
 
@@ -61,10 +61,6 @@ SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 # поштучно не сопоставляем — безопаснее прогнать все наборы
 if echo "$CHANGED_FILES" | grep -q "^tests/"; then
   TESTS="unit integration six-feat auth genius-gateway enrichment bg-resilience health"
-fi
-
-if echo "$CHANGED_FILES" | grep -q "^services/six-feat/tests/unit/"; then
-  TESTS="$TESTS six-feat"
 fi
 
 # Сопоставление затронутых сервисов с их тестами

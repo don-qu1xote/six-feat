@@ -22,19 +22,37 @@ import {
   FAST_RENDER_EDGE_THRESHOLD,
 } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
-import { buildLayoutRequest, classifyGraph, markPolesSettled, LEAF_R } from "./layout.js";
+import {
+  beginLayout,
+  buildLayoutRequest,
+  classifyGraph,
+  isCurrentLayout,
+  markEntrancePending,
+  markLayoutSettled,
+  LEAF_R,
+} from "./layout.js";
 import { cachedLayout, fetchLayout } from "../api/analytics-client.js";
 import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from "./edge-render.js";
 import { setContourData, clearContourData, drawContours } from "./bubble-contours.js";
 
 function _layoutNodeItems(nameById, savedPositions = {}) {
   const { edgeClass, sectorMembers } = classifyGraph();
+  /**
+   * Узлу без сохранённой позиции координату придумает vis. Она ничем не хуже
+   * любой другой для первого кадра, но решением раскладки не является, и
+   * закреплять её в следующем запросе нельзя — до ответа сервера такой узел
+   * помечен как не доехавший.
+   */
+  const unplaced = [];
   const nodeItems = State.graphNodes.map((n) => {
     const v = nodeVisual(n);
     if (n.isSeed) return { ...v, x: 0, y: 0, fixed: { x: true, y: true } };
     const sp = savedPositions && savedPositions[n.id];
-    return sp ? { ...v, x: sp.x, y: sp.y, fixed: { x: true, y: true } } : v;
+    if (sp) return { ...v, x: sp.x, y: sp.y, fixed: { x: true, y: true } };
+    unplaced.push(n);
+    return v;
   });
+  markEntrancePending(unplaced);
   const edgeItems = State.graphEdges.map((e) => suppressNativeEdgeColor(edgeVisual(e, nameById)));
   setEdgeCache(edgeClass);
   setContourData(sectorMembers);
@@ -43,7 +61,7 @@ function _layoutNodeItems(nameById, savedPositions = {}) {
 
 function _applyLayout(targets) {
   if (!State.network || !targets || !targets.size) return;
-  markPolesSettled(targets);
+  markLayoutSettled(targets);
   const updates = [];
   for (const [id, t] of targets) {
     if (id === State.currentSeedId) continue;
@@ -58,12 +76,18 @@ function _applyLayout(targets) {
 
 function _positionFromLayout(savedPositions) {
   const request = buildLayoutRequest(savedPositions);
+  const { generation, signal } = beginLayout();
   const ready = cachedLayout(request);
   if (ready) {
     _applyLayout(ready);
     return;
   }
-  fetchLayout(request).then(_applyLayout, () => {});
+  fetchLayout(request, { signal }).then(
+    (targets) => {
+      if (isCurrentLayout(generation)) _applyLayout(targets);
+    },
+    () => {},
+  );
 }
 
 function _drawRingGuides(ctx) {

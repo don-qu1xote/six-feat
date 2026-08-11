@@ -9,7 +9,15 @@ import {
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
 import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD, _imageFieldsFor } from "./visuals.js";
-import { buildLayoutRequest, classifyGraph, entranceFrom, markPolesSettled } from "./layout.js";
+import {
+  beginLayout,
+  buildLayoutRequest,
+  classifyGraph,
+  entranceFrom,
+  isCurrentLayout,
+  markEntrancePending,
+  markLayoutSettled,
+} from "./layout.js";
 import { cachedLayout, fetchLayout } from "../api/analytics-client.js";
 import { setEdgeCache, suppressNativeEdgeColor } from "./edge-render.js";
 import { highlightPath, highlightNeighborhood } from "./highlight.js";
@@ -157,6 +165,7 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
     };
   });
 
+  markEntrancePending(freshNodes);
   if (newNodeItems.length) State.nodesDS.add(newNodeItems);
   if (newEdgeItems.length) State.edgesDS.add(newEdgeItems);
 
@@ -167,6 +176,13 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
       return {
         id: n.id,
         size: v.size,
+        /**
+         * Прошлый вылет мог оборваться на полпути — новое слияние отменяет
+         * анимацию, а с ней и доводку размера с прозрачностью. Узел так и
+         * остаётся уменьшенным и полупрозрачным, поэтому оба поля возвращаются
+         * здесь, а не только размер.
+         */
+        opacity: v.opacity,
         color: v.color,
         borderWidth: v.borderWidth,
         shadow: v.shadow,
@@ -185,18 +201,27 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
 
   const flyTo = (targets) => _flyToLayout({ targets, fromPos, entranceTargets, freshNodes });
 
+  const request = isPathMode ? null : buildLayoutRequest(savedPositions);
+  const { generation, signal } = beginLayout();
+
   if (isPathMode) {
     flyTo(options.pathTargets);
     return;
   }
 
-  const request = buildLayoutRequest(savedPositions);
   const ready = cachedLayout(request);
   if (ready) {
     flyTo(ready);
     return;
   }
-  fetchLayout(request).then(flyTo, () => flyTo(null));
+  fetchLayout(request, { signal }).then(
+    (targets) => {
+      if (isCurrentLayout(generation)) flyTo(targets);
+    },
+    () => {
+      if (isCurrentLayout(generation)) flyTo(null);
+    },
+  );
 }
 
 function _degradeWithoutLayout(entranceTargets) {
@@ -218,8 +243,6 @@ function _flyToLayout({ targets, fromPos, entranceTargets, freshNodes }) {
     _degradeWithoutLayout(entranceTargets);
     return;
   }
-  markPolesSettled(targets);
-
   const net = State.network;
   if (!net) return;
 
@@ -230,6 +253,7 @@ function _flyToLayout({ targets, fromPos, entranceTargets, freshNodes }) {
     durationMs: scaledDuration(MOTION.flight),
     entranceTargets,
     onDone: () => {
+      markLayoutSettled(targets);
       net.setOptions({ physics: { enabled: false } });
       updateEdgeRenderMode();
       const fixAll = State.graphNodes.map((n) => ({ id: n.id, fixed: { x: true, y: true } }));
