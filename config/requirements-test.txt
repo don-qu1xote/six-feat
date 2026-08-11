@@ -5,7 +5,7 @@ pytest-timeout>=2.4.0
 pytest-cov>=7.1.0
 
 # session-куки AES-256-GCM для тестов с OAuth-гейтом (tests/session_crypto.py)
-cryptography>=49.0.0
+cryptography>=50.0.0
 
 # Прямое подключение к Postgres из clean_db_state (tests/conftest.py)
 psycopg2-binary>=2.9.12
