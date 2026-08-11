@@ -1,11 +1,3 @@
-/* ТЗ ("Find on map" должен выглядеть как find-path на этой странице):
-   раньше это был полноэкранный тёмный оверлей (scrim + blur на весь
-   канвас) с карточкой по центру — тяжёлый command-palette-стиль,
-   который выключает весь остальной интерфейс графа. Теперь — та же
-   докнутая карточка в углу канвы, что и .path-panel/.search-modal.
-   docked: тот же материал, то же место, граф вокруг остаётся живым
-   и видимым, а не гаснет под сплошным затемнением. */
-
 .node-search-overlay {
   position: absolute;
   z-index: var(--z-docked);
@@ -43,11 +35,7 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-/* ТЗ: поиск по уже отрисованному графу переведён на тот же материал,
-   что и find path — #node-search-input использует класс .path-input
-   (см. .path-panel ниже) вместо собственного bespoke стиля, а
-   результаты — те же бордер-плитки, что .hop-row в цепочке пути,
-   вместо плоских строк списка. */
+
 #node-search-results {
   display: flex;
   flex-direction: column;

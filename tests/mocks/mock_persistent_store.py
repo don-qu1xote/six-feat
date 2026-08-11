@@ -265,9 +265,6 @@ class InMemoryStore:
         )
 
         for song in data.songs:
-            # [SF-API-23 fix-01] MAX, а не перезапись — как ON CONFLICT ... GREATEST
-            # в боевом сторе: ноль от источника, не приславшего просмотры, не
-            # затирает уже известное число.
             self._conn.execute(
                 """INSERT INTO songs(id, title, popularity) VALUES (?,?,?)
                    ON CONFLICT(id) DO UPDATE SET

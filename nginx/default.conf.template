@@ -1,25 +1,24 @@
-# Unifies six-feat and six-feat-auth under one public origin, so the front
-# end's relative redirects/fetches (window.location.href = "/auth/login",
-# GET /auth/me, POST /auth/logout — see front/src/api/net.js and
-# front/src/api/auth.js) reach the right backend instead of 404ing on
-# whichever service happens to be serving the page.
+# Объединяет six-feat и six-feat-auth под одним публичным origin, чтобы
+# относительные редиректы/запросы фронта (window.location.href = "/auth/login",
+# GET /auth/me, POST /auth/logout — см. front/src/api/net.js и
+# front/src/api/auth.js) попадали в правильный бэкенд, а не отдавали 404
+# на том сервисе, который случайно раздаёт страницу.
 #
-# GENIUS_REDIRECT_URI must point here (this proxy's public origin), not at
-# six-feat-auth's own container port anymore — see docker-compose.yml.
+# GENIUS_REDIRECT_URI обязан указывать сюда (публичный origin этого прокси),
+# а не на собственный порт контейнера six-feat-auth — см. docker-compose.yml.
 #
-# This file is a template, not a static conf: the official nginx image's
-# entrypoint runs envsubst over every file under
-# /etc/nginx/templates/*.template at container start and writes the result
-# to /etc/nginx/conf.d/<name> — substituting ${SIX_FEAT_PORT} etc. from the
-# nginx service's own `environment:` block in docker-compose.yml, which in
-# turn defaults from the exact same SIX_FEAT_PORT/SIX_FEAT_AUTH_PORT/
-# NGINX_PUBLIC_PORT variables used by the six-feat/six-feat-auth services
-# themselves — one place to change a port instead of a hardcoded copy here
-# that can silently drift from the app's actual listener.
+# Это шаблон, а не статичный конфиг: entrypoint официального nginx-образа
+# прогоняет envsubst по всем файлам /etc/nginx/templates/*.template при
+# старте контейнера и пишет результат в /etc/nginx/conf.d/<name> — подставляя
+# ${SIX_FEAT_PORT} и т.п. из блока `environment:` сервиса nginx в
+# docker-compose.yml, который в свою очередь дефолтится от тех же переменных
+# SIX_FEAT_PORT/SIX_FEAT_AUTH_PORT/NGINX_PUBLIC_PORT, что используют сами
+# сервисы six-feat/six-feat-auth — порт меняется в одном месте, а не
+# хардкодится тут и молча расходится с реальным listener'ом приложения.
 server {
     listen ${NGINX_PUBLIC_PORT};
 
-    # Docker's embedded DNS. Без него nginx резолвит имена upstream'ов
+    # Docker'овский встроенный DNS. Без него nginx резолвит имена upstream'ов
     # (six-feat, six-feat-auth, six-feat-game) ОДИН раз на старте и кэширует
     # IP навсегда: любой `docker compose up -d <service>`, пересоздающий
     # контейнер, даёт ему новый IP в сети, а nginx продолжает стучаться на
@@ -29,35 +28,35 @@ server {
     # каждый запрос, а не на этапе разбора конфига.
     resolver 127.0.0.11 valid=10s ipv6=off;
 
-    # [SF-PERF-04] /api/v1/graph responses (nodes + edges + per-edge
-    # collaborations) can get large for a dense seed — compress them at the
-    # proxy layer instead of teaching every individual userver handler to do
-    # it itself. nginx:1.27-alpine (see docker-compose.yml) ships the stock
-    # gzip module but not brotli (that needs a custom-built nginx with
-    # ngx_brotli), so gzip is what's actually available here.
+    # [SF-PERF-04] Ответы /api/v1/graph (nodes + edges + per-edge
+    # collaborations) на плотном сиде могут быть большими — сжимаем их на
+    # слое прокси, а не учим каждый userver-хендлер делать это сам.
+    # nginx:1.27-alpine (см. docker-compose.yml) несёт штатный gzip-модуль,
+    # но не brotli (тот требует собранный вручную nginx с ngx_brotli), так
+    # что здесь доступен именно gzip.
     #
-    # gzip_proxied is the critical setting for OUR topology specifically:
-    # nginx's gzip module defaults to NEVER compressing a proxied response
-    # (gzip_proxied off) unless told otherwise — graph_handler.cpp/
-    # path_handler.cpp already set "Cache-Control: private, must-revalidate"
-    # on every response, which is exactly one of the conditions gzip_proxied
-    # excludes by default. `any` unconditionally allows compression for
-    # proxied responses regardless of the Cache-Control/Expires the upstream
-    # sent — safe here since every location below only ever proxies our own
-    # six-feat/six-feat-auth backends, not third-party content whose caching
-    # semantics we don't control.
+    # gzip_proxied — критичная настройка именно для НАШЕЙ топологии: модуль
+    # gzip в nginx по умолчанию НИКОГДА не сжимает проксированный ответ
+    # (gzip_proxied off), если не сказать обратного — а graph_handler.cpp/
+    # path_handler.cpp уже отдают "Cache-Control: private, must-revalidate"
+    # на каждый ответ, и это ровно одно из условий, которые gzip_proxied
+    # исключает по умолчанию. `any` разрешает сжатие проксированных ответов
+    # безусловно, независимо от Cache-Control/Expires апстрима — здесь это
+    # безопасно, потому что каждый location ниже проксирует только наши
+    # собственные бэкенды six-feat/six-feat-auth, а не чужой контент с
+    # неизвестной нам семантикой кэширования.
     #
-    # gzip_vary adds "Vary: Accept-Encoding" so any cache in front of this
-    # (browser, CDN) keys on it instead of serving a compressed body to a
-    # client that didn't ask for one, or vice versa.
+    # gzip_vary добавляет "Vary: Accept-Encoding", чтобы любой кэш перед этим
+    # сервером (браузер, CDN) учитывал её и не отдавал сжатое тело клиенту,
+    # который его не запрашивал, и наоборот.
     #
-    # gzip_min_length skips compressing small bodies (e.g. this handler's own
-    # short {"error":...} responses) where the CPU cost isn't worth it.
+    # gzip_min_length пропускает сжатие мелких тел (например, коротких
+    # {"error":...} ответов этого хендлера), где стоимость CPU не окупается.
     #
-    # ETag/304 are unaffected: If-None-Match/ETag are plain headers nginx
-    # already forwards through proxy_pass unchanged in both directions
-    # (untouched by proxy_hide_header, which we don't use), and a 304 has no
-    # body for gzip to touch in the first place.
+    # ETag/304 не затрагиваются: If-None-Match/ETag — обычные заголовки,
+    # которые nginx и так пробрасывает через proxy_pass в обе стороны
+    # (proxy_hide_header мы не используем), а у 304 тела нет в принципе, так
+    # что gzip'у его трогать нечего.
     gzip on;
     gzip_proxied any;
     gzip_vary on;
@@ -76,33 +75,33 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # sse_status_handler.cpp (GET /api/v1/status/stream?id=<artist_id>) is a
-    # genuine long-lived Server-Sent Events stream — HttpResponseBodyStream,
-    # connection held open, one chunk pushed every ~2s until the deep scan
-    # finishes. Needs its own location block, matched before the generic /
-    # below (nginx picks the longest matching prefix), because the defaults
-    # nginx applies to a normal request/response are actively hostile to it:
-    #   - proxy_buffering (on by default) makes nginx wait for either its
-    #     buffer to fill or the upstream connection to close before sending
-    #     anything to the client — for a stream that trickles ~2s apart and
-    #     may legitimately stay open for minutes, the client sees nothing
-    #     until the connection eventually ends, which EventSource treats as
-    #     a transport failure (onerror) and reconnects into the same trap.
-    #     The app already sends X-Accel-Buffering: no (nginx honors it
-    #     per-response), but proxy_buffering off here is the same fix made
-    #     explicit at the proxy config instead of relying solely on the
-    #     upstream remembering to set that header on every code path.
-    #   - proxy_read_timeout defaults to 60s: comfortably longer than the 2s
-    #     poll interval in normal operation, but with zero margin for a
-    #     slow poll cycle (GC/lock/DB hiccup) — one missed beat kills a
-    #     connection that was otherwise healthy. Set generously since an
-    #     open-but-idle SSE connection here is expected, not a leak.
-    #   - proxy_http_version defaults to 1.0 for the upstream leg, which
-    #     doesn't support chunked transfer-encoding — nginx has no way to
-    #     know where the (never-ending) response ends other than the
-    #     upstream closing the connection, so with buffering also masking
-    #     the symptom, this compounds the same "nothing reaches the client
-    #     until close" failure mode from a different angle.
+    # sse_status_handler.cpp (GET /api/v1/status/stream?id=<artist_id>) — это
+    # настоящий долгоживущий поток Server-Sent Events: HttpResponseBodyStream,
+    # соединение держится открытым, чанк приходит каждые ~2с до конца
+    # глубокого сканирования. Нужен отдельный location, матчащийся раньше
+    # общего / ниже (nginx выбирает самый длинный совпадающий префикс), потому
+    # что дефолты nginx для обычного запрос/ответа активно враждебны потоку:
+    #   - proxy_buffering (по умолчанию on) заставляет nginx ждать, пока
+    #     буфер заполнится или апстрим закроет соединение, и только потом
+    #     слать что-то клиенту — для потока с чанками раз в ~2с, который
+    #     законно может жить минуты, клиент не видит ничего до закрытия
+    #     соединения, а EventSource трактует это как транспортную ошибку
+    #     (onerror) и переподключается в ту же ловушку. Приложение уже шлёт
+    #     X-Accel-Buffering: no (nginx учитывает его на каждый ответ), но
+    #     proxy_buffering off здесь — тот же фикс, явно закреплённый в
+    #     конфиге прокси, а не полагающийся на то, что апстрим вспомнит
+    #     выставить этот заголовок на каждом пути кода.
+    #   - proxy_read_timeout по умолчанию 60с: с запасом перекрывает 2с
+    #     интервал опроса в штатном режиме, но без маржи на медленный цикл
+    #     (GC/лок/затык БД) — один пропущенный бит убивает иначе здоровое
+    #     соединение. Ставим щедро: открытое, но простаивающее SSE-соединение
+    #     здесь ожидаемо, это не утечка.
+    #   - proxy_http_version по умолчанию 1.0 для апстримного плеча, а 1.0 не
+    #     поддерживает chunked transfer-encoding — nginx не может узнать, где
+    #     кончается (бесконечный) ответ, кроме как по закрытию соединения
+    #     апстримом, и в сочетании с маскирующим симптом буферизацией это
+    #     усугубляет тот же режим «клиент не видит ничего до закрытия» с
+    #     другого ракурса.
     location /api/v1/status/stream {
         set $stream_upstream six-feat;
         proxy_pass http://$stream_upstream:${SIX_FEAT_PORT};
@@ -115,20 +114,21 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 3600s;
-        # [SF-PERF-04] Leave this stream out of the server-level gzip on
-        # above, explicitly: each pushed SSE chunk is a few dozen bytes of
-        # JSON, always well under gzip_min_length, so it wouldn't compress
-        # anyway — but making it explicit here means it stays that way even
-        # if gzip_min_length is tuned down later, instead of silently
-        # depending on that threshold to keep working for this location too.
+        # [SF-PERF-04] Этот поток намеренно исключён из серверного gzip on
+        # выше, явно: каждый чанк SSE — пара десятков байт JSON, всегда
+        # заметно меньше gzip_min_length, так что он всё равно бы не
+        # сжался — но явная запись здесь гарантирует, что так останется
+        # даже если gzip_min_length потом уменьшат, а не тихо будет зависеть
+        # от этого порога и для этого location.
         gzip off;
     }
 
-    # [SF-GAME-10] The "connect two artists" game service — challenge/
-    # submit/leaderboard/profile — is its own standalone container (same
-    # split as /auth/ above), not part of six-feat's own handler set.
-    # Matched before the generic / below (nginx picks the longest matching
-    # prefix) so /api/v1/game/* never falls through to six-feat itself.
+    # [SF-GAME-10] Игровой сервис «соедини двух артистов» — challenge/
+    # submit/leaderboard/profile — живёт в собственном отдельном контейнере
+    # (тот же сплит, что и /auth/ выше), а не в наборе хендлеров six-feat.
+    # Матчится раньше общего / ниже (nginx выбирает самый длинный
+    # совпадающий префикс), чтобы /api/v1/game/* никогда не проваливался
+    # в сам six-feat.
     location /api/v1/game/ {
         set $game_upstream six-feat-game;
         proxy_pass http://$game_upstream:${SIX_FEAT_GAME_PORT};

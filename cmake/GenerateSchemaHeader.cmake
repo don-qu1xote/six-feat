@@ -1,5 +1,6 @@
-# Build-time worker script for six_feat_embed_schema() (see EmbedSchema.cmake).
-# Invoked via `cmake -P` with -DSCHEMA_YAML=... -DOUTPUT_HEADER=... -DCONST_NAME=...
+# Скрипт-исполнитель на этапе сборки для six_feat_embed_schema() (см.
+# EmbedSchema.cmake). Вызывается через `cmake -P` с параметрами
+# -DSCHEMA_YAML=... -DOUTPUT_HEADER=... -DCONST_NAME=...
 if(NOT DEFINED SCHEMA_YAML OR NOT DEFINED OUTPUT_HEADER OR NOT DEFINED CONST_NAME)
     message(FATAL_ERROR "GenerateSchemaHeader.cmake requires SCHEMA_YAML, OUTPUT_HEADER and CONST_NAME")
 endif()

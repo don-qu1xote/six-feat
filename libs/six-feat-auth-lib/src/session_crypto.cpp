@@ -327,15 +327,6 @@ std::optional<SessionData> Decrypt(std::string_view cookie_value,
   data.provider = JsonGetString(json, "prov");
   data.provider_user_id = JsonGetString(json, "uid");
 
-  // Пустой tok — это НЕ «нет сессии». Decrypt отвечает за подлинность и срок
-  // куки, а не за то, есть ли у пользователя Genius-токен: «залогинен, но
-  // токена нет» — законное состояние, ради которого в graph/path/deepen и в
-  // выдаче API-ключей живут отдельные ветки с честным 422 «подключите токен
-  // в настройках». Пока проверка стояла здесь, такая сессия выглядела как
-  // анонимная и все эти ветки были недостижимы: 401 вместо 422.
-  // Хранилища токенов (user_provider_tokens, api_keys) проверяют пустоту
-  // сами — там пустой токен по-прежнему значит «ходить в Genius нечем».
-
   using SC = std::chrono::system_clock;
   const auto now_unix = static_cast<std::int64_t>(
       std::chrono::duration_cast<std::chrono::seconds>(SC::now().time_since_epoch()).count());

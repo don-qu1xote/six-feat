@@ -16,6 +16,7 @@ six_feat_embed_schema(handlers/six-feat/settings_enrichment_enabled_handler kSet
 six_feat_embed_schema(handlers/six-feat/graph_handler      kGraphHandlerSchema     GRAPH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_deepen_handler kGraphDeepenHandlerSchema GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/graph_edge_handler   kGraphEdgeHandlerSchema   GRAPH_EDGE_HANDLER_SCHEMA_HEADER)
+six_feat_embed_schema(handlers/six-feat/graph_layout_handler kGraphLayoutHandlerSchema GRAPH_LAYOUT_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/path_handler       kPathHandlerSchema      PATH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/search_handler     kSearchHandlerSchema    SEARCH_HANDLER_SCHEMA_HEADER)
 six_feat_embed_schema(handlers/six-feat/status_handler     kStatusHandlerSchema    STATUS_HANDLER_SCHEMA_HEADER)
@@ -43,6 +44,7 @@ add_custom_target(six_feat_sixfeat_schema_headers DEPENDS
     ${GRAPH_HANDLER_SCHEMA_HEADER}
     ${GRAPH_DEEPEN_HANDLER_SCHEMA_HEADER}
     ${GRAPH_EDGE_HANDLER_SCHEMA_HEADER}
+    ${GRAPH_LAYOUT_HANDLER_SCHEMA_HEADER}
     ${PATH_HANDLER_SCHEMA_HEADER}
     ${SEARCH_HANDLER_SCHEMA_HEADER}
     ${STATUS_HANDLER_SCHEMA_HEADER}
@@ -76,6 +78,7 @@ add_executable(six_feat
     src/api/v1/graph_handler.cpp
     src/api/v1/graph_deepen_handler.cpp
     src/api/v1/graph_edge_handler.cpp
+    src/api/v1/graph_layout_handler.cpp
     src/api/v1/path_handler.cpp
     src/api/v1/search_handler.cpp
     src/api/v1/status_handler.cpp
@@ -105,6 +108,7 @@ target_link_libraries(six_feat
         six_feat_auth_lib
         six_feat_http
         six_feat_image
+        six_feat_layout
         OpenSSL::Crypto
 )
 

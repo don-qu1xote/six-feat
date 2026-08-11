@@ -117,8 +117,6 @@ describe("hideToast", () => {
     hideToast();
     expect(State.toastTimer).toBeNull();
 
-    // Таймер снят, а не просто отработал вхолостую: повторного скрытия
-    // (и гонки с уже показанным следующим тостом) не будет.
     els.toast.classList.add("show");
     vi.advanceTimersByTime(5000);
     expect(els.toast.classList.contains("show")).toBe(true);

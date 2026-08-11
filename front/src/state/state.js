@@ -265,6 +265,13 @@ const cacheSlice = {
   // другой граф, — поэтому и сбрасываются оба вместе.
   _edgeCache: new Map(),
 
+  // [SF-API-21] Ответы раскладки, ключ — сама структура графа. Кэш не
+  // сбрасывается вместе с остальными: те устаревают, когда меняются ДАННЫЕ
+  // (раскрытие дописывает рёбра в базу), а раскладка зависит только от
+  // структуры — и если структура та же, ответ тот же. Именно на этом держится
+  // мгновенное повторное раскрытие: попадание в кэш не ждёт сети.
+  _layoutCache: new Map(),
+
   _graphCache: new Map(),
 };
 
@@ -341,6 +348,7 @@ bridge("_enrichmentPoller", netFetchSlice);
 
 bridge("_pathCache", cacheSlice);
 bridge("_edgeCache", cacheSlice);
+bridge("_layoutCache", cacheSlice);
 bridge("_graphCache", cacheSlice);
 
 bridge("toastTimer", animSlice);
@@ -408,6 +416,12 @@ export function resetExpansionState() {
   interactionSlice._lastClickNode = null;
 }
 
+// Раскладка забывается только вместе с самим графом: пока на экране тот же
+// граф, повторно спрашивать сервер про ту же структуру незачем.
+export function clearLayoutCache() {
+  cacheSlice._layoutCache = new Map();
+}
+
 export function resetGraphState({ resetHasRendered = true } = {}) {
   if (graphSlice.network) graphSlice.network.destroy();
   graphSlice.network = null;
@@ -431,6 +445,7 @@ export function resetGraphState({ resetHasRendered = true } = {}) {
   animSlice._expandAnimId = null;
 
   clearGraphQueryCaches();
+  clearLayoutCache();
 }
 
 export const GRAPH_CACHE_MAX = 20;

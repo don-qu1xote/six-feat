@@ -1,26 +1,26 @@
 # .dockerignore
-# Keep the build context small and prevent secrets from leaking into image layers.
+# Держим build context маленьким и не даём секретам протечь в слои образов.
 
-# Never send real env files to the daemon
+# Настоящие env-файлы демону не отдаём никогда
 .env
 *.env
 
-# Local SQLite data (dev bind mount) — never ship into the build context
+# Локальные SQLite-данные (dev bind mount) — не должны попадать в build context
 data/
 
-# Postgres bind-mount data dirs (docker-compose.yml volumes) — grow to
-# hundreds of MB/GB over time; already gitignored, .dockerignore forgot them
+# Каталоги данных Postgres (volumes из docker-compose.yml) — разрастаются до
+# сотен МБ/ГБ; уже в gitignore, а .dockerignore о них забыл
 .pgdata/
 .pgdata-replica/
 
-# VCS metadata — never needed in the build context
+# Метаданные VCS — в build context не нужны
 .git/
 
-# Build artifacts
+# Артефакты сборки
 build/
 .cache/
 
-# Editor / OS noise
+# Мусор редакторов / ОС
 .DS_Store
 .idea/
 .vscode/

@@ -183,8 +183,6 @@ std::string PathHandler::HandleRequestThrow(const server::http::HttpRequest& req
   if (user_token.empty()) {
     const auto session = auth::RequireFullSession(request, oauth_);
     if (!session) {
-      // «Sign in» осталось от времён, когда войти можно было и Яндексом.
-      // Вход снова только через Genius — формулировка как у /search.
       return ErrorJson("not_authenticated", "Login with Genius to search for collaboration paths.");
     }
     enrichment_enabled = user_provider_tokens_.GetEnrichmentEnabled(auth::SessionUserId(*session));

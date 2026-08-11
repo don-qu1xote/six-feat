@@ -282,6 +282,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-graph-layout:
+      path: /api/v1/graph/layout
+      method: POST
+      task_processor: main-task-processor
+
     handler-path:
       path: /api/v1/graph/path
       method: GET
@@ -1493,14 +1498,6 @@ def clean_db_state(request: pytest.FixtureRequest) -> None:
         conn.close()
 
 
-# [SF-API-23 fix-01] Идентификаторы выдаются с шагом, а не подряд.
-# Тесты сплошь строят коллаборатора как seed_id + 1 — и при шаге 1 коллаборатор
-# одного теста оказывался сидом следующего. Такой сид приходит в тест уже
-# известным базе (его записал предыдущий тест), и дальше всё зависит от того,
-# что успело о нём записаться: граф собирается не из моков этого теста, а из
-# чужих данных. Отсюда пустые графы в TestGraphEdgeCarriesOnlyTheAggregate —
-# первый тест класса проходил, остальные три получали чужой сид.
-# Шаг с запасом больше любого смещения, которое тесты прибавляют к сиду.
 _UNIQUE_ARTIST_ID_STRIDE = 1000
 _unique_artist_id_counter = itertools.count(int(time.time() * 1_000_000), _UNIQUE_ARTIST_ID_STRIDE)
 

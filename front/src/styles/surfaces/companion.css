@@ -22,20 +22,6 @@
   display: flex;
 }
 
-/* [fix] Was max-height: 60% — a bare percentage of .companion-panel's own
-   height, which is itself auto/shrink-to-fit (content-determined, capped
-   only by max-height: min(70vh,100%) — see below). A percentage height
-   against an indefinite-height ancestor is a classic CSS circular
-   reference: the browser can't resolve "60% of however tall my content
-   makes me" in one pass, and the two-pass result left a large dead gap
-   under the actual From/To fields + Find path/Clear/status content
-   (reported: "не нравится пустое место"), confirmed via getBoundingClientRect
-   — .companion-panel measured ~221px tall while .path-panel's own content
-   only needed ~112px. .artist-sidebar (below) already avoids exactly this
-   with min(70vh,100%) — the 100% only matters if 70vh is somehow larger,
-   so it never actually depends on the indefinite ancestor height in
-   practice. min(42vh,100%) here is the same escape hatch, scaled to
-   match the original 60%-of-70vh proportion. */
 .path-panel {
   display: none;
   flex-direction: column;
@@ -232,39 +218,12 @@
 .path-input::placeholder {
   color: #5c677c;
 }
-/* Раньше здесь дропдаун принудительно ужимался (26px аватар, скрытый
-   hint, минимальные отступы) — именно это и стояло за жалобой "окошки
-   подсказок слишком маленькие" в узкой .path-panel/.hero-connect-fields.
-   Убрано: используем тот же просторный .ac-dropdown/.ac-item, что и
-   везде — просто якорим его к правому краю поля (left:auto;right:0)
-   вместо левого, чтобы широкая карточка росла влево, в открытое
-   пространство канвы, а не обрезалась правым краем узкой докнутой
-   .path-panel у края экрана. */
+
 .path-input-wrap .ac-dropdown {
   left: auto;
   right: 0;
 }
 
-/* ТЗ: подсказки на СТРАНИЦЕ ГРАФА (узкий докнутый .path-panel и
-   компактный .search-modal.docked) читаются слишком крупными на фоне
-   остальных, тесно скомпонованных панелей графа — 40px-аватар и
-   щедрые отступы были рассчитаны на просторную главную страницу.
-   Уменьшаем именно здесь; #hero-ac и Find Path на главной остаются
-   прежнего, более крупного размера — жалобы на них не было.
-   [SF-WEB-60] БАГ: это раньше было четырьмя descendant-селекторами
-   (".path-panel .ac-dropdown"/".search-modal.docked .ac-dropdown" и т.п.)
-   — но portalToOverlayRoot (overlay-root.js) физически переносит
-   .ac-dropdown ВНЕ .path-panel/.search-modal.docked в DOM ровно в момент
-   открытия (см. заголовок overlay-root.js) — то есть ровно тогда, когда
-   этот стиль и должен был бы сработать. Ни один из этих селекторов не
-   совпадает с тех пор, как появился портал (SF-WEB-41) — компактный режим
-   на графе молча переставал применяться, дропдаун рендерился в полном
-   "домашнем" размере (40px аватар, hint%, max-width 400px) даже в узком
-   докнутом контексте — ровно то, что было на скриншоте ("не получится
-   переиспользовать с главной страницы"). Класс .ac-dropdown--compact
-   переживает портал (он на самом переносимом элементе, не на предке) —
-   openDropdown (overlay-root.js) выставляет его заново при КАЖДОМ
-   открытии, проверяя контекст ЯКОРЯ (тот никуда не переносится). */
 .ac-dropdown--compact {
   max-width: min(300px, 90vw);
 }
@@ -308,11 +267,6 @@
   color: var(--paper);
 }
 
-/* ТЗ-205: .hop-chain — horizontal scrollable track by default (wide
-   panels), with a fade mask at both edges like .path-chain-track.
-   Falls back to the original vertical stack only when the panel itself
-   is narrow (context panel collapsed / mobile viewport) — see the
-   max-width media query below. */
 .hop-chain {
   display: flex;
   flex-direction: row;
@@ -352,9 +306,7 @@
   position: relative;
   flex-shrink: 0;
   width: 128px;
-  /* ТЗ-206: each hop is its own bento tile (per-node "плитка"), not just
-     a row in a flat list — reuses .bento-tile--flat's material since it
-     already sits inside .path-panel's own elevated tile. */
+
   border-radius: var(--r-md);
   background: rgba(var(--panel-rgb), 0.4);
   border: 1px solid var(--line);
@@ -411,22 +363,12 @@
   margin-right: var(--space-1);
 }
 
-/* ТЗ-205: connector between hop cards — reuses .path-edge-connector /
-   .path-edge-label (already defined below for the path-to-seed chain)
-   instead of the old plain "↓" text arrow, so both "paths" in the app
-   (this hop chain and the sidebar's path-to-seed chain) share one
-   visual language for roles/weight. */
 .hop-connector {
   align-self: center;
   flex-shrink: 0;
   margin: 0 calc(-1 * var(--space-1));
 }
 
-/* [SF-WEB-44] "созвездие" — a very faint two-tone glow wash behind the
-   chain (same --signal-rgb/--pulse-rgb the rest of the kit's glow
-   language already draws from), echoing the canvas's own starfield
-   decorator at a much lower opacity so this reads as a small patch of
-   sky rather than a flat panel. */
 .path-chain-container {
   position: relative;
   margin-top: var(--space-3);
@@ -486,11 +428,7 @@
   background: rgba(var(--panel-rgb), 0.6);
   border: 1px solid rgba(var(--line-rgb), 0.5);
   flex-shrink: 0;
-  /* Баг: карточки в "1 hop from seed" (и в общем path-chain-track)
-     были разной ширины — min/max-width давали диапазон 80–100px, но
-     реальная ширина плавала в его пределах в зависимости от длины
-     имени. Фиксированная width делает все блоки строго одного
-     размера. */
+
   width: 92px;
   transition:
     background var(--duration-base) var(--ease-standard),
@@ -617,9 +555,6 @@
     display: none;
   }
 
-  /* ТЗ-205: on a narrow context panel / mobile viewport, fall back to
-     the original vertical hop-chain stack — horizontal scrolling with
-     a fade mask doesn't work well at this width. */
   .hop-chain {
     flex-direction: column;
     overflow-x: visible;
@@ -649,18 +584,6 @@
   }
 }
 
-/* ТЗ-206/ТЗ-207: artist sidebar rebuilt as a bento grid — each block
-   (avatar+name header, tracks, role breakdown, path-to-seed mini
-   chain, Genius button) is its own .bento-tile instead of a stack of
-   same-weight rows. .artist-sidebar itself becomes the outer frame;
-   individual tiles carry their own background/shadow via .bento-tile.
-   Sidebar scope reduced to Tracks / Role breakdown / "1 hop from seed"
-   only — "Roles in this graph" and centrality ("Network importance")
-   sections were removed entirely (not just hidden).
-   Height: sidebar now shrinks to fit its content instead of reserving
-   a fixed max-height with empty space below a short sidebar — grows
-   naturally, capped at min(70vh,100%) so it never overflows the
-   viewport on a content-heavy day. */
 .artist-sidebar {
   display: none;
   background: transparent;
@@ -819,7 +742,3 @@
   align-items: center;
   gap: 4px;
 }
-
-/* Централити убрана — .centrality-indicator/.centrality-bar-*/
-/* .centrality-percent удалены полностью вместе с их единственным
-   потребителем (buildCentralityIndicator в ui.js). */

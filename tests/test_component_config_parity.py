@@ -11,12 +11,11 @@ sys.path.insert(0, str(SRC_ROOT / "scripts"))
 
 MAIN_CPP = SRC_ROOT / "services" / "six-feat" / "src" / "main.cpp"
 STATIC_CONFIG = SRC_ROOT / "services" / "six-feat" / "static_config.yaml"
-# Хендлеры six-feat живут и в самом сервисе, и в общих библиотеках
-# (health_handler в six-feat-http и т.п.) — искать kName надо в обоих местах.
+
+
 HEADER_DIRS = (SRC_ROOT / "services" / "six-feat" / "src", SRC_ROOT / "libs")
 
-# Готовые компоненты userver, у которых нет нашего заголовка с kName, но секция
-# в конфиге обязана быть.
+
 FRAMEWORK_HANDLERS = {"handler-server-monitor"}
 
 _APPEND_RE = re.compile(r"\.Append<\s*([A-Za-z_][A-Za-z0-9_:]*)\s*>\(\)")
@@ -58,11 +57,6 @@ def _e2e_template() -> str:
     return e2e_env._STATIC_CONFIG_TEMPLATE
 
 
-# Расхождение между списком компонентов в main.cpp и конфигом роняет сервис на
-# старте целиком, а не на конкретном запросе: userver проверяет обе стороны —
-# и компонент без секции конфига, и секцию конфига без компонента. До этого
-# теста такое расхождение всплывало только через 40 минут в интеграционных
-# джобах, в виде «сервис не поднялся за таймаут», без настоящей причины.
 class TestRegisteredComponentsMatchProdConfig:
     def test_every_registered_handler_has_a_prod_config_section(self):
         missing = _registered_handler_names() - _prod_handlers()
@@ -79,9 +73,6 @@ class TestRegisteredComponentsMatchProdConfig:
         )
 
 
-# Шаблоны конфигов для тестов — отдельные копии продового static_config.yaml, и
-# они разъезжаются молча: хендлер добавили в прод, а в шаблон забыли (или
-# наоборот — удалили из прода, а в шаблоне остался).
 @pytest.mark.parametrize(
     "name,loader",
     [

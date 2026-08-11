@@ -81,7 +81,7 @@ describe("native View Transitions path", () => {
     expect(startViewTransition).toHaveBeenCalledTimes(1);
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(els.searchModal.classList.contains("is-morphing")).toBe(true);
-    // FLIP-фолбэк не должен запускаться параллельно с нативным переходом.
+
     expect(rafCallbacks).toHaveLength(0);
 
     finish();

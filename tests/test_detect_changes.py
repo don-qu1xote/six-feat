@@ -12,8 +12,7 @@ SCRIPT = REPO_ROOT / "scripts" / "detect-changes.sh"
 
 
 def _run(env_overrides: dict, cwd: Path = REPO_ROOT) -> subprocess.CompletedProcess:
-    # FORCE_ALL из окружения запускающего не должен подмешиваться в кейсы,
-    # которые проверяют поведение БЕЗ флага.
+
     env = {k: v for k, v in os.environ.items() if k != "FORCE_ALL"}
     env.update(env_overrides)
     return subprocess.run(
@@ -176,8 +175,7 @@ class TestForceAll:
         assert areas["DOCKER"] == "true"
 
     def test_force_all_works_on_a_push_not_only_on_a_manual_run(self, docs_only_repo: Path):
-        # Смысл флага именно в этом: он не привязан к типу события, поэтому
-        # переживёт, если shortcut «любой workflow_dispatch = всё» сузят.
+
         forced = _run({"GITHUB_EVENT_NAME": "push", "FORCE_ALL": "true"}, cwd=docs_only_repo)
         dispatched = _run({"GITHUB_EVENT_NAME": "workflow_dispatch"}, cwd=docs_only_repo)
 
@@ -225,8 +223,7 @@ class TestWithoutTheFlagNothingChanged:
         assert without.stdout == explicit_false.stdout
 
     def test_unchecked_checkbox_arrives_as_an_empty_string(self, docs_only_repo: Path):
-        # На push `${{ inputs.force_all }}` подставляется пустой строкой — она
-        # обязана читаться как «не форсировать», а не как «true».
+
         result = _run({"GITHUB_EVENT_NAME": "push", "FORCE_ALL": ""}, cwd=docs_only_repo)
 
         assert _areas(result.stdout)["FRONTEND"] == "false"

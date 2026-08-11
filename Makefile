@@ -39,7 +39,7 @@ fmt-check:
 	find libs services -type f \( -name '*.cpp' -o -name '*.hpp' \) | xargs clang-format --dry-run --Werror --style=file
 	ruff format --check .
 	cd front && npm run format:check
-	python3 scripts/check_comments.py libs services tests scripts front
+	python3 scripts/check_comments.py
 	ruff check . --select N
 	cd front && npx eslint "**/*.js" --max-warnings 0
 

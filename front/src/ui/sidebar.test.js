@@ -16,8 +16,7 @@ vi.mock("./modals.js", () => ({
 }));
 vi.mock("../api/api.js", () => ({ searchArtist: vi.fn(), deepenArtistConnections: vi.fn() }));
 vi.mock("./toast.js", () => ({ showToast: vi.fn() }));
-// [SF-API-23] Треки ребра приезжают отдельным запросом — панель их просит,
-// а не получает вместе с графом.
+
 const fetchEdgeDetails = vi.fn();
 vi.mock("../api/analytics-client.js", () => ({
   fetchEdgeDetails: (...args) => fetchEdgeDetails(...args),
@@ -232,7 +231,7 @@ describe("showEdgeSidebar (edge context)", () => {
     expect(els.sidebarName.textContent).toBe("Drake × Future");
     expect(els.artistSidebar.classList.contains("show")).toBe(true);
     expect(els.companionPanel.classList.contains("show")).toBe(true);
-    // Пока ответа нет — общее состояние загрузки SF-WEB-19, а не свой спиннер.
+
     expect(els.sidebarTracks.classList.contains("ui-state--loading")).toBe(true);
 
     expect(fetchEdgeDetails).toHaveBeenCalledWith(1, 2);
@@ -324,7 +323,6 @@ describe("showEdgeSidebar (edge context)", () => {
 
     showEdgeSidebar("1_2", {});
 
-    // Плитка показывается сразу — из доминирующей роли ребра, без ожидания сети.
     expect(els.sidebarRoleBreakdownTile.style.display).toBe("");
     expect(els.sidebarRoleChips.innerHTML).toContain("role-chip--featured");
 
@@ -381,7 +379,6 @@ describe("showEdgeSidebar (edge context)", () => {
   });
 
   it("uses the songs a path answer already carried, without asking the server again", () => {
-    // Ответ поиска пути несёт треки осознанно (SF-API-23 их там не трогает).
     State.graphEdges = [mockEdge({ songs: ["A-B Track", "B-C Track"], dominantRole: "producer" })];
 
     showEdgeSidebar("1_2", {});
@@ -603,9 +600,6 @@ describe("object action bar", () => {
 });
 
 describe("path-to-seed track", () => {
-  // [SF-API-24] Плитка читает ребро прямо из нарисованного графа — сетевого
-  // ответа тут нет и никогда не было нужно, поэтому и подменять нечего:
-  // сценарии задаются составом State.graphEdges.
   beforeEach(() => {
     State.currentSeedId = 2;
     State.graphNodes = [

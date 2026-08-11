@@ -13,10 +13,6 @@
   z-index: var(--z-canvas);
 }
 
-/* fixed, а не absolute: кнопка вынесена из .canvas-chrome на верхний
-   уровень (см. комментарий в index.html), и позиционироваться ей теперь
-   нужно от вьюпорта, а не от давно исчезнувшего родителя. z-index здесь
-   наконец что-то значит: 30 > 20 у .game-screen. */
 .settings-toggle {
   position: fixed;
   top: var(--space-4);
@@ -75,18 +71,6 @@
   }
 }
 
-/* ─ Явное разделение "страница-граф" / "главная страница" ──────────────
-   Раньше единственным сигналом "мы на графе, а не на лендинге" была
-   .app-canvas.search-open (opacity/pointer-events на .rail/.status/
-   .context-panel) — по факту рабочий, но не явный переключатель:
-   элементы графа оставались в layout/DOM-дереве и на a11y-дереве даже
-   когда модалка поиска открыта. body.view-home/.view-graph — явное,
-   структурное состояние ("на какой мы странице"), которое полностью
-   убирает chrome графа из потока на главной (display:none), а не
-   просто прячет его прозрачностью. Ставится/снимается в
-   openSearchModal()/closeSearchModal() (ui.js) синхронно с
-   .search-open, поэтому анимация перехода не меняется — меняется
-   только то, что происходит ДО/ПОСЛЕ неё. */
 body.view-home .rail,
 body.view-home .status,
 body.view-home .context-panel,
@@ -96,15 +80,6 @@ body.view-home .role-filter-segment {
   display: none;
 }
 
-/* ТЗ (bento-редизайн): раньше .rail был плоской полосой впритык к краю
-   экрана (background:var(--ink-2), border-right, без radius/shadow) —
-   единственный крупный элемент интерфейса, не говорящий на одном
-   визуальном языке с остальными панелями (.bento-tile/.path-panel/
-   .artist-sidebar — все они var(--panel-2) + border + var(--r-lg) +
-   var(--shadow), плавающие с отступом от края). Функционал (hover-to-
-   expand, все кнопки, тултипы) не меняется — меняется только
-   материал: рейл становится такой же плавающей bento-плиткой, с
-   отступом со всех сторон вместо border-right впритык. */
 .rail {
   position: absolute;
   top: var(--space-4);
@@ -129,15 +104,12 @@ body.view-home .role-filter-segment {
 .rail-shell:hover {
   width: 180px;
 }
-/* Баг: часть рейла (например #auth-status-badge внизу) оставалась
-   видна поверх search-modal — сама навигация по графу не имеет смысла,
-   пока граф скрыт под модалкой поиска, поэтому прячем весь рейл целиком
-   вместо точечных исключений. */
+
 .app-canvas.search-open .rail {
   opacity: 0;
   pointer-events: none;
 }
-/* Seed-карточка снизу слева тоже не должна светиться поверх модалки */
+
 .app-canvas.search-open .status {
   opacity: 0;
   pointer-events: none;
@@ -172,12 +144,7 @@ body.view-home .role-filter-segment {
   -webkit-appearance: none;
   appearance: none;
 }
-/* [SF-GAME-52] Ключ — .rail-shell (общий механизм разворота), а не .rail
-   (класс ИМЕННО Explorer-рейла). Игровой рейл — .game-rail.rail-shell, поэтому
-   под старым селектором его бренд не разворачивался и подпись «Six Feet» в
-   левом верхнем углу не появлялась НИКОГДА, даже по наведению: кружок был, а
-   текста рядом не было. Разворот кнопок рейла (.rail-btn ниже) уже давно
-   висел на .rail-shell — бренд просто забыли перевести вместе с ними. */
+
 .rail-shell:hover .brand {
   width: 100%;
 }
@@ -288,10 +255,7 @@ body.view-home .role-filter-segment {
   border-color: var(--signal);
   background: rgba(94, 230, 197, 0.12);
 }
-/* ТЗ-206: light bento accent on hover-expand — own small plate-like
-   "tile" backdrop (subtle shadow) rather than just a colour swap, so
-   the expanded rail reads as part of the same tile language as the
-   rest of the UI without becoming a full heavy card. */
+
 .rail-shell:hover .rail-btn:hover,
 .rail-shell:hover .rail-btn.active {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
@@ -382,9 +346,7 @@ body.view-home .role-filter-segment {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  /* [SF-GAME-59] .dock-btn применяется и к <a> (Browse на игровой панели) —
-     без сброса ссылка-кнопка выезжает подчёркнутым текстом. Тот же сброс,
-     что уже стоит на .ui-btn в ките. */
+
   text-decoration: none;
 }
 
@@ -439,7 +401,7 @@ body.view-home .role-filter-segment {
     opacity var(--duration-slower) var(--ease-standard),
     filter var(--duration-slower) var(--ease-standard);
 }
-/* CSS display:flex перебивает HTML-атрибут hidden — явно сбрасываем */
+
 .status[hidden] {
   display: none !important;
 }
@@ -464,9 +426,7 @@ body.view-home .role-filter-segment {
     background var(--duration-base) var(--ease-standard),
     box-shadow var(--duration-base) var(--ease-standard);
   font-family: "Inter", sans-serif;
-  /* ТЗ-206: light bento accent — same --shadow "material" as the rest of
-     the tile system, kept as a pill (not squared off) since it floats
-     over the canvas rather than sitting in a panel grid. */
+
   box-shadow: var(--shadow);
 }
 .seed-card:hover {
@@ -647,10 +607,7 @@ body.view-home .role-filter-segment {
   border-radius: 50%;
   flex-shrink: 0;
 }
-/* Легенда теперь отражает единственный оставшийся glow-эффект на графе —
-   фиксированный бирюзовый glow seed-ноды (см. seedShadow() в
-   vis-adapter.js). Раньше здесь был фиолетовый демо-цвет для
-   centrality-glow, который больше не существует. */
+
 .info-popover .bc-glow-demo--seed {
   background: var(--signal);
   box-shadow: 0 0 8px 3px rgba(94, 230, 197, 0.55);
@@ -741,10 +698,6 @@ body.view-home .role-filter-segment {
   justify-content: flex-end;
 }
 
-/* Логотип в левой панели (rail) — просто обычная ссылка-кнопка с
-   паттерном .rail-btn (иконка видна всегда, подпись раскрывается на
-   hover). SF логотип идёт в конец, после spacer'а, как фирменный
-   элемент перед auth-status-badge. */
 .rail-btn[href*="sixfeet"] {
   color: var(--pulse);
 }
@@ -772,8 +725,7 @@ body.view-home .role-filter-segment {
   pointer-events: auto;
   width: 100%;
 }
-/* Баг: .status (seed-card + иконки снизу слева) оставался виден
-   поверх search-modal — добавляем в тот же search-open паттерн. */
+
 .app-canvas.search-open .status {
   opacity: 0;
   pointer-events: none;
@@ -783,18 +735,7 @@ body.view-home .role-filter-segment {
   opacity: 0;
   pointer-events: none;
 }
-/* ПРЕВЕНТИВНО (тот же класс бага, что чинит соседний патч для
-   .hero-mode-panel.is-active): .context-panel > * безусловно
-   возвращает pointer-events:auto для .artist-sidebar/.path-panel,
-   поэтому .app-canvas.search-open .context-panel{pointer-events:none}
-   гасит auto только на самом .context-panel, а не на его детях — если
-   сайдбар или path-panel окажутся видимы (.show) одновременно с
-   открытым search-modal (сейчас все известные вызовы openSearchModal
-   успевают закрыть их сами — см. modals.js/canvas-controls.js), они
-   останутся кликабельным invisible-слоем поверх канвы точно так же,
-   как чинит соседний патч для hero-mode-panel. Глушим на детях явно,
-   чтобы это не стало живым багом при следующем новом вызове
-   openSearchModal(). */
+
 .app-canvas.search-open .context-panel > * {
   pointer-events: none;
 }

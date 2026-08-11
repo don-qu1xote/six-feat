@@ -34,8 +34,7 @@ def _sources() -> list[Path]:
 
 
 def _resolve(include: str) -> Path:
-    # <six-feat-sources/genius_music_source_provider.hpp>
-    #   -> libs/six-feat-sources/include/six-feat-sources/genius_music_source_provider.hpp
+
     lib = include.split("/", 1)[0]
     return LIBS_DIR / lib / "include" / include
 

@@ -27,9 +27,6 @@ class ImageProxyHandler final : public AuthenticatedHandlerBase {
   static userver::yaml_config::Schema GetStaticConfigSchema();
 
  private:
-  // [SF-API-20] Прокси — единственное место, где сервер и так держит в руках
-  // байты картинки. Средний цвет считается здесь, чтобы не заводить второй
-  // поход в сеть за тем же файлом, и складывается рядом с артистом.
   void SampleDominantColor(const std::string& url, const std::string& body) const;
 
   userver::clients::http::Client& http_client_;

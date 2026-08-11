@@ -17,8 +17,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Расширения, где пустой файл — всегда следствие сбоя, а не осмысленное
-# состояние (пустые __init__.py, .gitkeep и т.п. сюда не попадают).
+
 SOURCE_SUFFIXES = {
     ".c",
     ".cpp",
@@ -37,7 +36,7 @@ SOURCE_SUFFIXES = {
 
 
 def _is_allowed_empty(rel: str) -> bool:
-    # Пустой __init__.py — обычный маркер пакета, а не сбой применения патча.
+
     return Path(rel).name == "__init__.py"
 
 

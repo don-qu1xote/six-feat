@@ -25,11 +25,6 @@ std::variant<ArtistRef, AmbiguousResult> ResolveArtistByName(IExternalArtistLook
                                                              const std::string& query,
                                                              const std::string& user_token);
 
-// [SF-YM-08] Резолв имени БЕЗ внешнего гейтвея — только среди уже известных
-// репозиторию артистов (резолвлены раньше кем-то с Genius-токеном или
-// фоновым обогащением). std::nullopt значит "локально ничего не нашли",
-// а не "артиста не существует" — вызывающий код решает, что делать дальше
-// (обычно: требовать токен для внешнего резолва).
 std::optional<std::variant<ArtistRef, AmbiguousResult>> ResolveArtistByNameFromCache(
     IArtistDataSource& repo, const std::string& query);
 

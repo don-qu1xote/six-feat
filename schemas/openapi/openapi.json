@@ -1016,6 +1016,165 @@
         }
       }
     },
+    "/api/v1/graph/layout": {
+      "post": {
+        "summary": "Compute draw coordinates for the accumulated graph (SF-API-21)",
+        "description": "The client sends the structure it has — nodes, edges, expanded poles, pinned positions — and gets back where to draw them. No provider data, no stored state: a client-side layout would drift from the server's, so the geometry lives server-side.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "seed_id",
+                  "nodes",
+                  "edges",
+                  "expanded"
+                ],
+                "properties": {
+                  "seed_id": {
+                    "type": "integer",
+                    "format": "int64",
+                    "description": "Seed artist id the graph was accumulated from."
+                  },
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "description": "Artist ids currently in the accumulated graph."
+                  },
+                  "edges": {
+                    "type": "array",
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "minItems": 2,
+                      "maxItems": 2
+                    },
+                    "description": "[from, to] collaboration pairs."
+                  },
+                  "expanded": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "description": "Poles that were expanded into a sector."
+                  },
+                  "expand_parent": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "description": "Pole id -> parent artist id (which expansion opened it)."
+                  },
+                  "pinned": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        }
+                      }
+                    },
+                    "description": "id -> {x, y} positions the layout must keep."
+                  },
+                  "node_radius": {
+                    "type": "number",
+                    "description": "Node radius in px used by the solver."
+                  },
+                  "node_gap": {
+                    "type": "number",
+                    "description": "Minimum gap between node centers in px."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Layout computed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "const": "graph_layout"
+                    },
+                    "positions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "format": "int64"
+                          },
+                          "x": {
+                            "type": "number"
+                          },
+                          "y": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request body — missing or invalid fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid session and no valid X-Api-Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited (SF-SEC-04)"
+          },
+          "500": {
+            "description": "Unexpected internal error in the layout solver"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/search": {
       "get": {
         "summary": "Autocomplete artist search",

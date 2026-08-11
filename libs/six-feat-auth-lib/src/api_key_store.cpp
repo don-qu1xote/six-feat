@@ -100,8 +100,7 @@ std::optional<ApiKeyIdentity> ApiKeyStore::Resolve(const std::string& raw_key) c
 
   const auto encrypted_token = row["genius_token"].As<std::string>();
   auto session = Decrypt(encrypted_token, KeyFromEnv());
-  // Ключ без пригодного Genius-токена нерабочий: пусть лучше будет
-  // «неизвестный ключ», чем аутентификация с пустым токеном на руках.
+
   if (!session || session->access_token.empty()) return std::nullopt;
 
   ApiKeyIdentity identity;

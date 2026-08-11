@@ -29,8 +29,6 @@ beforeEach(() => {
 
 describe("[SF-WEB-41] overlay-root portal — дропдаун не обрезается контейнером", () => {
   function makeAnchoredDropdown() {
-    // Контейнер с overflow:hidden — ровно та ситуация, где дропдаун раньше
-    // резался краем докнутой карточки.
     const container = document.createElement("div");
     container.style.overflow = "hidden";
     const input = document.createElement("input");
@@ -52,8 +50,7 @@ describe("[SF-WEB-41] overlay-root portal — дропдаун не обреза
     expect(dd.parentElement).toBe(overlayRoot());
     expect(overlayRoot().parentElement).toBe(document.body);
     expect(dd.classList.contains("open")).toBe(true);
-    // #overlay-root — последний ребёнок body: стекается над остальным деревом
-    // без запредельного z-index.
+
     expect(document.body.lastElementChild).toBe(overlayRoot());
   });
 
@@ -65,7 +62,7 @@ describe("[SF-WEB-41] overlay-root portal — дропдаун не обреза
     closeDropdown(dd);
 
     expect(dd.parentElement).toBe(container);
-    expect(dd.nextElementSibling).toBe(sibling); // порядок среди соседей сохранён
+    expect(dd.nextElementSibling).toBe(sibling);
     expect(dd.classList.contains("open")).toBe(false);
   });
 
@@ -88,7 +85,6 @@ describe("[SF-WEB-41] overlay-root portal — дропдаун не обреза
     expect(dd.style.minWidth).toBe("300px");
   });
 
-  // [SF-WEB-59] "большие подсказки делают что правая граница улетает
   it("pulls the dropdown back inside the viewport when it would overflow the right edge", () => {
     const { input, dd } = makeAnchoredDropdown();
     vi.spyOn(input, "getBoundingClientRect").mockReturnValue({

@@ -12,10 +12,6 @@
 
 namespace six_feat {
 
-// [SF-ARCH-07] Единственный источник рёбер графа. Раньше — одна из двух
-// реализаций порта MusicSourceProvider, внутри цепочки звалась
-// "genius-fallback". Порт и цепочка схлопнуты вместе со вторым провайдером,
-// так что это обычный компонент, к которому обращаются напрямую.
 class GeniusMusicSourceProvider final : public userver::components::ComponentBase {
  public:
   static constexpr std::string_view kName = "genius-music-source-provider";

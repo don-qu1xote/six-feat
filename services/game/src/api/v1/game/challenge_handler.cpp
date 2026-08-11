@@ -152,10 +152,6 @@ std::string ChallengeHandler::HandleRequestThrow(const server::http::HttpRequest
   }
   if (role_mask <= 0) role_mask = 15;
 
-  // [SF-GAME-22] Путь считаем ДО создания челленджа: слишком близкую пару
-  // надо отклонить, а не сохранить и потом объяснять. Пара, которую L1 не
-  // связывает вовсе, по-прежнему допустима — правило про минимум шагов, а
-  // не про обязательную связность.
   const auto path = FindIdealPath(neighbours_, from, to, role_mask);
   if (path) {
     const int optimal_len = static_cast<int>(path->size()) - 1;

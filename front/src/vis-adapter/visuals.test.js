@@ -65,9 +65,6 @@ describe("buildNodeTooltip", () => {
   });
 });
 
-// [SF-WEB-77] Роль ребра и его пунктир — серверные величины (dominant_role,
-// edge_style). Раньше роль выводилась заново из collaborations, а dashes был
-// захардкожен в false, то есть серверный edge_style не читал никто.
 describe("edgeVisual takes role and style from the edge state", () => {
   it("uses the server's role even when collaborations imply another one", () => {
     const v = edgeVisual(
@@ -124,9 +121,6 @@ describe("[SF-API-20] the browser no longer samples artist photos", () => {
   });
 
   it("touches no canvas and creates no Image while building a node", () => {
-    // Выборка цвета в браузере была именно этим: new Image() на каждый узел
-    // плюс canvas.getContext на каждую загрузку. Если что-то из этого вернётся,
-    // тест упадёт здесь, а не в профайлере у пользователя.
     const realImage = globalThis.Image;
     const realGetContext = HTMLCanvasElement.prototype.getContext;
     let images = 0;
@@ -157,9 +151,6 @@ describe("[SF-API-20] the browser no longer samples artist photos", () => {
   });
 
   it("has no module left to import — photo-color.js is gone and nothing references it", () => {
-    // Проверка по всему фронтенду, а не по одному файлу: удалить модуль и
-    // оставить импорт — способ уронить сборку молча, а вернуть его обратно
-    // «на время» — способ вернуть и обход по картинкам.
     const srcDir = resolve(process.cwd(), "src");
     expect(existsSync(join(srcDir, "vis-adapter/photo-color.js"))).toBe(false);
 

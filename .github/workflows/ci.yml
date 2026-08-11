@@ -191,8 +191,8 @@ jobs:
           npm ci
           npx prettier --check "**/*.js"
 
-      - name: Check comments (build-necessary + Russian only)
-        run: python3 scripts/check_comments.py libs services tests scripts front
+      - name: Check comments (build-necessary only — directives/doc, Russian in build configs)
+        run: python3 scripts/check_comments.py
 
       - name: Check for empty source files (misapplied patch residue)
         run: python3 scripts/check-empty-sources.py

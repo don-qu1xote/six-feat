@@ -38,10 +38,8 @@ namespace {
 
 constexpr int kAllRolesMask = 15;
 
-// Сколько случайных пар пробуем, когда админ не назвал конкретную.
 constexpr int kRandomPairAttempts = 20;
 
-// Ожидает candidates.size() >= 2.
 void PickRandomPair(const std::vector<std::int64_t>& candidates,
                     std::int64_t& from,
                     std::int64_t& to) {
@@ -187,8 +185,7 @@ std::string AdminHandler::HandleRequestThrow(const server::http::HttpRequest& re
                               "no ideal path — L1 doesn't connect this pair (yet)");
     }
     path_len = static_cast<int>(path->size()) - 1;
-    // [SF-GAME-22] Пара названа явно — отказываем явно, а не подсовываем
-    // молча другую: админ просил опубликовать именно её.
+
     if (!rules_.PathLenOk(path_len)) {
       response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
       return BuildProblemJson(request,
@@ -196,8 +193,6 @@ std::string AdminHandler::HandleRequestThrow(const server::http::HttpRequest& re
                               rules_.TooShortMessage(path_len));
     }
   } else {
-    // Пару не называли — ведём себя как скедулер: пересэмплируем, пока не
-    // найдём достаточно далёкую. Отказывать тут не за что.
     for (int attempt = 0; attempt < kRandomPairAttempts; ++attempt) {
       auto candidate = FindIdealPath(neighbours_, from, to, kAllRolesMask);
       if (candidate) {

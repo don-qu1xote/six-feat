@@ -137,9 +137,7 @@ class TestTunnelIsOffByDefault:
         assert "туннель: off" in result.stdout
 
     def test_env_file_cannot_turn_the_tunnel_on(self, tmp_path: Path):
-        # PUBLIC_TUNNEL читается только из окружения: включение публичного
-        # доступа должно быть осознанным действием в командной строке, а не
-        # строчкой, которая когда-то попала в .env и забылась.
+
         env_file = _env_file(tmp_path)
         env_file.write_text(env_file.read_text() + "PUBLIC_TUNNEL=cloudflared\n")
 

@@ -1,47 +1,3 @@
-/* ══════════════════════════════════════════════════════════════════════════
-   surfaces/game-screens.css — [design: routed game windows]
-
-   The game's routed sibling screens (Leaderboard, Profile, Challenges, Season)
-   and the shared game nav that sits atop every game surface — including the
-   Play surface (connect.css owns that one's inner split; the nav bar itself is
-   styled here so all five screens share one chrome). Same full-bleed overlay
-   posture as .connect-surface: absolute inset:0 above the graph, shown by a
-   `.show` class toggled from game-windows.js.
-
-   Fully token-driven (both themes fall out of tokens.css / the [data-theme]
-   overrides) and keyed to the same palette the graph page uses: signal =
-   start/you, pulse = goal, amber = season/trophy.
-
-   [SF-GAME-33] Контролы и поверхности стоят на ките (components/*.css):
-   .ui-panel — карточки/секции, .ui-tile — плитки и строки-списки, .ui-chip —
-   чипы, .ui-btn(+--icon/--primary) — кнопки. Раньше игровые экраны
-   переизобретали ту же кнопку/панель/плитку своим набором классов, то есть
-   были вторым местом сопровождения одного и того же материала (и дрейфовали
-   от «Observatory» при каждой правке кита). Здесь теперь остаются ТОЛЬКО
-   дельты: раскладка, плотность и игровые акценты — всё «материальное»
-   (радиус, стекло, тень, focus-ring) приходит из кита.
-   ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Shared game RAIL ─────────────────────────────────────────────────────────
-   [SF-GAME-44] Тот же рейл, что у Explorer'а, а не двойник. Кнопки — .rail-btn
-   ui-btn ui-btn--ghost (components/button.css + canvas-controls.css), иконка/
-   лейбл — .ri/.rl, тултип свёрнутого состояния — .rail-btn[data-tip]::after,
-   механика разворота на ховере — общий .rail-shell. Всё это раньше было здесь
-   переписано заново классами .game-rail-link/.grl-ico/.grl-lab со своими
-   литеральными переходами, то есть тем же самым в третьем месте.
-
-   Отличие у двух рейлов ровно одно и оно структурное: Explorer'ов — плавающий
-   островок над канвой (position:absolute, скруглённая карточка с тенью), а
-   игровой — ДОКНУТАЯ колонка в flex-строке экрана. Поэтому здесь остаётся
-   только это отличие, и ничего больше. */
-/* [SF-GAME-56] Рейл игры — ПЛАВАЮЩИЙ островок над сценой, как у Explorer'а,
-   а не докнутая колонка.
-   Докнутая колонка участвовала в раскладке строки, поэтому её разворот на
-   ховере двигал ВСЮ сцену: граф и панель уезжали вправо на 118px и обратно.
-   Отсюда и «дёрганый» рейл — анимировалась не панель, а весь экран. Теперь
-   он position:absolute поверх сцены (та же отрисовка наложением, что у
-   .rail на графе): разворачивается только он сам, под ним ничего не
-   шевелится, и анимировать можно честную width. */
 .game-rail {
   position: absolute;
   left: var(--space-4);
@@ -66,25 +22,17 @@
 .game-rail:hover {
   width: 180px;
 }
-/* Сцена уступает островку место слева — ровно его ширину плюс поля, и это
-   значение НЕ меняется на ховере (иначе разворот снова двигал бы контент). */
+
 .connect-split,
 .game-screen-body {
   padding-left: calc(54px + var(--space-4) * 2);
 }
 
-/* [ИСПРАВЛЕНО] Бренд игрового рейла теперь ТА ЖЕ .brand-кнопка, что в
-   Explorer'е (canvas-controls.css) — тот же кружок .dotmark, тот же лейбл
-   .rl, тот же ховер, — и она, как и там, ведёт на корень. Раньше это был
-   неинтерактивный <span> со своим набором стилей: выглядело похоже, но не
-   нажималось, и вернуться из игры на 8080 из левого верхнего угла было
-   нечем. Здесь остаётся только раскладка колонки. */
 .game-rail-brand {
   margin-bottom: var(--space-2);
   text-decoration: none;
 }
 
-/* Активный экран — тот же язык, что .rail-btn.active у Explorer'а. */
 .game-nav-link.is-active {
   color: var(--paper);
   border-color: var(--signal);
@@ -93,10 +41,6 @@
 .game-nav-link.is-active .ri {
   color: var(--signal);
 }
-/* [SF-GAME-52] .game-rail-spacer / .game-rail-back удалены вместе с разметкой:
-   кнопка Explore внизу рейла вела на #/graph — туда же, куда и бренд в самом
-   верху той же колонки, — то есть один и тот же выход дважды в одном рейле, а
-   спейсер существовал только чтобы её туда отжать. */
 
 .connect-surface {
   flex-direction: row;
@@ -223,9 +167,7 @@
   flex-direction: column;
   gap: 6px;
 }
-/* [SF-GAME-33] Строки-плитки (лидерборд, история, ачивки, сезонная стена)
-   стоят на .ui-tile — радиус и фон оттуда. Здесь только раскладка строки,
-   свой паддинг и рамка. */
+
 .lb-row {
   display: grid;
   grid-template-columns: 2rem 1fr auto auto;
@@ -263,8 +205,6 @@ a.lb-name:hover {
   color: var(--signal);
 }
 
-/* ── Profile · personal cabinet (ЛК) ──────────────────────────────────────── */
-
 .pf-head {
   display: flex;
   align-items: center;
@@ -275,10 +215,6 @@ a.lb-name:hover {
   font-size: var(--text-sm);
 }
 
-/* [SF-GAME-33] .ui-panel даёт материал (стекло, рамка, радиус, тень, blur) —
-   здесь остаётся только раскладка ЛК и его собственный, более просторный
-   паддинг. Раньше эти пять «материальных» деклараций были второй реализацией
-   того же самого. */
 .cab-hero {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -342,9 +278,7 @@ a.lb-name:hover {
   margin: 0;
   letter-spacing: -0.01em;
 }
-/* [SF-GAME-33] .ui-btn ui-btn--icon даёт рамку/фон/цвет/курсор/переход и общий
-   focus-ring. Здесь — только форма: скруглённый квадрат 34px вместо круглых
-   32px кита (иконка правки стоит в ряд с именем, а не в пилюле рейла). */
+
 .cab-edit {
   width: 34px;
   height: 34px;
@@ -365,8 +299,7 @@ a.lb-name:hover {
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-/* [SF-GAME-33] .ui-chip даёт форму, рамку, цвет и focus-ring; тут — плотность
-   и вес под статы ЛК (чип не кликабельный, поэтому чуть крупнее и жирнее). */
+
 .cab-chip {
   gap: 6px;
   padding: 5px 12px;
@@ -390,8 +323,7 @@ a.lb-name:hover {
   gap: var(--space-4);
   margin-bottom: var(--space-8);
 }
-/* [SF-GAME-33] .ui-tile даёт радиус и фон; тут — свой паддинг (плитка статов
-   крупнее плитки сайдбара) и рамка, которой у базовой плитки нет. */
+
 .cab-tile {
   padding: var(--space-5);
   border: 1px solid var(--line);
@@ -433,10 +365,7 @@ a.lb-name:hover {
   gap: 3px;
   padding: var(--space-4);
   border: 1px solid var(--amber);
-  background: rgba(
-    var(--amber-rgb),
-    0.09
-  ); /* заслуженная ачивка — свой янтарь поверх фона плитки */
+  background: rgba(var(--amber-rgb), 0.09);
 }
 .pf-badge-title {
   color: var(--paper);
@@ -483,8 +412,6 @@ a.lb-name:hover {
   font-size: var(--text-xs);
 }
 
-/* [SF-GAME-46] Строка поиска. Инпут — .ui-input кита, кнопка сброса —
-   .ui-btn--icon; здесь только раскладка «иконка ‖ поле ‖ сброс». */
 .ch-search {
   position: relative;
   display: flex;
@@ -506,8 +433,7 @@ a.lb-name:hover {
   flex: 1;
   padding-left: var(--space-9);
 }
-/* Нативный крестик type="search" убираем — у нас своя кнопка сброса, две рядом
-   читались бы как баг. */
+
 .ch-search-input::-webkit-search-cancel-button {
   display: none;
 }
@@ -520,8 +446,7 @@ a.lb-name:hover {
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: var(--space-3);
 }
-/* [SF-GAME-33] Карточка челленджа — .ui-panel как материал; здесь только то,
-   что делает её КНОПКОЙ (раскладка, выравнивание текста, курсор, ховер). */
+
 .ch-card {
   display: flex;
   flex-direction: column;
@@ -583,7 +508,6 @@ a.lb-name:hover {
   margin: var(--space-5) auto 0;
 }
 
-/* [SF-GAME-33] .ui-panel — материал; здесь раскладка сезонного героя. */
 .sn-hero {
   display: flex;
   gap: var(--space-4);
@@ -686,7 +610,7 @@ a.lb-name:hover {
   gap: 4px;
   padding: var(--space-4);
   border: 1px solid var(--line);
-  opacity: 0.55; /* незаработанная — приглушена; .is-earned ниже возвращает её */
+  opacity: 0.55;
 }
 .sn-ach.is-earned {
   opacity: 1;
@@ -703,8 +627,6 @@ a.lb-name:hover {
   font-size: var(--text-xs);
 }
 
-/* [SF-GAME-33] .ui-panel — материал; здесь только «это админская зона»:
-   янтарная рамка и подложка поверх стекла панели. */
 .admin-panel {
   margin-top: var(--space-6);
   padding: var(--space-5);
@@ -818,19 +740,6 @@ a.lb-name:hover {
   border-color: var(--line);
 }
 
-/* ── [SF-GAME-47/48] Экран старта партии ──────────────────────────────────────
-   Один и тот же #connect-endpoints в двух ролях. Пока партии нет
-   (.connect-surface без .has-game) — это ГЛАВНЫЙ экран по центру сцены: выбор
-   пары и есть главное действие игры, ему не место за пилюлей размером с
-   ноготь. Как только партия началась, всё возвращается к компактному поповеру
-   (правила ниже), а заголовок и CTA прячутся.
-
-   [SF-GAME-48] Раньше карточку центрировали через absolute 50%/50% ВНУТРИ
-   .connect-graph-overlay — а тот сам был крошечной полоской в левом верхнем
-   углу. Содержащий блок был не сценой, а полоской, поэтому карточку срезало
-   overflow:hidden колонки. Теперь центрируется весь слой, растянутый по
-   сцене: flex + margin:auto (не place-items), чтобы при нехватке высоты
-   карточка скроллилась, а не обрезалась сверху. */
 .connect-surface:not(.has-game) .connect-stage-layer {
   inset: 0;
   max-width: none;
@@ -849,27 +758,19 @@ a.lb-name:hover {
   gap: var(--space-5);
   border-radius: var(--r-lg);
 }
-/* Пока пары нет, весь остальной хром сцены пуст: HUD нечего показывать, зуму
-   нечего зумить, панель «Your line» — пустая колонка на 340px. Убираем всё,
-   стартовая карточка получает экран целиком. */
+
 .connect-surface:not(.has-game) .connect-hud,
 .connect-surface:not(.has-game) .connect-graph-rail,
 .connect-surface:not(.has-game) .connect-stage-empty,
 .connect-surface:not(.has-game) .connect-line-panel {
   display: none;
 }
-/* Строку тоже переопределяем: на узком экране .connect-split зажимает граф в
-   320px (там он делит высоту с панелью), и стартовая карточка прилипала к
-   верхнему краю вместо центра. Панели в этом состоянии нет — отдавать высоту
-   некому. */
+
 .connect-surface:not(.has-game) .connect-split {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
-/* Рамка колонки графа очерчивает СЦЕНУ; пока сцены нет, это пустая коробка
-   1500×900 вокруг формы. Убираем её — стартовый экран читается как один холст
-   с одной карточкой, а не «форма внутри пустого виджета». Свечение позади
-   карточки берёт те же два акцента, что и вся игра. */
+
 .connect-surface:not(.has-game) .connect-graph-col {
   border-color: transparent;
   box-shadow: none;
@@ -924,17 +825,12 @@ a.lb-name:hover {
   flex: 1;
   justify-content: center;
 }
-/* В роли поповера («сменить пару») заголовок и кнопки лишние — пилюля уже
-   объяснила, что происходит, а старт давно случился. */
+
 .connect-surface.has-game .connect-setup-head,
 .connect-surface.has-game .connect-setup-actions {
   display: none;
 }
 
-/* [SF-GAME-48] Два полюса. На стартовом экране — рядом, слева направо, той же
-   грамматикой цвета, что и граф (--signal = старт, --pulse = цель): карточка
-   рисует ту же ось, вдоль которой потом ляжет коридор. В роли поповера сетка
-   схлопывается в колонку, соединитель уходит. */
 .connect-setup-poles {
   display: grid;
   gap: var(--space-3);
@@ -964,7 +860,7 @@ a.lb-name:hover {
   width: 17px;
   height: 17px;
   flex: 0 0 auto;
-  /* В спрайте есть только arrow-left; коридор игры идёт слева направо. */
+
   transform: scaleX(-1);
 }
 .connect-field--start .connect-label {
@@ -974,7 +870,6 @@ a.lb-name:hover {
   color: var(--pulse);
 }
 
-/* ── [fix: уродское изменение челленджа] cleaner glass endpoint editor ─────── */
 .connect-stage-layer .connect-endpoints {
   padding: var(--space-4);
   border-radius: var(--r-lg);
@@ -1028,9 +923,7 @@ a.lb-name:hover {
     width: 54px;
     padding: var(--space-3) 7px;
   }
-  /* Разворот теперь диктует flex-basis (см. .game-rail:hover выше), поэтому на
-     узком экране зажимать надо ИМЕННО его — одного width мало, рейл всё равно
-     раскрывался бы и съедал пол-экрана. */
+
   .game-rail:hover {
     flex-basis: 54px;
     width: 54px;

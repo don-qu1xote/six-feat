@@ -80,7 +80,7 @@ log "профиль: $ENV_PROFILE ($PROFILE_SOURCE)"
 log "адрес:   $BASE_URL"
 log "туннель: $PUBLIC_TUNNEL"
 
-# ── Stage 1: preflight ───────────────────────────────────────────────────────
+# ── Этап 1: preflight ────────────────────────────────────────────────────────
 
 command -v docker >/dev/null 2>&1 || die "docker не найден в PATH"
 

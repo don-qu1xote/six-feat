@@ -111,9 +111,6 @@ def decrypt(cookie_value: str, key: bytes) -> Optional[SessionData]:
     provider = obj.get("prov", "") if isinstance(obj, dict) else ""
     provider_user_id = obj.get("uid", "") if isinstance(obj, dict) else ""
 
-    # Зеркалит session_crypto.cpp: пустой tok — это валидная сессия без
-    # Genius-токена, а не отсутствие сессии.
-
     if expires_at < int(time.time()):
         return None
 

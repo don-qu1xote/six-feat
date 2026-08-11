@@ -20,7 +20,7 @@ import { attachNetworkEvents } from "./events.js";
 import { isGameModeActive } from "./game-mode.js";
 import { updateEdgeRenderMode, runFlyoutAnimation, pokeFastRenderMode } from "./physics.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
-import { placeExpandedNodes } from "./layout.js";
+import { cachedLayout } from "../api/analytics-client.js";
 import { setEdgeCache, clearEdgeCache } from "./edge-render.js";
 import { setContourData, clearContourData } from "./bubble-contours.js";
 
@@ -47,12 +47,15 @@ vi.mock("./physics.js", () => ({
 }));
 vi.mock("./tooltips.js", () => ({ ensureTooltipCollisionGuard: vi.fn() }));
 vi.mock("./layout.js", () => ({
-  placeExpandedNodes: vi.fn(() => ({
-    targets: new Map(),
-    edgeClass: new Map(),
-    sectorMembers: new Map(),
-  })),
+  classifyGraph: vi.fn(() => ({ edgeClass: new Map(), sectorMembers: new Map() })),
+  buildLayoutRequest: vi.fn(() => ({ seed_id: 1 })),
+  markPolesSettled: vi.fn(),
   LEAF_R: 30,
+}));
+
+vi.mock("../api/analytics-client.js", () => ({
+  cachedLayout: vi.fn(() => null),
+  fetchLayout: vi.fn(() => Promise.resolve(null)),
 }));
 vi.mock("./edge-render.js", () => ({
   setEdgeCache: vi.fn(),
@@ -209,16 +212,15 @@ describe("initNetwork", () => {
     expect(State.network.fit).not.toHaveBeenCalled();
   });
 
-  it("pins the seed at the origin and every laid-out node at its slot", () => {
-    placeExpandedNodes.mockReturnValueOnce({
-      targets: new Map([[2, { x: 50, y: 60 }]]),
-      edgeClass: new Map(),
-      sectorMembers: new Map(),
-    });
+  it("applies the coordinates the layout answered with, pinning the seed at the origin", () => {
+    cachedLayout.mockReturnValueOnce(new Map([[2, { x: 50, y: 60 }]]));
 
     initNetwork(1, nameById);
 
-    expect(State.nodesDS.items.find((n) => n.id === 2)).toMatchObject({
+    expect(State.network.moveNode).toHaveBeenCalledWith(1, 0, 0);
+    expect(State.network.moveNode).toHaveBeenCalledWith(2, 50, 60);
+    expect(State.nodesDS.updated.flat()).toContainEqual({
+      id: 2,
       x: 50,
       y: 60,
       fixed: { x: true, y: true },
@@ -228,6 +230,22 @@ describe("initNetwork", () => {
       y: 0,
       fixed: { x: true, y: true },
     });
+  });
+
+  it("never lets the layout move the seed, and ignores a coordinate for a node it does not have", () => {
+    cachedLayout.mockReturnValueOnce(
+      new Map([
+        [1, { x: 700, y: 700 }],
+        [2, { x: 50, y: 60 }],
+        [4242, { x: -9, y: -9 }],
+      ]),
+    );
+
+    initNetwork(1, nameById);
+
+    expect(State.network.moveNode).not.toHaveBeenCalledWith(1, 700, 700);
+    expect(State.network.moveNode).not.toHaveBeenCalledWith(4242, -9, -9);
+    expect(State.network.moveNode).toHaveBeenCalledWith(2, 50, 60);
   });
 
   it("leaves a node the layout had no slot for unpinned", () => {
@@ -305,11 +323,7 @@ describe("refreshNetwork", () => {
   });
 
   it("re-centres the seed and repositions the rest", () => {
-    placeExpandedNodes.mockReturnValueOnce({
-      targets: new Map([[2, { x: 40, y: 50 }]]),
-      edgeClass: new Map(),
-      sectorMembers: new Map(),
-    });
+    cachedLayout.mockReturnValueOnce(new Map([[2, { x: 40, y: 50 }]]));
 
     refreshNetwork(1, nameById, {});
 
@@ -423,7 +437,6 @@ describe("ring guides painter", () => {
     const ctx = fakeCtx();
     paint(ctx);
 
-    // Сид плюс раскрытый узел — два кольца.
     expect(ctx.arc).toHaveBeenCalledTimes(2);
     expect(ctx.save).toHaveBeenCalled();
     expect(ctx.restore).toHaveBeenCalled();

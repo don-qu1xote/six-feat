@@ -116,10 +116,6 @@ std::string GraphEdgeHandler::HandleRequestThrow(const server::http::HttpRequest
     user_token = auth::GeniusTokenForSession(*session, connected);
   }
 
-  // Обе стороны — идентификаторы, а не имена: ручку зовёт панель ребра, у
-  // которой на руках уже нарисованный граф со своими id. Резолв по имени
-  // добавил бы неоднозначность («каких именно двух артистов?») там, где её
-  // взяться неоткуда.
   std::int64_t from_id = 0;
   std::int64_t to_id = 0;
   if (!ParseId(request.GetArg("from"), from_id) || !ParseId(request.GetArg("to"), to_id)) {
@@ -133,10 +129,6 @@ std::string GraphEdgeHandler::HandleRequestThrow(const server::http::HttpRequest
 
   const RoleMask mask = ParseRoleMask(request.GetArg("roles"));
 
-  // Ребро строится из радиального графа той же стороны, что и в /api/v1/graph,
-  // и сводится тем же AggregateEdges. Поэтому список треков здесь ровно тот,
-  // что раньше приезжал внутри графа, — включая порядок и схлопывание
-  // дубликатов по нормализованному названию.
   std::optional<ArtistRef> from_ref = service_.CachedSeed(from_id);
   if (!from_ref) {
     if (user_token.empty()) {

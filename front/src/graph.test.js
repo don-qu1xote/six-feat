@@ -38,8 +38,6 @@ beforeEach(() => {
 });
 
 describe("buildNodeState", () => {
-  // [SF-WEB-77] Набор ролей узла присылает сервер (nb["roles"]); клиент его
-  // больше не собирает из collaborations входящих рёбер.
   it("takes the node's role set from the response", () => {
     const n = buildNodeState({ id: 7, name: "X", roles: ["featured", "writer"] }, 1, new Set(), {});
 
@@ -124,8 +122,7 @@ describe("buildEdgeState", () => {
     const e = buildEdgeState({ from: 1, to: 2 });
     expect(e.collaboration_count).toBe(null);
     expect(e.songs).toEqual([]);
-    // Список треков ребра приходит по требованию, из /api/v1/graph/edge —
-    // держать под него пустое поле значит обещать данные, которых тут нет.
+
     expect("collaborations" in e).toBe(false);
   });
 
@@ -135,10 +132,6 @@ describe("buildEdgeState", () => {
     );
   });
 
-  // [SF-WEB-77] Главный тест тикета: серверная роль намеренно НЕ совпадает с
-  // той, что вывелась бы из collaborations. Раньше клиент выводил роль сам и
-  // ответил бы "featured" — совпадение с сервером было бы случайным. Теперь
-  // ответ обязан быть серверным, даже когда он «противоречит» сырым данным.
   it("takes the server's dominant_role even when collaborations imply another one", () => {
     const e = buildEdgeState({
       from: 1,
@@ -407,9 +400,6 @@ describe("[SF-YM-03] mergeDeepenResult", () => {
     expect(State.graphEdges).toHaveLength(1);
     expect(result).toEqual({ addedNodes: 0, addedEdges: 0, mergedEdges: 1 });
 
-    // [SF-API-23] Склеивать списки треков больше не нужно — их у рёбер нет.
-    // Сливается ровно то, ради чего слияние и было: два вердикта сервера о
-    // роли, из которых клиент выбирает сильнейший.
     expect(State.graphEdges[0].dominantRole).toBe("producer");
   });
 
@@ -450,9 +440,6 @@ describe("[SF-YM-03] mergeDeepenResult", () => {
 });
 
 describe("cacheNodeCollaborations", () => {
-  // [SF-API-23] Пятёрку заметных треков узла считает сервер и присылает в
-  // top_tracks: собирать её из рёбер больше не из чего — списка треков у них
-  // нет. Здесь осталась только сумма по счётчикам.
   it("sums _totalCollabs using collaboration_count, falling back to weight", () => {
     State.graphNodes = [{ id: 1, isSeed: false }];
     State.graphEdges = [

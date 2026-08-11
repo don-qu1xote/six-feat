@@ -80,9 +80,6 @@ describe("debounce", () => {
   });
 });
 
-// [SF-WEB-77] Функции, выводившие роль/порядок заново, удалены. Тест на их
-// отсутствие — не формальность: вернуть их легко и незаметно, а цена — второй
-// источник правды, который разойдётся с сервером молча.
 describe("role derivation is gone from the client", () => {
   it("exports no re-derivation helpers, but keeps the documented duplication", async () => {
     const helpers = await import("./helpers.js");
@@ -90,7 +87,7 @@ describe("role derivation is gone from the client", () => {
     expect(helpers.dominantRoleFromCollabs).toBeUndefined();
     expect(helpers.allRolesFromCollabs).toBeUndefined();
     expect(helpers.sortByPopularity).toBeUndefined();
-    // SF-WEB-16: защита в глубину, снимать её нельзя.
+
     expect(typeof helpers.isGeniusDefaultAvatar).toBe("function");
   });
 });

@@ -24,9 +24,6 @@ const neighbourButtons = () => els.graphA11yNeighborList.querySelectorAll("butto
 beforeEach(() => {
   renderMarkup();
 
-  // Выбранный узел живёт в приватной переменной уровня модуля, а модуль
-  // грузится один раз на весь файл — без явного сброса выбор протекает из
-  // предыдущего теста. Рендер по пустому графу как раз и обнуляет его.
   State.graphNodes = [];
   State.graphEdges = [];
   renderGraphA11yList();

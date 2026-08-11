@@ -1,9 +1,4 @@
-// [SF-API-20] Средний цвет фотографии переехал из браузера на сервер, и
-// главное требование к переезду — цвета не должны поехать. Здесь проверяется
-// именно это: алгоритм остался тот же, что был в
-// front/src/vis-adapter/photo-color.js (уменьшить до 12×12, усреднить ячейки с
-// alpha >= 16), включая порядок шагов, который на прозрачных картинках даёт
-// заметно другой ответ, чем «усреднить все пиксели подряд».
+
 
 #include <algorithm>
 #include <cstdint>
@@ -54,13 +49,11 @@ void PushChunk(std::vector<std::uint8_t>& out,
   PushBe32(out, Crc32(body));
 }
 
-// PNG со «сложенными» (несжатыми) deflate-блоками: тест обходится без zlib и
-// остаётся полностью детерминированным.
 std::string MakePng(int width, int height, const std::vector<Rgba>& pixels) {
   std::vector<std::uint8_t> raw;
   raw.reserve(static_cast<std::size_t>(height) * (1 + width * 4));
   for (int y = 0; y < height; ++y) {
-    raw.push_back(0);  // filter type: none
+    raw.push_back(0);
     for (int x = 0; x < width; ++x) {
       const auto& px = pixels[static_cast<std::size_t>(y) * width + x];
       raw.push_back(px.r);
@@ -88,7 +81,7 @@ std::string MakePng(int width, int height, const std::vector<Rgba>& pixels) {
   std::vector<std::uint8_t> ihdr;
   PushBe32(ihdr, static_cast<std::uint32_t>(width));
   PushBe32(ihdr, static_cast<std::uint32_t>(height));
-  ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});  // 8 бит на канал, truecolour+alpha
+  ihdr.insert(ihdr.end(), {8, 6, 0, 0, 0});
   PushChunk(png, "IHDR", ihdr);
   PushChunk(png, "IDAT", z);
   PushChunk(png, "IEND", {});
@@ -143,9 +136,6 @@ TEST(DominantColor, FullyTransparentImageHasNoColour) {
 }
 
 TEST(DominantColor, TransparentAreasDoNotDragTheAverageTowardsBlack) {
-  // Непрозрачный квадрат в середине прозрачного холста: ячейки, целиком
-  // попавшие в прозрачную часть, отбрасываются порогом alpha, поэтому средний
-  // цвет остаётся цветом квадрата, а не уезжает к чёрному.
   auto pixels = Fill(24, 24, Rgba{0, 0, 0, 0});
   for (int y = 6; y < 18; ++y) {
     for (int x = 6; x < 18; ++x) {
@@ -157,11 +147,6 @@ TEST(DominantColor, TransparentAreasDoNotDragTheAverageTowardsBlack) {
 }
 
 TEST(DominantColor, DownscaleHappensBeforeTheAlphaThreshold) {
-  // Шахматка «непрозрачный белый / прозрачный чёрный» — та проверка, ради
-  // которой уменьшение до 12×12 вообще упомянуто в задаче. Ячейка 2×2 смешивает
-  // пару пикселей и получает alpha 127 (порог пройден) при цвете ~127: ответ
-  // серый. Если же порог применить к ИСХОДНЫМ пикселям, прозрачные отсеются и
-  // ответ будет белым — то есть заметно другим, чем рисовал браузер.
   auto pixels = Fill(24, 24, Rgba{});
   for (int y = 0; y < 24; ++y) {
     for (int x = 0; x < 24; ++x) {

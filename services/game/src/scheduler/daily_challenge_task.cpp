@@ -95,8 +95,7 @@ bool DailyChallengeTask::RunOnce() {
     if (!path) continue;
 
     const int path_len = static_cast<int>(path->size()) - 1;
-    // Здесь пересэмплирование, а не ошибка: конкретного запроса, которому
-    // надо ответить отказом, нет — просто берём следующую пару.
+
     if (!rules_.PathLenOk(path_len)) continue;
 
     const auto season = store_.EnsureCurrentSeason();

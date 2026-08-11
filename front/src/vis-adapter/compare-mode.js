@@ -40,11 +40,6 @@ export function toggleCompareMode() {
   isCompareModeActive() ? exitCompareMode() : enterCompareMode();
 }
 
-// [SF-API-24] Пара выбирается кликами, а ответ приходит по сети — за время
-// запроса пользователь успевает выбрать следующую пару. Считается актуальным
-// ответ на последний запрос: у остальных результат отбрасывается, чтобы
-// панель не перерисовалась чужой цепочкой и чтобы оверлей загрузки снимал
-// тот же запрос, который его показал.
 let _compareRequestSeq = 0;
 
 export function handleCompareModeNodeClick(nodeId) {

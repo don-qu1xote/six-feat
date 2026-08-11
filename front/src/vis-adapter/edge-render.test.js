@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { State } from "../state/state.js";
-import { placeExpandedNodes } from "./layout.js";
+import { classifyGraph } from "./layout.js";
 import {
   setEdgeCache,
   clearEdgeCache,
@@ -88,6 +88,19 @@ function buildGraph({ seedId = 1, poleA = 2, poleB = 3 } = {}) {
   return { seedId, poleA, poleB, aLeaves, bLeaves, shared };
 }
 
+// [SF-API-21] Координаты приходят с сервера, и в браузерном тесте их взять
+// неоткуда — да и незачем: файл про отрисовку рёбер, а ребру важно только
+// то, где стоят его концы. Точки разведены так, чтобы кривые не совпадали.
+function fakePositions(g) {
+  const pos = new Map();
+  pos.set(g.poleA, { x: -500, y: 0 });
+  pos.set(g.poleB, { x: 500, y: 0 });
+  g.aLeaves.forEach((id, i) => pos.set(id, { x: -500 + (i - 1) * 140, y: -260 }));
+  g.bLeaves.forEach((id, i) => pos.set(id, { x: 500 + (i - 1) * 140, y: -260 }));
+  pos.set(g.shared, { x: 0, y: 60 });
+  return pos;
+}
+
 function mockNetworkWithPositions(targets) {
   const positions = {};
   for (const [id, p] of targets) positions[id] = { x: p.x, y: p.y };
@@ -170,14 +183,14 @@ describe("suppressNativeEdgeColor", () => {
 describe("setEdgeCache / clearEdgeCache", () => {
   it("caches exactly one entry per classified edge", () => {
     buildGraph();
-    const { edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
     setEdgeCache(edgeClass);
     expect(_edgeCacheSize()).toBe(State.graphEdges.length);
   });
 
   it("clearEdgeCache empties the cache", () => {
     buildGraph();
-    const { edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
     setEdgeCache(edgeClass);
     expect(_edgeCacheSize()).toBeGreaterThan(0);
     clearEdgeCache();
@@ -188,7 +201,8 @@ describe("setEdgeCache / clearEdgeCache", () => {
 describe("nearestEdgeAt", () => {
   it("finds the edge whose drawn curve passes through the click point (a leaf endpoint with exactly one incident edge, always exactly on the curve regardless of bow)", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
 
@@ -199,7 +213,8 @@ describe("nearestEdgeAt", () => {
 
   it("returns null when the click point is far from every cached edge", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
 
@@ -218,7 +233,8 @@ describe("nearestEdgeAt", () => {
 describe("drawEdges", () => {
   it("draws every single edge — nothing is hidden", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
 
@@ -230,8 +246,9 @@ describe("drawEdges", () => {
   });
 
   it("batches same-style edges into a single stroke() call instead of one per edge", () => {
-    buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const g = buildGraph();
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
 
@@ -247,7 +264,8 @@ describe("drawEdges", () => {
 
   it("still uses a separate stroke() call per distinct style (e.g. a hovered edge doesn't merge into the base-style batch)", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
     State.edgesDS = { get: () => ({ _brightColor: "#fff", _color: "#000" }), update: () => {} };
@@ -263,7 +281,8 @@ describe("drawEdges", () => {
 
   it("draws a cross-sector edge as a curve whose control point is NOT the straight-line midpoint (bent toward its hub)", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
 
@@ -317,7 +336,8 @@ describe("drawEdges", () => {
 
   it("draws an intra-sector edge as a short curve (small bow off the midpoint, not a big arc)", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
 
@@ -376,7 +396,8 @@ describe("drawEdges", () => {
 
   it("brightens (raises opacity/width) the selected edge and no other", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
     State.nodesDS = { get: () => null };
@@ -402,7 +423,7 @@ describe("drawEdges", () => {
 
   it("skips (does not crash on) edges whose endpoint has no live position", () => {
     buildGraph();
-    const { edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
     setEdgeCache(edgeClass);
     State.network = { getPositions: () => ({}) };
     const ctx = mockCtx();
@@ -423,7 +444,8 @@ describe("drawEdges", () => {
       return 1;
     });
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
 
@@ -463,7 +485,8 @@ describe("drawEdges", () => {
 describe("drawEdges — unified selection color (SF-WEB-59)", () => {
   it("paints a directly-selected edge with COLOR.neon", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
     State.edgesDS = { get: () => ({ _brightColor: "#fff", _color: "#000" }), update: () => {} };
@@ -478,7 +501,8 @@ describe("drawEdges — unified selection color (SF-WEB-59)", () => {
 
   it("paints an edge incident to the currently-selected NODE with the same COLOR.neon", () => {
     const g = buildGraph();
-    const { targets, edgeClass } = placeExpandedNodes({});
+    const { edgeClass } = classifyGraph();
+    const targets = fakePositions(g);
     setEdgeCache(edgeClass);
     State.network = mockNetworkWithPositions(targets);
     State.edgesDS = { get: () => ({ _brightColor: "#fff", _color: "#000" }), update: () => {} };

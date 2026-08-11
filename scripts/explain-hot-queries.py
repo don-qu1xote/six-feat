@@ -232,10 +232,7 @@ def main() -> int:
                 failures[query["name"]] = problems
     finally:
         conn.rollback()
-        # Уборка — best-effort: если упало ДО схемы, удалять нечего, а её
-        # собственная ошибка затрёт настоящую причину падения (именно так
-        # «relation artists does not exist» пряталось за «relation credits
-        # does not exist» из DELETE).
+
         try:
             cleanup(conn)
         except psycopg2.Error as exc:

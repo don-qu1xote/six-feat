@@ -1,28 +1,3 @@
-/* ─ Autocomplete dropdown — переработано ────────────────────────────
-   Раньше здесь по очереди были два расходящихся подхода:
-     1) обычный absolute-оверлей — перекрывал соседнее поле снизу
-        (From/To друг под другом в .path-panel);
-     2) "раздвигать поток" (position:relative на .open) — устраняло
-        перекрытие, но расталкивало соседние блоки/кнопки под собой,
-        что при быстром открытии-закрытии ощущается как дёрганый layout.
-   Оба решали только позиционирование, а сам список подсказок
-   оставался тесным (маленький аватар, мелкий текст, минимальные
-   отступы) — отсюда "окошки слишком маленькие".
-   Новое решение: снова floating-оверлей (ничего не раздвигает), но
-   поднятый на тот же материал, что и .path-panel (--panel-2/--r-lg/
-   --shadow/backdrop-blur) — читается как самостоятельная всплывающая
-   карточка НАД остальным интерфейсом, а не тонкая полоска впритык к
-   полю. Более крупные строки (--space-4 отступы, 44px аватар) не
-   нужно втискивать в узкий столбец — карточка сама шире инпута
-   (min-width), а не 1:1 с ним. */
-/* [SF-WEB-43] The exact .ui-panel recipe (components/panel.css) — same
-   background/box-shadow as .search-modal.docked .search-wrap/.node-
-   search-box/.companion-panel, instead of the opaque var(--panel-2) +
-   flat var(--shadow) this predated (both SF-WEB-40 extractions,
-   untouched by SF-WEB-42's later glass pass). Shared by hero AND docked
-   search alike (#hero-input's one dropdown), so unifying it here is what
-   makes "hero и docked читаются как одно продолжение" (SF-WEB-24 п.4)
-   hold for the dropdown too, not just the input/button around it. */
 .ac-dropdown {
   position: absolute;
   top: calc(100% + 8px);
@@ -125,17 +100,7 @@
   flex-shrink: 0;
   border: 1px solid var(--line);
 }
-/* [SF-WEB-60] БАГ: .ac-name (<span class="ac-name truncate">) — .truncate
-   (base.css) sets white-space:nowrap+overflow:hidden+text-overflow:
-   ellipsis, but a plain inline <span> doesn't reliably size/clip to an
-   available width the way a block-level box does (ellipsis on a bare
-   inline element is effectively inert in practice) — a long single-word
-   name (no natural line-break point) just overflowed past .ac-info's own
-   edge instead of getting "…"-truncated, running into/past .ac-hint and
-   the dropdown's own right edge. .ac-info as a real flex row (name
-   shrinks via flex+min-width:0, hint stays fixed-size) + .ac-name as a
-   block-level flex item is what actually makes .truncate's ellipsis take
-   effect, regardless of how wide .ac-dropdown itself ends up being. */
+
 .ac-info {
   display: flex;
   align-items: baseline;

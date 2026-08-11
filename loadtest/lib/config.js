@@ -1,14 +1,14 @@
-// loadtest/lib/config.js — SF-INF-05
-//
-// Shared env-var parsing for all loadtest/scenarios/*.js scripts. Every
-// scenario is runnable standalone (`k6 run loadtest/scenarios/search.js`)
-// with these same env vars — loadtest/run-all.sh (used by the README's
-// "run everything" path and the k6-smoke-load CI workflow) just sets them
-// once for all three. See loadtest/README.md for the full list.
-//
-// No URLSearchParams here on purpose — it isn't a k6/goja builtin across
-// all supported versions, so query strings are hand-built (withQuery
-// below) instead of relying on it.
+
+
+
+
+
+
+
+
+
+
+
 
 export function loadConfig() {
   const profile = (__ENV.PROFILE || "full").toLowerCase();
@@ -16,47 +16,47 @@ export function loadConfig() {
 
   return {
     baseUrl: (__ENV.BASE_URL || "http://127.0.0.1:8080").replace(/\/+$/, ""),
-    // Raw `six_feat_session` cookie value — see docs/README.md for how to get
-    // one, either from a real browser OAuth login (docker-compose) or
-    // scripts/e2e_env.py's env-file (CI / synthetic local runs).
+
+
+
     sessionCookie: __ENV.SESSION_COOKIE || "",
     seedArtist: __ENV.SEED_ARTIST || "Aurora Vale",
     fromArtist: __ENV.FROM_ARTIST || "Aurora Vale",
     toArtist: __ENV.TO_ARTIST || "Kessler Vane",
-    // Comma-separated pools let a run against a real (non-synthetic) stack
-    // exercise more than one from/to pair per iteration, for a genuinely
-    // "cold" (not repeatedly-hitting-the-same-pair) path scenario — falls
-    // back to the single from/to pair above when unset, which is all the
-    // synthetic two-artist scripts/e2e_env.py dataset can offer.
+
+
+
+
+
     fromArtists: splitList(__ENV.FROM_ARTISTS),
     toArtists: splitList(__ENV.TO_ARTISTS),
-    // [fix] Two bugs here previously:
-    //   1. Default was ["Aurora"] — a SUBSTRING of the seeded artist name,
-    //      not the name itself. scripts/e2e_env.py's mock Genius /search
-    //      dispatch (tests/conftest.py: GeniusMock._register_search_handler)
-    //      is an EXACT dict-key match on `q` — "Aurora" never matches the
-    //      registered key "Aurora Vale", so every search request 404'd
-    //      from the mock (100% http_req_failed against the synthetic
-    //      stack). Now defaults to BOTH exact seeded names, which also
-    //      gives genuine query variety instead of one fixed string, same
-    //      reasoning as fromArtist/toArtist above.
-    //   2. `splitList(...) || [default]` never actually fell back to
-    //      [default]: splitList always returns an array (possibly empty),
-    //      and `[] || x` evaluates to `[]` in JS — an empty array is
-    //      truthy. Whenever neither SEARCH_QUERIES nor SEARCH_QUERY was
-    //      set, searchQueries silently ended up [], pick() on an empty
-    //      array returns undefined, and withQuery() then drops `q`
-    //      entirely (it filters out undefined values) — a request with NO
-    //      query parameter at all, which the API correctly 400s. Fixed by
-    //      checking .length explicitly instead of relying on ||.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     searchQueries: (() => {
       const parsed = splitList(__ENV.SEARCH_QUERIES || __ENV.SEARCH_QUERY);
       return parsed.length ? parsed : ["Aurora Vale", "Kessler Vane"];
     })(),
     isSmoke,
-    // Smoke: short enough for a nightly/on-demand CI job against the
-    // synthetic mock-Genius stack (scripts/e2e_env.py). Full: a real local
-    // ramp-up profile for `docker compose` runs — see docs/README.md.
+
+
+
     stages: isSmoke
       ? [
           { duration: "5s", target: 3 },

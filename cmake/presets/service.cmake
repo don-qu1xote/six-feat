@@ -1,12 +1,12 @@
 include_guard(GLOBAL)
 
-# ── six_feat_init_service ────────────────────────────────────────────────────
+# ── Макрос six_feat_init_service ─────────────────────────────────────────────
 # Инкапсулирует boilerplate, общий для всех сервисов:
-#   - CMAKE_CXX_STANDARD 20
-#   - SIX_FEAT_ROOT (относительно services/<name>/)
-#   - find_package(userver / OpenSSL)
-#   - add_subdirectory для всех libs/six-feat-* (10 библиотек)
-#   - include(cmake/EmbedSchema.cmake)
+#   - стандарт языка — CMAKE_CXX_STANDARD 20;
+#   - SIX_FEAT_ROOT (относительно services/<name>/);
+#   - зависимости — find_package(userver / OpenSSL);
+#   - add_subdirectory для всех libs/six-feat-* (10 библиотек);
+#   - встраивание схем — include(cmake/EmbedSchema.cmake).
 #
 # Вызывается ПОСЛЕ project() в каждом services/<name>/CMakeLists.txt.
 # Устанавливает переменную SIX_FEAT_ROOT в вызывающей области видимости.
@@ -64,13 +64,20 @@ macro(six_feat_init_service)
                      "${CMAKE_BINARY_DIR}/six-feat-image")
   endif()
 
+  # [SF-API-21] Геометрия раскладки: нужна только six-feat, но подключается
+  # здесь же — список библиотек в этом макросе один на все сервисы.
+  if(NOT TARGET six_feat_layout)
+    add_subdirectory("${SIX_FEAT_ROOT}/libs/six-feat-layout"
+                     "${CMAKE_BINARY_DIR}/six-feat-layout")
+  endif()
+
   include("${SIX_FEAT_ROOT}/cmake/EmbedSchema.cmake")
 endmacro()
 
-# ── six_feat_install_service ─────────────────────────────────────────────────
+# ── Макрос six_feat_install_service ──────────────────────────────────────────
 # Единообразные install-правила для сервиса:
-#   install(TARGETS <target> DESTINATION bin)
-#   install(FILES static_config.yaml DESTINATION etc/<config_dir>)
+#   - бинарь — install(TARGETS <target> DESTINATION bin);
+#   - конфиг — install(FILES static_config.yaml DESTINATION etc/<config_dir>).
 macro(six_feat_install_service TARGET CONFIG_DIR)
   install(TARGETS ${TARGET} DESTINATION bin)
   install(FILES static_config.yaml DESTINATION etc/${CONFIG_DIR})

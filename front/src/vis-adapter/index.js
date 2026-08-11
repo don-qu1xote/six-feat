@@ -31,7 +31,7 @@ export {
   runFlyoutAnimation,
 } from "./physics.js";
 
-export { placeExpandedNodes, placePathNodes } from "./layout.js";
+export { classifyGraph, placePathNodes } from "./layout.js";
 
 export {
   invalidateColorCache,

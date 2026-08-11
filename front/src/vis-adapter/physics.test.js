@@ -11,7 +11,12 @@ import {
   _fitToExpandedCluster,
 } from "./physics.js";
 import { LARGE_GRAPH_NODE_THRESHOLD } from "./visuals.js";
-import { placeExpandedNodes } from "./layout.js";
+
+vi.mock("../api/analytics-client.js", () => ({
+  cachedLayout: vi.fn(() => null),
+  fetchLayout: vi.fn(() => Promise.resolve(null)),
+}));
+import { cachedLayout, fetchLayout } from "../api/analytics-client.js";
 
 function mockNetwork(ids) {
   const nodes = {};
@@ -217,9 +222,19 @@ describe("nudgePhysics — shorter live-physics settle window on large graphs", 
   });
 });
 
+const EXPAND_LAYOUT = new Map([
+  [2, { x: 0, y: -520 }],
+  [100, { x: -120, y: -660 }],
+  [101, { x: 120, y: -660 }],
+]);
+
 describe("mergeNetwork — expand lands nodes exactly on targets, no live physics", () => {
   beforeEach(() => {
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    cachedLayout.mockReset();
+    fetchLayout.mockReset();
+    cachedLayout.mockReturnValue(EXPAND_LAYOUT);
+    fetchLayout.mockResolvedValue(EXPAND_LAYOUT);
     State._expandAnimId = null;
     State.physicsTimer = null;
 
@@ -295,14 +310,79 @@ describe("mergeNetwork — expand lands nodes exactly on targets, no live physic
     expect(fixedIds).toEqual([1, 2, 100, 101]);
   });
 
+  // ── Главный регресс-риск SF-API-21 ────────────────────────────────────
+  // До переноса геометрии повторное раскрытие было мгновенным: данные лежали
+  // в кэше, координаты считались тут же. Если теперь оно начнёт ждать сеть —
+  // перенос обошёлся пользователю в задержку, которой не было. Поэтому:
+  // попадание в кэш раскладки НЕ ждёт ничего, даже микрозадачи.
+  it("puts every node on its final coordinate synchronously when the layout is already known", () => {
+    const landed = new Map();
+    State.network.moveNode = vi.fn((id, x, y) => landed.set(id, { x, y }));
+
+    mergeNetwork({}, {});
+
+    // Ни одного await — узлы уже на местах.
+    expect(cachedLayout).toHaveBeenCalledTimes(1);
+    for (const [id, pos] of EXPAND_LAYOUT) {
+      expect(landed.get(id), `node ${id} was not placed synchronously`).toEqual(pos);
+    }
+  });
+
+  it("does not ask the network at all when the layout is already known", () => {
+    mergeNetwork({}, {});
+    expect(fetchLayout).not.toHaveBeenCalled();
+  });
+
+  it("does not wait for the layout before drawing the nodes and edges it already has", async () => {
+    cachedLayout.mockReturnValue(null);
+    let release;
+    fetchLayout.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    mergeNetwork({}, {});
+
+    // Раскладка ещё в пути, а узлы и рёбра уже в холсте.
+    expect(State.nodesDS.add).toHaveBeenCalled();
+    expect(State.edgesDS.add).toHaveBeenCalled();
+    expect(State.nodesDS.add.mock.calls[0][0].map((n) => n.id).sort((a, b) => a - b)).toEqual([
+      100, 101,
+    ]);
+
+    release(EXPAND_LAYOUT);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  it("still shows the graph when the layout never arrives, instead of leaving it half-drawn", async () => {
+    cachedLayout.mockReturnValue(null);
+    fetchLayout.mockResolvedValue(null);
+
+    mergeNetwork({}, {});
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Узлы дорисованы до нормального размера — иначе они так и остались бы
+    // полупрозрачными огрызками входной анимации.
+    const restored = State.nodesDS.update.mock.calls
+      .map(([batch]) => batch)
+      .find(
+        (batch) => Array.isArray(batch) && batch.every((u) => u.size != null && u.opacity != null),
+      );
+    expect(restored).toBeTruthy();
+    expect(restored.map((u) => u.id).sort((a, b) => a - b)).toEqual([100, 101]);
+  });
+
   it("does not schedule any settle/freeze timer for the expand case", () => {
     const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
     mergeNetwork({}, {});
     expect(setTimeoutSpy).not.toHaveBeenCalled();
   });
 
-  it("lands every node on exactly its collision-solved placeExpandedNodes target (no post-drift)", () => {
-    const { targets: expected } = placeExpandedNodes({});
+  it("lands every node on exactly the coordinate the layout answered with (no post-drift)", () => {
+    const expected = EXPAND_LAYOUT;
 
     const moveCalls = new Map();
     State.network.moveNode = vi.fn((id, x, y) => moveCalls.set(id, { x, y }));
@@ -440,7 +520,14 @@ describe("mergeNetwork — camera focuses on the just-expanded node's own new co
       redraw: vi.fn(),
     };
 
-    const { targets } = placeExpandedNodes({});
+    const targets = new Map([
+      [oldPole, { x: -900, y: 0 }],
+      [oldLeaf, { x: -1050, y: 120 }],
+      [newPole, { x: 900, y: 0 }],
+      [newLeaf, { x: 1050, y: 120 }],
+    ]);
+    cachedLayout.mockReset();
+    cachedLayout.mockReturnValue(targets);
     const oldPos = targets.get(oldPole),
       newPos = targets.get(newPole);
     expect(Math.hypot(oldPos.x - newPos.x, oldPos.y - newPos.y)).toBeGreaterThan(100);

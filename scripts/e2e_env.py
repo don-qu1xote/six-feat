@@ -165,6 +165,11 @@ components_manager:
       method: GET
       task_processor: main-task-processor
 
+    handler-graph-layout:
+      path: /api/v1/graph/layout
+      method: POST
+      task_processor: main-task-processor
+
     handler-path:
       path: /api/v1/graph/path
       method: GET

@@ -194,9 +194,6 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
     agg.source = ToString(pe.source);
   }
 
-  // [SF-API-20] Цвета — тем же запросом и в том же виде, что в /graph: ответ
-  // углубления клиент сливает с уже нарисованным графом, и узел отсюда обязан
-  // быть той же формы, иначе цвет у дорисованных узлов «пропадёт».
   const auto dominant_colors = store_.LoadDominantColors(order);
   const auto color_of = [&dominant_colors](std::int64_t id) -> const std::string& {
     static const std::string kNone;
@@ -227,9 +224,7 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
 
     auto nb = dto::ToJson(dto::ToDto(*neighbour_ref, color_of(neighbour_id)));
     nb["weight"] = agg.weight;
-    // [SF-WEB-77] Тот же набор ролей на узле, что и в /graph: ответы
-    // углубления клиент сливает с уже нарисованным графом, и узел из
-    // deepen'а обязан быть той же формы, иначе роли у него «пропадут».
+
     {
       formats::json::ValueBuilder rb(formats::json::Type::kArray);
       for (const auto& r : agg.roles) rb.PushBack(r);
@@ -248,10 +243,7 @@ std::string GraphDeepenHandler::HandleRequestThrow(const server::http::HttpReque
     edge_dto.dominant_role = agg.dominant_role;
     edge_dto.edge_style = std::string{EdgeStyleForRole(agg.dominant_role)};
     edge_dto.source = agg.source;
-    // [SF-API-23] Раньше сюда клали одну запись с пустым названием трека —
-    // способ протащить роли ребра через поле collaborations. Поля больше нет,
-    // и подпорка вместе с ним: роли узла уходят выше в nb["roles"], а треки
-    // ребра клиент берёт у /api/v1/graph/edge, когда раскроет его.
+
     edges_b.PushBack(dto::ToJson(edge_dto));
   }
 

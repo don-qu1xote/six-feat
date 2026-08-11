@@ -17,10 +17,6 @@ struct EvpMdCtxDeleter {
 };
 using EvpMdCtx = std::unique_ptr<EVP_MD_CTX, EvpMdCtxDeleter>;
 
-// EVP, а не SHA256_Init/Update/Final: низкоуровневые функции объявлены
-// устаревшими с OpenSSL 3.0 и на каждой сборке дают по пять предупреждений.
-// Хэш тот же самый — считается тот же SHA-256 от тех же байт в том же порядке,
-// поэтому уже записанные ключи идемпотентности остаются валидными.
 std::string HashRequest(std::string_view route_id, std::string_view raw_body) {
   static constexpr unsigned char kSep = '\n';
   std::array<unsigned char, EVP_MAX_MD_SIZE> digest_buf{};

@@ -18,7 +18,7 @@ def probe(base_url: str, timeout: float) -> tuple[bool, str]:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             status, body = resp.status, resp.read()
-    except urllib.error.HTTPError as exc:  # 503 пока прогревается
+    except urllib.error.HTTPError as exc:
         status, body = exc.code, exc.read()
     except (urllib.error.URLError, OSError) as exc:
         return False, f"недоступен: {exc}"
@@ -109,7 +109,7 @@ def self_test() -> int:
     rc_ok = wait_for_ready(base, timeout=30, interval=0.2, probe_timeout=5, annotate=False)
 
     print("--- сценарий 2: никогда не готов — таймаут (ожидается НЕУДАЧА, намеренно) ---")
-    state["n"] = -10_000  # `n > 2` всегда false на всё время окна
+    state["n"] = -10_000
     rc_timeout = wait_for_ready(base, timeout=2, interval=0.2, probe_timeout=5, annotate=False)
 
     srv.shutdown()

@@ -13,10 +13,7 @@
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   white-space: nowrap;
-  /* [SF-GAME-48] Кит применяется и к <a> (rail-ссылки, «Browse challenges»).
-     Каждый такой случай до сих пор гасил подчёркивание своим правилом; там,
-     где собственного правила не было, ghost-кнопка-ссылка выезжала
-     подчёркнутым текстом вместо кнопки. Гасим один раз здесь. */
+
   text-decoration: none;
   transition:
     color var(--duration-fast) var(--ease-standard),
@@ -30,13 +27,7 @@
   border-color: var(--pulse);
   background: var(--hover-tint);
 }
-/* [SF-WEB-42] var(--focus-ring) (tokens.css) replaces the literal
-   rgba(94,230,197,.35) — same value in the dark theme, but now themed
-   (built from --signal-rgb, which flips per theme) instead of pinned to
-   dark's signal hex regardless of which theme is active. One token
-   shared by every kit component's focus-visible ring instead of each
-   copy-pasting its own box-shadow literal — the actual "единый ...
-   focus-ring на ките" this ticket asks for. */
+
 .ui-btn:focus-visible {
   outline: none;
   border-color: var(--signal);

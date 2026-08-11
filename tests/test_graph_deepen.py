@@ -176,8 +176,7 @@ class TestGraphDeepenNoTokenSessionRequiresGeniusToken:
     ):
         sess = requests.Session()
         sess.headers["Accept"] = "application/json"
-        # Уникальное имя: user_id считается из него, а BYO-токены живут в БД
-        # между тестами — с общим именем сессия унаследовала бы чужой токен.
+
         cookie = session_crypto.make_cookie(
             TEST_APP_SECRET, access_token="", name=f"SFDeepenNoToken-{uuid.uuid4().hex}"
         )

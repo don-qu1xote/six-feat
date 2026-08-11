@@ -82,12 +82,12 @@ if [ -n "$css_html_files" ]; then
     done
 fi
 
-# check_comments.py --fix over the exact same scope CI's own invocation uses
-# (see lint-format's "Check comments" step) — not just staged files, for the
-# same whole-tree-vs-this-commit reason as above.
+# check_comments.py --fix over the exact same whole-tree scope CI's own
+# invocation uses (see lint-format's "Check comments" step) — not just staged
+# files, for the same whole-tree-vs-this-commit reason as above.
 if [ -n "$cpp_files$py_files$js_files$css_html_files" ]; then
-    echo "pre-commit: удаляю комментарии, не нужные для билда или не на русском (весь репозиторий)"
-    python3 scripts/check_comments.py --fix libs services tests scripts front >/tmp/precommit-comments-fix.log 2>&1
+    echo "pre-commit: удаляю комментарии, не нужные для сборки (весь репозиторий)"
+    python3 scripts/check_comments.py --fix >/tmp/precommit-comments-fix.log 2>&1
     cat /tmp/precommit-comments-fix.log
 
     # Comment removal can leave lines needing a reflow — reformat once more.
@@ -147,8 +147,8 @@ if [ -n "$css_html_files" ] && [ -d front/node_modules ]; then
 fi
 
 if [ -n "$cpp_files$py_files$js_files$css_html_files" ]; then
-    if ! python3 scripts/check_comments.py libs services tests scripts front >/tmp/precommit-comments-check.log 2>&1; then
-        echo "pre-commit: остались комментарии, не нужные для билда или не на русском:"
+    if ! python3 scripts/check_comments.py >/tmp/precommit-comments-check.log 2>&1; then
+        echo "pre-commit: остались комментарии, не нужные для сборки:"
         cat /tmp/precommit-comments-check.log
         fail=1
     fi

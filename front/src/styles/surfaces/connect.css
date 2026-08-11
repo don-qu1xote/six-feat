@@ -21,9 +21,7 @@
   padding: var(--space-4) var(--space-5) var(--space-5);
   box-sizing: border-box;
   display: grid;
-  /* [design: расширь окно графа] Give the graph the lion's share — a wider
-     canvas for the dandelion of collaborators; the panel stays a fixed,
-     compact rail on the right. */
+
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: var(--space-4);
 }
@@ -34,9 +32,7 @@
   min-height: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  /* [design: граф как на странице графа] The same ink dot-grid the Explorer's
-     canvas floats over — the vis nodes read on the identical backdrop instead
-     of a flat panel fill. */
+
   background: var(--ink);
   background-image: radial-gradient(circle, rgba(var(--line-rgb), 0.5) 1px, transparent 1px);
   background-size: 26px 26px;
@@ -49,9 +45,7 @@
   width: 100%;
   height: 100%;
 }
-/* [SF-GAME-55] Курсор ставит CSS, а не hoverNode-обработчик: нативный ховер
-   в игре выключен (см. game-mode.js), а «сюда можно кликнуть» здесь верно для
-   всего нарисованного — узлы это и есть ходы. */
+
 .connect-canvas canvas {
   display: block;
   width: 100%;
@@ -73,11 +67,6 @@
   display: none;
 }
 
-/* [SF-GAME-48] Слой над сценой. Держит HUD-полосу и карточку выбора пары в
-   одной колонке — поповер встаёт под HUD потоком, без магического top:.
-   Композиция «пока партии нет» переопределяет этот же слой в game-screens.css
-   (растягивает на всю сцену и центрирует карточку). Слой не ловит мышь: граф
-   под ним должен оставаться перетаскиваемым, кликабельны только сами дети. */
 .connect-stage-layer {
   position: absolute;
   top: var(--space-4);
@@ -94,7 +83,6 @@
   pointer-events: auto;
 }
 
-/* HUD-полоса: флаг + квест + PAR + таймер одной стеклянной строкой. */
 .connect-hud {
   display: flex;
   align-items: center;
@@ -266,16 +254,7 @@
   height: 20px;
 }
 
-/* [SF-GAME-49] Оболочка карточки — .ui-panel из кита (см. класс в разметке).
-   Раньше здесь лежала ПОБУКВЕННАЯ копия его рецепта (--glass-fill +
-   --elevation-2/--glass-glow + blur(--blur-scrim) + --r-lg + --line): ровно
-   то, от чего кит и заводили. Здесь остаётся только то, чего у кита нет и
-   быть не должно — раскладка колонки и её три зоны. */
 .connect-line-panel {
-  /* [SF-GAME-48] Три зоны, а не один длинный скролл: шапка и поле «добавить»
-     приколоты сверху, счёт и действия — снизу, а всё лишнее место забирает
-     сама линия (она же и скроллится). Раньше скроллилась вся панель, а
-     .clp-foot с margin-top:auto оставлял посередине дыру в пол-экрана. */
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -283,9 +262,7 @@
   gap: var(--space-3);
   padding: var(--space-5);
 }
-/* ── [SF-GAME-55] Шапка-квест ─────────────────────────────────────────────
-   Два полюса и прогресс вместо микро-заголовка «Your line» и голого чипа
-   «N hops». Панель начинается с того же, с чего начинается партия. */
+
 .clp-quest {
   flex-shrink: 0;
   display: flex;
@@ -347,8 +324,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Счётчик хопов живёт МЕЖДУ полюсами — там, где он и означает «сколько шагов
-   я уже прошёл по этой дороге», а не абстрактным чипом в углу. */
+
 .clp-pole-link {
   position: relative;
   display: grid;
@@ -381,9 +357,7 @@
   justify-content: space-between;
   gap: var(--space-3);
 }
-/* [SF-GAME-49] Та же микро-подпись секции, что у .path-title в companion-
-   панели графа: mono/uppercase/xs/--mist. Заголовок в докнутой панели —
-   ярлык содержимого, а не герой экрана; вес отдан самой линии. */
+
 .clp-title {
   margin: 0;
   font-family: var(--font-mono);
@@ -478,13 +452,6 @@
   right: 0;
 }
 
-/* The current line — start→focus branch, each a ring-avatar + name + role.
-   [design: ветвящийся веб] Rows are clickable to re-focus that node. */
-/* [SF-GAME-57] Линия — компактная ГОРИЗОНТАЛЬНАЯ дорожка, а не колонка на
-   пол-панели. Пройденный путь во всех подробностях уже нарисован слева,
-   коридором; панели достаточно ответить «где я сейчас», и освободившееся
-   место отдать выбору следующего хода. Горизонтальный трек с маской по краям
-   — тот же приём, что у .hop-chain в companion-панели графа. */
 .clp-line {
   list-style: none;
   margin: 0;
@@ -510,22 +477,13 @@
     black calc(100% - 14px),
     transparent 100%
   );
-  /* [SF-GAME-54] Линия больше НЕ растягивается на всё свободное место. С полем
-     «добавить» под ней (см. разметку) растянутая линия отрывала это поле от
-     своего же хвоста и подвешивала его посреди панели. Теперь линия ровно по
-     содержимому и скроллится по достижении потолка, а свободное место
-     собирается внизу, над счётом (.clp-foot margin-top:auto). */
+
   flex: 0 0 auto;
 }
 .clp-line::-webkit-scrollbar {
   display: none;
 }
-/* [SF-GAME-58] Карточка шага: 74px резали имя до «Palmdr…», «ЗАМАЙ…» —
-   то есть дорожка перестала отвечать на свой единственный вопрос «кто это».
-   96px + перенос на две строки читают большинство имён целиком, а рамка
-   теперь есть у КАЖДОЙ карточки (прозрачная в покое): раньше её получали
-   только фокус и призрак, и в ряду одни шаги стояли в коробочках, другие
-   без — выглядело как случайность, а не как состояние. */
+
 .clp-row {
   position: relative;
   flex: 0 0 auto;
@@ -544,11 +502,7 @@
     background var(--duration-base) var(--ease-standard),
     border-color var(--duration-base) var(--ease-standard);
 }
-/* [SF-GAME-49] Та же hover/active-грамматика, что у .dock-btn в доке графа:
-   --hover-tint + --pulse на наведении, --active-tint + --signal на активном.
-   Раньше строка на hover красилась плоским --panel-2, а активная — своей
-   собственной rgba(--signal-rgb,.08): три разных рецепта одного состояния
-   на трёх поверхностях. */
+
 .clp-row:hover {
   background: var(--hover-tint);
   border-color: var(--pulse);
@@ -585,10 +539,7 @@
   font-size: var(--text-xs);
   color: var(--mist);
 }
-/* [SF-GAME-49] «Созвездие» — тот же halo, что у .hop-avatar/.path-node-avatar
-   в панели графа (SF-WEB-44): аватар читается как звезда, а не как плоский
-   кружок с рамкой. Здесь ореол берёт цвет роли, а не всегда --signal, потому
-   что роль — единственное, что эти три аватара и различает. */
+
 .clp-av {
   width: 32px;
   height: 32px;
@@ -630,16 +581,14 @@
   color: var(--paper);
   font-size: var(--text-xs);
   line-height: 1.25;
-  /* Две строки вместо жёсткого обрезания в одну: имена артистов почти всегда
-     двусоставные, и «Слава КПСС» на двух строках читается, а «Слава …» нет. */
+
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
   overflow-wrap: anywhere;
 }
-/* Подпись роли на узкой карточке не помещается и не нужна — роль читается
-   цветом кольца. Оставлена в разметке для скринридера. */
+
 .clp-row-sub {
   font-size: var(--text-xs);
   color: var(--mist);
@@ -714,9 +663,6 @@
   cursor: default;
 }
 
-/* [SF-GAME-49] Сетка 2×2, а не flex-wrap: четыре кнопки в колонку 340px всё
-   равно не встают в строку, и перенос давал рваный хвост (три + одна). Сетка
-   даёт тот же перенос осознанно и одинаковой шириной. */
 .clp-actions {
   flex-shrink: 0;
   display: grid;
@@ -728,11 +674,6 @@
   padding: var(--space-2) var(--space-2);
 }
 
-/* ── [SF-GAME-49] Действия партии ─────────────────────────────────────────
-   Разметка перешла на .dock-btn (canvas-controls.css) — тот же контрол, что
-   в доке графа. Свой .connect-mini-btn (капсовый текст без габаритов, свой
-   hover, своя трактовка disabled) удалён: пятый рецепт кнопки на пятой
-   поверхности. Здесь остаётся только disabled, которого у .dock-btn нет. */
 .clp-actions .dock-btn .ri {
   width: 13px;
   height: 13px;
@@ -757,10 +698,6 @@
   background: rgba(var(--panel-rgb), 0.8);
 }
 
-/* ── [SF-GAME-57] PRIMARY: следующий ход ──────────────────────────────────
-   Больше не «вторичный свёрнутый список», а главное содержимое панели: это
-   единственное решение, которое игрок здесь принимает. Раскрывать нечего —
-   блок открыт всегда, пока партия идёт. */
 .connect-browse {
   margin: 0;
   display: flex;
@@ -781,9 +718,7 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
-/* Список, а не облако чипов: имена разной длины в облаке рвут строки и
-   читаются как теги, тогда как это ВАРИАНТЫ ХОДА — их сравнивают глазами
-   сверху вниз. Одна колонка, ровные строки, скролл внутри. */
+
 .connect-browse-chips {
   display: flex;
   flex-direction: column;
@@ -824,8 +759,7 @@
   border-color: var(--pulse);
   background: var(--hover-tint);
 }
-/* Цель среди кандидатов — это выигрышный ход, и он обязан выделяться из
-   списка, а не отличаться оттенком рамки. */
+
 .cb-chip--goal {
   border-color: var(--pulse);
   background: rgba(var(--pulse-rgb), 0.1);
@@ -909,8 +843,7 @@
   .connect-surface {
     overflow-y: auto;
   }
-  /* На узком экране скроллится страница, а не панель: три зоны схлопываются
-     обратно в один поток, иначе линия скроллилась бы внутри 320px-обрубка. */
+
   .connect-line-panel {
     overflow: visible;
   }
@@ -923,21 +856,6 @@
   }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   [SF-GAME-50] Движение игровой поверхности.
-
-   До этого на игре двигалась ровно одна вещь — камера графа (visAnimation по
-   MOTION.camera). Всё остальное СНАПАЛОСЬ: поверхность появлялась мгновенным
-   display:flex, стартовая карточка возникала из ниоткуда, новый хоп просто
-   дописывался в список, счёт менялся с «—» на число без единого кадра
-   перехода. Для экрана, который весь про «сделал ход — что-то произошло»,
-   это и читалось как «неживой».
-
-   Правила те же, что у остального приложения: длительности только из шкалы
-   --duration-*, кривые только --ease-*, и весь блок целиком выключается по
-   prefers-reduced-motion (в самом низу) — как это уже сделано для
-   .hero-mode-panel и .decor-dot.
-   ══════════════════════════════════════════════════════════════════════════ */
 @keyframes connect-rise {
   from {
     opacity: 0;
@@ -970,16 +888,13 @@
   }
 }
 
-/* Вход на поверхность: сцена и панель приезжают вместе, панель с задержкой в
-   один шаг шкалы — тот же приём, что у .hero-mode-panel (--stagger-2). */
 .connect-surface.show .connect-graph-col {
   animation: connect-rise var(--duration-slow) var(--ease-emphasized) both;
 }
 .connect-surface.show .connect-line-panel {
   animation: connect-rise var(--duration-slow) var(--ease-emphasized) var(--stagger-2) both;
 }
-/* Стартовая карточка и HUD — свои входы, потому что появляются не вместе с
-   поверхностью, а на смене состояния партии. */
+
 .connect-endpoints:not([hidden]) {
   animation: connect-rise var(--duration-med) var(--ease-emphasized) both;
 }
@@ -987,19 +902,14 @@
   animation: connect-rise var(--duration-med) var(--ease-emphasized) both;
 }
 
-/* [SF-GAME-50] Новый хоп. renderLine перерисовывает ВЕСЬ список одним
-   innerHTML, поэтому анимация на .clp-row проигрывалась бы у всех строк
-   разом на каждый кадр — вью помечает .is-new только реально добавившуюся
-   строку (см. connect-view.js::renderLine). */
 .clp-row.is-new {
   animation: connect-slide-in var(--duration-med) var(--ease-emphasized) both;
 }
-/* Счёт — единственное число, ради которого партия и игралась: показываем, что
-   оно изменилось, а не просто подменяем текст. */
+
 .clp-score-value.is-bumped {
   animation: connect-pop var(--duration-slower) var(--ease-emphasized);
 }
-/* Lock in — главная кнопка экрана, ей положен отклик под пальцем. */
+
 .clp-lockin {
   transition:
     filter var(--duration-base) var(--ease-standard),
@@ -1023,7 +933,6 @@
   }
 }
 
-/* ── [SF-GAME-54] Прогресс против PAR ─────────────────────────────────────── */
 .clp-progress {
   flex-shrink: 0;
   display: flex;
@@ -1051,8 +960,7 @@
 .clp-pip.is-done {
   background: var(--signal);
 }
-/* Перебор идеала — свой цвет, а не «ещё один зелёный»: это не прогресс, это
-   цена. Тот же --warn, которым панель уже говорит про отклонённую линию. */
+
 .clp-pip.is-over {
   background: var(--warn);
 }
@@ -1066,9 +974,6 @@
   color: var(--warn);
 }
 
-/* ── [SF-GAME-54] Призрачная строка цели ──────────────────────────────────── */
-/* Цель, до которой ещё не дошли: та же строка, но приглушённая и некликабельная
-   — она показывает КУДА идём, а не то, что уже сделано. */
 .clp-row.is-ghost {
   cursor: default;
   opacity: 0.62;
@@ -1079,7 +984,7 @@
   background: transparent;
   border-color: var(--line);
 }
-/* Пунктирный «остаток пути» вместо сплошного коннектора между сделанными. */
+
 .clp-line > .clp-row.is-ghost::before {
   content: "";
   position: absolute;

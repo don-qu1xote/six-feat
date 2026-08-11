@@ -180,13 +180,6 @@ class TestImageProxyErrorEnvelope:
         assert data["request_id"] == resp.headers.get("X-Request-Id")
 
 
-# ── [SF-API-20] Доминантный цвет считается на сервере, один раз ──────────────
-#
-# Раньше средний цвет фотографии считал каждый браузер в каждой сессии: качал
-# картинку через этот же прокси и усреднял пиксели в canvas 12×12. Результат
-# для артиста не меняется никогда, так что считать его больше одного раза
-# незачем — а прокси и так держит байты в руках.
-
 _SAMPLED_COLOR = (200, 50, 10)
 _SAMPLED_HEX = "#c8320a"
 
@@ -339,8 +332,6 @@ class TestDominantColorIsComputedOnceInTheProxy:
         _skip_if_not_implemented(first_proxy)
         first = client.get(f"{SERVICE_BASE}/api/v1/graph", params={"artist": "ColorSeed8400"})
 
-        # Ещё один проход той же картинки через прокси ничего менять не должен:
-        # цвет уже записан, а повторный расчёт дал бы шанс «поехать».
         client.get(IMAGE_URL, params={"url": url})
         second = client.get(f"{SERVICE_BASE}/api/v1/graph", params={"artist": "ColorSeed8400"})
 

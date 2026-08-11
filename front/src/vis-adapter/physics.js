@@ -9,7 +9,8 @@ import {
 import { els } from "../dom/dom.js";
 import { resetHoverState } from "./highlight.js";
 import { nodeVisual, edgeVisual, LARGE_GRAPH_NODE_THRESHOLD, _imageFieldsFor } from "./visuals.js";
-import { placeExpandedNodes } from "./layout.js";
+import { buildLayoutRequest, classifyGraph, entranceFrom, markPolesSettled } from "./layout.js";
+import { cachedLayout, fetchLayout } from "../api/analytics-client.js";
 import { setEdgeCache, suppressNativeEdgeColor } from "./edge-render.js";
 import { highlightPath, highlightNeighborhood } from "./highlight.js";
 import { setContourData } from "./bubble-contours.js";
@@ -107,13 +108,10 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
 
   const freshNodes = State.graphNodes.filter((n) => n._isNew && !dsNodeIds.has(n.id));
 
-  let targets, fromPos, edgeClass, sectorMembers;
-  if (options.pathTargets && options.pathFromPos) {
-    targets = options.pathTargets;
-    fromPos = options.pathFromPos;
-  } else {
-    ({ targets, fromPos, edgeClass, sectorMembers } = placeExpandedNodes(savedPositions));
-  }
+  const isPathMode = !!(options.pathTargets && options.pathFromPos);
+  const { edgeClass, sectorMembers } = isPathMode
+    ? { edgeClass: null, sectorMembers: null }
+    : classifyGraph();
 
   const newEdgeItems = State.graphEdges
     .filter((e) => !dsEdgeIds.has(e.id))
@@ -137,6 +135,13 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
   if (seedId != null) {
     State.nodesDS.update({ id: seedId, x: 0, y: 0, fixed: { x: true, y: true } });
   }
+
+  const fromPos = isPathMode
+    ? options.pathFromPos
+    : entranceFrom(
+        savedPositions,
+        State.graphNodes.map((n) => n.id),
+      );
 
   const entranceTargets = new Map();
   const newNodeItems = freshNodes.map((n) => {
@@ -176,9 +181,47 @@ export function mergeNetwork(nameById, savedPositions, options = {}) {
 
   if (State.focusedNodeId != null) highlightNeighborhood(State.focusedNodeId);
 
-  const net = State.network;
-
   for (const n of freshNodes) n._isNew = false;
+
+  const flyTo = (targets) => _flyToLayout({ targets, fromPos, entranceTargets, freshNodes });
+
+  if (isPathMode) {
+    flyTo(options.pathTargets);
+    return;
+  }
+
+  const request = buildLayoutRequest(savedPositions);
+  const ready = cachedLayout(request);
+  if (ready) {
+    flyTo(ready);
+    return;
+  }
+  fetchLayout(request).then(flyTo, () => flyTo(null));
+}
+
+function _degradeWithoutLayout(entranceTargets) {
+  if (entranceTargets && entranceTargets.size && State.nodesDS) {
+    State.nodesDS.update(
+      [...entranceTargets].map(([id, v]) => ({ id, size: v.size, opacity: v.opacity })),
+    );
+  }
+  if (!State.network) return;
+  const unfix = State.graphNodes
+    .filter((n) => n.id !== State.currentSeedId)
+    .map((n) => ({ id: n.id, fixed: false }));
+  if (unfix.length && State.nodesDS) State.nodesDS.update(unfix);
+  nudgePhysics(PHYSICS_SETTLE_MS);
+}
+
+function _flyToLayout({ targets, fromPos, entranceTargets, freshNodes }) {
+  if (!targets || !targets.size) {
+    _degradeWithoutLayout(entranceTargets);
+    return;
+  }
+  markPolesSettled(targets);
+
+  const net = State.network;
+  if (!net) return;
 
   runFlyoutAnimation({
     ids: [...targets.keys()],

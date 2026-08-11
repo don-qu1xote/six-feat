@@ -7,12 +7,15 @@ vi.mock("../vis-adapter/index.js", () => ({
   highlightPath: vi.fn(),
 }));
 
-import { State, clearGraphQueryCaches } from "../state/state.js";
+import { State, clearGraphQueryCaches, clearLayoutCache } from "../state/state.js";
 import * as analyticsClient from "./analytics-client.js";
-import { fetchPathBetween, fetchEdgeDetails } from "./analytics-client.js";
+import {
+  fetchPathBetween,
+  fetchEdgeDetails,
+  fetchLayout,
+  cachedLayout,
+} from "./analytics-client.js";
 
-// import.meta.url в jsdom-окружении не file:, поэтому путь считается от
-// корня фронтенда — vitest запускается именно оттуда.
 const SOURCE = readFileSync(resolve(process.cwd(), "src/api/analytics-client.js"), "utf8");
 
 function sourceFiles(dir) {
@@ -243,5 +246,109 @@ describe("[SF-API-23] edge details are fetched on expand, once per pair", () => 
     // 401 поправим входом — кэшировать нечего.
     await fetchEdgeDetails(1, 2);
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+// [SF-API-21] Раскладка на сервере.
+describe("[SF-API-21] fetchLayout / cachedLayout", () => {
+  const REQUEST = {
+    seed_id: 1,
+    nodes: [1, 2, 3],
+    edges: [
+      [1, 2],
+      [1, 3],
+    ],
+    expanded: [1],
+    expand_parent: {},
+    pinned: {},
+    node_radius: 22,
+    node_gap: 34,
+  };
+
+  function layoutResponse(positions) {
+    return jsonResponse({ type: "graph_layout", positions });
+  }
+
+  beforeEach(() => {
+    clearLayoutCache();
+  });
+
+  it("posts the structure and returns the coordinates keyed by id", async () => {
+    global.fetch.mockResolvedValueOnce(
+      layoutResponse([
+        { id: 2, x: 150, y: 0 },
+        { id: 3, x: -150, y: 0 },
+      ]),
+    );
+
+    const positions = await fetchLayout(REQUEST);
+
+    const [url, opts] = global.fetch.mock.calls[0];
+    expect(url).toBe("/api/v1/graph/layout");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body)).toEqual(REQUEST);
+    expect(positions.get(2)).toEqual({ x: 150, y: 0 });
+    expect(positions.get(3)).toEqual({ x: -150, y: 0 });
+  });
+
+  it("asks the server once per structure — the second time the answer is already here", async () => {
+    global.fetch.mockResolvedValueOnce(layoutResponse([{ id: 2, x: 1, y: 2 }]));
+    await fetchLayout(REQUEST);
+    await fetchLayout({ ...REQUEST });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  // Главное требование тикета: раскрытие, чей ответ уже известен, было
+  // мгновенным до переноса геометрии и обязано остаться мгновенным после.
+  // Поэтому кэш спрашивается СИНХРОННО — не промисом, не микрозадачей.
+  it("answers a known structure synchronously, without touching the network", async () => {
+    global.fetch.mockResolvedValueOnce(layoutResponse([{ id: 2, x: 9, y: 8 }]));
+    await fetchLayout(REQUEST);
+    global.fetch.mockClear();
+
+    const positions = cachedLayout({ ...REQUEST });
+
+    expect(positions).toBeInstanceOf(Map);
+    expect(positions.get(2)).toEqual({ x: 9, y: 8 });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not answer from cache for a structure it has not seen", async () => {
+    global.fetch.mockResolvedValueOnce(layoutResponse([{ id: 2, x: 9, y: 8 }]));
+    await fetchLayout(REQUEST);
+    expect(cachedLayout({ ...REQUEST, expanded: [1, 2] })).toBeNull();
+  });
+
+  it("treats a dragged pole as a different question, not the same one", async () => {
+    const pinnedAt = (x, y) => ({ ...REQUEST, pinned: { 2: { x, y } } });
+    global.fetch.mockResolvedValue(layoutResponse([{ id: 3, x: 0, y: 0 }]));
+
+    await fetchLayout(pinnedAt(100, 100));
+    expect(cachedLayout(pinnedAt(100, 100))).not.toBeNull();
+    expect(cachedLayout(pinnedAt(400, 100))).toBeNull();
+  });
+
+  it("has nothing to answer and nothing to ask when there is no graph yet", async () => {
+    expect(cachedLayout(null)).toBeNull();
+    await expect(fetchLayout(null)).resolves.toBeNull();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns null instead of throwing when the server refuses", async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ error: "rate limit exceeded" }, 429));
+    await expect(fetchLayout(REQUEST)).resolves.toBeNull();
+    expect(cachedLayout(REQUEST)).toBeNull();
+  });
+
+  it("returns null instead of throwing when the network is down", async () => {
+    global.fetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await expect(fetchLayout(REQUEST)).resolves.toBeNull();
+  });
+
+  it("keeps an abort an abort — a cancelled expansion is not a failed layout", async () => {
+    const aborted = new Error("aborted");
+    aborted.name = "AbortError";
+    global.fetch.mockRejectedValueOnce(aborted);
+    await expect(fetchLayout(REQUEST)).rejects.toThrow("aborted");
   });
 });

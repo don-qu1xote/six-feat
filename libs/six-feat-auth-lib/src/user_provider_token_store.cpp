@@ -65,8 +65,7 @@ std::optional<std::string> UserProviderTokenStore::Get(std::int64_t user_id,
 
   const auto encrypted = res.Front()[0].As<std::string>();
   const auto session = Decrypt(encrypted, KeyFromEnv());
-  // Пустоту проверяем здесь, а не в Decrypt: для куки-сессии пустой токен
-  // законен, а вот пустая запись в хранилище означает «токен не подключён».
+
   if (!session || session->access_token.empty()) return std::nullopt;
   return session->access_token;
 }

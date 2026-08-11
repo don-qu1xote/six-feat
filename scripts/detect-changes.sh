@@ -142,7 +142,7 @@ if echo "$TESTS" | grep -q "genius-gateway"; then
 fi
 SERVICES=$(echo "$SERVICES" | tr ' ' '\n' | sort -u | tr '\n' ' ' | xargs)
 
-fi  # force_all / workflow_dispatch
+fi
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "services=$SERVICES" >> "$GITHUB_OUTPUT"

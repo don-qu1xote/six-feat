@@ -3,35 +3,6 @@ import { restoreDefaultColors } from "../vis-adapter/index.js";
 import { apiFetch, isTransientStatus } from "./net.js";
 export { highlightPath } from "../vis-adapter/index.js";
 
-// [SF-API-24] Обход в ширину в системе один, и он на сервере
-// (CollabService::FindPath). Здесь раньше жил второй — по накопленному в
-// браузере графу; два алгоритма на двух языках расходились в ответах, и
-// расхождение видел пользователь: панель сравнения рисовала одну цепочку, а
-// поиск пути по тем же двум артистам — другую.
-
-// Ответы теперь ОТЛИЧАЮТСЯ от прежних клиентских, и это не побочный эффект, а
-// суть замены:
-//   • Сервер ищет по всей базе, клиент искал по тому, что успел нарисовать
-//     холст (сид + глубина + обрезка по лимиту + ручные раскрытия). Поэтому
-//     сервер находит путь там, где клиент честно отвечал «связи нет», и
-//     находит более короткий — через артистов, которых на холсте нет.
-//     Отсюда же следствие для отрисовки: цепочка может содержать узлы,
-//     которых нет в State.graphNodes, и брать их имена надо из ответа
-//     (data.nodes), а не из графа.
-//   • Роль-фильтр. Клиентский граф уже приходил отфильтрованным (смена
-//     фильтра перезапрашивает граф), так что расхождения по ролям не было —
-//     и чтобы его не появилось, тот же набор ролей уходит в ручку и входит в
-//     ключ кэша: снятая галочка «producer» — это другой вопрос, а не тот же.
-//   • Путь теперь требует сессии с рабочим genius-токеном (ручка отвечает 422
-//     без него), тогда как обход по нарисованному графу не требовал ничего.
-//     Поэтому ошибка возвращается вызывающему как есть — её надо показать,
-//     а не подменять словами «пути нет».
-
-// Кэш живёт столько же, сколько граф: его сбрасывают там же, где раньше
-// сбрасывали клиентскую матрицу смежности (новый поиск, раскрытие узла,
-// сброс графа) — раскрытие дописывает данные в базу, поэтому ответ сервера
-// после него тоже может измениться.
-
 function pathCacheKey(fromId, toId) {
   const lo = Math.min(fromId, toId);
   const hi = Math.max(fromId, toId);
@@ -124,6 +95,86 @@ export async function fetchEdgeDetails(fromId, toId, { signal } = {}) {
   const result = { collaborations: data.collaborations || [], error: null };
   State._edgeCache.set(key, result);
   return result;
+}
+
+// [SF-API-21] Раскладка накопленного графа считается на сервере.
+// Структура едет в запросе, потому что накопленного графа сервер целиком не
+// видел: он собран здесь из ответа /api/v1/graph и нескольких deepen'ов.
+//
+// Кэш ключуется самой структурой — включая закреплённые позиции. Позиции в
+// ключе не прихоть: пользователь может утащить полюс мышью, и та же структура
+// раскладывается тогда иначе; без них повторное раскрытие вернуло бы граф в
+// состояние до перетаскивания. Округление до сотой доли — чтобы дрожание
+// float не превращало один и тот же граф в новый вопрос.
+function layoutCacheKey(request) {
+  const round = (v) => Math.round(v * 100) / 100;
+  const pinned = Object.keys(request.pinned)
+    .sort()
+    .map((id) => `${id}:${round(request.pinned[id].x)}:${round(request.pinned[id].y)}`)
+    .join(",");
+  const parents = Object.keys(request.expand_parent)
+    .sort()
+    .map((id) => `${id}>${request.expand_parent[id]}`)
+    .join(",");
+  const edges = request.edges
+    .map(([a, b]) => (a < b ? `${a}-${b}` : `${b}-${a}`))
+    .sort()
+    .join(",");
+  return [
+    request.seed_id,
+    [...request.nodes].sort((a, b) => a - b).join(","),
+    edges,
+    request.expanded.join(","),
+    parents,
+    pinned,
+    request.node_radius,
+    request.node_gap,
+  ].join("|");
+}
+
+// Синхронно: ответ на этот запрос уже есть, или его нет. Раскрытие по
+// кэш-попаданию не должно ждать ни сети, ни микрозадачи — иначе анимация
+// вылета начнётся кадром позже, чем начиналась до переноса геометрии.
+export function cachedLayout(request) {
+  if (!request) return null;
+  if (!State._layoutCache) State._layoutCache = new Map();
+  return State._layoutCache.get(layoutCacheKey(request)) || null;
+}
+
+// Возвращает Map(id -> {x, y}) или null, если раскладку получить не удалось.
+// Ошибка здесь не исключение: у вызывающего есть чем нарисовать граф и без
+// неё, и падать посреди раскрытия было бы хуже, чем разложить похуже.
+export async function fetchLayout(request, { signal } = {}) {
+  if (!request) return null;
+  if (!State._layoutCache) State._layoutCache = new Map();
+  const key = layoutCacheKey(request);
+  const cached = State._layoutCache.get(key);
+  if (cached) return cached;
+
+  let res;
+  try {
+    res = await apiFetch("/api/v1/graph/layout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") throw err;
+    return null;
+  }
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {}
+
+  if (!res.ok || !data || data.error || !Array.isArray(data.positions)) return null;
+
+  const positions = new Map();
+  for (const p of data.positions) positions.set(p.id, { x: p.x, y: p.y });
+  State._layoutCache.set(key, positions);
+  return positions;
 }
 
 export function clearPathHighlight() {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Прогоняет все k6-сценарии подряд на одном поднятом стеке, результаты — в loadtest/output/.
 # Каталог намеренно НЕ скрытый: actions/upload-artifact пропускает файлы,
-# начинающиеся с точки, и раньше эта джоба каждый раз заканчивалась
-# «No files were found with the provided path: loadtest/.output/».
+# начинающиеся с точки, и раньше эта джоба каждый раз заканчивалась ошибкой
+# upload-artifact «No files were found with the provided path: loadtest/.output/»
 # BASE_URL/SESSION_COOKIE берутся из окружения, либо из JSON-файла scripts/e2e_env.py up.
 # Ненулевой код выхода — пороги нарушены; CI-джоба оборачивается в continue-on-error.
 set -euo pipefail

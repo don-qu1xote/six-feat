@@ -121,10 +121,6 @@ class TestIssue:
         )
         sess.cookies.update({"six_feat_session": cookie})
 
-        # Сессия без имени всегда даёт один и тот же user_id, поэтому
-        # предыдущий тест мог оставить подключённый токен именно на нём.
-        # Отвязываем явно, чтобы «токена нет» не зависело от порядка тестов
-        # (404 not_connected — уже отвязан, это тоже ок).
         disconnect = sess.post(SETTINGS_DISCONNECT_URL, params={"provider": "genius"})
         assert disconnect.status_code in (200, 404), disconnect.text
 

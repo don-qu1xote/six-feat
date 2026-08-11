@@ -22,21 +22,48 @@ import {
   FAST_RENDER_EDGE_THRESHOLD,
 } from "./visuals.js";
 import { ensureTooltipCollisionGuard } from "./tooltips.js";
-import { placeExpandedNodes, LEAF_R } from "./layout.js";
+import { buildLayoutRequest, classifyGraph, markPolesSettled, LEAF_R } from "./layout.js";
+import { cachedLayout, fetchLayout } from "../api/analytics-client.js";
 import { setEdgeCache, clearEdgeCache, drawEdges, suppressNativeEdgeColor } from "./edge-render.js";
 import { setContourData, clearContourData, drawContours } from "./bubble-contours.js";
 
 function _layoutNodeItems(nameById, savedPositions = {}) {
-  const { targets, edgeClass, sectorMembers } = placeExpandedNodes(savedPositions);
+  const { edgeClass, sectorMembers } = classifyGraph();
   const nodeItems = State.graphNodes.map((n) => {
     const v = nodeVisual(n);
-    const t = n.isSeed ? { x: 0, y: 0 } : targets.get(n.id);
-    return t ? { ...v, x: t.x, y: t.y, fixed: { x: true, y: true } } : v;
+    if (n.isSeed) return { ...v, x: 0, y: 0, fixed: { x: true, y: true } };
+    const sp = savedPositions && savedPositions[n.id];
+    return sp ? { ...v, x: sp.x, y: sp.y, fixed: { x: true, y: true } } : v;
   });
   const edgeItems = State.graphEdges.map((e) => suppressNativeEdgeColor(edgeVisual(e, nameById)));
   setEdgeCache(edgeClass);
   setContourData(sectorMembers);
   return { nodeItems, edgeItems };
+}
+
+function _applyLayout(targets) {
+  if (!State.network || !targets || !targets.size) return;
+  markPolesSettled(targets);
+  const updates = [];
+  for (const [id, t] of targets) {
+    if (id === State.currentSeedId) continue;
+    if (State.nodesDS && !State.nodesDS.get(id)) continue;
+    State.network.moveNode(id, t.x, t.y);
+    updates.push({ id, x: t.x, y: t.y, fixed: { x: true, y: true } });
+  }
+  if (updates.length && State.nodesDS) State.nodesDS.update(updates);
+
+  if (!isGameModeActive()) State.network.fit({ animation: visAnimation(MOTION.flight) });
+}
+
+function _positionFromLayout(savedPositions) {
+  const request = buildLayoutRequest(savedPositions);
+  const ready = cachedLayout(request);
+  if (ready) {
+    _applyLayout(ready);
+    return;
+  }
+  fetchLayout(request).then(_applyLayout, () => {});
 }
 
 function _drawRingGuides(ctx) {
@@ -94,6 +121,7 @@ export function initNetwork(seedId, nameById) {
   ensureTooltipCollisionGuard();
 
   State.network.setOptions({ physics: { enabled: false } });
+  _positionFromLayout({});
   if (!isGameModeActive()) State.network.fit({ animation: visAnimation(MOTION.flight) });
 
   clearTimeout(State.physicsTimer);
@@ -194,6 +222,7 @@ export function refreshNetwork(seedId, nameById, savedPositions) {
   }
 
   State.network.setOptions({ physics: { enabled: false } });
+  _positionFromLayout(savedPositions);
   if (!isGameModeActive()) State.network.fit({ animation: visAnimation(MOTION.flight) });
   clearTimeout(State.physicsTimer);
   State.physicsTimer = null;

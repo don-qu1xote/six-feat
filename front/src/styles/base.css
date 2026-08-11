@@ -1,5 +1,3 @@
-/* Единый паттерн усечения текста — используется вместо точечного
-   дублирования white-space/overflow/text-overflow по всему CSS. */
 .truncate {
   white-space: nowrap;
   overflow: hidden;

@@ -632,8 +632,6 @@ class TestPathIsTheSingleSourceOfTruth:
             ),
         )
 
-        # Артистов сперва надо завести в базе: путь по id резолвится по ней,
-        # а сами по себе моки Genius в базу ничего не кладут.
         client.get(f"{SERVICE_BASE}/api/v1/graph", params={"artist": "RoleTruthA"})
 
         with_writer = client.get(

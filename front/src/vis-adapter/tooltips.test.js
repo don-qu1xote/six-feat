@@ -74,9 +74,6 @@ describe("buildEdgeTooltip", () => {
     expect(el.querySelector(".tt-head").textContent).toContain("?");
   });
 
-  // [SF-API-23] Наведение показывает сводку, а не список треков: списка у
-  // ребра больше нет, а тянуть его на каждое наведение — ровно то, от чего
-  // уходили. Треки остаются только там, где их и так прислали: на рёбрах пути.
   it("summarises the edge by its shared-track count when there is no song list", () => {
     const el = buildEdgeTooltip(edge({ weight: 3, collaboration_count: 7 }), names);
 
@@ -110,8 +107,6 @@ describe("buildEdgeTooltip", () => {
   });
 
   it("escapes a role before it reaches a class name or a title", () => {
-    // Плиток по трекам в подсказке больше нет (SF-API-23), но роль ребра
-    // по-прежнему попадает и в class, и в title — и по-прежнему из данных.
     const el = buildEdgeTooltip(edge({ dominantRole: 'x" onmouseover="boom' }), names);
 
     const badge = el.querySelector(".tt-role-badge");
@@ -140,9 +135,6 @@ describe("buildEdgeTooltip", () => {
 describe("ensureTooltipCollisionGuard", () => {
   let observed;
 
-  // Факт «наблюдатель уже привешен» живёт в переменной уровня модуля, поэтому
-  // каждый тест здесь берёт свежий импорт — иначе первый же вызов навсегда
-  // закрывает путь для остальных.
   async function freshGuard({ withNetwork = true } = {}) {
     vi.resetModules();
     observed = [];
@@ -291,7 +283,6 @@ describe("tooltip collision repositioning", () => {
     fire([{ type: "childList", addedNodes: [el], target: el }]);
     const applied = el.style.transform;
 
-    // Повторное событие про тот же самый transform не должно ничего пересчитывать.
     el.getBoundingClientRect = () => {
       throw new Error("не должно вызываться");
     };

@@ -28,8 +28,7 @@ ROLE_FEATURED = 2
 
 _A_ID, _B_ID, _C_ID = 160_001, 160_002, 160_003
 
-# [SF-GAME-22] Минимум шагов у челленджа. Держим в одном месте, как и в
-# конфиге сервиса (challenge-rules.min-path-len).
+
 MIN_PATH_LEN = 2
 
 
@@ -87,8 +86,7 @@ def _require_service() -> None:
 
 @pytest.fixture(scope="module", autouse=True)
 def _seed_l1() -> None:
-    # A—B и B—C: прямая пара A—B (1 шаг) нужна для проверки отказа,
-    # цепочка A—B—C (2 шага) — для всех остальных, «нормальных» тестов.
+
     _seed_collaboration(
         160_101,
         "SF-GAME-16 Direct Collab",
@@ -157,9 +155,6 @@ def test_create_computes_ideal_and_is_idempotent_by_pair():
     assert third.json()["id"] == first_body["id"]
 
 
-# [SF-GAME-22] Раньше проверка минимума жила только в скедулере, поэтому
-# пользователь мог создать челлендж из пары, которая уже спелась на одном
-# треке: «цепочка» из нуля промежуточных артистов.
 def test_create_rejects_a_direct_collaboration():
     resp = _post(_fresh_cookie(), {"from": _A_ID, "to": _B_ID, "role_mask": 15})
 

@@ -59,10 +59,6 @@ class CollabService final : public userver::components::ComponentBase {
   std::variant<ArtistRef, AmbiguousResult> ResolveByName(const std::string& query,
                                                          const std::string& user_token) const;
 
-  // [SF-YM-08] Резолв/статус БЕЗ внешнего гейтвея и БЕЗ user_token — только
-  // то, что уже есть в repo_ (резолвлено кем-то раньше или обогащено
-  // фоново). Используются хендлерами, чтобы не требовать Genius-токен там,
-  // где кэша уже достаточно.
   std::optional<ArtistRef> CachedSeed(std::int64_t id) const;
 
   Depth CachedDepth(std::int64_t id) const;

@@ -6,28 +6,18 @@
 #include <six-feat-image/dominant_color.hpp>
 #include <vector>
 
-// Декодер — вендоренный header-only stb_image (vendor/stb_image.h, public
-// domain). Системной зависимости он не добавляет: собирается вместе с этой
-// библиотекой и больше нигде не разворачивается.
 // NOLINTBEGIN(cppcoreguidelines-macro-usage)
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_STDIO
 #define STBI_NO_LINEAR
-// Форматы, которые реально приходят с CDN Genius. Всё остальное отключено не
-// ради килобайтов, а ради поверхности: сюда попадают байты из интернета.
+
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
 #define STBI_ONLY_GIF
 #define STBI_ONLY_BMP
-// Потолок на сторону кадра: декодер выделяет w*h*4 байта, и без ограничения
-// «аватарка» с заголовком 60000x60000 просит 14 ГБ.
+
 #define STBI_MAX_DIMENSIONS 8192
-// Без SSE-веток: с ними stb тянет <emmintrin.h>, а clang-tidy разбирает эту
-// единицу трансляции clang'ом поверх заголовков GCC — и спотыкается о
-// встроенные функции, которых у него нет (clang-diagnostic-error в
-// xmmintrin.h, джоба падает с кодом 123, даже когда в нашем коде чисто).
-// Цена — чуть более медленный idct у JPEG; картинка проходит через декодер
-// один раз за всю жизнь артиста, так что платить нечем.
+
 #define STBI_NO_SIMD
 // NOLINTEND(cppcoreguidelines-macro-usage)
 #include "stb_image.h"
@@ -76,14 +66,6 @@ std::optional<std::string> DominantColorHex(const void* bytes, std::size_t size)
                                            kChannels)};
   if (!pixels || width <= 0 || height <= 0) return std::nullopt;
 
-  // Тот же порядок действий, что делал холст в браузере: сперва ужать до
-  // сетки kSampleSize×kSampleSize, потом усреднить ячейки с alpha >= kMinAlpha.
-  // Ужимаем усреднением по блоку (box filter) — так же, как ведёт себя
-  // drawImage при уменьшении, и в отличие от выборки каждого N-го пикселя не
-  // зависит от того, куда попала сетка.
-  // Порядок важен именно из-за альфы: полупрозрачные пиксели, попав в одну
-  // ячейку с непрозрачными, дают ячейку выше порога и в среднее входят —
-  // ровно как на клиенте. Усреднение по исходным пикселям дало бы другой цвет.
   struct Cell {
     std::int64_t r{0}, g{0}, b{0}, a{0}, n{0};
   };

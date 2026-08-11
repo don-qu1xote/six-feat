@@ -25,12 +25,6 @@ using namespace userver;
 
 namespace {
 
-// Полная схема БД игры одним идемпотентным списком: реестра версий и
-// миграций нет (см. kSchemaStatements в persistent_store.cpp — то же
-// решение для БД six-feat). Сид достижений — часть бутстрапа: каждая
-// операция идемпотентна, повторные старты безопасны.
-// Зеркало postgresql/game/schema.sql, пооператорно — проверяет
-
 const std::vector<const char*> kGameSchema = {
     R"SQL(CREATE TABLE IF NOT EXISTS game_profiles (
         user_id      BIGINT PRIMARY KEY,
@@ -527,10 +521,6 @@ bool GameStore::SetChallengeIdeal(std::int64_t challenge_id,
 }
 
 std::vector<std::int64_t> GameStore::RandomArtistIdsWithCredits(int limit) const {
-  // [SF-GAME-12] Postgres требует, чтобы выражения в ORDER BY при SELECT
-  // DISTINCT входили в список выборки — random() туда не входит, поэтому
-  // прежний запрос падал каждый раз с ошибкой 42P10. Оборачиваем DISTINCT
-  // в подзапрос и сортируем уже готовый список уникальных id.
   auto res =
       impl_->cluster->Execute(storages::postgres::ClusterHostType::kMaster,
                               "SELECT artist_id FROM (SELECT DISTINCT artist_id FROM credits) sub "

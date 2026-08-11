@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
+"""Политика комментариев в репозитории.
+
+Оставляем только:
+  1. Прагмы и директивы (NOLINT, clang-format, noqa, type: ignore, shellcheck ...) — их едят линтеры и компиляторы.
+  2. Doc-комментарии (Doxygen ///, //!, /**; JSDoc /**; Python-докстринги).
+  3. Shebang, coding-декларации, dockerfile-директивы (# syntax=).
+  4. Русские комментарии в построечных конфиг-файлах (.env, Makefile, CMake,
+     Dockerfile, compose, shell-скрипты, SQL, nginx) — они помогают человеку
+     собрать и поднять проект.
+
+Всё остальное — пояснения в коде, английские комментарии, мусор — удаляется
+(--fix) и считается нарушением (режим проверки, гоняется в CI и pre-commit).
+"""
+
 import argparse
-import ast
 import os
 import re
 import sys
@@ -9,10 +22,10 @@ from pathlib import Path
 
 CYRILLIC_RE = re.compile(r"[\u0400-\u04FF]")
 
+DECOR_RE = re.compile(r"^#[\s\u2500-\u257F#\-=_.|]*$")
+
 DIRECTIVE_PATTERNS = {
     "cpp": [
-        # NOLINTBEGIN/NOLINTEND — такие же директивы clang-tidy, как NOLINT:
-        # ими глушат проверку на блоке, а не на одной строке.
         re.compile(r"^\s*//\s*NOLINT(?:NEXTLINE|BEGIN|END)?\b"),
         re.compile(r"^\s*//\s*IWYU\s+pragma:"),
         re.compile(r"^\s*//\s*clang-format\s+(off|on)\b"),
@@ -29,6 +42,7 @@ DIRECTIVE_PATTERNS = {
         re.compile(r"^\s*#\s*pylint:\s*enable"),
         re.compile(r"^\s*#\s*pyright:\s*ignore"),
         re.compile(r"^\s*#\s*mypy:\s*ignore"),
+        re.compile(r"^\s*#.*coding[=:]"),
     ],
     "js": [
         re.compile(r"^\s*//\s*eslint-disable(?:-next-line|-line)?\b"),
@@ -41,6 +55,16 @@ DIRECTIVE_PATTERNS = {
         re.compile(r"^\s*//\s*@ts-check"),
         re.compile(r"^\s*//\s*@license"),
         re.compile(r"^\s*//\s*@copyright"),
+    ],
+    "sh": [
+        re.compile(r"^\s*#!"),
+        re.compile(r"^\s*#\s*shellcheck\b"),
+    ],
+    "dockerfile": [
+        re.compile(r"^\s*#\s*syntax="),
+    ],
+    "sql": [
+        re.compile(r"^\s*#!"),
     ],
 }
 
@@ -72,6 +96,98 @@ def is_directive(text: str, lang: str) -> bool:
 
 def has_cyrillic(text: str) -> bool:
     return bool(CYRILLIC_RE.search(text))
+
+
+def is_doc_comment(text: str, lang: str) -> bool:
+    stripped = text.lstrip()
+    if lang == "cpp":
+        return (
+            stripped.startswith("///")
+            or stripped.startswith("//!")
+            or stripped.startswith("/**")
+            or stripped.startswith("/*!")
+        )
+    if lang == "js":
+        return stripped.startswith("/**") or stripped.startswith("///")
+    return False
+
+
+def is_build_file(path: Path) -> bool:
+    name = path.name
+    if name in {
+        "Makefile",
+        "CMakeLists.txt",
+        "Dockerfile",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "pyproject.toml",
+        "pytest.ini",
+        ".gitignore",
+        ".dockerignore",
+        ".env.example",
+    }:
+        return True
+    if name.startswith("Dockerfile"):
+        return True
+    if name.startswith("docker-entrypoint"):
+        return True
+    if name.endswith(".env"):
+        return True
+    ext = path.suffix
+    if ext in {".cmake", ".sh", ".sql", ".conf", ".toml", ".ini"}:
+        return True
+    if ext in {".yaml", ".yml"}:
+        parts = path.parts
+        if "docker-compose" in name:
+            return True
+        if "config" in parts or "schemas" in parts:
+            return True
+        if name == "static_config.yaml":
+            return True
+        return False
+    return False
+
+
+def is_keep(text: str, lang: str, build_file: bool) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return build_file
+    if is_directive(stripped, lang):
+        return True
+    if is_doc_comment(text, lang):
+        return True
+    if build_file and (
+        has_cyrillic(stripped) or DECOR_RE.match(stripped) or re.fullmatch(r"[#\-_=\s]+", stripped)
+    ):
+        return True
+    return False
+
+
+def russian_comment_blocks(source: str) -> set[int]:
+    """Номера строк (1-based) комментариев, чей непрерывный блок содержит кириллицу.
+
+    Для конфиг-файлов: переведённый блок может содержать чисто технические
+    строки (сигнатуры, пути, флаги команд) без единой буквы кириллицы —
+    например `# -DSCHEMA_YAML=...` внутри русского абзаца. Такую строку
+    нельзя резать: блок в целом построечный и русский.
+    """
+    lines = source.splitlines()
+    keeps: set[int] = set()
+    i = 0
+    n = len(lines)
+    while i < n:
+        if lines[i].lstrip().startswith("#"):
+            j = i
+            block: list[tuple[int, str]] = []
+            while j < n and lines[j].lstrip().startswith("#"):
+                block.append((j, lines[j]))
+                j += 1
+            if any(has_cyrillic(l) for _, l in block):
+                keeps.update(k + 1 for k, _ in block)
+            i = j
+        else:
+            i += 1
+    return keeps
 
 
 def extract_cpp_line_comments(source: str) -> list[tuple[int, int, int, str]]:
@@ -298,9 +414,7 @@ _JS_REGEX_PREV_KEYWORDS = (
 
 
 def js_regex_starts_at(source: str, i: int) -> bool:
-    # Отличает regex-литерал от деления по предыдущему значащему токену.
-    # Без этого /can't be scored/i читается как начало строки с апострофом,
-    # и всё содержимое файла после него разбирается со сбитым состоянием.
+
     j = i - 1
     while j >= 0 and source[j] in " \t\r\n":
         j -= 1
@@ -318,7 +432,7 @@ def js_regex_starts_at(source: str, i: int) -> bool:
 
 
 def js_skip_regex(source: str, i: int) -> int:
-    # i указывает на открывающий '/'. Возвращает индекс за закрывающим '/'.
+
     n = len(source)
     j = i + 1
     in_class = False
@@ -565,22 +679,258 @@ def extract_html_comments(source: str) -> list[tuple[int, int, int, str]]:
     return results
 
 
-def is_test_file(filepath: str) -> bool:
-    p = Path(filepath)
-    if "tests" in p.parts or "test" in p.parts:
-        return True
-    name = p.name
-    if (
-        name.startswith("test_")
-        or name.endswith("_test.py")
-        or name.endswith(".test.js")
-        or name.endswith(".spec.js")
-        or name.endswith(".config.js")
-        or name.endswith(".config.mjs")
-        or name in ("global-setup.js", "setup.js")
-    ):
-        return True
-    return False
+def extract_hash_line_comments(
+    source: str, flow_prev: str = " \t[{,:"
+) -> list[tuple[int, int, str]]:
+    """Комментарии `#` вне кавычек ('...' / "...") и вне '\n'."""
+    results: list[tuple[int, int, str]] = []
+    lines = source.splitlines(keepends=True)
+    for lineno, line in enumerate(lines, 1):
+        quote: str | None = None
+        j = 0
+        while j < len(line):
+            ch = line[j]
+            if quote:
+                if ch == "\\" and quote == '"':
+                    j += 2
+                    continue
+                if ch == quote:
+                    quote = None
+                j += 1
+                continue
+            if ch in "'\"":
+                quote = ch
+                j += 1
+                continue
+            if ch == "#":
+                if j == 0 or line[j - 1] in flow_prev:
+                    results.append((lineno, j, line[j:]))
+                break
+            j += 1
+    return results
+
+
+def extract_yaml_line_comments(source: str) -> list[tuple[int, int, str]]:
+    """Комментарии `#` вне кавычек и вне block-scalar (|, >) содержимого."""
+    results: list[tuple[int, int, str]] = []
+    lines = source.splitlines(keepends=True)
+    block_indent: int | None = None
+    for lineno, line in enumerate(lines, 1):
+        indent = len(line) - len(line.lstrip(" "))
+        if block_indent is not None:
+            if indent > block_indent:
+                continue
+            block_indent = None
+
+        col = -1
+        quote: str | None = None
+        j = 0
+        while j < len(line):
+            ch = line[j]
+            if quote:
+                if ch == "\\" and quote == '"':
+                    j += 2
+                    continue
+                if ch == quote:
+                    quote = None
+                j += 1
+                continue
+            if ch in "'\"":
+                quote = ch
+                j += 1
+                continue
+            if ch == "#":
+                if j == 0 or line[j - 1] in " \t[{,:":
+                    col = j
+                break
+            j += 1
+
+        content = line[:col] if col != -1 else line.rstrip("\n")
+        if re.search(r"[>|][+-]?[0-9]*[+-]?\s*$", content):
+            block_indent = indent
+
+        if col != -1:
+            results.append((lineno, col, line[col:]))
+    return results
+
+
+def extract_cmake_comments(source: str) -> list[tuple[int, int, int, str]]:
+    """Строковые `#`-комментарии, скобочные `#[[ ... ]]`-комментарии; вне кавычек и bracket-аргументов."""
+    results: list[tuple[int, int, int, str]] = []
+    lines = source.splitlines(keepends=True)
+    line_offsets = [0]
+    for l in lines:
+        line_offsets.append(line_offsets[-1] + len(l))
+
+    i = 0
+    n = len(source)
+    line = 1
+    quote: str | None = None
+    in_bracket = False
+    bracket_eq = ""
+    in_bracket_comment = False
+    block_start_line = 0
+    block_start_col = 0
+    block_text = ""
+
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+
+        if in_bracket_comment:
+            if ch == "\n":
+                line += 1
+            if source.startswith("]" + bracket_eq + "]", i):
+                block_text += "]" + bracket_eq + "]"
+                results.append(
+                    (block_start_line, block_start_col, i + 2 + len(bracket_eq), block_text)
+                )
+                in_bracket_comment = False
+                i += 2 + len(bracket_eq)
+                continue
+            block_text += ch
+            i += 1
+            continue
+
+        if in_bracket:
+            if ch == "\n":
+                line += 1
+            if source.startswith("]" + bracket_eq + "]", i):
+                in_bracket = False
+                bracket_eq = ""
+                i += 2 + len(bracket_eq)
+                continue
+            i += 1
+            continue
+
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            if ch == "\n":
+                line += 1
+            i += 1
+            continue
+
+        if ch == '"':
+            quote = '"'
+            i += 1
+            continue
+
+        if ch == "#" and nxt == "[" and i + 2 < n:
+            eq = 0
+            j = i + 1
+            while j < n and source[j] == "=":
+                eq += 1
+                j += 1
+            if j < n and source[j] == "[":
+                in_bracket_comment = True
+                bracket_eq = "=" * eq
+                block_start_line = line
+                block_start_col = i
+                block_text = "#[" + bracket_eq + "["
+                i = j + 1
+                continue
+
+        if ch == "[" and i + 1 < n:
+            eq = 0
+            j = i + 1
+            while j < n and source[j] == "=":
+                eq += 1
+                j += 1
+            if j < n and source[j] == "[":
+                in_bracket = True
+                bracket_eq = "=" * eq
+                i = j + 1
+                continue
+
+        if ch == "#":
+            nl = source.find("\n", i)
+            end = n if nl == -1 else nl
+            results.append((line, i, end, source[i:end]))
+            i = end
+            if nl != -1:
+                i += 1
+                line += 1
+            continue
+
+        if ch == "\n":
+            line += 1
+        i += 1
+
+    return results
+
+
+def extract_sql_comments(source: str) -> list[tuple[int, int, int, str]]:
+    """`--` и `/* */` комментарии вне строковых литералов."""
+    results: list[tuple[int, int, int, str]] = []
+    i = 0
+    n = len(source)
+    line = 1
+    in_string = False
+    in_block = False
+    block_start_line = 0
+    block_start_col = 0
+    block_text = ""
+
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+
+        if in_block:
+            if ch == "*" and nxt == "/":
+                block_text += "*/"
+                results.append((block_start_line, block_start_col, i + 2, block_text))
+                in_block = False
+                i += 2
+                continue
+            if ch == "\n":
+                line += 1
+            block_text += ch
+            i += 1
+            continue
+
+        if in_string:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == "'":
+                in_string = False
+            if ch == "\n":
+                line += 1
+            i += 1
+            continue
+
+        if ch == "'":
+            in_string = True
+            i += 1
+            continue
+
+        if ch == "-" and nxt == "-":
+            nl = source.find("\n", i)
+            end = n if nl == -1 else nl
+            results.append((line, i, end, source[i:end]))
+            i = end
+            if nl != -1:
+                i += 1
+                line += 1
+            continue
+
+        if ch == "/" and nxt == "*":
+            in_block = True
+            block_start_line = line
+            block_start_col = i
+            block_text = "/*"
+            i += 2
+            continue
+
+        if ch == "\n":
+            line += 1
+        i += 1
+
+    return results
 
 
 def get_lang(ext: str) -> str | None:
@@ -594,18 +944,27 @@ def get_lang(ext: str) -> str | None:
         return "css"
     if ext == ".html":
         return "html"
+    if ext in (".yaml", ".yml"):
+        return "yaml"
+    if ext in (".cmake",):
+        return "cmake"
+    if ext in (".sh", ".bash"):
+        return "sh"
+    if ext in (".sql",):
+        return "sql"
+    if ext in (".conf", ".toml", ".ini", ".env"):
+        return "hash"
     return None
 
 
-def is_violation(text: str, lang: str) -> bool:
-    stripped = text.strip()
-    if not stripped:
-        return False
-    if is_directive(stripped, lang):
-        return False
-    if has_cyrillic(stripped):
-        return False
-    return True
+def get_lang_by_name(name: str) -> str | None:
+    if name == "Makefile" or name.startswith("docker-entrypoint"):
+        return "hash"
+    if name.startswith("Dockerfile"):
+        return "dockerfile"
+    if name == "CMakeLists.txt":
+        return "cmake"
+    return None
 
 
 def line_start_offsets(lines: list[str]) -> list[int]:
@@ -631,12 +990,29 @@ def strip_block_comment(lines, line_starts, lineno, col, end_col, text) -> None:
             lines[end_idx] = lines[end_idx][rel_end:]
 
 
-def strip_file(filepath: str) -> int:
+def strip_line_comment(source: str, lineno: int, col: int) -> str:
+    lines = source.split("\n")
+    line_idx = lineno - 1
+    if line_idx < len(lines):
+        line = lines[line_idx]
+        lines[line_idx] = line[:col].rstrip()
+    return "\n".join(lines)
+
+
+def strip_abs_line_comment(source: str, lineno: int, col: int) -> str:
+    """То же, но col — абсолютная позиция в файле (cpp/js-экстракторы)."""
+    lines = source.split("\n")
+    line_idx = lineno - 1
+    if line_idx < len(lines):
+        rel_col = col - line_start_offsets(lines)[line_idx]
+        lines[line_idx] = lines[line_idx][:rel_col].rstrip()
+    return "\n".join(lines)
+
+
+def strip_file(filepath: str, build_file: bool) -> int:
     path = Path(filepath)
-    if is_test_file(filepath):
-        return 0
     ext = path.suffix
-    lang = get_lang(ext)
+    lang = get_lang(ext) or get_lang_by_name(path.name)
     if lang is None:
         return 0
 
@@ -648,75 +1024,80 @@ def strip_file(filepath: str) -> int:
     original = source
     removed = 0
 
+    keep_lines: set[int] = set()
+    if build_file and lang in ("yaml", "cmake", "sql", "sh", "hash", "dockerfile"):
+        keep_lines = russian_comment_blocks(source)
+
+    def removable(lineno: int, text: str) -> bool:
+        return not is_keep(text, lang, build_file) and lineno not in keep_lines
+
     if lang == "py":
-        line_comments = extract_py_line_comments(source)
-        for lineno, col, text in reversed(line_comments):
-            if is_violation(text, lang):
-                lines = source.split("\n")
-                line_idx = lineno - 1
-                if line_idx < len(lines):
-                    line = lines[line_idx]
-                    comment_start = line[:col]
-                    lines[line_idx] = comment_start.rstrip()
-                source = "\n".join(lines)
+        for lineno, col, text in reversed(extract_py_line_comments(source)):
+            if removable(lineno, text):
+                source = strip_line_comment(source, lineno, col)
                 removed += 1
     elif lang == "cpp":
-        line_comments = extract_cpp_line_comments(source)
-        for lineno, col, end_col, text in reversed(line_comments):
-            if is_violation(text, lang):
-                lines = source.split("\n")
-                line_idx = lineno - 1
-                if line_idx < len(lines):
-                    line = lines[line_idx]
-                    rel_col = col - line_start_offsets(lines)[line_idx]
-                    comment_start = line[:rel_col]
-                    lines[line_idx] = comment_start.rstrip()
-                source = "\n".join(lines)
+        for lineno, col, end_col, text in reversed(extract_cpp_line_comments(source)):
+            if not is_keep(text, lang, build_file):
+                source = strip_abs_line_comment(source, lineno, col)
                 removed += 1
-
-        block_comments = extract_cpp_block_comments(source)
-        for lineno, col, end_col, text in reversed(block_comments):
-            if is_violation(text, lang):
+        for lineno, col, end_col, text in reversed(extract_cpp_block_comments(source)):
+            if not is_keep(text, lang, build_file):
                 lines = source.split("\n")
                 strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
                 removed += 1
     elif lang == "js":
-        line_comments = extract_js_line_comments(source)
-        for lineno, col, end_col, text in reversed(line_comments):
-            if is_violation(text, lang):
-                lines = source.split("\n")
-                line_idx = lineno - 1
-                if line_idx < len(lines):
-                    line = lines[line_idx]
-                    rel_col = col - line_start_offsets(lines)[line_idx]
-                    comment_start = line[:rel_col]
-                    lines[line_idx] = comment_start.rstrip()
-                source = "\n".join(lines)
+        for lineno, col, end_col, text in reversed(extract_js_line_comments(source)):
+            if not is_keep(text, lang, build_file):
+                source = strip_abs_line_comment(source, lineno, col)
                 removed += 1
-
-        block_comments = extract_js_block_comments(source)
-        for lineno, col, end_col, text in reversed(block_comments):
-            if is_violation(text, lang):
+        for lineno, col, end_col, text in reversed(extract_js_block_comments(source)):
+            if not is_keep(text, lang, build_file):
                 lines = source.split("\n")
                 strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
                 removed += 1
     elif lang == "css":
-        block_comments = extract_css_block_comments(source)
-        for lineno, col, end_col, text in reversed(block_comments):
-            if is_violation(text, lang):
+        for lineno, col, end_col, text in reversed(extract_css_block_comments(source)):
+            if not is_keep(text, lang, build_file):
                 lines = source.split("\n")
                 strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
                 removed += 1
     elif lang == "html":
-        block_comments = extract_html_comments(source)
-        for lineno, col, end_col, text in reversed(block_comments):
-            if is_violation(text, lang):
+        for lineno, col, end_col, text in reversed(extract_html_comments(source)):
+            if not is_keep(text, lang, build_file):
                 lines = source.split("\n")
                 strip_block_comment(lines, line_start_offsets(lines), lineno, col, end_col, text)
                 source = "\n".join(lines)
+                removed += 1
+    elif lang == "yaml":
+        for lineno, col, text in reversed(extract_yaml_line_comments(source)):
+            if removable(lineno, text):
+                source = strip_line_comment(source, lineno, col)
+                removed += 1
+    elif lang == "cmake":
+        for lineno, col, end_col, text in reversed(extract_cmake_comments(source)):
+            if removable(lineno, text):
+                source = strip_line_comment(source, lineno, col)
+                removed += 1
+    elif lang == "sql":
+        for lineno, col, end_col, text in reversed(extract_sql_comments(source)):
+            if removable(lineno, text):
+                if "\n" in text:
+                    lines = source.split("\n")
+                    strip_block_comment(
+                        lines, line_start_offsets(lines), lineno, col, end_col, text
+                    )
+                    source = "\n".join(lines)
+                else:
+                    source = strip_line_comment(source, lineno, col)
+                removed += 1
+    elif lang in ("sh", "hash", "dockerfile"):
+        for lineno, col, text in reversed(extract_hash_line_comments(source)):
+            if removable(lineno, text):
+                source = strip_line_comment(source, lineno, col)
                 removed += 1
 
     if source != original:
@@ -725,12 +1106,10 @@ def strip_file(filepath: str) -> int:
     return removed
 
 
-def check_file(filepath: str) -> list[str]:
+def check_file(filepath: str, build_file: bool) -> list[str]:
     path = Path(filepath)
-    if is_test_file(filepath):
-        return []
     ext = path.suffix
-    lang = get_lang(ext)
+    lang = get_lang(ext) or get_lang_by_name(path.name)
     if lang is None:
         return []
 
@@ -741,53 +1120,94 @@ def check_file(filepath: str) -> list[str]:
 
     violations: list[str] = []
 
+    keep_lines: set[int] = set()
+    if build_file and lang in ("yaml", "cmake", "sql", "sh", "hash", "dockerfile"):
+        keep_lines = russian_comment_blocks(source)
+
+    def line_violations(comments) -> None:
+        for item in comments:
+            if len(item) == 3:
+                lineno, col, text = item
+            else:
+                lineno, col, _end_col, text = item
+            if not is_keep(text, lang, build_file) and lineno not in keep_lines:
+                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+
     if lang == "py":
-        line_comments = extract_py_line_comments(source)
-        for lineno, col, text in line_comments:
-            if is_violation(text, lang):
-                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+        line_violations(extract_py_line_comments(source))
     elif lang == "cpp":
-        line_comments = extract_cpp_line_comments(source)
-        for lineno, col, end_col, text in line_comments:
-            if is_violation(text, lang):
-                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
-        block_comments = extract_cpp_block_comments(source)
-        for lineno, col, end_col, text in block_comments:
-            if is_violation(text, lang):
-                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+        line_violations(extract_cpp_line_comments(source))
+        line_violations(extract_cpp_block_comments(source))
     elif lang == "js":
-        line_comments = extract_js_line_comments(source)
-        for lineno, col, end_col, text in line_comments:
-            if is_violation(text, lang):
-                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
-        block_comments = extract_js_block_comments(source)
-        for lineno, col, end_col, text in block_comments:
-            if is_violation(text, lang):
-                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+        line_violations(extract_js_line_comments(source))
+        line_violations(extract_js_block_comments(source))
     elif lang == "css":
-        block_comments = extract_css_block_comments(source)
-        for lineno, col, end_col, text in block_comments:
-            if is_violation(text, lang):
-                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+        line_violations(extract_css_block_comments(source))
     elif lang == "html":
-        block_comments = extract_html_comments(source)
-        for lineno, col, end_col, text in block_comments:
-            if is_violation(text, lang):
-                violations.append(f"{filepath}:{lineno}: {text.strip()[:80]}")
+        line_violations(extract_html_comments(source))
+    elif lang == "yaml":
+        line_violations(extract_yaml_line_comments(source))
+    elif lang == "cmake":
+        line_violations(extract_cmake_comments(source))
+    elif lang == "sql":
+        line_violations(extract_sql_comments(source))
+    elif lang in ("sh", "hash"):
+        line_violations(extract_hash_line_comments(source))
 
     return violations
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Check or strip non-build, non-Russian comments")
-    parser.add_argument("paths", nargs="*", help="Files or directories to check")
-    parser.add_argument("--fix", action="store_true", help="Remove non-build, non-Russian comments")
-    args = parser.parse_args()
+EXCLUDED_DIRS = {
+    ".git",
+    "__pycache__",
+    "node_modules",
+    "vendor",
+    "build",
+    "build-test",
+    "build-unit",
+    "dist",
+    "coverage",
+    ".opencode",
+    ".github",
+    ".githooks",
+    "observability",
+    "docs",
+    ".hypothesis",
+    ".pgdata",
+    ".pytest_cache",
+    ".ruff_cache",
+    "loadtest/output",
+}
 
-    targets = args.paths
-    if not targets:
-        targets = ["."]
+HANDLED_EXTS = {
+    ".cpp",
+    ".hpp",
+    ".h",
+    ".cc",
+    ".cxx",
+    ".c",
+    ".py",
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".css",
+    ".html",
+    ".yaml",
+    ".yml",
+    ".cmake",
+    ".sh",
+    ".bash",
+    ".sql",
+    ".conf",
+    ".toml",
+    ".ini",
+    ".env",
+}
 
+HANDLED_NAMES = {"Makefile", "CMakeLists.txt", "Dockerfile", "docker-entrypoint-common.sh"}
+
+
+def collect_files(targets: list[str]) -> list[str]:
     files: list[str] = []
     for target in targets:
         p = Path(target)
@@ -798,74 +1218,66 @@ def main() -> int:
                 dirs[:] = [
                     d
                     for d in dirs
-                    if d
-                    not in {
-                        ".git",
-                        "__pycache__",
-                        "node_modules",
-                        "vendor",
-                        "build",
-                        "build-test",
-                        "build-unit",
-                        "dist",
-                        # Отчёт покрытия — сгенерированный HTML с чужими
-                        # английскими комментариями внутри; в git его нет,
-                        # но локально он лежит рядом и ронял проверку.
-                        "coverage",
-                        "rufh",
-                        ".opencode",
-                    }
+                    if d not in EXCLUDED_DIRS
+                    and not (d.startswith("build") or d.startswith(".build"))
                 ]
                 for fn in fnames:
-                    ext = Path(fn).suffix
-                    if ext in (
-                        ".cpp",
-                        ".hpp",
-                        ".h",
-                        ".cc",
-                        ".cxx",
-                        ".c",
-                        ".py",
-                        ".js",
-                        ".mjs",
-                        ".cjs",
-                        ".css",
-                        ".html",
+                    if fn == ".env":
+                        continue
+                    if (
+                        Path(fn).suffix in HANDLED_EXTS
+                        or fn in HANDLED_NAMES
+                        or fn.startswith("Dockerfile")
                     ):
                         files.append(os.path.join(root, fn))
+    return files
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Удаляет/проверяет комментарии, не нужные для сборки (прагмы и doc-комментарии остаются)"
+    )
+    parser.add_argument(
+        "paths", nargs="*", help="Files or directories to check (default: whole repo)"
+    )
+    parser.add_argument("--fix", action="store_true", help="Remove non-build comments")
+    args = parser.parse_args()
+
+    targets = args.paths or ["."]
+    files = sorted(collect_files(targets))
 
     if args.fix:
         total_removed = 0
         analyzed = 0
-        for f in sorted(files):
+        for f in files:
             analyzed += 1
             if analyzed % 50 == 1 or analyzed == len(files):
                 print(f"check_comments: fixing {f} ({analyzed}/{len(files)})", file=sys.stderr)
-            removed = strip_file(f)
+            removed = strip_file(f, is_build_file(Path(f)))
             total_removed += removed
         print(
-            f"check_comments: removed {total_removed} non-build/non-Russian comments from {analyzed} files",
+            f"check_comments: removed {total_removed} non-build comments from {analyzed} files",
             file=sys.stderr,
         )
         return 0
 
     all_violations: list[str] = []
     analyzed = 0
-    for f in sorted(files):
+    for f in files:
         analyzed += 1
         if analyzed % 50 == 1 or analyzed == len(files):
             print(f"check_comments: analyzing {f} ({analyzed}/{len(files)})", file=sys.stderr)
-        all_violations.extend(check_file(f))
+        all_violations.extend(check_file(f, is_build_file(Path(f))))
 
     print(f"check_comments: analyzed {analyzed} files", file=sys.stderr)
 
     if all_violations:
-        print(f"Found {len(all_violations)} comment violations (non-build, non-Russian):")
+        print(f"Found {len(all_violations)} comment violations (non-build):")
         for v in all_violations:
             print(v)
         return 1
 
-    print("All comments are build-necessary or in Russian.")
+    print("All comments are build-necessary (directives, doc, or Russian in build configs).")
     return 0
 
 

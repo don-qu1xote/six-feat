@@ -30,11 +30,6 @@ _REQUIRED_NODE_FIELDS = {
 _REQUIRED_EDGE_FIELDS = {"from", "to", "weight", "dominant_role", "source"}
 
 
-# [SF-API-23 fix-02] Поиск узла и ребра — с внятной ошибкой вместо StopIteration.
-# `next(...)` на пустом генераторе роняет тест StopIteration'ом, из которого не
-# видно ничего: ни что ответил сервер, ни какие узлы в графе вообще есть. Именно
-# так и пряталась причина: 429 отвечает телом того же вида, что и обычный граф
-# ({"nodes": [], "edges": []}), только с "error", — и падал уже следующий assert.
 def _describe_graph(data: dict) -> str:
     return (
         f"\n  seed_id ответа: {data.get('seed_id')!r}"
@@ -59,12 +54,6 @@ def _edge_between(data: dict, left: int, right: int) -> dict:
     raise AssertionError(f"ребра {left}—{right} нет в графе.{_describe_graph(data)}")
 
 
-# [SF-API-23 fix-03] Ответ графа по id — с проверкой кода.
-# Лимит /api/v1/graph — 50 запросов в секунду, а ключ у него один на весь
-# прогон: сессионная кука общая, и несколько подряд идущих тестов вычерпывают
-# бюджет друг у друга. Тесты ниже берут isolated_client — он выдаёт свой токен
-# на каждый тест, то есть свой бюджет; проверка кода остаётся на случай, если
-# бюджет всё-таки кончится, чтобы это было видно сразу и по имени.
 def _graph_by_id(client: requests.Session, seed_id: int) -> dict:
     resp = client.get(GRAPH_URL, params={"id": str(seed_id)})
     assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text}"
@@ -603,7 +592,7 @@ class TestGraphServesDerivedValues:
         assert set(collaborator["roles"]) == {"featured", "producer"}
 
         seed = _node_by_id(data, seed_id)
-        # Сид объединяет роли всех своих рёбер.
+
         assert {"featured", "producer"} <= set(seed["roles"])
 
     def test_node_role_set_is_present_even_for_a_single_role(
@@ -639,7 +628,6 @@ class TestGraphServesDerivedValues:
         collab_id = seed_id + 1
         genius_mock.artist(seed_id, {"id": seed_id, "name": "SortArtist"})
 
-        # Треки отдаются намеренно НЕ по убыванию популярности.
         songs = [
             (seed_id * 10 + 1, "Quiet", 10),
             (seed_id * 10 + 2, "Loudest", 9000),
@@ -1013,13 +1001,6 @@ class TestGraphCachedArtistServedWithoutGeniusToken:
         assert resp.json().get("error") == "no_genius_token"
 
 
-# ── [SF-API-23] Детали ребра — по требованию ────────────────────────────────
-#
-# Ответ графа нёс полный список совместных треков на КАЖДОМ ребре, а за сессию
-# пользователь раскрывает одно-два. Список уехал в отдельную ручку; здесь
-# проверяется, что уехал целиком и что в графе на его месте остался агрегат.
-
-
 class TestGraphEdgeCarriesOnlyTheAggregate:
     def _seed_pair(self, genius_mock: GeniusMock, seed_id: int, collab_id: int) -> None:
         genius_mock.artist(seed_id, {"id": seed_id, "name": "AggArtist"})
@@ -1177,8 +1158,6 @@ class TestPopularitySurvivesTheCache:
             ),
         )
 
-        # Граф спрашивается дважды: второй ответ уже из базы, и ручка ребра
-        # читает ровно оттуда же.
         _graph_by_id(isolated_client, seed_id)
         _graph_by_id(isolated_client, seed_id)
         detail = isolated_client.get(

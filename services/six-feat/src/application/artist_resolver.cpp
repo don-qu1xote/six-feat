@@ -55,9 +55,6 @@ std::optional<std::variant<ArtistRef, AmbiguousResult>> ResolveArtistByNameFromC
   if (matches.empty()) return std::nullopt;
   if (matches.size() == 1) return matches.front();
 
-  // Несколько подстрочных совпадений, но одно из них — точное имя: не
-  // заставляем пользователя выбирать из списка там, где Genius-путь тоже
-  // вернул бы уверенный единственный результат.
   for (const auto& m : matches) {
     if (EqualsCaseInsensitive(m.name, query)) return m;
   }
@@ -66,8 +63,6 @@ std::optional<std::variant<ArtistRef, AmbiguousResult>> ResolveArtistByNameFromC
   ar.query = query;
   ar.candidates.reserve(matches.size());
   for (const auto& m : matches) {
-    // score=1.0: это не оценка релевантности Genius, а "уже
-    // резолвлено и лежит у нас" — единственное, что здесь есть.
     ar.candidates.push_back(Candidate{m.id, m.name, m.image, m.url, 1.0});
   }
   return ar;

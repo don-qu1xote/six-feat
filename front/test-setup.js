@@ -1,8 +1,3 @@
-// Node 26 объявляет собственный глобальный localStorage, который без флага
-// --localstorage-file возвращает undefined и перекрывает реализацию jsdom
-// (window === globalThis в vitest, поэтому нативный accessor выигрывает).
-// На Node 20, где гоняется CI, jsdom ставит localStorage сам — тогда этот
-// файл ничего не делает.
 function createStorage() {
   let map = new Map();
   return {

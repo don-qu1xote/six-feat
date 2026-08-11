@@ -27,13 +27,6 @@
 
   --hero-glow: #14203a;
 
-  /* ─ Blur/scrim scale — раньше эти значения были раскиданы магическими
-     литералами по .search-modal/.help-overlay/.candidate-overlay/
-     .node-search-overlay/.seed-card/.status-icon-btn/.info-popover
-     (blur 4/5/6/8/10px, rgba(11,14,20,.72/.78) вперемешку). Два явных
-     уровня вместо произвольных значений: "chip" — маленькие плавающие
-     элементы поверх канвы (seed-card, status-icon-btn), "scrim" —
-     полноэкранные модальные подложки. ─ */
   --blur-chip: 6px;
   --blur-scrim: 8px;
   --blur-modal: 10px;
@@ -85,16 +78,16 @@
   --elevation-1: 0 4px 14px rgba(0, 0, 0, 0.35);
   --elevation-2: var(--shadow);
   --elevation-3: 0 24px 64px rgba(0, 0, 0, 0.5);
-  --z-canvas: 0; /* #network — сам граф, базовый холст */
-  --z-graph-overlay: 10; /* хром поверх канвы: декоратор, состояния,
-                              HUD-кластеры, статус, спиннер загрузки */
-  --z-panel: 20; /* докнутый хром/панели, полноэкранная модалка,
-                              canvas-chrome, тултипы рейла */
-  --z-docked: 30; /* эксклюзивные докнутые поисковые поверхности
-                              (search-modal.docked, node-search) */
-  --z-dropdown: 40; /* выпадающие списки автокомплита (#overlay-root) */
-  --z-overlay: 50; /* полноэкранные оверлеи: candidate/help, flip-ghost */
-  --z-toast: 60; /* тосты — всегда сверху */
+  --z-canvas: 0;
+  --z-graph-overlay: 10;
+
+  --z-panel: 20;
+
+  --z-docked: 30;
+
+  --z-dropdown: 40;
+  --z-overlay: 50;
+  --z-toast: 60;
 
   --panel-2-rgb: 27, 34, 54;
   --signal-rgb: 94, 230, 197;

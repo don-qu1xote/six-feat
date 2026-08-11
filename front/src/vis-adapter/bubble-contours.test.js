@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { State } from "../state/state.js";
-import { placeExpandedNodes } from "./layout.js";
+import { classifyGraph } from "./layout.js";
 import {
   setContourData,
   clearContourData,
@@ -89,6 +89,22 @@ function buildTwoPoleGraph({ seedId = 1, poleA = 2, poleB = 3 } = {}) {
   return { seedId, poleA, poleB, aLeaves, bLeaves, shared, stray };
 }
 
+// [SF-API-21] Координаты считает сервер, и в браузерных тестах их взять
+// неоткуда. Здесь они и не нужны: файл про контуры, а контуру всё равно,
+// какая раскладка привела узлы в эти точки. Расстановка выбрана удобной для
+// проверки — полюса разведены, свой лист рядом со своим полюсом, общий между
+// ними, посторонний в стороне.
+function fakePositions(g) {
+  const pos = new Map();
+  pos.set(g.poleA, { x: -400, y: 0 });
+  pos.set(g.poleB, { x: 400, y: 0 });
+  g.aLeaves.forEach((id, i) => pos.set(id, { x: -400 + (i - 1) * 90, y: -160 }));
+  g.bLeaves.forEach((id, i) => pos.set(id, { x: 400 + (i - 1) * 90, y: -160 }));
+  pos.set(g.shared, { x: 0, y: 40 });
+  pos.set(g.stray, { x: 0, y: 900 });
+  return pos;
+}
+
 beforeEach(() => {
   State.graphNodes = [];
   State.graphEdges = [];
@@ -102,21 +118,21 @@ beforeEach(() => {
 describe("layout.js sectorMembers (SF-WEB-58 C membership contract)", () => {
   it("puts an exclusive leaf in exactly one pole's member set", () => {
     const g = buildTwoPoleGraph();
-    const { sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     expect(sectorMembers.get(g.poleA).has(g.aLeaves[0])).toBe(true);
     expect(sectorMembers.get(g.poleB).has(g.aLeaves[0])).toBe(false);
   });
 
   it("puts a shared/Euler leaf in BOTH owning poles' member sets", () => {
     const g = buildTwoPoleGraph();
-    const { sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     expect(sectorMembers.get(g.poleA).has(g.shared)).toBe(true);
     expect(sectorMembers.get(g.poleB).has(g.shared)).toBe(true);
   });
 
   it("never includes a node with no relation to a pole at all", () => {
     const g = buildTwoPoleGraph();
-    const { sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     expect(sectorMembers.get(g.poleA).has(g.stray)).toBe(false);
     expect(sectorMembers.get(g.poleB).has(g.stray)).toBe(false);
   });
@@ -173,7 +189,8 @@ describe("computeSectorPolygon / pointInPolygon geometry", () => {
 describe("end-to-end: a shared leaf sits inside ≥2 sector polygons, a stray node in none (the ticket's own test)", () => {
   it("shared leaf inside both poles' polygons; stray node outside both", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
 
@@ -202,7 +219,7 @@ describe("end-to-end: a shared leaf sits inside ≥2 sector polygons, a stray no
 describe("setContourData / drawContours", () => {
   it("stores one entry per hub (poles AND the seed), colored from that hub's own role", () => {
     const g = buildTwoPoleGraph();
-    const { sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     setContourData(sectorMembers);
     expect(_contourSectorCount()).toBe(3);
     void g;
@@ -210,7 +227,7 @@ describe("setContourData / drawContours", () => {
 
   it("clearContourData empties the cache", () => {
     const g = buildTwoPoleGraph();
-    const { sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     setContourData(sectorMembers);
     clearContourData();
     expect(_contourSectorCount()).toBe(0);
@@ -219,7 +236,8 @@ describe("setContourData / drawContours", () => {
 
   it("draws a fill per sector with ≥2 members, under nodes (beforeDrawing — no assumption needed here beyond: it fills, doesn't stroke/clip)", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
@@ -239,7 +257,7 @@ describe("setContourData / drawContours", () => {
     State.graphEdges = [{ id: "1_2", from: 1, to: 2, weight: 1 }];
     State.currentSeedId = 1;
     State.expandedNodes = new Set([2]);
-    const { sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     setContourData(sectorMembers);
     State.network = { getPositions: () => ({ 1: { x: 0, y: 0 }, 2: { x: 100, y: 0 } }) };
 
@@ -263,10 +281,13 @@ describe("setContourData / drawContours", () => {
     ];
     State.currentSeedId = seedId;
     State.expandedNodes = new Set([poleId]);
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     setContourData(sectorMembers);
     const positions = { [seedId]: { x: 0, y: 0 } };
-    for (const [id, p] of targets) positions[id] = p;
+    leaves.forEach((id, i) => {
+      positions[id] = { x: Math.cos(i) * 300, y: Math.sin(i) * 300 };
+    });
+    positions[poleId] = { x: 0, y: -400 };
     State.network = { getPositions: () => positions };
 
     const ctx = mockCtx();
@@ -276,7 +297,8 @@ describe("setContourData / drawContours", () => {
 
   it("caches the computed polygon and only recomputes when a member's position actually moves", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
@@ -330,7 +352,8 @@ describe("setContourData — photo color vs role-hue fallback (SF-WEB-59)", () =
     const g = buildTwoPoleGraph();
     State.graphNodes.find((n) => n.id === g.poleA).dominantColor = "#c8320a";
 
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
@@ -344,9 +367,9 @@ describe("setContourData — photo color vs role-hue fallback (SF-WEB-59)", () =
 
   it("falls back to the hub's role hue when no photo color has been sampled", () => {
     const g = buildTwoPoleGraph();
-    const { sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
     setContourData(sectorMembers);
-    const { targets } = placeExpandedNodes({});
+    const targets = fakePositions(g);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
     State.network = { getPositions: () => positions };
@@ -361,7 +384,8 @@ describe("setContourData — photo color vs role-hue fallback (SF-WEB-59)", () =
 describe("drawContours — additive blend + soft blur (SF-WEB-59)", () => {
   it("sets globalCompositeOperation to 'lighter' while filling, then restores it", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
@@ -379,7 +403,8 @@ describe("drawContours — additive blend + soft blur (SF-WEB-59)", () => {
 
   it("applies a blur filter while the context supports one, restoring it afterward", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
@@ -395,7 +420,8 @@ describe("drawContours — additive blend + soft blur (SF-WEB-59)", () => {
 
   it("never throws when the context has no 'filter' support (e.g. this repo's other mock ctx style)", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
@@ -409,7 +435,8 @@ describe("drawContours — additive blend + soft blur (SF-WEB-59)", () => {
 describe("drawContours — manual toggle (SF-WEB-61)", () => {
   it("draws nothing when State.bubbleSetsEnabled is false, even with valid sector data", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;
@@ -423,7 +450,8 @@ describe("drawContours — manual toggle (SF-WEB-61)", () => {
 
   it("draws once State.bubbleSetsEnabled is switched on", () => {
     const g = buildTwoPoleGraph();
-    const { targets, sectorMembers } = placeExpandedNodes({});
+    const { sectorMembers } = classifyGraph();
+    const targets = fakePositions(g);
     setContourData(sectorMembers);
     const positions = { [g.seedId]: { x: 0, y: 0 } };
     for (const [id, p] of targets) positions[id] = p;

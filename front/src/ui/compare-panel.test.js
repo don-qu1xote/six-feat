@@ -216,8 +216,6 @@ describe("[SF-API-24] showComparePanel — states of a path that arrives over th
   });
 
   it("hands the response's nodes and edges to renderHopChain — hops may be off-canvas", () => {
-    // Сервер ищет по базе, а нарисован только накопленный подграф: узел 42
-    // в State.graphNodes отсутствует, и назвать его можно лишь из ответа.
     showComparePanel(1, 5, {
       path: [1, 42, 5],
       nodes: [{ id: 42, name: "Never Drawn" }],

@@ -44,11 +44,6 @@ using namespace userver;
 
 namespace {
 
-// [SF-API-23] Пять самых заметных треков узла — на самом узле.
-// Раньше клиент собирал их сам, сливая collaborations всех входящих рёбер;
-// теперь рёбра список не несут, а плитка треков в панели артиста нужна сразу
-// при открытии — за ней не пошлёшь запрос на каждое ребро. Это по-прежнему
-// агрегат: пять записей на узел против всех треков на всех рёбрах.
 constexpr std::size_t kTopTracksPerNode = 5;
 
 std::string EmptyGraph(std::int64_t seed_id = 0, const std::string& seed_name = "") {
@@ -164,10 +159,6 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
 
   bool enrichment_enabled = true;
 
-  // Валидная сессия обязательна ВСЕГДА (ТЗ-6), и проверяется она ДО разбора
-  // параметров: иначе анонимный запрос без artist/id получал 400 «'artist'
-  // or 'id' required» вместо 401 — то есть по коду ответа отличал «плохой
-  // запрос» от «не залогинен», ещё не будучи никем.
   std::optional<auth::SessionData> session;
   if (user_token.empty()) {
     session = auth::RequireFullSession(request, oauth_);
@@ -213,11 +204,6 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     }
   }
 
-  // [SF-YM-08] Сначала — сид из уже известного репозиторию, без единого
-  // похода во внешний гейтвей: артист, уже известный кому-то раньше (чужой
-  // Genius-поиск, фоновое обогащение), находится локально без токена.
-  // Резолв СОВСЕМ нового имени/id по-прежнему требует Genius-токен (см.
-  // ниже) — честный 422, а не тихий провал.
   ArtistRef seed;
   bool have_seed = false;
   if (!id_arg.empty()) {
@@ -233,22 +219,14 @@ std::string GraphHandler::HandleRequestThrow(const server::http::HttpRequest& re
     have_seed = true;
   }
 
-  // Даже уже известный сид может потребовать сеть: limit override форсит
-  // рефетч (см. BuildRadialGraph), Depth < Foreground — песни ещё не
-  // подтянуты целиком.
   const bool seed_fully_cached = have_seed && !limit_override.has_value() &&
                                  service_.CachedDepth(seed.id) >= Depth::kForeground;
 
-  // Сессия уже проверена выше; здесь остаётся только Genius-токен, и он
-  // нужен лишь тогда, когда одного кэша не хватит.
   if (session && !seed_fully_cached) {
     const auto connected = user_provider_tokens_.Get(auth::SessionUserId(*session), "genius");
     user_token = auth::GeniusTokenForSession(*session, connected);
   }
 
-  // [SF-YM-08] Резолв уже закэшированного сида не требует Genius-токена
-  // (see выше) — но резолв СОВСЕМ нового id/имени требует, честный 422, не
-  // тихий провал/пустой граф.
   if (!have_seed && user_token.empty()) {
     response.SetStatus(server::http::HttpStatus::kUnprocessableEntity);
     return ErrorGraph("no_genius_token");
@@ -323,8 +301,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   const auto& data = result.data;
   const std::int64_t seed_id = data.seed.id;
 
-  // [SF-API-23] Свод рёбер считает общий AggregateEdges: ту же карту берёт
-  // ручка деталей ребра, поэтому расходиться им негде.
   const auto aggregation = AggregateEdges(data, seed_id, mask);
   const auto& edges = aggregation.by_neighbour;
   const auto& order = aggregation.order;
@@ -410,10 +386,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
     return std::max(w, 1);
   }();
 
-  // [SF-API-20] Средние цвета фотографий — одним запросом на весь граф.
-  // Считать их клиенту больше не нужно: раньше каждый браузер качал полсотни
-  // картинок ещё раз, через прокси, и усреднял пиксели в canvas — при том что
-  // результат для артиста не меняется никогда.
   const auto dominant_colors = store_.LoadDominantColors(node_ids);
   const auto color_of = [&dominant_colors](std::int64_t id) -> const std::string& {
     static const std::string kNone;
@@ -424,10 +396,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
   formats::json::ValueBuilder nodes_b(formats::json::Type::kArray);
   formats::json::ValueBuilder edges_b(formats::json::Type::kArray);
 
-  // [SF-WEB-77] Набор ролей на УЗЛЕ. Раньше клиент собирал его сам, разбирая
-  // collaborations всех входящих рёбер (graph.js: _rolesSet) — то же знание,
-  // выведенное во второй раз и на другом языке. Сид объединяет роли всех своих
-  // рёбер, коллаборатор — роли своего единственного ребра к сиду.
   const auto roles_to_json = [](const std::set<std::string>& roles) {
     formats::json::ValueBuilder rb(formats::json::Type::kArray);
     for (const auto& r : roles) rb.PushBack(r);
@@ -503,11 +471,6 @@ std::string GraphHandler::BuildGraphJson(const RadialGraphResult& result,
 
       edge_dto.source = ToString(source_for(seed_id, gid));
 
-      // [SF-API-23] Список совместных треков ребро больше не несёт: за сессию
-      // пользователь раскрывает одно-два ребра, а разбирал JSON и держал в
-      // памяти все. Детали отдаёт /api/v1/graph/edge по требованию;
-      // collaboration_count остаётся здесь, потому что он нужен всегда — им
-      // подписано само ребро.
       edges_b.PushBack(dto::ToJson(edge_dto));
     }
   }

@@ -232,9 +232,6 @@ describe("setupHeroModeSwitch", () => {
     expect(document.activeElement).not.toBe(document.getElementById("hero-path-from-input"));
   });
 
-  // Стрелки не просто перемещают фокус по вкладкам, а сразу активируют режим,
-  // а activate() уводит фокус в первое поле этого режима. Поэтому здесь важен
-  // именно сменившийся режим, а не document.activeElement.
   it("walks the tabs with the arrow keys, wrapping at both ends", () => {
     const switchEl = tab("hero-mode-switch");
     const arrow = (key) =>

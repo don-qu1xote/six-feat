@@ -31,15 +31,6 @@ using namespace userver;
 
 namespace {
 
-// Полная схема одним идемпотентным списком: реестра версий и миграций нет.
-// Проект живёт только в git-репозитории, боевой базы нет — значит, мигрировать
-// нечего, и при каждом старте приложение просто приводит базу к текущей схеме.
-// Каждая операция идемпотентна (IF NOT EXISTS / ON CONFLICT), поэтому старт
-// поверх базы из прошлой версии приложения, как и повторный старт, ничего не
-// ломает; старые таблицы schema_version/game_schema_version, оставшиеся от
-// прежнего реестра, просто не трогаются.
-// Зеркало postgresql/schema.sql, пооператорно — проверяет
-
 const std::vector<const char*> kSchemaStatements = {
     R"SQL(CREATE TABLE IF NOT EXISTS artists (
         id             BIGINT PRIMARY KEY,
@@ -48,22 +39,13 @@ const std::vector<const char*> kSchemaStatements = {
         url            TEXT,
         dominant_color TEXT
     ))SQL",
-    // [SF-API-23 fix-01] Популярность трека хранится, а не живёт только в
-    // памяти запроса. Пока список совместных треков ехал внутри ответа графа,
-    // он собирался из свежескачанных песен, и популярность там была. Список
-    // уехал в отдельную ручку — а та отвечает уже со второго запроса, то есть
-    // из базы, где популярности не было: и сортировка «по популярности», и
-    // само поле приезжали нулями. Колонка объявлена прямо в CREATE TABLE:
-    // версий схемы нет, отдельный ALTER не нужен.
+
     R"SQL(CREATE TABLE IF NOT EXISTS songs (
         id         BIGINT PRIMARY KEY,
         title      TEXT NOT NULL,
         popularity BIGINT NOT NULL DEFAULT 0
     ))SQL",
-    // CREATE TABLE IF NOT EXISTS не добавит колонку к уже существующей
-    // таблице, а весь список обещает быть идемпотентным именно в смысле
-    // «поверх базы от прошлой версии приложения». Для новой базы этот ALTER
-    // ничего не делает, для старой — доводит её до текущей схемы.
+
     R"SQL(ALTER TABLE songs ADD COLUMN IF NOT EXISTS popularity BIGINT NOT NULL DEFAULT 0)SQL",
     R"SQL(CREATE TABLE IF NOT EXISTS credits (
         song_id   BIGINT NOT NULL REFERENCES songs(id),
@@ -118,12 +100,7 @@ const std::vector<const char*> kSchemaStatements = {
         user_id            BIGINT NOT NULL PRIMARY KEY,
         enrichment_enabled BOOLEAN NOT NULL DEFAULT true
     ))SQL",
-    // [SF-API-20] Средний цвет фотографии артиста. Считается один раз в
-    // image-proxy — там, где картинка и так скачивается, — и живёт рядом с
-    // артистом. NULL значит «ещё не считали»: колонка заполняется по мере
-    // прохождения изображений через прокси, backfill не нужен. Колонка
-    // объявлена прямо в CREATE TABLE: версий схемы нет, отдельный ALTER
-    // не нужен.
+
     R"SQL(COMMENT ON COLUMN artists.dominant_color IS 'average colour of the artist photo as #rrggbb, computed once in the image proxy — NULL means not sampled yet')SQL",
     R"SQL(COMMENT ON COLUMN songs.popularity IS 'Genius pageviews for the track — orders the shared-track list served by /api/v1/graph/edge and the top_tracks tile on a node')SQL",
 };
@@ -255,11 +232,6 @@ struct PersistentStore::Impl {
     });
   }
 
-  // [SF-YM-08] Поиск среди УЖЕ известных артистов (без похода во внешний
-  // гейтвей) — не подменяет Genius Search: возвращает только то, что уже
-  // резолвлено (кем-то с Genius-токеном или фоновым обогащением) и лежит в
-  // этой таблице. Точное совпадение по имени — первым, иначе по длине имени
-  // (короче — обычно точнее при ILIKE-подстроке).
   std::vector<ArtistRef> SearchByName(const std::string& query, int limit) const {
     return ExecuteReadQueryWithRetry([&] {
       auto res =
@@ -391,9 +363,7 @@ struct PersistentStore::Impl {
         "INSERT INTO artists(id, name, image_url, url) VALUES($1, $2, $3, $4) "
         "ON CONFLICT (id) DO UPDATE SET "
         "  name = excluded.name, image_url = excluded.image_url, url = excluded.url, "
-        // [SF-API-20] Сменилась фотография — посчитанный цвет относится уже
-        // не к ней. Обнуляем, а не пересчитываем: пересчёт будет, когда новая
-        // картинка пройдёт через прокси.
+
         "  dominant_color = CASE WHEN artists.image_url IS DISTINCT FROM excluded.image_url "
         "                       THEN NULL ELSE artists.dominant_color END",
         data.seed.id,
@@ -445,10 +415,6 @@ struct PersistentStore::Impl {
     }
 
     if (!song_ids.empty()) {
-      // GREATEST, а не перезапись: фоновое обогащение и передний план ходят в
-      // Genius разными запросами, и не в каждом ответе есть stats.pageviews.
-      // Ноль от источника, который её не прислал, не должен затирать уже
-      // известное число — просмотры только растут.
       trx.Execute(
           "INSERT INTO songs(id, title, popularity) "
           "SELECT * FROM UNNEST($1::bigint[], $2::text[], $3::bigint[]) "
