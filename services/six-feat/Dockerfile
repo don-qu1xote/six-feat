@@ -27,7 +27,7 @@ RUN --mount=type=cache,id=six-feat-ccache,target=/ccache,sharing=locked \
  && cmake --build build -j"${BUILD_JOBS}" \
  && cmake --install build --strip
 
-FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS js-builder
+FROM node:26-slim@sha256:4ebb5ace66f15a24c14c492e01a8beeed4fddf970a856109f5126e703e5fe503 AS js-builder
 
 WORKDIR /front
 COPY front/package.json front/package-lock.json ./
