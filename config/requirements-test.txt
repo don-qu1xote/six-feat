@@ -11,4 +11,4 @@ cryptography>=49.0.0
 psycopg2-binary>=2.9.12
 
 # Contract-тесты OpenAPI через schemathesis (tests/test_contract_openapi.py)
-schemathesis>=4.24.3
+schemathesis>=4.25.2
