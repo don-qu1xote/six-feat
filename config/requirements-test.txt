@@ -8,7 +8,7 @@ pytest-cov>=7.1.0
 cryptography>=49.0.0
 
 # Прямое подключение к Postgres из clean_db_state (tests/conftest.py)
-psycopg2-binary>=2.9.12
+psycopg2-binary>=2.9.13
 
 # Contract-тесты OpenAPI через schemathesis (tests/test_contract_openapi.py)
 schemathesis>=4.24.3
