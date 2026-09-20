@@ -37,7 +37,7 @@ COPY front/scripts ./scripts
 RUN npm run build
 
 # ubuntu:22.04 — тот же ABI, под который собран builder (glibc/Boost SONAME)
-FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982 AS runtime
+FROM ubuntu:25.10@sha256:7cc5e35f6567ee8c66d2abb4aab0fd866669e6207c237c3a8f0947a5c7f17092 AS runtime
 
 # DEBIAN_FRONTEND=noninteractive: иначе tzdata зависает на debconf в docker build
 ENV DEBIAN_FRONTEND=noninteractive
